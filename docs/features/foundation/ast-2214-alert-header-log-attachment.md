@@ -382,3 +382,58 @@ context_tokens≈42000
   - **Expected (plan step 8), for `qa-child`:** `TestAutoRunError::test_sends_alert_with_log_body`; `TestFormatLogBody::{test_returns_placeholder_when_no_entries, test_formats_entries_chronologically, test_fence_outruns_backticks_inside_the_logs}`; `TestAst1867ProviderBalanceOutage::test_subject_names_provider_and_body_is_short`.
   - **Pre-existing, red on the plan tip `f86bacdcb` without this diff:** `TestAutoRunErrorSubjectPrefix::{test_local_env_with_candidate_last_name, test_eu_west_preserves_case, test_unset_env_with_candidate_last_name}`. Their `get_candidate` stub returns `candidate_data.profile.last`, while `_resolve_candidate_last_name` reads top-level `last`. Stub/product mismatch predates AST-2214; not touched here — Betty's call.
   - Coverage gap for Betty: the other `TestAst1867ProviderBalanceOutage` tests now pass only because `admin_emails` is empty in the test env (early return), so they no longer exercise the send path.
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-2214
+**Publish ref:** `36f6211e94e9cb87a2987d73d598aa2b98fba52e` (`origin/sub/AST-2207/AST-2214-alert-header-log-attachment`)
+**Corpus:** `0d01e20d2b313a4e35cf3d07434b6cd69f615768`
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| stat.logging.warning | A | | |
+| stat.logging.error | A | | |
+
+## Column diff vs plan stage
+
+(aligned)
+
+## Frame diff
+
+- [ ] **AC 6 (live UAT):** On the test deploy, one forced AUTO error email to the support alias includes the metadata header, a short WARNING/ERROR-only body, and a `<batch_id>.txt` attachment with the full log.
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+- **`CRITICAL` rows and body filter** — `_format_warning_error_block` keeps only `level in ("WARNING", "ERROR")`; a future `CRITICAL` row would appear in the attachment but not the fenced body. AC 2 names WARNING/ERROR only; Joan flagged this at plan. **@susan:** If `CRITICAL` is ever stored in `app_log`, should it appear in the email body with ERROR or stay attachment-only? **Default:** Keep the shipped filter (WARNING/ERROR in body only); attachment still carries every level.
+
+### advisory
+
+- **Sibling product/test carry on publish ref:** Three-dot diff vs `origin/dev` also includes AST-2213 work (`src/external/gmail.py`, `tests/component/external/test_gmail.py`, `docs/test-bible/external/gmail.md`, `docs/features/foundation/ast-2213-gmail-plain-text-attachments.md`). Expected while #1 is not on `dev` and this sub stacks the prerequisite; AST-2214 product delta under `src/**` is `monitor.py` only.
+- **Pre-existing `except Exception` → `logger.warning`:** `auto_run_error` / `provider_balance_outage` swallow paths unchanged (still WARNING, not `logger.exception`). Plan and Canon Scope freeze that for this ticket; any statute uplift is out of band.
+- **Build review note vs tip:** Issue doc `## Review (build)` @ `ebf0917f` predates tip `36f6211e9`; spawn status **Tests Passed** supersedes the stale sanity-run failure counts there.
+
+## What's solid
+
+- **`auto_run_error`:** One `list_log_entries` fetch, reversed to chronological; header via `_format_alert_header`; body = header + `_format_warning_error_block`; `attachments={f"{batch_id}.txt": _format_full_log(entries)}`; existing send-failure / unexpected-exception WARNINGs unchanged.
+- **`provider_balance_outage`:** `to=", ".join(sorted(admins))`; no attachment / no log fetch; empty `admin_emails` → single WARNING naming batch + `ASTRAL_ADMIN_EMAILS`, no send, never raises.
+- **No new `logger.error` / `logger.exception`** in `monitor.py` on this diff.
+- **Tests:** `TestAst2214AlertShape` and updated `TestAutoRunError` / `TestAst1867ProviderBalanceOutage` match AC 1–5 (header order, filtered body, info-only notice, attachment name/content/order, admin routing, empty-admin WARN-skip, sorted multi-admin `to`). Subject-prefix stubs corrected to top-level `last` (AST-1014).
+- **Plan fidelity:** Stage 1 monitor-only product matches the plan doc; estimate **3** fits footprint.
+- **Boundaries:** No `gmail.py` edits attributable to this ticket’s monitor work; dispatcher untouched.
+
+## Recommended actions
+
+- Chuckles: append artifact, `docs(AST-2214): Radia review — clean`, post slim upshot `--as radia`, **Review Posted** → **PROCEED** to **User Testing** (AC 6 for Susan on parent UAT).
+- No `resolve-child` for canon; optional Susan answer on `CRITICAL` only if that level is on the roadmap for `app_log`.
+
+context_tokens≈38000
