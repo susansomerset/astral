@@ -803,3 +803,50 @@ Live Slack / DB checks of AC 5–13 (version counts, `list_agent_data_runs`, `ge
 ## Estimate
 
 Confirm Chuckles estimate: 5 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-2212
+**Overall:** APPROVED
+**Corpus:** 0d01e20d2b313a4e35cf3d07434b6cd69f615768
+**Publish ref:** `origin/sub/AST-2206/AST-2212-contact-wiring-draft-thread` @ `17ac6412bb63a19ed6caada3fe1b02468e2ef5f1`
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.contact.command-intercept | A | | |
+| patt.artifact.read-current | A | | |
+| stat.logging.info.contact | A | | |
+| stat.logging.debug | A | | |
+| stat.logging.warning | A | | |
+| stat.logging.error | A | | |
+
+## Traceability
+
+AC3→Stages 1–3 + smoke grep; AC4→ledger helper in `contact.py` only; AC5–7→Stage 1 + smoke §1; AC8–9→Stage 2 + smoke §2; AC10–11→Stage 3 + smoke §3; AC12–13→Stage 1 (gate/refusal) + smoke §1. Parent pinhole AC / live DB proofs → qa-child & UAT per plan.
+
+## Findings
+
+### acceptable
+
+- **Location:** Scope gate / Canon alignment  
+  **Finding:** Runtime implements intercept amendments (a–c) and draft-thread behavior; `patt.contact.command-intercept` text and **Contact draft thread** pattern doc remain out of file scope (same split as AST-2210).  
+  **Recommendation:** Track canon edits on the epic; do not block build.
+
+- **Location:** Stage 0 smoke vs Betty/UAT  
+  **Finding:** AC 5–13 integration proofs (versions, `list_agent_data_runs`, `get_agent_data`) are stubbed in smoke; plan assigns live checks to qa-child/UAT.  
+  **Recommendation:** Keep; smoke is wiring-only by design.
+
+### discuss
+
+- **Location:** Stage 3 revise turn — full `fetch_full_conversation_history` per mention  
+  **Finding:** Plan chooses uncapped full-channel crawl for revise (Susan no-cap rule); cost is explicit vs 50-message cache alternative.  
+  **Recommendation:** Build as written unless Susan revises the plan to the cheaper page-only path.
+
+- **Location:** `_SLACK_PRIVATE_CHANNEL_TYPE = "group"`  
+  **Finding:** Mapped-candidate substitution applies only to private-channel `app_mention` with Slack `group`; DMs use the refusal gate via `private_channel_only` + `private_channel=False`, which matches AC 13 smoke.  
+  **Recommendation:** No change unless mpim/private-channel taxonomy needs a follow-up ticket.
+
+context_tokens≈68000
