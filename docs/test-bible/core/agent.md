@@ -2199,3 +2199,52 @@ Expect **23 passed**.
 | `000\|AAA3\|ok` + `001\|just notes` → job-0 row (`notes == "ok"`), job-1 a decode failure at pos 1 | `src/core/agent.py` (`_decode_payload`) | **`TestDecodePayload::test_ast2126_notes_line_without_segments_is_decode_failure`** |
 
 **Fixture revision:** 13 vector-feedback tests (`TestAst1486FeedbackEntityIdStamp`, `TestAst724VectorFeedbackCapture`, `TestAst809VectorFeedbackBatchMetadata`, `TestAst816VectorFeedbackCapture`, `TestAst820VectorFeedbackDebugTrace`, `TestAst862CleanParseFeedbackBlock`) seed `GA` / `CL` / `DO` instead of `G1` / `CLR` / `DOR` (sync now rejects non-`[A-Z]{2}`); review strings follow (`GARACOVK`, `CLRACOVK`, `DORACOVK`).
+
+### AST-2180 · AST-2172 (graders on the structured path; decoder retired)
+
+**Primary manifest** for AST-2180. Other blocks: [`consult.md`](consult.md) § AST-2180, [`roster.md`](roster.md) § AST-2180, [`../ui/api/api_admin.md`](../ui/api/api_admin.md) § AST-2180, [`../utils/config.md`](../utils/config.md) § AST-2180.
+
+Every grader `do_task` builds `grade_forced_tool(task_key, ctx)` (`submit_grades`, schema from `grade_call_codes` + `grade_row_ids`; `vector_reviews` added to a copy of `agent_performance` for vector-feedback tasks) and sends it with the structured timestamp prefix. The reply is the tool input, hydrated by `grade_schema.hydrate_grade_tool_input`. A grader ctx with no rubric codes logs ERROR and returns `success: False` before send (intentional `_RETRY`). The text decoder (`_decode_payload` and the consult normalize cluster) is gone. Provider calls are mocked (`send_to_anthropic` / `send_to_llm_compat`); there are no live calls, and AC 8 is Susan's staging check.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| New — vet grades its fixed code; other graders follow `vector_labels` order | `grade_call_codes` | **`TestAst2180GraderStructuredPath::test_grade_call_codes_vet_is_fixed_code_others_follow_vector_labels`** |
+| New — non-grader → `None`; grader with no codes raises | `grade_forced_tool` | **`::test_grade_forced_tool_none_for_non_grader_and_raises_without_codes`** |
+| New — tool name, row ids, row codes; `vector_reviews` on feedback tasks only, shared `_AGENT_PERFORMANCE_SCHEMA` unmutated | `grade_forced_tool` | **`::test_grade_forced_tool_schema_rows_codes_and_vector_reviews`** |
+| New — grader sends `forced_tool` + structured prefix; non-grader sends `None` + envelope prefix | `do_task`, `_send_to_server`, `_assemble_blocks_seven_segment` | **`::test_grader_sends_forced_tool_and_structured_prefix`** · **`::test_non_grader_sends_no_tool_and_envelope_prefix`** |
+| New — no rubric codes → one ERROR, `success: False`, nothing sent | `do_task` | **`::test_grader_without_rubric_codes_skips_before_send`** |
+| New — AC 5 (agent): row 001 missing a code → `decode_failures` for job-2, no grades / no X; row 000 hydrates | `do_task` + real hydrate | **`::test_missing_code_row_is_a_decode_failure_not_an_x_grade`** |
+| New — AC 6: Linear pattern (incl. `duplicate vector code \{`) absent from `src` | source scan | **`TestAst2180DecoderRetiredFromSource::test_ac6_decoder_symbols_absent_from_src`** |
+| New — AC 7: no `"grades_encoded` literal in `src/core`, `src/external`, `src/ui/api` | source scan | **`::test_ac7_no_grades_encoded_literal_outside_config`** |
+| Replaced — envelope / bare-text replies (AST-501 / AST-503) | `do_task` | **`TestDoTask::test_non_object_reply_fails_the_hop`** (2) · **`::test_agent_payload_wrapper_grades_nothing`** (2) · **`::test_compat_tool_input_hydrates_into_jobs`** |
+| Revised — grader fixtures carry `vector_labels` and answer with tool input (`_tool_input`, `_rubric_evaluate_jd_ctx`, `_CR_LABELS`, `_grader_llm_ok`, `_patch_hydrate`) | `do_task` | ~50 nodes across `TestDoTask`, `TestAst2089DoTaskSalvagedResponse`, `TestAst1846DoTaskAgentFailureFlag`, AST-897 / AST-1190 classes, `test_agent_ast1448.py`, `test_agent_ast2029.py` |
+
+**Retired (decoder gone):** `TestDecodePayload` (11), `TestAst2093BatchIndexMapDecode` (7), `TestAst1513DuplicateRubricCodes`, `TestAst880GradesEncodedVetMetaDecode` (3), `TestAst603RubricNormalize` (6), `TestAst697PrefilterBracketLinkDecode` (4), `TestAst699LetterPipePositionPrefix` (3), `TestAst2138JobLinkPrefixNotGrade` (3), `TestAst1221RuntimeAliasAgent::test_strict_encoded_batch_via_master_resolve`, `TestDecodeNotesAndChain::test_skips_empty_notes_tail`, `TestDoTaskFinalBranches::test_decode_notes_tail_is_preserved`, and the four `TestDoTask::test_ast50{1,3}_rejects_*` tests. Their behaviours that survive now live in the hydrate ([`grade_schema.md`](grade_schema.md)): index map → `TestGradeRowIds::test_index_map_wins_and_sorts`; per-entity isolation → `TestHydrateLightCheck::test_bad_row_fails_only_its_entity`; missing code never X → `::test_missing_code_is_never_defaulted_to_x`; vet website / letters → `TestHydrateVet`; extras (notes, links) → `TestHydrateExtraFields`. Duplicate codes cannot occur, because a JSON object has one key per code.
+
+**Masked:** `TestDoTask::test_decodes_encoded_payload_and_stores_success` (`KeyError: 'append'`) and `::test_rejects_json_schema_and_confidence_failures` (`draft_job_resume` base_resume) were red before this build for unrelated causes. Their fixtures are revised to tool input, but they stay red on those causes.
+
+**Repro:** every new node in this manifest (agent, roster, api_admin) is red on the pre-build product files (`002a4a490`: `agent.py`, `consult.py`, `roster.py`, `api_admin.py`, `formatting.py`) and green on the tip. The exception is consult's AC 5 routing test, which is green on both by design: hydrate and consult routing predate this build, so it guards them.
+
+**Integration:** none. No `tests/integration/` scenario references the decoder, `agent_payload` or `grades_encoded`.
+
+**AST-2180 QA test manifest:**
+
+```bash
+ASTRAL_DB_DIR=$PWD/data /home/susan/astral/.venv/bin/python -m pytest -q \
+  tests/component/core/test_agent.py::TestAst2180GraderStructuredPath \
+  tests/component/core/test_agent.py::TestAst2180DecoderRetiredFromSource \
+  "tests/component/core/test_agent.py::TestDoTask::test_non_object_reply_fails_the_hop" \
+  "tests/component/core/test_agent.py::TestDoTask::test_agent_payload_wrapper_grades_nothing" \
+  tests/component/core/test_agent.py::TestDoTask::test_compat_tool_input_hydrates_into_jobs \
+  tests/component/core/test_agent.py::TestAst2089DoTaskSalvagedResponse \
+  tests/component/core/test_consult.py::TestEncodedDecodeIsolation \
+  tests/component/core/test_roster.py::TestAst2180LightCheckReasons \
+  tests/component/ui/api/test_api_admin.py::TestAst2180AdhocForcedTool \
+  tests/component/ui/api/test_api_admin.py::TestAdhocRoutes::test_adhoc_preview_and_test \
+  tests/component/utils/test_config.py::TestAst1055MeteoriteLikeUpshotTasks
+git checkout -- data/
+```
+
+**Regression (no new reds):** `tests/component --continue-on-collection-errors`. The failing-id set on the tip is a subset of the 351 failures that were red before this build (337 on the tip). The five collection errors (`test_meteorite_email`, `test_page_intake`, `test_surfer`, `test_meteorites`, `test_surfer_batches`) are pre-existing. `test_intake::test_background_initiate_failure_writes_assistant_error` is order-dependent: it passes alone and in its own file.
+
+**Pass criterion:** pytest green on the manifest lines, not the zero-arg harness or branch-lock gate.

@@ -10,7 +10,12 @@ import pytest
 
 from src.core import agent as agent_mod
 from src.utils import formatting as fmt
-from tests.component.core.test_agent import _agent_rows, _api_response
+from tests.component.core.test_agent import (
+    _CR_LABELS,
+    _agent_rows,
+    _api_response,
+    _tool_input,
+)
 
 
 @pytest.fixture
@@ -104,7 +109,7 @@ class TestAst2029DoTaskStoresIds:
 
     @staticmethod
     def _ctx(entities: List[Any]) -> Dict[str, Any]:
-        return {"astral_candidate_id": "somerset", "candidate_data": {}, "batch_entities": entities}
+        return {"astral_candidate_id": "somerset", "candidate_data": {}, "batch_entities": entities, "vector_labels": dict(_CR_LABELS)}
 
     async def _do(self, task: str, live: str, entities: List[Any], index: Optional[str] = None) -> Dict[str, Any]:
         return await agent_mod.do_task(task, live_content=live, index=index, ctx=self._ctx(entities))
@@ -173,7 +178,7 @@ class TestAst2029DoTaskStoresIds:
         # Success RESPONSE is decoded JSON already keyed by ids; hydrate is a no-op, split keys it by id.
         ok = {
             "success": True,
-            "parsed_response": {"agent_payload": "0|CRA2"},
+            "parsed_response": _tool_input(),
             "api_response": _api_response("ok"),
             "timesheet": {},
         }

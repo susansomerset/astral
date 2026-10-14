@@ -5105,3 +5105,7 @@ Manifest: [`../data/database/telescope_data.md`](../data/database/telescope_data
 
 **Bible shasums (after publish):** `git show origin/sub/AST-2172/AST-2177-capability-registry-grader-marker-prompts:docs/test-bible/<path> | shasum` for `utils/config.md`, `core/repo_admin_json.md`, `core/consult.md`, `core/agent.md`.
 
+
+### AST-2180 · AST-2172
+
+**Revised:** `TestAst1055MeteoriteLikeUpshotTasks::test_rubric_owner_batch_and_encoded_membership` no longer reads the retired agent encoded-batch set. It asserts that `meteorite_like`'s output type carries `structured_output: True`. Manifest: [`../core/agent.md`](../core/agent.md) § AST-2180.

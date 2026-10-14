@@ -3698,14 +3698,15 @@ class TestAst1055MeteoriteLikeUpshotTasks:
         assert "PASSED_LIKE_RETRY" in priors
 
     def test_rubric_owner_batch_and_encoded_membership(self) -> None:
-        from src.core import agent as agent_mod
         from src.core import dispatcher as dispatcher_mod
 
         assert cfg.rubric_owner_task_key("meteorite_like") == "grade_like"
         assert cfg.rubric_owner_task_key("grade_like") == "grade_like"
         assert "meteorite_like" in cfg._DISPATCH_BATCH_CALL_MODE_ONE
         assert "meteorite_upshot" not in cfg._DISPATCH_BATCH_CALL_MODE_ONE
-        assert "meteorite_like" in agent_mod._STRICT_ENCODED_BATCH_CONSULT_KEYS
+        # AST-2180: the strict encoded-batch set is gone; meteorite_like is a structured grader via its output type.
+        ot = cfg.TASK_CONFIG["meteorite_like"]["output_type"]
+        assert cfg.ASTRAL_CONFIG["output_types"][ot]["structured_output"] is True
         assert "meteorite_like" in dispatcher_mod._CHUNK_EXHAUST_CONSULT_JOB_KEYS
 
 

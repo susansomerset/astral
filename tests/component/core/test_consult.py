@@ -2415,20 +2415,8 @@ class TestEncodedDecodeIsolation:
         {"astral_job_id": "J2", "state": "METEORITE_QUALIFIED"},
     ]
 
-    def test_routing_scans_past_fully_malformed_first_line(self) -> None:
-        # Repro B: line 0 has no valid segment; line 1 does → still the encoded decoder.
-        payload = "000|DEC35|ECC35\n001|DEC3|ECC3"
-        assert consult_mod._should_decode_as_encoded_line(payload) is True
-        out = consult_mod._normalize_rubric_task_response(
-            "evaluate_meteorite",
-            TASK_CONFIG["evaluate_meteorite"],
-            {"agent_payload": payload},
-            {"batch_entities": [{"astral_job_id": "J0"}, {"astral_job_id": "J1"}]},
-        )
-        assert [j["astral_job_id"] for j in out["jobs"]] == ["J1"]
-        assert [f["astral_job_id"] for f in out["decode_failures"]] == ["J0"]
 
-    async def _run(self, monkeypatch: pytest.MonkeyPatch, parsed: Dict[str, Any]) -> tuple:
+    async def _run(self, monkeypatch: pytest.MonkeyPatch, parsed: Dict[str, Any], entities: Any = None) -> tuple:
         transition = MagicMock()
         monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", transition)
         # Stub hydrate: unstubbed it raises on empty rubric criteria (pre-existing trunk failures).
@@ -2442,7 +2430,7 @@ class TestEncodedDecodeIsolation:
         out = await consult_mod._run_batch_consult(
             "evaluate_meteorite",
             "batch-1",
-            [dict(e) for e in self._ENTITIES],
+            [dict(e) for e in (entities or self._ENTITIES)],
             lambda rows: "content",
             lambda input_job, response_job, cfg: cfg["pass_state"],
             {},
@@ -2483,6 +2471,28 @@ class TestEncodedDecodeIsolation:
         assert out["passed"] == 3
         assert out["decode_failed"] is None
         assert out["error"] is None
+
+    @pytest.mark.asyncio
+    async def test_ast2180_missing_code_row_retries_entity_sibling_scores(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # AC 5 end to end: the real hydrate turns row 001's missing code into a decode failure; consult retries
+        # that job alone and row 000 still passes — no X grade, no whole-batch failure.
+        from src.core.grade_schema import hydrate_grade_tool_input
+
+        entities = [{"astral_job_id": j, "state": "METEORITE_QUALIFIED"} for j in ("J0", "J1")]
+        parsed = hydrate_grade_tool_input(
+            "evaluate_meteorite",
+            TASK_CONFIG["evaluate_meteorite"]["output_type"],
+            {"000": {"CR": {"grade": "A", "confidence": 3}}, "001": {}, "agent_performance": {"status": "success"}},
+            ["CR"],
+            {"batch_entities": entities, "vector_labels": {"CR": "Craft"}},
+        )
+        assert [j["astral_job_id"] for j in parsed["jobs"]] == ["J0"]
+        out, transition = await self._run(monkeypatch, parsed, entities)
+        calls = [(c.args[1], c.args[2]) for c in transition.call_args_list]
+        assert (["J1"], "METEORITE_QUALIFIED_RETRY") in calls
+        assert not [c for c in calls if "J0" in c[0] and c[1] != TASK_CONFIG["evaluate_meteorite"]["pass_state"]]
+        assert out["passed"] == 1
+        assert out["decode_failed"] == ["J1"]
 
 
 class TestAst2089SalvagedBatchSplit:
@@ -5228,13 +5238,6 @@ class TestAst1062QualifyMeteorite:
             (c.kwargs.get("func") == "consult.qualify_meteorite") for c in dbg_i.call_args_list
         )
 
-    def test_not_strict_encoded_batch_key(self) -> None:
-        from src.core import agent as agent_mod
-        from src.utils.config import TASK_CONFIG
-
-        if "qualify_meteorite" not in TASK_CONFIG:
-            pytest.skip("qualify_meteorite not on tip")
-        assert "qualify_meteorite" not in agent_mod._STRICT_ENCODED_BATCH_CONSULT_KEYS
 
 # Branches: single-job / ordered placeholder bind; "000" qualify path (AST-1076 UAT).
 class TestAst1076BindResponseJobsToClaimed:
@@ -5847,7 +5850,6 @@ class TestAst1127QualifyMeteoriteOmitCompanyJobId:
         assert out["failed"] == 0
         assert initialize.call_args.args[2]["company_job_id"] == self._DICE_UUID
         assert transition.call_args.args[2] == TASK_CONFIG["qualify_meteorite"]["pass_state"]
-
 
 
 # Branches: unique link bind; claimed ids untouched; ambiguous drop; empty skip (AST-1133).
@@ -8418,53 +8420,10 @@ class TestAst2125MissingRubricDescription:
         save.assert_not_called()
 
 
-# AST-2126 [bug-repro] (AST-2127): a grades_encoded_notes reply with no _GRADE_SEG match (V01-style codes or
-# prose) falls to the letter-pipe path. Pre-fix it returned a silent {"grades": []} row that later failed
-# _require_complete_grade_set with every label missing; now every batch entity is a decode failure carrying
-# the raw reply (AST-1996 route). Branches: job task + zero grades → decode_failures (1 and 2 entities);
-# letter-pipe with grades → row unchanged; company task with zero grades → companies row, no decode_failures.
+# AST-2126 [bug-repro] (AST-2127): wrong-but-valid-shape codes name both sides in _require_complete_grade_set.
+# The zero-grade-reply → decode_failures cases went with the letter-pipe normalize (AST-2180); a missing code
+# is now the hydrate's per-entity light-check failure (tests/component/core/test_grade_schema.py).
 class TestAst2126ZeroGradeRepliesAreDecodeFailures:
-    _RUBRIC = [
-        {"code": "V01", "label": "Vector 1", "content": "x", "importance": 5},
-        {"code": "V02", "label": "Vector 2", "content": "x", "importance": 5},
-    ]
-
-    def _normalize(self, monkeypatch: pytest.MonkeyPatch, task_key: str, payload: str, entities: list) -> dict:
-        monkeypatch.setattr(consult_mod, "_rubric_criteria_for_cfg", lambda cid, cfg: self._RUBRIC)
-        return consult_mod._normalize_rubric_task_response(
-            task_key, TASK_CONFIG[task_key], {"agent_payload": payload}, {"batch_entities": entities}
-        )
-
-    @pytest.mark.parametrize("payload", ["000|V01A3|V02B4", "This candidate is a strong fit."])
-    def test_bug_repro_one_job_zero_grades_is_decode_failure(
-        self, monkeypatch: pytest.MonkeyPatch, payload: str
-    ) -> None:
-        out = self._normalize(monkeypatch, "grade_do", payload, [{"astral_job_id": "J0", "state": "PASSED_JD"}])
-        assert out == {
-            "jobs": [],
-            "decode_failures": [
-                {"astral_job_id": "J0", "pos": 0, "reason": f"[grade_do] no grade segments in reply: {payload!r}"}
-            ],
-        }
-
-    def test_every_entity_gets_one_failure(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        out = self._normalize(monkeypatch, "grade_do", "prose reply", [{"astral_job_id": "J0"}, {"astral_job_id": "J1"}])
-        assert out["jobs"] == []
-        assert [(f["astral_job_id"], f["pos"]) for f in out["decode_failures"]] == [("J0", 0), ("J1", 1)]
-        assert all("no grade segments in reply: 'prose reply'" in f["reason"] for f in out["decode_failures"])
-
-    def test_letter_pipe_with_grades_unchanged(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        out = self._normalize(monkeypatch, "grade_do", "A|B", [{"astral_job_id": "J0"}])
-        assert "decode_failures" not in out
-        assert out["jobs"][0]["astral_job_id"] == "J0"
-        assert [(g["vector"], g["grade"]) for g in out["jobs"][0]["grades"]] == [("Vector 1", "A"), ("Vector 2", "B")]
-
-    def test_company_task_zero_grades_keeps_row(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        out = self._normalize(monkeypatch, "prefilter_company", "prose reply", [{"company_id": "C0"}])
-        assert "decode_failures" not in out
-        assert out["companies"][0]["company_id"] == "C0"
-        assert out["companies"][0]["grades"] == []
-
     def test_require_complete_grade_set_reports_missing_and_unknown(self) -> None:
         # Wrong-but-valid-shape codes must not read the same as an empty reply.
         rubric = [{"label": "A"}, {"label": "B"}]

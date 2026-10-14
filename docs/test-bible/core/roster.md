@@ -1319,3 +1319,14 @@ Writers keep via gazer and store row ids: `_fetch_nav_links` / `_fetch_prefilter
 **Pass criterion:** items 1–4 — narrowed run, not the zero-arg harness / branch-lock gate (pre-existing reds on the ftr tip).
 
 **Bible shasum (after publish):** `git show origin/sub/AST-2130/AST-2134-roster-telescope-data:docs/test-bible/core/roster.md | shasum`
+
+### AST-2180 · AST-2172 (light-check reasons on roster graders)
+
+**New:** **`TestAst2180LightCheckReasons`** (5), all red before the build:
+- The vet single blurb is renumbered to row `000`, and a `decode_failures` reason becomes the warning and the error.
+- Vet batch warns the failed hit with its own reason, not `missing results row hit_index=N`.
+- A prefilter single with a light-check failure takes the retry route with `decode: <reason>`.
+- In a prefilter batch, the decode-failed company retries with `decode: <reason>`, not `missing id`, while its sibling applies its verdict.
+- `_fetch_prefilter_notes` sends the candidate's real rubric codes.
+
+The existing `prefilter_company` tests that go through `keep_page_scrape` are pre-existing reds (`ASTRAL_DATABASE_URL not set`), so the new single test stubs `scrape_company_homepage_content` and `gazer.keep_page_scrape`. Manifest: [`agent.md`](agent.md) § AST-2180.
