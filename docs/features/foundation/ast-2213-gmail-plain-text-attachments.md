@@ -143,3 +143,46 @@ format, then wait.
 ## Estimate
 
 Confirm Chuckles estimate: 2 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-2213
+**Overall:** APPROVED
+**Corpus:** 0d01e20d2b313a4e35cf3d07434b6cd69f615768
+**Publish ref:** `d3e3110c601fd3c4da5dd591380173f7c80af9e6`
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| stat.logging.warning | A | | |
+
+## Traceability
+
+5 → Stage 1 (multipart/mixed + attachment `Content-Disposition`; no-attachment path unchanged; AC 5 assertions land in `qa-child` per Scope gate)
+
+## Findings
+
+### acceptable — No `## Self-assessment` block
+
+- **Severity:** acceptable
+- **Location:** Plan doc structure
+- **Finding:** Plan omits the self-assessment block some foundation plans carry; Estimate confirm line is present.
+- **Recommendation:** Optional for build/review parity; not blocking on this slice.
+
+### acceptable — “byte-for-byte” wording
+
+- **Severity:** acceptable
+- **Location:** Scope / Stage 1
+- **Finding:** Ticket Scope says no-attachment message is “byte-for-byte” unchanged; Stage 1 correctly commits to the **same** `MIMEText(body, "plain")` branch (not a literal encoded-bytes guarantee).
+- **Recommendation:** None required; implementer should follow Stage 1’s code path, not the slogan.
+
+## R6 checklist (summary)
+
+- Definition fidelity: implements parent functional scope §4 and technical scope for `send_email` only; monitor, alert shape, and balance-outage work explicitly deferred to sibling #2.
+- Scope gate: single file `src/external/gmail.py`; monitor references are read-only integration notes, not planned edits.
+- DRY / creep: reuses stdlib MIME only; no duplicate send helpers; no sibling file changes.
+- Plan-discuss: status **Plan Ready**; **0** completed `[plan-discuss]` rounds on the thread.
+
+context_tokens≈32000
