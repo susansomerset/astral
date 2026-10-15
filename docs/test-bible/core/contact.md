@@ -769,9 +769,9 @@ Parent AC **9**. `run_contact_estelle_turn` and `_run_contact_ledgered_task` ope
 
 **Pass criterion:** pytest green on the nodes above. Not the zero-arg harness.
 
-**Bible shasums (after publish):**
+**Bible shasums (at `test(AST-2220)` tip `1dbb0efe5`):**
 
 ```text
-git show origin/sub/AST-2215/AST-2220-contact-estelle-ledger-row:docs/test-bible/core/contact.md | shasum
-git show origin/sub/AST-2215/AST-2220-contact-estelle-ledger-row:docs/test-bible/core/agent.md | shasum
+docs/test-bible/core/agent.md   789b258c9efd2db6bd52923b0879b956c3e9c03d
+# contact.md: git show origin/sub/AST-2215/AST-2220-contact-estelle-ledger-row:docs/test-bible/core/contact.md | shasum
 ```
