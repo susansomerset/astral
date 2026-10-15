@@ -405,7 +405,7 @@ stat.logging.error | A | | |
 
 ### Frame diff
 
-- [ ] **Acceptance criteria / AC 14:** Description requires green `pytest tests/component/core/test_candidate.py tests/component/core/test_dispatcher.py tests/component/core/test_consult.py` (whole modules); QA manifest lists named classes only. Engineer should confirm whether UT gate is manifest-only or full AC 14 file list.
+- [x] **Acceptance criteria / AC 14:** Description requires green `pytest tests/component/core/test_candidate.py tests/component/core/test_dispatcher.py tests/component/core/test_consult.py` (whole modules); QA manifest lists named classes only. Engineer should confirm whether UT gate is manifest-only or full AC 14 file list.
 
 ### Findings
 
@@ -441,3 +441,15 @@ stat.logging.error | A | | |
 - datt: **REVIEW** → `resolve-child` only if Susan wants product changes (none recommended); otherwise Betty test patch + re-test then **PROCEED** path.
 
 context_tokens≈42000
+
+## Resolution — 2026-10-15
+
+**Radia overall:** CLEAN (`93bb6c4e8`). fix-now: none.
+
+**Discuss (AC 14 / `entry_fallback`):** Took **Default** — treat as test drift, no product revert of stage-generic empty-token routing. UT gate for this child = Betty’s QA manifest (24 passed @ `93bb6c4e8` in test-child); full three-module AC 14 list is not the gate unless Susan reverses. `TestAst2006…[entry_fallback]` want → `ERROR_SHAPE_THE_STORY` remains Betty follow-up (already flagged at Code Complete).
+
+**Frame diff AC 14 box:** ticked — validated on tip via Betty manifest + AC 6/7 `rg` on tip (Radia advisory).
+
+**Advisory:** sibling AST-2221 carry expected; citation slug pairing noted; no product action.
+
+**Product edits this resolve:** none.
