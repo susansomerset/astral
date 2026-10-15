@@ -264,3 +264,57 @@ context_tokens≈22000
 - Stages 3-4: do_task/adhoc pass DISPATCH_AGENT + entity attribution (multi-entity empty id); Anthropic + llm_compat stamp timing/size; readers use service_timesheet; zero-stub get_receipt (no HTTP, platform_cost null).
 - Out of scope left for siblings: runner/daemon/OpenRouter (2218), Google (2219), contact ledger (2220).
 - Betty owns test/bible revisions listed in Scope.
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-2217
+**Publish ref:** `6fc13c163a3e5ebcae3eeb4534331db40891a707` (`origin/sub/AST-2215/AST-2217-timesheet-rename-attribution-stubs`)
+**Corpus:** b7ab2203048ce0beb2869a12200ab7fa696c8066
+**Overall:** CLEAN
+
+## Canon scores
+
+patt.entity.batch-processing | A | |
+stat.dispatch.entity-state-bound | A | |
+
+## Column diff vs plan stage
+
+(aligned) — Joan: both A @ plan tip `4c2a680bd02a6eb5d2a4e24331b407004f8f25e6`; build tip advances product + Betty test/bible only.
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **Canon Scope observation (unchanged from Joan):** `astral.config.config-source-of-truth` plainly covers Stage 1 registries but is not on the frozen list; diff lands literals only in `src/utils/config.py` as planned. Archie may amend Canon Scope at Discussion for future comparability — not a build blocker.
+- **Frozen list slug:** Linear cites `stat.dispatch.entity-state-bound`; clerk resolves `astral.dispatch.entity-state-bound` from `canon/directives/active/stat.dispatch.entity-state-bound.md`. Scored against statute body; align slug in frozen list for tooling hygiene only.
+- **Plan file list vs test diff:** `## Files Changed` names `tests/component/core/test_agent.py`; three-dot diff adds attribution coverage in `test_agent_ast1879.py` only. Betty bible (`docs/test-bible/core/agent.md` § AST-2217) points at ast1879-style `_send_to_server` coverage; consistent with **Tests Passed**.
+- **`claim_ledger_timesheet_fetching` concurrency:** `SELECT` then `UPDATE … WHERE timesheet_state = 'NEW'` is not a single atomic claim; two concurrent fetch workers could both return the same `batch_id`s until AST-2218 runner hardens (e.g. one-statement claim or row-level guard). Matches Susan’s lightweight-ledger decision in the plan; flag for sibling runner design only.
+- **Sibling test carry:** none — all `tests/**` / `docs/test-bible/**` changes map to this ticket’s Scope table.
+
+## What's solid
+
+- Product diff is confined to the seven planned `src/**` paths; no `openrouter.py`, `timesheets.py` runner, `dispatcher.py` close path, or other sibling files.
+- Stage 1–4 behavior on tip: `service_timesheet` rename + attribution columns + nullable `platform_cost` / COALESCE sum; `FETCH_TIMESHEET_CONFIG` with `entity_type`/`trigger_state`/`freq_hrs` null and `auto_mode` false; ledger `timesheet_state` + queue helpers; `do_task` / ad hoc `DISPATCH_AGENT` attribution with multi-entity empty `entity_id`; Anthropic/compat call-time fields and zero-stub `get_receipt` (exact `TIMESHEET_RECEIPT_FIELDS`, `platform_cost` null, no HTTP).
+- `TIMESHEET_*_RECONCILE*` constants untouched in `config.py` diff.
+- Plan fidelity: matches combined issue doc stages and **Review (build)** notes @ `96565b42b`; tip adds Betty manifest commits through `6fc13c16`.
+
+## Recommended actions (for Chuckles / downstream — not executed by Radia)
+
+- Append this artifact to `docs/features/foundation/ast-2217-timesheet-rename-attribution-stubs.md`, commit `docs(AST-2217): Radia review — clean` on the sub-branch, push, post slim upshot `--as radia`, move to **Review Posted**.
+- Optional hygiene (non-blocking): amend frozen Canon Scope or Linear citations per advisories above.
+
+context_tokens≈38000
+
