@@ -974,7 +974,7 @@ Full AST-2062 command (all four pages): [`contact.md`](contact.md) § AST-2062.
 
 **Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
 
-**Bible path shasums (record after publish):**
-- `docs/test-bible/core/meteorite.md`
-- `docs/test-bible/ui/api/api_meteorite.md`
-- `docs/test-bible/utils/config.md`
+**Bible path shasums (publish tip `5de970a4a`):**
+- `docs/test-bible/core/meteorite.md` — `9fd6f92af6954e60b1ab6ef345dfed96182e3ae8`
+- `docs/test-bible/ui/api/api_meteorite.md` — `47169d10ce432f85c1212bbcef1706ff60429173`
+- `docs/test-bible/utils/config.md` — `fcc31904c7675fb535129a8c1ba7b99771a208a4`
