@@ -80,12 +80,12 @@ Parent AC **2** (table rename), AC **5** stub half (null `platform_cost` still s
 
 **Pass criterion:** pytest green on items 1–4. Not the zero-arg harness / branch-lock gate.
 
-**Bible shasums (after publish):**
+**Bible shasums (publish tip after this docs commit):**
 
 ```text
-git show origin/sub/AST-2215/AST-2217-timesheet-rename-attribution-stubs:docs/test-bible/data/database/timesheets.md | shasum
-git show origin/sub/AST-2215/AST-2217-timesheet-rename-attribution-stubs:docs/test-bible/utils/config.md | shasum
-git show origin/sub/AST-2215/AST-2217-timesheet-rename-attribution-stubs:docs/test-bible/external/anthropic.md | shasum
-git show origin/sub/AST-2215/AST-2217-timesheet-rename-attribution-stubs:docs/test-bible/external/llm_compat.md | shasum
-git show origin/sub/AST-2215/AST-2217-timesheet-rename-attribution-stubs:docs/test-bible/core/agent.md | shasum
+docs/test-bible/utils/config.md       e21c0f3d16c5ff3214549f25fd65935651cb949a
+docs/test-bible/external/anthropic.md c15422e8521cf6ea0120360b2ce7a1eeb9c59108
+docs/test-bible/external/llm_compat.md 5be023df48699655c49879a385c54b6fdaf23170
+docs/test-bible/core/agent.md         5747eef788fa59f1eb45c8ff0c5aa4d4a91d6aae
+# timesheets.md: git show origin/sub/AST-2215/AST-2217-timesheet-rename-attribution-stubs:docs/test-bible/data/database/timesheets.md | shasum
 ```
