@@ -359,3 +359,22 @@ AC6→Stage 3 §2 `rg`; AC7→Stage 2–3 `rg`; AC8–AC13→Stage 4 §1–6 (mo
 - Stage 4 local smoke (no new `tests/` commits) is explicit and aligned with Betty ownership.
 
 context_tokens≈52000
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1201/AST-2222-stage-generic-candidate-chain-runner`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| plan | `904226860` | Plan doc |
+| Joan r1 | `cd3fbee48` | REVISE — map AC8–14 verify |
+| plan discuss | `20fec2fbb` | Stage 4 + AC maps |
+| Joan r2 | `f2f0a3a31` | APPROVED |
+| sync | `c5c145c94` | merge `origin/ftr/AST-1201-base-resume-daisy-chain` (AST-2221) |
+| 1 | `91d44a072` | Stage-generic claim walk, persist, runner |
+| 2 | `48054e85a` | Dispatcher claim expansion for all stage triggers |
+| 3 | `5ac19a088` | Consult routing + persistable gate |
+
+**Tip:** `5ac19a088`
+
+Stage 4 smoke (AC 8–13) green locally. AC 14: `TestAst972*` / consult routing / AST-2006 trigger|retry|hop green; `TestAst2006…[entry_fallback]` expects pre-stage `ERROR_CRAFT_GET_RUBRIC` for `REQUESTED_RESUME` — product now correctly lands `ERROR_SHAPE_THE_STORY` (Betty: update want). No `tests/` edits this ticket.
