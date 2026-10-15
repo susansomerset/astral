@@ -121,3 +121,47 @@ to:
 ## Estimate
 
 Confirm Chuckles estimate: 3 — agree
+
+## Joan validate
+
+[plan-discuss] round=1 concern
+[plan-rubric]
+**Ticket:** AST-2224
+**Overall:** REVISE
+**Corpus:** b7ab2203048ce0beb2869a12200ab7fa696c8066
+**Publish ref:** `sub/AST-2216/AST-2224-meteorite-modal-edit-form` @ `e2622e005df06159ad9a672fc99d9c65218c3c77`
+
+## Canon scores
+
+(no directives — ticket **Citations:** `none`; frozen list empty by dispatch partition; nothing to score in R3)
+
+## Traceability
+
+1 → Stage 1 steps 2, 5, 9 + `rg` gate (React half; server envelope N/A AST-2223) · 12 → Stage 1 edit form / Save / re-GET / `onSaved` / 409 `saveError` + Stage 2 `onSaved={load}`
+
+## Findings
+
+**fix-now** — Post-save state draft vs parent “re-read”
+
+- **Location:** Stage 1 step 4 (draft init) + step 7 (PUT 200 re-init “again” per step 4)
+- **Finding:** Step 4 always sets `draft.state = defaultSaveState`, including after a successful save re-fetch. Non-`state` draft keys come from refreshed `meteorite`. Parent functional scope: form **opens** with default pre-select (`CHECK_UNIQUE`) — that matches first load — but after save the modal must **re-read** stored values (parent AC 12 success path + functional scope item 7). Resetting the select to `default_save_state` while `meteorite.state` reflects the saved choice misrepresents the row and invites an accidental second save with the default state.
+- **Recommendation:** Split init: **first open** → `state` from `default_save_state` (per scope item 2); **after PUT 200** → `state` from refreshed `meteorite.state` (other fields unchanged rule). Document in step 4/7 or `applyDetailPayload` flag.
+
+**discuss** — Canon Scope gap (not scored)
+
+- **Location:** Citations `none`
+- **Finding:** `astral.ui.frontend-file-placement` plainly governs the two touched frontend paths; not on this child’s frozen list (intentional per dispatch note). No R3 row unless Archie amends scope.
+
+**acceptable** — AC 12 component tests not in plan stages (Betty / `qa-child`).
+
+**acceptable** — Duplicate field display in `ReportSectionList` + form block (plan ⚠️ decision).
+
+**acceptable** — Prerequisite on AST-2223 envelope; execution contract Stage-blocked if API missing on worktree.
+
+No D/F on an empty directive list. R6 otherwise: Files Changed ⊆ Scope; no server edits; AST-2223 contract consumption documented in UAT fitness / prerequisite.
+
+context_tokens≈45000
+
+---
+
+[plan-rubric] REVIEW (Commit: e2622e00) Fix post-save state draft
