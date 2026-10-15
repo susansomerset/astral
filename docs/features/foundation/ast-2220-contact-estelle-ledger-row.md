@@ -227,3 +227,12 @@ Parent AC: 9 → Stages 1–2 (ledger open/close `NEW`, `CONTACT_AGENT`, shared 
 - **Recommendation:** Optional dispatch hygiene: paste child AC checkbox mirroring parent AC 9.
 
 context_tokens≈32000
+
+## Review (build)
+
+**Built @ `866018ee8`** — `origin/sub/AST-2215/AST-2220-contact-estelle-ledger-row` (`866018ee871b3864fce79e1a293df8772cc0dcac`)
+
+- Stage 1: `do_task` optional `request_type` (default `DISPATCH_AGENT`) passed to `_send_to_server`.
+- Stage 2: `run_contact_estelle_turn` opens/closes one `contact-estelle` ledger with `timesheet_state=NEW`; primary + follow-up `do_task` pass `CONTACT_AGENT`; `_run_contact_ledgered_task` peer same attribution + NEW on close.
+- Betty owns `tests/component/core/test_contact.py` + bible AC 9.
+
