@@ -50,6 +50,8 @@ def record_search_timesheet_entry(
     call_start: Optional[str] = None,
     call_stop: Optional[str] = None,
     completion_status: str = "success",
+    entity_type: Optional[str] = None,
+    entity_id: Optional[str] = None,
 ) -> None:
     """Record one DISPATCH_SEARCH row (AST-2218 recorder; AST-2219 wires roster call sites)."""
     record_timesheet_entry(
@@ -71,8 +73,8 @@ def record_search_timesheet_entry(
         calc_cost_output=0.0,
         provider=TIMESHEET_SEARCH_SERVER_ID,
         request_type="DISPATCH_SEARCH",
-        entity_type=None,
-        entity_id=None,
+        entity_type=entity_type,
+        entity_id=entity_id,
         call_start=call_start,
         call_stop=call_stop,
         response_item_count=int(hit_count or 0),
@@ -93,6 +95,9 @@ def _get_receipt_fn(provider: str):
         return get_receipt
     if provider == "anthropic":
         from src.external.anthropic import get_receipt
+        return get_receipt
+    if provider == TIMESHEET_SEARCH_SERVER_ID:  # "google_cse"
+        from src.external.google_cse import get_receipt
         return get_receipt
     from src.external.llm_compat import get_receipt
     return get_receipt
@@ -156,14 +161,18 @@ def run_fetch_timesheet(candidate_id: str) -> Dict[str, int]:
             ids = [str(r.get("agent_req_id") or "") for r in group if r.get("agent_req_id")]
             if not ids:
                 continue
-            key = _api_key_for_server(cid, provider)
-            if not key:
-                logger.warning(
-                    "fetch_timesheet | candidate %s has no API key for server %s — skipping %s id(s)",
-                    cid, provider, len(ids),
-                )
-                summary["total_failed"] += len(ids)
-                continue
+            # CSE uses GOOGLE_CSE_* env, not candidate_api_keys — stub with empty key.
+            if provider == TIMESHEET_SEARCH_SERVER_ID:
+                key = _api_key_for_server(cid, provider) or ""
+            else:
+                key = _api_key_for_server(cid, provider)
+                if not key:
+                    logger.warning(
+                        "fetch_timesheet | candidate %s has no API key for server %s — skipping %s id(s)",
+                        cid, provider, len(ids),
+                    )
+                    summary["total_failed"] += len(ids)
+                    continue
             get_receipt = _get_receipt_fn(provider)
             logger.debug("Calling get_receipt: provider=%s ids=%s", provider, ids)
             receipts = get_receipt(ids, key)
