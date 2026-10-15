@@ -188,3 +188,63 @@ Do **not** emit that info line on 4xx/5xx. Do **not** log pasted content at info
 ## Estimate
 
 Confirm Chuckles estimate: 3 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-2223
+**Overall:** APPROVED
+**Corpus:** b7ab2203048ce0beb2869a12200ab7fa696c8066
+**Publish ref:** `sub/AST-2216/AST-2223-candidate-meteorite-edit` @ `e9dcf73b3fe9ad27ea730b0578abfbe1c3946b93`
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| stat.batch.claim-process-release | A | | |
+| stat.logging.info.api | A | | |
+| stat.logging.info.entity | A | | |
+| stat.logging.warning | A | | |
+| stat.logging.error | A | | |
+| stat.logging.debug | A | | |
+
+## Traceability
+
+| AC | Plan coverage |
+|----|----------------|
+| 1 (server) | Stage 3: `_detail_payload` + `is_meteorite_editable`; AC 1 React `rg` negative → N/A (AST-2224) |
+| 2 | Stage 2j (no pipeline calls); Stage 3 PUT 200 |
+| 3 | Stage 2g normalize/trim + `update_meteorite` |
+| 4 | Stage 2i `error` clear only when `state_changing` |
+| 5 | Stage 2f reject keys outside `editable_fields` |
+| 6 | Stage 2c locked row → 409; Stage 2g `LANDED` ∉ `state_options` → 400 |
+| 7 | Stage 2d `batch_id` held → 409 |
+| 8 | Stage 2g empty normalized content → 400 |
+| 9 | Execution contract (no `database.py`); Stage 2j no `agent_data` |
+| 10 | Stage 2.4 leave `apply_paste` unchanged |
+| 11 | Stage 1 config block + asserts; Stage 3 `rg` / config reads only |
+| 12 | N/A — sibling AST-2224 owns modal AC |
+| 13 | Stage 3.6 single `logger.info` on PUT 200 only |
+
+## Findings
+
+### discuss — Canon Scope gap (not scored)
+
+- **Location:** Parent Canon Scope / AST-2223 Citations
+- **Finding:** `astral.config.config-source-of-truth` plainly governs the new `CANDIDATE_METEORITE_EDIT_CONFIG` block and load-time asserts, but it is not on this child’s frozen directive list (only batch + logging statutes are).
+- **Recommendation:** Archie may amend Canon Scope at Discussion if she wants Radia’s pass to score config SOT explicitly; the plan text already matches parent Technical scope on config-as-source.
+
+### acceptable — Tests named in AC but not staged
+
+- **Location:** Plan stages vs parent AC 2–11 component tests
+- **Finding:** Stages end at compile/`py_compile` gates; Betty’s manifest will own AC-shaped component tests per workflow.
+- **Recommendation:** No plan change required for validate-plan; ensure `qa-child` maps each AC to a test.
+
+## R6 notes (no additional fix-now)
+
+- Definition fidelity: Files Changed ⊆ ticket `## Scope`; excludes frontend and `database.py` as declared.
+- `editable` true for claimed-but-non-`LANDED` rows matches parent AC 1 (claim refusal is save-time 409 per AC 7).
+- Stage 2h (require `content` + `state` on every save) is a deliberate API contract for the modal envelope; aligns with sibling #2 sending the full editable set.
+- Estimate confirm `3 — agree` matches scope and staged decomposition.
+
+context_tokens≈42000
