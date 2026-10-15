@@ -205,6 +205,17 @@ if __name__ == "__main__":
 
 Confirm Chuckles estimate: 5 — agree
 
+## Review (build)
+
+**Built @ `bcfc70a72`** — `origin/sub/AST-2215/AST-2218-fetch-timesheet-openrouter-daemon-retire` (`bcfc70a72db7154e79897a673d5eaff2f5e4a66d`)
+
+- Stage 1: `dispatch_task_admin_defaults` fold + `is_fetch_timesheet_task_key`; `agent_task.json` `fetch_timesheet` row; reconcile constants untouched.
+- Stage 2: OpenRouter billed `get_receipt` (shared `TIMESHEET_RECEIPT_FIELDS`); `get_generation_stats` / `get_generation_record` retired.
+- Stage 3: `run_fetch_timesheet` NEW→FETCHING→RECEIPTED/NEW; search recorder; `record_timesheet_entry` thread-free; daemon reconcile removed.
+- Stage 4: ensure/provision; `_fetch_timesheet_due_tasks` + tick merge; `_dispatch_one_body` route; ledger close sets `timesheet_state=NEW`, no reconcile thread.
+- Stage 5: `scripts/migrations/provision_fetch_timesheet_dispatch_tasks.py`.
+- Out of scope: Google/roster (AST-2219), contact ledger (AST-2220). Betty owns test/bible in Scope.
+
 ## Joan validate
 
 ```text
