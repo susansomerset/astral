@@ -262,3 +262,66 @@ context_tokens≈42000
 **Checks:** `py_compile` on changed `.py` files; `rg` AC11 clean (no NEW/LANDED/CHECK_UNIQUE literals in `api_meteorite.py`); `validate-sub-log --stage=build` ok.
 
 **Tests:** Betty at Code Complete (`qa-child`) — engineers do not land test-tree changes.
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-2223
+**Publish ref:** `63ff4cb3338c4e79d6ca061da5add67a46e3fa10` (`origin/sub/AST-2216/AST-2223-candidate-meteorite-edit`)
+**Corpus:** b7ab2203048ce0beb2869a12200ab7fa696c8066
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| stat.batch.claim-process-release | A | | |
+| stat.logging.info.api | A | | |
+| stat.logging.info.entity | A | | |
+| stat.logging.warning | A | | |
+| stat.logging.error | A | | |
+| stat.logging.debug | A | | |
+
+## Column diff vs plan stage
+
+(aligned)
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **PUT 500 candidate id in exception log** — `src/ui/api/api_meteorite.py` `meteorite_candidate_edit`: the `except` path always passes `"-"` as the first `logger.exception` arg. Plan Stage 3.7 allows a pre-call `get_meteorite` for a real `candidate_id`; detail GET already uses row facts when available. **Default:** leave as-is unless Susan wants parity with other routes (smaller change: optional pre-fetch only on the exception path).
+
+- **Canon Scope (off-list, not graded)** — `astral.config.config-source-of-truth` plainly applies to `CANDIDATE_METEORITE_EDIT_CONFIG` in `src/utils/config.py`, but it is not on this child’s frozen list (same observation as Joan validate). Implementation matches the plan and parent technical scope (config block + asserts, API/core read config only). **Default:** no code change; Archie amends Canon Scope only if she wants explicit Radia scoring on config SOT for future config tickets.
+
+- **Plan Stage 2h test gap** — core refuses missing `content`/`state` via `bad_field`; component tests cover many refuse paths but not an explicit “omit state or content” case. Manifest is green; optional Betty follow-up only.
+
+## What's solid
+
+- Three-file product footprint matches plan: `CANDIDATE_METEORITE_EDIT_CONFIG` + asserts, `is_meteorite_editable` / `save_candidate_meteorite_edit` (claim refuse, locked, normalization, single `update_meteorite`, state-change `error` clear + `_meteorite_state_info`, no pipeline/agent_data), PUT/GET envelope via `_detail_payload`.
+- AC 11: no `NEW`/`LANDED`/`CHECK_UNIQUE` literals in `api_meteorite.py`; one completing `logger.info` on PUT 200 only; GET detail still silent at info.
+- Claimed rows: save-time refuse without write — aligns with batch claim statute intent.
+- Refuse paths use existing `_warn_item` shape; paste body at `logger.debug` per plan and `stat.logging.debug`.
+
+## Recommended actions (downstream only — not executed in this session)
+
+- Chuckles: append this artifact to `docs/features/agent/ast-2223-candidate-meteorite-edit.md`, commit `docs(AST-2223): Radia review — clean`, push publish ref, post slim upshot `--as radia`, move **Review Posted** → **resolve-child** not required (PROCEED).
+- Optional: Ada may add pre-call `get_meteorite` on PUT `except` for richer `logger.exception` first arg (advisory only).
+
+```
+[code-rubric] PROCEED (Commit: 63ff4cb3338c4e79d6ca061da5add67a46e3fa10) server edit ships clean
+```
+
+context_tokens≈32000
