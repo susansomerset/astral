@@ -92,6 +92,53 @@ class TestRecordSearchTimesheetEntry:
         assert row["response_item_count"] == 7
         assert row["total_output_tokens"] == 0
 
+    def test_optional_entity_kwargs_persist(self, sqlite_in_memory) -> None:
+        # AST-2219 Stage 2 — entity columns optional, defaults remain None.
+        timesheets_mod.record_search_timesheet_entry(
+            "cand-1",
+            "batch-s2",
+            hit_count=3,
+            entity_type="company",
+            entity_id="acme",
+        )
+        row = sqlite_in_memory.list_timesheets()[0]
+        assert (row["entity_type"], row["entity_id"]) == ("company", "acme")
+
+
+class TestAst2219GoogleCseReceiptRoute:
+    """AST-2219: route google_cse get_receipt; key exception for search provider."""
+
+    def test_get_receipt_fn_routes_google_cse(self) -> None:
+        from src.external import google_cse as google_cse_mod
+
+        fn = timesheets_mod._get_receipt_fn(TIMESHEET_SEARCH_SERVER_ID)
+        assert fn is google_cse_mod.get_receipt
+
+    def test_fetch_stubs_google_cse_without_candidate_key(
+        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        db = sqlite_in_memory
+        _seed_ledger(db, "batch-cse", "cand-1")
+        assert db._add_timesheet_entry(
+            "search-1", None, None, "cand-1", "batch-cse", 1,
+            0, 0, 0, 0, 0, 0, 0.0, 0.0, 0.0, 0.0,
+            provider=TIMESHEET_SEARCH_SERVER_ID,
+            request_type="DISPATCH_SEARCH",
+        ) is True
+        seen_keys: list[str] = []
+
+        def spy(ids: List[str], api_key: str) -> List[Dict[str, Any]]:
+            seen_keys.append(api_key)
+            return [_empty_receipt(completion_status="stub", platform_cost=None) for _ in ids]
+
+        monkeypatch.setattr(timesheets_mod, "get_candidate", lambda cid: {"candidate_api_keys": {}})
+        monkeypatch.setattr("src.external.google_cse.get_receipt", spy)
+        out = timesheets_mod.run_fetch_timesheet("cand-1")
+        assert seen_keys == [""]
+        assert out["total_passed"] == 1
+        assert db.get_dispatch_ledger("batch-cse")["timesheet_state"] == "RECEIPTED"
+        assert db.list_timesheets(batch_id="batch-cse")[0]["platform_cost"] is None
+
 
 class TestAst2218RunFetchTimesheet:
     """Parent AC 6 / 7 / 10 — NEW→FETCHING→RECEIPTED/NEW; stub null cost; closed-ledger catch-up."""

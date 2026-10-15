@@ -25,6 +25,16 @@ Parent AC **1** (no cost threads), **6** (NEW→FETCHING→RECEIPTED/NEW), **7**
 
 **Integration:** none — do not invent.
 
+### AST-2219 · AST-2215 (google_cse route, key exception, entity on recorder)
+
+Stage 2 only. Roster call sites + stub are under [`roster.md`](roster.md) / [`../external/google_cse.md`](../external/google_cse.md).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| New — optional entity kwargs on search recorder | `record_search_timesheet_entry` | `TestRecordSearchTimesheetEntry::test_optional_entity_kwargs_persist` |
+| New — `_get_receipt_fn` routes `google_cse` | `_get_receipt_fn` | `TestAst2219GoogleCseReceiptRoute::test_get_receipt_fn_routes_google_cse` |
+| New — fetch stubs CSE with empty key (no skip) | `run_fetch_timesheet` | `…::test_fetch_stubs_google_cse_without_candidate_key` |
+
 ## QA test manifest
 
 ```bash
