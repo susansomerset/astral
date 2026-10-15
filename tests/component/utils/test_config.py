@@ -120,21 +120,17 @@ class TestGetManageAgentsTokens:
         assert not any(t.startswith("CALLER_") for t in agents)
 
 
-# Branches: missing task/schema; encoded variants; JSON example envelope.
+# Branches: missing task/schema; structured_output (grader) types; JSON example envelope.
 class TestStringifyResponseSchema:
     def test_returns_empty_for_unknown_task(self) -> None:
         assert cfg.stringify_response_schema("not-a-task") == ""
 
-    def test_encoded_meta_notes_and_default_encoded_examples(self) -> None:
-        meta = json.loads(cfg.stringify_response_schema("qualify_job_listings"))
-        assert isinstance(meta["agent_payload"], str)
-        assert "|" in meta["agent_payload"]
-
-        encoded = json.loads(cfg.stringify_response_schema("evaluate_jd"))
-        assert encoded["agent_payload"] == "000|ERC2|MEA3|PGA2"
-
-        notes = json.loads(cfg.stringify_response_schema("grade_do"))
-        assert "optional notes" in notes["agent_payload"]
+    def test_grader_types_show_agent_performance_only(self) -> None:
+        # AST-2177: grader rows go through the forced tool — the envelope keeps agent_performance, drops agent_payload.
+        for key in ("qualify_job_listings", "evaluate_jd", "grade_do", "vet_inflow_discovery"):
+            env = json.loads(cfg.stringify_response_schema(key))
+            assert set(env) == {"agent_performance"}, key
+            assert env["agent_performance"]["status"] == "success | failure", key
 
     def test_builds_schema_example_envelope(self) -> None:
         out = json.loads(cfg.stringify_response_schema("craft_resume_base"))
@@ -142,10 +138,11 @@ class TestStringifyResponseSchema:
         assert out["agent_payload"]["candidate_name"] == "<candidate_name>"
         assert out["agent_performance"]["status"] == "success | failure"
 
-    def test_prefilter_company_schema_shows_bracket_link_set_tails(self) -> None:
-        # AST-697: RESPONSE_SCHEMA example documents positional bracket link_set tails.
+    def test_prefilter_company_schema_has_no_encoded_link_tails(self) -> None:
+        # AST-2177 (replaces AST-697's bracket-tail example): link indices are tool extra_fields, not an encoded example.
         env = json.loads(cfg.stringify_response_schema("prefilter_company"))
-        assert env["agent_payload"] == "000|ERC2|MEA3|PGA2|[13]|[3,6,19]"
+        assert set(env) == {"agent_performance"}
+        assert "[3,6,19]" not in json.dumps(env)
 
 
 # Branches: default empty agent; explicit prompt.
@@ -198,7 +195,9 @@ class TestResolveTokens:
         assert "Hi Ada" in resolved
         assert "agent=agent body" in resolved
         assert "prior=prior" in resolved
-        assert '"agent_payload"' in resolved
+        # AST-2177: grade_get is a structured_output type — its schema example has no agent_payload.
+        assert '"agent_performance"' in resolved
+        assert '"agent_payload"' not in resolved
         assert "rubric=" in resolved
 
     def test_logs_and_returns_empty_for_missing_candidate_and_chain_values(self, caplog) -> None:
@@ -226,8 +225,11 @@ class TestResolveTokens:
         )
 
     def test_output_type_token_uses_task_instructions(self) -> None:
+        # AST-2177: grader instructions are semantics only — tool reporting + confidence scale, no encoded-line text.
         text = cfg.resolve_tokens("{$OUTPUT_INSTRUCTIONS}", {}, "evaluate_jd")
-        assert "grade segments" in text.lower() or "Each grade segment" in text
+        assert "provided tool" in text
+        assert "5: The source explicitly states it." in text
+        assert "grade segment" not in text.lower()
 
     def test_config_resolver_missing_name_returns_empty(self, monkeypatch) -> None:
         monkeypatch.setitem(cfg.TOKEN_SOURCES, "BROKEN_CONFIG", {"source": "config", "resolver": "missing"})
@@ -1657,8 +1659,14 @@ class TestAst505InflowDiscoveryConfig:
         assert v["grade_vector_code"] == "LT"
 
     def test_vet_grades_encoded_vet_meta_output_type(self) -> None:
+        # AST-2177: structured grader type — LT graded A–F (no X), confidence 1–5, website as a per-hit extra field.
         ot = cfg.ASTRAL_CONFIG["output_types"]["grades_encoded_vet_meta"]
-        assert "LT{grade}{conf}" in ot["payload_instructions"]
+        assert ot["structured_output"] is True
+        assert ot["extra_fields"] == {"website": {"type": "string"}}
+        assert ot["grade_letters"] == ["A", "B", "C", "D", "F"]
+        assert ot["confidence_range"] == (1, 5)
+        assert "LT" in ot["payload_instructions"]
+        assert "LT{grade}{conf}" not in ot["payload_instructions"]
         assert "required on every grade including F" in ot["payload_instructions"]
 
     def test_inflow_discovery_dispatch_admin_defaults(self) -> None:
@@ -3694,14 +3702,15 @@ class TestAst1055MeteoriteLikeUpshotTasks:
         assert "PASSED_LIKE_RETRY" in priors
 
     def test_rubric_owner_batch_and_encoded_membership(self) -> None:
-        from src.core import agent as agent_mod
         from src.core import dispatcher as dispatcher_mod
 
         assert cfg.rubric_owner_task_key("meteorite_like") == "grade_like"
         assert cfg.rubric_owner_task_key("grade_like") == "grade_like"
         assert "meteorite_like" in cfg._DISPATCH_BATCH_CALL_MODE_ONE
         assert "meteorite_upshot" not in cfg._DISPATCH_BATCH_CALL_MODE_ONE
-        assert "meteorite_like" in agent_mod._STRICT_ENCODED_BATCH_CONSULT_KEYS
+        # AST-2180: the strict encoded-batch set is gone; meteorite_like is a structured grader via its output type.
+        ot = cfg.TASK_CONFIG["meteorite_like"]["output_type"]
+        assert cfg.ASTRAL_CONFIG["output_types"][ot]["structured_output"] is True
         assert "meteorite_like" in dispatcher_mod._CHUNK_EXHAUST_CONSULT_JOB_KEYS
 
 
@@ -4822,7 +4831,8 @@ class TestAst1138JobCoverSomersetConfig:
 
 
 class TestAst1154EncodedGradeSetCompleteness:
-    """AST-1154: multi-vector encoded payload_instructions require full grade-set."""
+    """AST-1154: multi-vector grader payload_instructions require a full grade set.
+    AST-2177 retired the encoded-line clause; the never-omit rule now lives in _GRADE_SEMANTICS."""
 
     _MARKER = "GRADE SET COMPLETENESS (AST-1154)"
     _MULTI = (
@@ -4836,10 +4846,9 @@ class TestAst1154EncodedGradeSetCompleteness:
         ots = cfg.ASTRAL_CONFIG["output_types"]
         for key in self._MULTI:
             text = ots[key]["payload_instructions"]
-            assert self._MARKER in text, key
-            # Silence → {code}X0; inventing letter grades to fill gaps is forbidden.
-            assert "{code}X0" in text, key
-            assert "never skip that segment" in text, key
+            assert self._MARKER not in text, key
+            # Silence → X with confidence 0; never drop a vector.
+            assert "grade it X with confidence 0 — never leave a vector out" in text, key
 
     def test_clause_absent_from_vet_meta_and_grades_json(self) -> None:
         ots = cfg.ASTRAL_CONFIG["output_types"]
@@ -4847,14 +4856,10 @@ class TestAst1154EncodedGradeSetCompleteness:
         assert self._MARKER not in ots["grades_json"]["payload_instructions"]
 
     def test_grade_count_not_template_on_multi_vector_types(self) -> None:
-        # Bug-repro: example lines' code count must not read as a segment-count template.
-        phrase = "their code count is not a template"
-        assert phrase in cfg._ENCODED_GRADE_SET_COMPLETENESS
-        ots = cfg.ASTRAL_CONFIG["output_types"]
-        for key in self._MULTI:
-            assert phrase in ots[key]["payload_instructions"], key
-        assert phrase not in ots["grades_encoded_vet_meta"]["payload_instructions"]
-        assert phrase not in ots["grades_json"]["payload_instructions"]
+        # AST-2177: no example lines left to read as a count template — the shared constant and its phrase are gone.
+        assert not hasattr(cfg, "_ENCODED_GRADE_SET_COMPLETENESS")
+        for key, ot in cfg.ASTRAL_CONFIG["output_types"].items():
+            assert "code count is not a template" not in ot["payload_instructions"], key
 
 
 class TestAst1155GradedRetryHoldings:
@@ -8706,3 +8711,96 @@ class TestAst2173SearchConfig:
             TestAst2105SkippedGroupRules._splice_exec(
                 '    "skipped": "detail",\n', '    "skipped": "drawer",\n', "cfg_ast2173_kind_probe"
             )
+
+
+# Branches: get_structured_output_capability model override vs server fallback; unknown model.
+class TestAst2177StructuredOutputConfig:
+    """AST-2177: structured-output capability registry, grader output-type marker, prompt_prefix split."""
+
+    _GRADER_TYPES = (
+        "grades_encoded",
+        "grades_encoded_meta",
+        "grades_encoded_notes",
+        "grades_encoded_prefilter_links",
+        "grades_encoded_vet_meta",
+    )
+    _SCALE = (
+        "5: The source explicitly states it.",
+        "4: The source strongly suggests it.",
+        "3: The source hints about it.",
+        "2: The source makes a vague reference.",
+        "1: The source doesn't say it out loud, but it's possible.",
+    )
+
+    def test_capability_values_are_allowed_everywhere(self) -> None:
+        allowed = cfg.LLM_STRUCTURED_OUTPUT_CAPABILITIES
+        assert allowed == ("enforced", "advisory", None)
+        for name, server in cfg.LLM_SERVER_CONFIG.items():
+            assert server["structured_output_capability"] in allowed, name
+        for model_id, model in cfg.LLM_MODEL_CONFIG.items():
+            if "structured_output_capability" in model:
+                assert model["structured_output_capability"] in allowed, model_id
+
+    def test_current_grader_models_stay_selectable(self) -> None:
+        # Susan (AST-2172, 2026-10-13): Grace/Lucy (qwen) and Kent (gpt-oss) must stay selectable as graders.
+        for slug in ("qwen/qwen3-235b-a22b-2507", "openai/gpt-oss-120b"):
+            assert cfg.get_structured_output_capability(slug) is not None, slug
+            assert cfg.get_structured_output_capability(slug) == cfg.OPENROUTER_STRUCTURED_OUTPUT_OVERRIDES[slug]
+
+    def test_lookup_falls_back_to_server_value(self) -> None:
+        # Unlisted OpenRouter slug and a direct model with no override both inherit their server's value.
+        assert cfg.get_structured_output_capability("google/gemma-3-4b-it") is None
+        haiku = cfg.get_llm_model("claude-haiku-4-5")
+        assert "structured_output_capability" not in haiku
+        assert cfg.get_structured_output_capability("claude-haiku-4-5") == (
+            cfg.LLM_SERVER_CONFIG[haiku["server"]]["structured_output_capability"]
+        )
+
+    def test_model_override_wins_over_server(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setitem(cfg.LLM_MODEL_CONFIG["claude-haiku-4-5"], "structured_output_capability", "enforced")
+        assert cfg.get_structured_output_capability("claude-haiku-4-5") == "enforced"
+
+    def test_unknown_model_raises(self) -> None:
+        with pytest.raises(ValueError, match="Unknown LLM model"):
+            cfg.get_structured_output_capability("not-a/model")
+
+    def test_structured_output_marker_is_exactly_the_grader_types(self) -> None:
+        ots = cfg.ASTRAL_CONFIG["output_types"]
+        assert sorted(k for k, v in ots.items() if v.get("structured_output")) == list(self._GRADER_TYPES)
+        assert "structured_output" not in ots["grades_json"]
+
+    def test_extra_field_declarations(self) -> None:
+        ots = cfg.ASTRAL_CONFIG["output_types"]
+        s, i = {"type": "string"}, {"type": "array", "items": {"type": "integer"}}
+        assert ots["grades_encoded"]["extra_fields"] == {}
+        assert ots["grades_encoded_notes"]["extra_fields"] == {"notes": s}
+        assert ots["grades_encoded_meta"]["extra_fields"] == {
+            "company_job_id": s,
+            "job_title": s,
+            "job_link": s,
+            "job_data": {"type": "object", "additionalProperties": s},
+        }
+        assert ots["grades_encoded_prefilter_links"]["extra_fields"] == {
+            "possible_job_links": i,
+            "culture_links_to_explore": i,
+        }
+
+    def test_grader_instructions_keep_confidence_scale_without_encoding(self) -> None:
+        # stat.agent.confidence-bounds: 1–5 scale with a letter; 0 only with X (vet: 1–5, no X).
+        for key in self._GRADER_TYPES:
+            text = cfg.ASTRAL_CONFIG["output_types"][key]["payload_instructions"]
+            for line in self._SCALE:
+                assert line in text, (key, line)
+            for banned in ("{pos}", "exactly 4 characters", "GRADE SET COMPLETENESS", "agent_payload"):
+                assert banned not in text, (key, banned)
+            assert ("0: Use only with grade X" in text) is (key != "grades_encoded_vet_meta"), key
+
+    def test_prompt_prefix_split(self) -> None:
+        prefix = cfg.ASTRAL_CONFIG["prompt_prefix"]
+        structured = cfg.ASTRAL_CONFIG["prompt_prefix_structured"]
+        # Non-grader calls keep the two-key envelope sentence; structured calls get the agent_performance rules alone.
+        assert prefix.startswith("Your JSON response must use the two-key envelope")
+        assert structured in prefix
+        assert "agent_payload" in prefix
+        assert "agent_payload" not in structured
+        assert structured.startswith("agent_performance refers ONLY") and "failure_note" in structured

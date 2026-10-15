@@ -7663,3 +7663,102 @@ class TestAst2134RosterTelescope:
         monkeypatch.setattr(gazer_mod, "extract_site_page_list", AsyncMock(return_value=[]))
         assert await roster_mod._fetch_prefilter_notes(_company()) == "fit=A: ok"
         assert "nav_links" not in save.call_args.args[1]
+
+
+class TestAst2180LightCheckReasons:
+    """AST-2180: graders answer through the forced tool; a row the hydrate light check rejects lands in
+    decode_failures with its own reason — roster callers surface that reason and keep the retry route."""
+
+    _WHY = "[vet] row 000 missing website"
+
+    @pytest.mark.asyncio
+    async def test_vet_single_renumbers_hit_to_000_and_names_the_failure(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        caplog.set_level("DEBUG")
+        do_task = AsyncMock(return_value={"success": True, "parsed_response": {
+            "results": [], "decode_failures": [{"hit_index": 0, "pos": 0, "reason": self._WHY}],
+        }})
+        monkeypatch.setattr(roster_mod, "do_task", do_task)
+        entity = _company(state="NEW", company_website="",
+                          company_data={"inflow_discovery_blurb": "007|Co|https://co.example|snip"})
+        out = await roster_mod.vet_inflow_discovery_company("co_new", entity, "batch-2180", {}, False)
+        # The tool schema keys the one hit as 000, so the prompt row must be 000 whatever the stored blurb said.
+        assert do_task.await_args.kwargs["live_content"].splitlines()[1] == "000|Co|https://co.example|snip"
+        assert out == {"success": False, "state": None, "error": self._WHY}
+        assert f"co_new -> - [{self._WHY}]" in caplog.text
+
+    @pytest.mark.asyncio
+    async def test_vet_batch_warns_failed_hit_with_its_reason(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        caplog.set_level("DEBUG")
+        monkeypatch.setattr(roster_mod, "do_task", AsyncMock(return_value={"success": True, "parsed_response": {
+            "results": [{"hit_index": 0, "grade": "A", "website": "https://a.example"}],
+            "decode_failures": [{"hit_index": 1, "pos": 1, "reason": "[vet] row 001 missing website"}],
+        }}))
+        transition = MagicMock()
+        monkeypatch.setattr(roster_mod, "transition_company_state", transition)
+        monkeypatch.setattr(roster_mod, "update_company", MagicMock())
+        companies = [
+            {"short_name": "co_a", "company_data": {"inflow_discovery_blurb": "000|A|https://a.example|s"}},
+            {"short_name": "co_b", "company_data": {"inflow_discovery_blurb": "000|B|https://b.example|t"}},
+        ]
+        await roster_mod.vet_inflow_discovery_company_batch("batch-2180", companies, debug=False)
+        transition.assert_called_once_with("co_a", "WEBSITE_FOUND")
+        assert "co_b -> - [[vet] row 001 missing website]" in caplog.text
+        assert "missing results row hit_index=1" not in caplog.text
+
+    @pytest.mark.asyncio
+    async def test_prefilter_single_decode_failure_takes_retry_route_with_reason(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(roster_mod, "scrape_company_homepage_content", AsyncMock(return_value={
+            "company_website": "https://acme.com", "visible_text": "hello", "enumerated_nav_links": "",
+        }))
+        monkeypatch.setattr(gazer_mod, "keep_page_scrape", MagicMock(return_value=(None, None)))
+        transition = MagicMock()
+        monkeypatch.setattr(roster_mod, "transition_company_state", transition)
+        monkeypatch.setattr(roster_mod, "get_company", MagicMock(
+            return_value={"short_name": "acme", "state": "HOMEPAGE_READY", "state_history": []},
+        ))
+        monkeypatch.setattr(roster_mod, "do_task", AsyncMock(return_value={"success": True, "parsed_response": {
+            "companies": [], "decode_failures": [{"company_id": "acme", "pos": 0, "reason": "missing vector code"}],
+        }}))
+        out = await roster_mod.prefilter_company("acme", "https://acme.com", ctx=_prefilter_rubric_ctx())
+        assert out["error"] == "decode: missing vector code"
+        transition.assert_called_once_with("acme", "HOMEPAGE_READY_RETRY")
+
+    @pytest.mark.asyncio
+    async def test_prefilter_batch_decode_failure_retries_that_company_not_as_missing(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        caplog.set_level("DEBUG")
+        transition, _save = TestAst2125PrefilterMissingDescription._env(monkeypatch)
+        monkeypatch.setattr(roster_mod, "do_task", AsyncMock(return_value={"success": True, "parsed_response": {
+            "companies": [{"company_id": "beta_com", "grades": [{"vector": "fit", "grade": "F", "confidence": 5}]}],
+            "decode_failures": [{"company_id": "acme_com", "pos": 0, "reason": "missing vector code"}],
+        }}))
+        companies = [{"short_name": s, "state": "HOMEPAGE_READY", "company_data": {"homepage_text": "x"}}
+                     for s in ("acme_com", "beta_com")]
+        out = await roster_mod._run_batch_company_prefilter("b-2180", companies, ctx={"astral_candidate_id": "c1"})
+        assert out["retried"] == 1
+        assert [c.args for c in transition.call_args_list] == [
+            ("acme_com", "HOMEPAGE_READY_RETRY"), ("beta_com", "PREFILTER_FAILED"),
+        ]
+        assert "acme_com -> HOMEPAGE_READY_RETRY [decode: missing vector code]" in caplog.text
+        assert "missing id" not in caplog.text
+
+    @pytest.mark.asyncio
+    async def test_fetch_prefilter_notes_sends_candidate_rubric_codes(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(gazer_mod, "scrape_visible_text_and_keep", AsyncMock(return_value=("hello", "", None)))
+        monkeypatch.setattr(gazer_mod, "scrape_page_links_and_keep", AsyncMock(return_value=([], None)))
+        monkeypatch.setattr(
+            "src.core.candidate.rubric_criteria_for_task",
+            lambda cid, _task: [{"code": "fit", "label": "Fit"}] if cid == "cand-1" else [],
+        )
+        do_task = AsyncMock(return_value={"success": False})
+        monkeypatch.setattr(roster_mod, "do_task", do_task)
+        assert await roster_mod._fetch_prefilter_notes({**_company(), "candidate_id": "cand-1"}) is None
+        # Pre-fix the notes call sent no codes, so the grader skipped before send.
+        assert do_task.await_args.kwargs["ctx"]["vector_labels"] == {"fit": "Fit"}

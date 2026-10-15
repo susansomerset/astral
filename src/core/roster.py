@@ -531,7 +531,8 @@ async def vet_inflow_discovery_company(
     if not blurb:
         _warn_company(short_name, "-", "missing inflow_discovery_blurb")
         return {"success": False, "state": None, "error": "missing inflow_discovery_blurb"}
-    live_content = f"Discovery hit (index|title|url|snippet)\n{blurb}"
+    # Row id 000 — the tool schema keys this call's one hit as 000 (AST-2172).
+    live_content = f"Discovery hit (index|title|url|snippet)\n{_renumber_vet_blurb_line(blurb, 0)}"
     logger.debug("Calling agent.do_task: task_key=%s index=%s", cfg["task_key"], short_name)
     logger.debug("Calling agent.do_task live_content: %s", live_content)
     api_result = await do_task(
@@ -558,9 +559,12 @@ async def vet_inflow_discovery_company(
                 row = r
                 break
     if not row:
-        _warn_company(short_name, "-", "missing results")
+        # A light-check failure names its own reason (AST-2172); otherwise the hit is simply absent.
+        fails = parsed.get("decode_failures") or []
+        why = (fails[0].get("reason") if fails and isinstance(fails[0], dict) else None) or "missing results"
+        _warn_company(short_name, "-", why)
         logger.debug("Response from vet parse: missing results list")
-        return {"success": False, "state": None, "error": "missing results"}
+        return {"success": False, "state": None, "error": why}
     return _apply_vet_inflow_result_row(
         short_name, row, cfg, logger, debug, index=1, total=1,
     )
@@ -639,13 +643,17 @@ async def vet_inflow_discovery_company_batch(
                 hi = r.get("hit_index")
                 if isinstance(hi, int):
                     index_by_hit[hi] = r
+    # Light-check failures name their own reason (AST-2172); still one warning per hit below.
+    fail_by_hit = {
+        f.get("hit_index"): f.get("reason") for f in (parsed.get("decode_failures") or []) if isinstance(f, dict)
+    }
     passed = failed = errors = 0
     errors += len(not_ready)
     for i, company in enumerate(ready):
         short_name = company.get("short_name") or "?"
         row = index_by_hit.get(i)
         if not row:
-            _warn_company(short_name, "-", f"missing results row hit_index={i}")
+            _warn_company(short_name, "-", fail_by_hit.get(i) or f"missing results row hit_index={i}")
             errors += 1
             continue
         r = _apply_vet_inflow_result_row(
@@ -1903,6 +1911,11 @@ async def prefilter_company(
         if not parsed:
             return _prefilter_fail(short_name, cfg, result, "No parsed_response from do_task")
 
+        fails = parsed.get("decode_failures") if isinstance(parsed, dict) else None
+        if fails and not parsed.get("companies"):
+            # Light-check failure (AST-2172): same retry route as a bad shape, with the hydrate's reason.
+            return _prefilter_fail(short_name, cfg, result, f"decode: {fails[0].get('reason')}")
+
         try:
             flat = _flatten_prefilter_parsed(parsed)
         except ValueError as shape_err:
@@ -2208,9 +2221,20 @@ async def _run_batch_company_prefilter(
     received_ids = {rc["company_id"] for rc in response_companies}
     missing = sent_ids - received_ids
     fabricated = received_ids - sent_ids
+    # Per-company light-check failures (AST-2172) retry with their own reason, not as omitted.
+    decode_failed = {
+        f["company_id"]: f["reason"]
+        for f in (parsed.get("decode_failures") or [])
+        if f.get("company_id") in input_by_id and f["company_id"] not in received_ids
+    }
+    missing -= decode_failed.keys()
     missing_rows = [input_by_id[mid] for mid in missing if mid in input_by_id]
 
     retried = 0
+    for cid, why in decode_failed.items():
+        retried += _transition_prefilter_batch_failures(
+            [input_by_id[cid]], cfg, debug=debug, fail_class="decode", reason=why,
+        )
     if missing:
         retried += _transition_prefilter_batch_failures(
             missing_rows, cfg, debug=debug, fail_class="missing id",
@@ -3510,7 +3534,8 @@ async def _fetch_prefilter_notes(company: Dict[str, Any]) -> Optional[str]:
         task_ctx = {
             "batch_entities": [{"company_id": short_name, "short_name": short_name}],
             "batch_size": 1,
-            "vector_labels": _vector_labels_from_ctx(None),
+            # Real rubric codes — a grader call never goes out without them (AST-2172).
+            "vector_labels": _vector_labels_from_ctx({"astral_candidate_id": candidate_id}),
         }
         logger.debug("Calling agent.do_task: task_key=prefilter_company index=%s", short_name)
         logger.debug("Calling agent.do_task live_content: %s", "\n".join(parts))

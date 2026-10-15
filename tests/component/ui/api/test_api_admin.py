@@ -47,6 +47,8 @@ class TestAdminConfigAndAgents:
                 "server_id": m["server"],
                 "server_label": cfg.LLM_SERVER_CONFIG[m["server"]]["label"],
                 "default_max_tokens": m["default_max_tokens"],
+                # AST-2181: forced-tool capability on every model ("enforced" | "advisory" | None).
+                "structured_output_capability": cfg.get_structured_output_capability(mid),
             }
 
     def test_brain_settings_route_and_admin_view_retired(
@@ -964,7 +966,6 @@ class TestAst1106ListDtasksAlwaysVisibleFlag:
         assert by[2]["always_visible_under_avail_gt0"] is False
 
 
-
 # AST-1135 / AST-1467: list_dtasks stamps live bind-filtered available_count for mailbox rows.
 @pytest.mark.skipif(
     not hasattr(admin_mod, "is_meteorite_email_mailbox_task_key"),
@@ -1740,6 +1741,8 @@ class TestAdhocRoutes:
             ),
         )
         monkeypatch.setattr(admin_mod, "_build_adhoc_live_content", lambda *args, **kwargs: "live")
+        # AST-2180: grader tests build a forced tool from the candidate's rubric codes.
+        monkeypatch.setattr(admin_mod, "_rubric_criteria_for_cfg", lambda cid, cfg: [{"code": "CR", "label": "Craft"}])
         preview = admin_client.post(
             "/api/admin/adhoc/preview",
             json={"agent_id": "a1", "task_key": "evaluate_jd", "entity_id": "j1"},
@@ -1774,13 +1777,13 @@ class TestAdhocRoutes:
         monkeypatch.setattr(admin_mod, "run_adhoc_workbench_test", run_numeric)
         numeric = admin_client.post("/api/admin/adhoc/test", json={"agent_id": "a1", "task_key": "evaluate_jd"}, headers=auth_headers)
         assert numeric.get_json()["response_text"] == "123"
-        async def run_encoded(**kwargs):
-            return {"success": True, "parsed_response": "encoded", "timesheet": {}}
+        async def run_tool(**kwargs):
+            return {"success": True, "parsed_response": {"000": {"CR": {"grade": "A", "confidence": 2}}}, "timesheet": {}}
 
-        monkeypatch.setattr(admin_mod, "_decode_payload", MagicMock(side_effect=ValueError("decode")))
-        monkeypatch.setattr(admin_mod, "run_adhoc_workbench_test", run_encoded)
+        monkeypatch.setattr(admin_mod, "hydrate_grade_tool_input", MagicMock(side_effect=ValueError("hydrate")))
+        monkeypatch.setattr(admin_mod, "run_adhoc_workbench_test", run_tool)
         hydrated = admin_client.post("/api/admin/adhoc/test", json={"agent_id": "a1", "task_key": "grade_do"}, headers=auth_headers)
-        assert hydrated.get_json()["hydrated"]["error"] == "decode"
+        assert hydrated.get_json()["hydrated"]["error"] == "hydrate"
 
     def test_adhoc_preview_does_not_create_dispatch_ledger(
         self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
@@ -2125,36 +2128,6 @@ class TestApiAdminBranchGaps:
         assert admin_client.post("/api/admin/adhoc/preview", json={}, headers=auth_headers).status_code == 400
         assert admin_client.post("/api/admin/adhoc/test", json={}, headers=auth_headers).status_code == 400
 
-    def test_adhoc_test_decodes_encoded_payload(self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(
-            admin_mod,
-            "_resolve_adhoc",
-            lambda body: (
-                {
-                    "system": "s",
-                    "user": "u",
-                    "cache": "",
-                    "nocache": "",
-                    "model_code": "claude-haiku-4-5",
-                    "temperature": 0.1,
-                    "max_tokens": 10,
-                    "candidate_id": None,
-                    "task_key_uuid": None,
-                    "server_id": "anthropic",
-                    "tier": {},
-                    "candidate_api_keys": None,
-                },
-                None,
-            ),
-        )
-
-        async def run_encoded(**kwargs):
-            return {"success": True, "parsed_response": "encoded", "timesheet": {}}
-
-        monkeypatch.setattr(admin_mod, "run_adhoc_workbench_test", run_encoded)
-        monkeypatch.setattr(admin_mod, "_decode_payload", MagicMock(return_value={"jobs": []}))
-        resp = admin_client.post("/api/admin/adhoc/test", json={"agent_id": "a1", "task_key": "grade_do"}, headers=auth_headers)
-        assert resp.get_json()["hydrated"] == {"jobs": []}
 
     def test_backfill_thread_records_error(self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:
         admin_mod._backfill_thread = None
@@ -2271,75 +2244,6 @@ class TestApiAdminBranchGaps:
         monkeypatch.setattr(admin_mod.database, "get_company", lambda short_name: None)
         assert admin_mod._build_adhoc_live_content("evaluate_jd", "j1") == "[astral_job_id=j1]\njd"
 
-    def test_adhoc_test_hydrates_encoded_payload_with_entities(self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(
-            admin_mod,
-            "_resolve_adhoc",
-            lambda body: (
-                {
-                    "system": "s",
-                    "user": "u",
-                    "cache": "",
-                    "nocache": "",
-                    "model_code": "claude-haiku-4-5",
-                    "temperature": 0.1,
-                    "max_tokens": 10,
-                    "candidate_id": None,
-                    "task_key_uuid": None,
-                    "server_id": "anthropic",
-                    "tier": {},
-                    "candidate_api_keys": None,
-                },
-                None,
-            ),
-        )
-
-        async def run_encoded(**kwargs):
-            return {"success": True, "parsed_response": "encoded", "timesheet": {}}
-
-        monkeypatch.setattr(admin_mod, "run_adhoc_workbench_test", run_encoded)
-        decode = MagicMock(return_value={"jobs": [{"astral_job_id": "j1"}]})
-        monkeypatch.setattr(admin_mod, "_decode_payload", decode)
-        # Isolate hydrate/decode path from real DB: full suite may set _board_search_schema_ensured
-        # without board_search on the shared ASTRAL_DB_DIR file (schema ensure side effects).
-        monkeypatch.setattr(admin_mod, "_build_adhoc_live_content", lambda *args, **kwargs: "")
-        resp = admin_client.post(
-            "/api/admin/adhoc/test",
-            json={"agent_id": "a1", "task_key": "grade_do", "entity_id": "j1", "entity_ids": ["j1"]},
-            headers=auth_headers,
-        )
-        assert resp.get_json()["hydrated"]["jobs"][0]["astral_job_id"] == "j1"
-        decode.assert_called_once()
-
-    def test_adhoc_test_skips_decode_without_response_text(self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(
-            admin_mod,
-            "_resolve_adhoc",
-            lambda body: (
-                {
-                    "system": "s",
-                    "user": "u",
-                    "cache": "",
-                    "nocache": "",
-                    "model_code": "claude-haiku-4-5",
-                    "temperature": 0.1,
-                    "max_tokens": 10,
-                    "candidate_id": None,
-                    "task_key_uuid": None,
-                    "server_id": "anthropic",
-                    "tier": {},
-                    "candidate_api_keys": None,
-                },
-                None,
-            ),
-        )
-
-        async def run_empty(**kwargs):
-            return {"success": True, "parsed_response": "", "timesheet": {}}
-
-        monkeypatch.setattr(admin_mod, "run_adhoc_workbench_test", run_empty)
-        resp = admin_client.post("/api/admin/adhoc/test", json={"agent_id": "a1", "task_key": "grade_do"}, headers=auth_headers)
-        assert resp.get_json()["hydrated"] is None
 
     def test_table_copy_upsert_validation_apply_and_errors(self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:
         url = "/api/admin/data/table_copy_upsert"
@@ -4765,3 +4669,184 @@ class TestAst2134AdhocPreviewTelescope:
         self._jobs(monkeypatch, {"job_description": "JD"}, ids)
         assert admin_mod._build_adhoc_live_content("evaluate_jd", "j1") == before
         assert "COMPANY CONTEXT" in before and "Vibes" in before
+
+
+# AST-2180 — adhoc_test on the structured path (replaces the _decode_payload ad-hoc tests). Branches: grader with
+# rubric codes (job / company entities) → forced tool sent + tool input hydrated; non-object reply → no hydrate;
+# grader without codes → 400 before the run; non-grader → no forced tool.
+class TestAst2180AdhocForcedTool:
+    @staticmethod
+    def _setup(monkeypatch: pytest.MonkeyPatch, parsed: Any, criteria: list | None = None) -> list[dict[str, Any]]:
+        resolved = {
+            "system": "s", "user": "u", "cache": "", "nocache": "", "model_code": "claude-haiku-4-5",
+            "temperature": 0.1, "max_tokens": 10, "candidate_id": "c1", "task_key_uuid": None,
+            "server_id": "anthropic", "tier": {}, "candidate_api_keys": None,
+        }
+        monkeypatch.setattr(admin_mod, "_resolve_adhoc", lambda body: (resolved, None))
+        monkeypatch.setattr(admin_mod, "_build_adhoc_live_content", lambda *args, **kwargs: "")
+        rubric = [{"code": "CR", "label": "Craft"}] if criteria is None else criteria
+        monkeypatch.setattr(admin_mod, "_rubric_criteria_for_cfg", lambda cid, cfg: rubric)
+        runs: list[dict[str, Any]] = []
+
+        async def run(**kwargs):
+            runs.append(kwargs)
+            return {"success": True, "parsed_response": parsed, "timesheet": {}}
+
+        monkeypatch.setattr(admin_mod, "run_adhoc_workbench_test", run)
+        return runs
+
+    def test_grader_sends_forced_tool_and_hydrates_job_rows(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        tool_input = {"000": {"CR": {"grade": "A", "confidence": 2}}, "agent_performance": {"status": "success"}}
+        runs = self._setup(monkeypatch, tool_input)
+        resp = admin_client.post(
+            "/api/admin/adhoc/test",
+            json={"agent_id": "a1", "task_key": "grade_do", "entity_id": "j1", "entity_ids": ["j1"]},
+            headers=auth_headers,
+        )
+        forced = runs[0]["forced_tool"]
+        assert forced["name"] == "submit_grades"
+        assert forced["input_schema"]["required"][0] == "000"
+        assert forced["input_schema"]["properties"]["000"]["required"][0] == "CR"
+        assert resp.get_json()["hydrated"] == {
+            "jobs": [{"astral_job_id": "j1", "grades": [{"vector": "Craft", "grade": "A", "confidence": 2}]}],
+        }
+
+    def test_company_task_hydrates_company_rows(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        # Company tasks key rows by company_id — an astral_job_id stub would not attach (plan decision).
+        tool_input = {"000": {"RC": {"grade": "A", "confidence": 4}}, "agent_performance": {"status": "success"}}
+        self._setup(monkeypatch, tool_input, criteria=[{"code": "RC", "label": "Reality Check"}])
+        resp = admin_client.post(
+            "/api/admin/adhoc/test",
+            json={"agent_id": "a1", "task_key": "prefilter_company", "entity_ids": ["acme_com"]},
+            headers=auth_headers,
+        )
+        companies = resp.get_json()["hydrated"]["companies"]
+        assert [(c["company_id"], c["grades"][0]["vector"]) for c in companies] == [("acme_com", "Reality Check")]
+
+    def test_non_object_reply_is_not_hydrated(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        self._setup(monkeypatch, "")
+        resp = admin_client.post("/api/admin/adhoc/test", json={"agent_id": "a1", "task_key": "grade_do"}, headers=auth_headers)
+        assert resp.get_json()["hydrated"] is None
+
+    def test_grader_without_rubric_codes_is_400_before_the_run(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        runs = self._setup(monkeypatch, {}, criteria=[])
+        resp = admin_client.post("/api/admin/adhoc/test", json={"agent_id": "a1", "task_key": "grade_do"}, headers=auth_headers)
+        assert resp.status_code == 400
+        assert "no rubric codes" in resp.get_json()["error"]
+        assert runs == []
+
+    def test_non_grader_runs_without_forced_tool(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        runs = self._setup(monkeypatch, {"text": "ok"}, criteria=[])
+        resp = admin_client.post(
+            "/api/admin/adhoc/test", json={"agent_id": "a1", "task_key": "draft_job_resume"}, headers=auth_headers,
+        )
+        assert runs[0]["forced_tool"] is None
+        assert resp.get_json()["hydrated"] is None
+
+
+class TestAst2181StructuredOutputModelGate:
+    """AST-2181 AC 10: an agent that requires structured output may only be saved on a model whose capability is
+    "enforced" or "advisory"; a None-capability model → 400, row unchanged. Real data layer (sqlite_in_memory)."""
+
+    _CAPABLE = "qwen/qwen3-235b-a22b-2507"  # advisory
+    _INCAPABLE = "qwen/qwen3-32b"  # None
+
+    @pytest.fixture(autouse=True)
+    def _capabilities(self) -> None:
+        # The two picks must stay on either side of the gate, or every assertion below is vacuous.
+        assert cfg.get_structured_output_capability(self._CAPABLE) == "advisory"
+        assert cfg.get_structured_output_capability(self._INCAPABLE) is None
+
+    def _create(self, client: FlaskClient, headers: dict[str, str], agent_id: str, model_id: str, requires: Any) -> Any:
+        body = {"agent_id": agent_id, "content": "sys", "model_id": model_id}
+        if requires is not None:
+            body["requires_structured_output"] = requires
+        return client.post("/api/admin/agents", json=body, headers=headers)
+
+    def test_models_report_capability_for_every_model(self, admin_client: FlaskClient, auth_headers: dict[str, str]) -> None:
+        body = admin_client.get("/api/admin/agents/models", headers=auth_headers).get_json()
+        assert all("structured_output_capability" in m for m in body.values())
+        assert {m["structured_output_capability"] for m in body.values()} <= {"enforced", "advisory", None}
+        assert body[self._CAPABLE]["structured_output_capability"] == "advisory"
+        assert body[self._INCAPABLE]["structured_output_capability"] is None
+
+    def test_get_agent_returns_the_setting(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], sqlite_in_memory,
+    ) -> None:
+        sqlite_in_memory.save_agent("job_filter_lucy", "sys", model_id=self._CAPABLE, requires_structured_output=True)
+        got = admin_client.get("/api/admin/agents/job_filter_lucy", headers=auth_headers).get_json()
+        assert got["requires_structured_output"] is True
+        assert admin_client.get("/api/admin/agents", headers=auth_headers).get_json()[0]["requires_structured_output"] is True
+
+    def test_create_refuses_incapable_model_when_required(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], sqlite_in_memory,
+    ) -> None:
+        bad = self._create(admin_client, auth_headers, "a1", self._INCAPABLE, True)
+        assert bad.status_code == 400
+        assert self._INCAPABLE in bad.get_json()["error"] and "structured output" in bad.get_json()["error"]
+        assert sqlite_in_memory.get_agent("a1") is None
+        # Advisory is allowed; an incapable model is fine while the setting is off or absent.
+        assert self._create(admin_client, auth_headers, "a2", self._CAPABLE, True).status_code == 201
+        assert self._create(admin_client, auth_headers, "a3", self._INCAPABLE, False).status_code == 201
+        assert self._create(admin_client, auth_headers, "a4", self._INCAPABLE, None).status_code == 201
+        assert sqlite_in_memory.get_agent("a4")["requires_structured_output"] is False
+
+    @pytest.mark.parametrize(
+        ("stored", "body"),
+        [
+            # AC 10: switch a requiring agent onto an incapable model.
+            ((_CAPABLE, True), {"model_id": _INCAPABLE}),
+            # Turn the setting on while the stored model is incapable.
+            ((_INCAPABLE, False), {"requires_structured_output": True}),
+            # Both in one PUT.
+            ((_CAPABLE, False), {"model_id": _INCAPABLE, "requires_structured_output": True}),
+        ],
+        ids=["model_change", "flag_on", "both"],
+    )
+    def test_update_gates_on_post_put_values_row_unchanged(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], sqlite_in_memory, stored: tuple, body: dict,
+    ) -> None:
+        db = sqlite_in_memory
+        db.save_agent("lucy", "sys", model_id=stored[0], requires_structured_output=stored[1])
+        before = db.get_agent("lucy")
+        bad = admin_client.put("/api/admin/agents/lucy", json=body, headers=auth_headers)
+        assert bad.status_code == 400 and "structured output" in bad.get_json()["error"]
+        assert db.get_agent("lucy") == before
+
+    def test_update_allowed_when_flag_turned_off_or_model_capable(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], sqlite_in_memory,
+    ) -> None:
+        db = sqlite_in_memory
+        db.save_agent("lucy", "sys", model_id=self._CAPABLE, requires_structured_output=True)
+        off = admin_client.put(
+            "/api/admin/agents/lucy",
+            json={"model_id": self._INCAPABLE, "requires_structured_output": False},
+            headers=auth_headers,
+        )
+        assert off.status_code == 200
+        assert (db.get_agent("lucy")["model_id"], db.get_agent("lucy")["requires_structured_output"]) == (self._INCAPABLE, False)
+        db.save_agent("kent", "sys", model_id=self._INCAPABLE)
+        on = admin_client.put(
+            "/api/admin/agents/kent",
+            json={"model_id": self._CAPABLE, "requires_structured_output": True},
+            headers=auth_headers,
+        )
+        assert on.status_code == 200 and db.get_agent("kent")["requires_structured_output"] is True
+
+    def test_unknown_model_with_flag_is_400_not_500(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], sqlite_in_memory,
+    ) -> None:
+        sqlite_in_memory.save_agent("lucy", "sys", model_id=self._CAPABLE, requires_structured_output=True)
+        put = admin_client.put("/api/admin/agents/lucy", json={"model_id": "no-such-model"}, headers=auth_headers)
+        assert put.status_code == 400 and put.get_json()["error"]
+        assert self._create(admin_client, auth_headers, "x", "no-such-model", True).status_code == 400

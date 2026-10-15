@@ -18,6 +18,8 @@ interface ModelRow {
   server_id: string
   server_label: string
   default_max_tokens: number
+  /** Forced-tool schema support (AST-2172); null = can't take one, hidden while the agent requires structured output. */
+  structured_output_capability: "enforced" | "advisory" | null
 }
 type ModelCatalog = Record<string, ModelRow>
 
@@ -38,6 +40,7 @@ interface Agent {
   provider_only?: string[] | null
   provider_ignore?: string[] | null
   provider_sort?: string | null
+  requires_structured_output?: boolean | null
   max_tokens?: number
   task_count?: number
   updated_at?: string
@@ -53,12 +56,13 @@ interface SettingsForm {
   provider_only: string
   provider_ignore: string
   provider_sort: string
+  requires_structured_output: boolean
 }
 
 // New agents start with fallbacks on (the data layer's new-row default) and everything else empty.
 const EMPTY_SETTINGS: SettingsForm = {
   quantization: "", temperature: "", reasoning_effort: "", provider_allow_fallbacks: true,
-  provider_only: "", provider_ignore: "", provider_sort: "",
+  provider_only: "", provider_ignore: "", provider_sort: "", requires_structured_output: false,
 }
 
 function settingsFromAgent(a: Agent): SettingsForm {
@@ -71,6 +75,7 @@ function settingsFromAgent(a: Agent): SettingsForm {
     provider_only:            (a.provider_only ?? []).join(", "),
     provider_ignore:          (a.provider_ignore ?? []).join(", "),
     provider_sort:            a.provider_sort ?? "",
+    requires_structured_output: a.requires_structured_output ?? false,
   }
 }
 
@@ -90,6 +95,7 @@ function settingsBody(f: SettingsForm): Record<string, unknown> {
     provider_only:            slugList(f.provider_only),
     provider_ignore:          slugList(f.provider_ignore),
     provider_sort:            f.provider_sort.trim() || null,
+    requires_structured_output: f.requires_structured_output,
   }
 }
 
@@ -486,6 +492,10 @@ function AgentSettingsFields({
 }) {
   const noModelMatch = !!modelId && !models[modelId]
   const defaultMax = models[modelId]?.default_max_tokens
+  // While the agent requires structured output, only models that can take a forced tool are offered (AST-2172).
+  const capable = (id: string) => !settings.requires_structured_output || models[id].structured_output_capability != null
+  // The current model stays visible (flagged) when it falls out of the list, so the select never silently shows another.
+  const incapableCurrent = !noModelMatch && !!modelId && !capable(modelId)
   // One text input per string setting; key is the SettingsForm field it edits.
   const text = (key: keyof SettingsForm, label: string, placeholder: string) => (
     <div className="dep-field" style={{ flex: 1 }}>
@@ -506,10 +516,19 @@ function AgentSettingsFields({
         <select className="dep-input" value={modelId} onChange={e => onModelChange(e.target.value)}>
           {noModelMatch ? <option value={modelId}>— (unknown model) —</option> : null}
           {modelId === "" ? <option value="">— choose model —</option> : null}
-          {byOrder(models).map(id => (
+          {incapableCurrent ? <option value={modelId}>{models[modelId].label} — no structured output</option> : null}
+          {byOrder(models).filter(capable).map(id => (
             <option key={id} value={id}>{models[id].label}</option>
           ))}
         </select>
+        <label className="dep-field-label">
+          <input
+            type="checkbox"
+            checked={settings.requires_structured_output}
+            onChange={e => onSettingsChange({ ...settings, requires_structured_output: e.target.checked })}
+          />{" "}
+          Requires structured output
+        </label>
       </div>
       <div style={{ display: "flex", gap: 12 }}>
         <div className="dep-field" style={{ flex: 1 }}>

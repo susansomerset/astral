@@ -18,17 +18,15 @@ from typing import Any, Callable, Dict, List, Optional
 from src.utils.cost_calculator import calculate_cost_with_cache, calculate_cost_components
 from src.utils.config import ASTRAL_CONFIG, get_model, CHARS_PER_TOKEN, PROVIDER_EMPTY_RESPONSE
 from src.utils.formatting import (
-    coerce_grades_encoded_json_parse,
     heal_agent_payload_envelope,
     heal_json,
-    looks_like_encoded_grades_text,
-    clean_encoded_agent_payload,
 )
 from src.utils.llm_external import (
     await_provider_call_with_budget,
     classify_provider_balance_refusal,
     classify_provider_call_timeout,
     extract_api_response_text,
+    extract_tool_input,
     emit_llm_call_debug,
     is_unusable_provider_response,
     normalize_provider_error,
@@ -67,9 +65,10 @@ def _get_client() -> Anthropic:  # pragma: no cover
     )
 
 
-def getTimestampPrefix() -> str:
+def getTimestampPrefix(structured: bool = False) -> str:
     """Generate timestamp prefix for user prompts.
 
+    structured=True swaps the two-key envelope sentence for prompt_prefix_structured (forced-tool calls, AST-2172).
     Returns: Formatted timestamp string
     Example: "Today is Thursday, 11/6/25, and it's 3:18pm Pacific time.\\n"
     """
@@ -83,7 +82,7 @@ def getTimestampPrefix() -> str:
     if hour12 == 0:
         hour12 = 12
 
-    envelope_instruction = ASTRAL_CONFIG.get("prompt_prefix", "")
+    envelope_instruction = ASTRAL_CONFIG.get("prompt_prefix_structured" if structured else "prompt_prefix", "")
     return (
         f"Today is {dayOfWeek}, {date}, and it's {hour12}:{minute}{ampm} Pacific time. "
         f"{envelope_instruction}\n"
@@ -111,10 +110,6 @@ def _parse_json_response(response_text: str) -> Dict[str, Any]:
     cleaned = cleaned.strip()
     try:
         obj = json.loads(cleaned)
-        if isinstance(obj, str):
-            wrapped = coerce_grades_encoded_json_parse(obj)
-            if isinstance(wrapped, dict):
-                return wrapped
         return obj
     except json.JSONDecodeError as e:
         if "Extra data" in str(e) and hasattr(e, "pos") and e.pos > 0:  # pragma: no cover
@@ -134,8 +129,6 @@ def _parse_json_response(response_text: str) -> Dict[str, Any]:
                 return json.loads(healed)
             except json.JSONDecodeError:
                 pass  # pragma: no cover
-        if looks_like_encoded_grades_text(cleaned):
-            return {"agent_payload": clean_encoded_agent_payload(cleaned)}
         raise ValueError(
             f"Failed to parse JSON response: {e}\n"
             f"Original response (first 500 chars): {response_text[:500]}\n"
@@ -213,6 +206,15 @@ def _effort_body(reasoning_effort: Optional[str]) -> Dict[str, Any]:
     return {"output_config": {"effort": reasoning_effort}}
 
 
+def _forced_tool_body(forced_tool: Dict[str, Any]) -> Dict[str, Any]:
+    """One forced tool as Messages-protocol kwargs (AST-2172): the model must answer by calling it."""
+    name = forced_tool["name"]
+    return {
+        "tools": [{"name": name, "input_schema": forced_tool["input_schema"]}],
+        "tool_choice": {"type": "tool", "name": name},
+    }
+
+
 async def send_to_anthropic(
     content_blocks: List[Dict[str, Any]],
     *,
@@ -232,12 +234,14 @@ async def send_to_anthropic(
     no_cache_live_tokens: int = 0,
     batch_size: int = 1,
     record_timesheet: Optional[Callable[..., None]] = None,
+    forced_tool: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
     """Send assembled content blocks to Anthropic; optional DB timesheet via record_timesheet.
 
     system_blocks → API `system` param (supports cache_control).
     content_blocks → messages[user].
     temperature / reasoning_effort → sent only when set (AST-1956).
+    forced_tool ({name, input_schema}) → sent as the only tool with tool_choice forcing it; its input is parsed_response.
     Returns dict with success, api_response, parsed_response, timesheet, error."""
     require_controlled_external_io("anthropic.send_to_anthropic")
     start_time = datetime.now()
@@ -245,6 +249,8 @@ async def send_to_anthropic(
 
     if not model_code:
         raise ValueError("model_code is required for send_to_anthropic")
+    if forced_tool and enable_web_search:
+        raise ValueError("forced_tool and enable_web_search cannot be combined")
 
     _empty_timesheet = lambda: {
         "calltime": calltime,
@@ -286,6 +292,10 @@ async def send_to_anthropic(
 
         if enable_web_search:
             api_kwargs["tools"] = [{"type": "web_search_20250305", "name": "web_search"}]
+        if forced_tool:
+            api_kwargs.update(_forced_tool_body(forced_tool))
+
+        logger.debug("Calling messages.create: %s", api_kwargs)
 
         def _make_api_call():
             return client.messages.create(**api_kwargs)
@@ -295,6 +305,7 @@ async def send_to_anthropic(
                 _make_api_call,
                 timeout_seconds=provider_call_wait_timeout_seconds(),
             )
+            logger.debug("Response from messages.create: %s", response)
             duration = (datetime.now() - start_time).total_seconds()
 
             usage = response.usage
@@ -398,7 +409,7 @@ async def send_to_anthropic(
 
             # JSON cut mid-string when output hits max_tokens — fail closed, do not heal (AST-903).
             stop_reason = getattr(response, "stop_reason", None)
-            if response_format == "json" and stop_reason == "max_tokens":
+            if (response_format == "json" or forced_tool) and stop_reason == "max_tokens":
                 trunc_err = "Generation truncated (max_tokens) before complete JSON"
                 log_llm_batch_summary(
                     logger, "anthropic", prompt_label, duration, error=trunc_err
@@ -422,12 +433,15 @@ async def send_to_anthropic(
                 }
 
             parsed_response = None
-            if response_format:
-                if response_format not in ("text", "json", "python"):
+            if response_format or forced_tool:
+                if response_format and response_format not in ("text", "json", "python"):
                     raise ValueError(f"Invalid response_format: {response_format}")
                 response_dict = {"success": True, "api_response": response, "timesheet": timesheet}
                 try:
-                    if response_format == "text":
+                    if forced_tool:
+                        # The forced tool's input is the payload (AST-2172), whatever response_format says.
+                        parsed_response = extract_tool_input(response, forced_tool["name"])
+                    elif response_format == "text":
                         parsed_response = await _parse_api_response(response_dict)
                     elif response_format == "json":
                         parsed_response = _parse_json_response(await _parse_api_response(response_dict))

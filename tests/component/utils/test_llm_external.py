@@ -33,6 +33,58 @@ class TestExtractApiResponseText:
         with pytest.raises(ValueError, match="missing text"):
             llm_ext_mod.extract_api_response_text(api_response)
 
+    def test_tool_only_reply_falls_back_to_last_tool_input_json(self) -> None:
+        # AST-2179: a forced-tool reply has no text block — audit/debug text is the last tool input as JSON.
+        api_response = SimpleNamespace(content=[
+            SimpleNamespace(thinking="plan"),
+            SimpleNamespace(type="tool_use", name="a", input={"n": 1}),
+            SimpleNamespace(type="tool_use", name="b", input={"n": 2}),
+        ])
+        assert llm_ext_mod.extract_api_response_text(api_response) == '{"n": 2}'
+
+    def test_text_block_wins_over_tool_input(self) -> None:
+        api_response = SimpleNamespace(content=[
+            SimpleNamespace(type="text", text="answer"),
+            SimpleNamespace(type="tool_use", name="a", input={"n": 1}),
+        ])
+        assert llm_ext_mod.extract_api_response_text(api_response) == "answer"
+
+    def test_server_tool_use_is_not_a_fallback(self) -> None:
+        api_response = SimpleNamespace(content=[SimpleNamespace(type="server_tool_use", name="web_search", input={"q": "x"})])
+        with pytest.raises(ValueError, match="missing text"):
+            llm_ext_mod.extract_api_response_text(api_response)
+
+
+# AST-2179 — branches: named tool_use found (dict / non-dict input); other tools and non-tool blocks skipped; none / no content.
+class TestExtractToolInput:
+    def test_returns_named_tool_input_skipping_other_blocks(self) -> None:
+        api_response = SimpleNamespace(content=[
+            SimpleNamespace(type="text", text="preamble"),
+            SimpleNamespace(type="tool_use", name="other", input={"n": 0}),
+            SimpleNamespace(type="tool_use", name="submit_grades", input={"n": 1}),
+        ])
+        assert llm_ext_mod.extract_tool_input(api_response, "submit_grades") == {"n": 1}
+
+    def test_non_object_input_raises(self) -> None:
+        api_response = SimpleNamespace(content=[SimpleNamespace(type="tool_use", name="submit_grades", input="000|DTA5")])
+        with pytest.raises(ValueError, match="'submit_grades' input is not an object"):
+            llm_ext_mod.extract_tool_input(api_response, "submit_grades")
+
+    @pytest.mark.parametrize(
+        "api_response",
+        [
+            SimpleNamespace(content=[SimpleNamespace(type="tool_use", name="other", input={})]),
+            SimpleNamespace(content=[SimpleNamespace(type="text", text='{"n": 1}')]),
+            SimpleNamespace(content=[]),
+            SimpleNamespace(content=None),
+            SimpleNamespace(),
+        ],
+        ids=["other_tool", "text_only", "empty", "none", "no_content_attr"],
+    )
+    def test_no_named_tool_call_raises(self, api_response) -> None:
+        with pytest.raises(ValueError, match="has no 'submit_grades' tool call"):
+            llm_ext_mod.extract_tool_input(api_response, "submit_grades")
+
 
 class TestEmitLlmCallDebug:
     def test_uses_logger_name_parameter(self) -> None:

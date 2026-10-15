@@ -4074,3 +4074,15 @@ cd src/ui/frontend && npm run test:component -- \
 **Pass criterion:** items 1–3. Narrowed runs, not the zero-arg harness.
 
 **Bible shasum (after publish):** `git show origin/sub/AST-2168/AST-2174-search-results-page:docs/test-bible/frontend/pages.md | shasum`
+
+### AST-2181 · AST-2172 (Manage Agents — requires structured output)
+
+The `AdminAgentPrompts.tsx` editor gains a "Requires structured output" checkbox under Model, and the body always sends the flag. While it's ticked, the picker drops models whose `structured_output_capability` is null. The current model stays as one flagged option, `<label> — no structured output`. The fixture `models` now carry a capability: Kimi `advisory`, Haiku `null`.
+
+**New:** `describe("AST-2181 requires structured output")` (4):
+- Add: unchecked by default; ticking hides Haiku, leaving only the flagged current value; picking Kimi drops it; unticking restores.
+- Add saves the flag.
+- Edit: stored `true` shows checked, with only Kimi offered and saved.
+- Edit: the API's 400 gate text reaches the error toast and the editor stays open.
+
+**Revised:** the exact POST / PUT bodies in "Add saves every setting…" and "AC 10: Edit renders…" gain `requires_structured_output: false`. Manifest: [`../ui/api/api_admin.md`](../ui/api/api_admin.md) § AST-2181.
