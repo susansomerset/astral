@@ -291,3 +291,12 @@ stat.logging.debug | A | |
 - After AST-2217 lands on `dev`, future three-dot reviews of later siblings should shrink carry noise only; no action required for this verdict.
 
 context_tokens≈42000
+
+## Resolution
+
+**Date:** 2026-10-15
+
+- **fix-now — peer `_run_contact_ledgered_task` exception path:** Mirrored Estelle’s `except` + `_ledger_closed` guard. If `do_task` raises before the normal close, the ledger is updated `FAILED` + `timesheet_state="NEW"` then re-raised; `finally` still resets `log_batch_id` / flushes.
+- **discuss — ledger close vs land/Slack:** No `Default:`; @susan unanswered. Kept tip behavior (close after land/Slack, just above `out`) per plan Stage 2b — no product move of the close window.
+- **advisory:** No product action (sibling carry / estimate).
+

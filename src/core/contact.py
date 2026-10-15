@@ -1506,6 +1506,7 @@ def _run_contact_ledgered_task(task_key: str, *, cid: str, row: dict, live_conte
         batch_id, f"contact-{task_key}", cid, started_at, entity_type="candidate", batch_size=1
     )
     token = log_batch_id.set(batch_id)
+    _ledger_closed = False
     try:
         logger.debug(
             "Calling agent.do_task: [task_key=%s, index=%s, batch_id=%s, request_type=%s]",
@@ -1538,7 +1539,22 @@ def _run_contact_ledgered_task(task_key: str, *, cid: str, row: dict, live_conte
             total_cost=compute_batch_cost(batch_id),
             timesheet_state="NEW",
         )
+        _ledger_closed = True
         return {**(result if isinstance(result, dict) else {}), "batch_id": batch_id}
+    except Exception:
+        # AST-2220 / Radia: escape before close still enters NEW queue (mirror Estelle).
+        if not _ledger_closed:
+            database.update_dispatch_ledger(
+                batch_id,
+                status="FAILED",
+                completed_at=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
+                total_processed=1,
+                total_passed=0,
+                total_failed=1,
+                total_cost=compute_batch_cost(batch_id),
+                timesheet_state="NEW",
+            )
+        raise
     finally:
         flush_log_buffer()
         log_batch_id.reset(token)
