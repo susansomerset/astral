@@ -37,11 +37,11 @@ Parent AC **1** (no cost threads), **6** (NEW→FETCHING→RECEIPTED/NEW), **7**
 
 **Pass criterion:** pytest green on the nodes above. Not the zero-arg harness.
 
-**Bible shasums (after publish):**
+**Bible shasums (publish tip after this docs commit):**
 
 ```text
-git show origin/sub/AST-2215/AST-2218-fetch-timesheet-openrouter-daemon-retire:docs/test-bible/core/timesheets.md | shasum
-git show origin/sub/AST-2215/AST-2218-fetch-timesheet-openrouter-daemon-retire:docs/test-bible/external/openrouter.md | shasum
-git show origin/sub/AST-2215/AST-2218-fetch-timesheet-openrouter-daemon-retire:docs/test-bible/core/dispatcher.md | shasum
-git show origin/sub/AST-2215/AST-2218-fetch-timesheet-openrouter-daemon-retire:docs/test-bible/utils/config.md | shasum
+docs/test-bible/external/openrouter.md b91f4746e0fa462445b35fc6a7b9e3147d07e810
+docs/test-bible/core/dispatcher.md     816b345d1efef103ec5fd9045bd7fa96a1119178
+docs/test-bible/utils/config.md        ba2102e17949a85d11a1c2dd92c82a4189694e0c
+# timesheets.md: git show origin/sub/AST-2215/AST-2218-fetch-timesheet-openrouter-daemon-retire:docs/test-bible/core/timesheets.md | shasum
 ```
