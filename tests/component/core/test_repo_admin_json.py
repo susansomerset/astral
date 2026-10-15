@@ -824,6 +824,92 @@ class TestAst2210ContextDraftCatalogRows:
         assert "revised_draft" in revise["system_prompt"] and "{$SELECTED_AGENT}" in revise["user_prompt"]
 
 
+class TestAst2221BaseResumeChainCatalogRows:
+    """AST-2221: nine Candidate Artifacts seed rows linked by run_next (AC 3)."""
+
+    _AGENTS = {
+        "shape_the_story": "principal_recruiter_estelle",
+        "draft_resume_experiences": "content_writer_judith",
+        "draft_supporting_sections": "content_writer_judith",
+        "draft_highlights": "content_writer_judith",
+        "draft_core_competencies": "content_writer_judith",
+        "draft_professional_summary": "content_writer_judith",
+        "draft_keywords": "content_writer_judith",
+        "draft_resume_base": "content_writer_judith",
+        "draft_title_patterns": "principal_recruiter_estelle",
+    }
+    _PROMPTS = {
+        "shape_the_story": (
+            "Think about this candidate and the story their resume should tell that differentiates them."
+        ),
+        "draft_resume_experiences": (
+            "Review existing content and revise experience elements bullet points to emphasize the story."
+        ),
+        "draft_supporting_sections": (
+            "Create supporting sections for the candidate, such as education, technical skills, "
+            "publications, whatever is relevant and factual about the candidate from the provided information."
+        ),
+        "draft_highlights": (
+            "Generate a set of 5-7 bullet points of notable achievements and successes. "
+            "Where possible, use facts from the existing resume."
+        ),
+        "draft_core_competencies": (
+            "Define a set of distinctive core competencies that may use commonly expected "
+            "keywords for this type of role."
+        ),
+        "draft_professional_summary": (
+            "A declarative description of the candidate, predicate only, that describes "
+            "what the candidate does well and why."
+        ),
+        "draft_keywords": "SHORT list of keywords to be embedded in the pdf metadata.",
+        "draft_resume_base": (
+            "Taking ALL of the pieces together, smooth out the wrinkles of the story, clarify "
+            "where needed, and assemble all the pieces for the candidate to review and revise."
+        ),
+        "draft_title_patterns": (
+            "LONG list of possible title pattern matches for this candidate that this resume would suit."
+        ),
+    }
+
+    def test_run_next_chain_order_prompts_and_agents(self) -> None:
+        from src.utils.config import BASE_RESUME_CHAIN_TASK_KEYS
+
+        rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
+        by = {row["task_key"]: row for row in rows if row.get("current") == 1}
+        agent_ids = {
+            row["agent_id"]
+            for row in json.loads(Path("data/admin/agent.json").read_text(encoding="utf-8"))
+        }
+        # Walk run_next from entry hop — exact Functional-scope order, empty terminal.
+        walked: list[str] = []
+        key = "shape_the_story"
+        seen: set[str] = set()
+        while key:
+            assert key not in seen, f"cycle at {key}"
+            seen.add(key)
+            walked.append(key)
+            key = (by[key].get("run_next") or "").strip()
+        assert walked == list(BASE_RESUME_CHAIN_TASK_KEYS)
+        for i, tk in enumerate(BASE_RESUME_CHAIN_TASK_KEYS):
+            row = by[tk]
+            assert row["task_name"] == tk
+            assert row["task_group_name"] == "Candidate Artifacts"
+            assert row["task_group_order"] == "2000"
+            assert row["task_seq"] == 20 + i
+            assert row["agent_id"] == self._AGENTS[tk]
+            assert row["agent_id"] in agent_ids
+            assert row["user_prompt"] == self._PROMPTS[tk]
+            assert str(row["user_prompt"]).strip()
+            # Basic seed: empty cache/system prompts (Fable polish is later).
+            assert row["system_prompt"] == ""
+            assert row["cache_prompt"] == ""
+        assert by["draft_title_patterns"]["run_next"] == ""
+        # Fresh UUIDs — unique across the whole catalog.
+        uuids = [r["task_key_uuid"] for r in rows]
+        for tk in BASE_RESUME_CHAIN_TASK_KEYS:
+            assert uuids.count(by[tk]["task_key_uuid"]) == 1, tk
+
+
 class TestAst1515ContactEstelleTurnMarkupPrompt:
     """AST-1515: contact_estelle_turn teaches contact-task markup in reply (not skill_calls)."""
 
