@@ -254,7 +254,13 @@ Parent AC: 1,3,4,6,7(11) → N/A (AST-2218/2219/2220); 2 → Stages 2–3 + read
 - **Recommendation:** None.
 
 context_tokens≈22000
-```
 
-```text
+## Review (build)
 
+**Built @ `6ce60061b`** — `origin/sub/AST-2215/AST-2217-timesheet-rename-attribution-stubs` (`6ce60061bdf215b876ddf1147d292028218783aa`)
+
+- Stage 1: FETCH_TIMESHEET_CONFIG + request-type / receipt-field / ledger-state registries + TIMESHEET_SEARCH_SERVER_ID; reconcile constants untouched.
+- Stage 2: agent_timesheets renamed in place to service_timesheet; attribution + persisted provider; ledger timesheet_state; queue helpers; update_timesheet_platform accepts null platform_cost; pending-gen helpers retargeted.
+- Stages 3-4: do_task/adhoc pass DISPATCH_AGENT + entity attribution (multi-entity empty id); Anthropic + llm_compat stamp timing/size; readers use service_timesheet; zero-stub get_receipt (no HTTP, platform_cost null).
+- Out of scope left for siblings: runner/daemon/OpenRouter (2218), Google (2219), contact ledger (2220).
+- Betty owns test/bible revisions listed in Scope.
