@@ -176,3 +176,39 @@ context_tokens≈45000
 ---
 
 [plan-rubric] REVIEW (Commit: e2622e00) Fix post-save state draft
+
+## Joan validate (re-validate after Plan Discuss)
+
+[plan-rubric]
+**Ticket:** AST-2224
+**Overall:** APPROVED
+**Corpus:** b7ab2203048ce0beb2869a12200ab7fa696c8066
+**Publish ref:** `sub/AST-2216/AST-2224-meteorite-modal-edit-form` @ `a5282e7bc39491b32122f1cf4951d7128cbb8955`
+
+## Canon scores
+
+(no directives — ticket **Citations:** `none`; frozen list empty by dispatch partition; nothing to score in R3)
+
+## Traceability
+
+1 → Stage 1 steps 2, 4 (`buildDraft` + `"default"` on first GET), 5, 7–9 + `rg` gate (React half; server envelope N/A — AST-2223) · 2 → Stage 1 edit form / `handleSave` / PUT 200 re-read + `buildDraft(..., "stored")` / `onSaved` once / 409 `saveError` + Stage 2 `onSaved={load}`
+
+## Findings
+
+**acceptable** — Prior **fix-now** (round=1): post-save `draft.state` reset to `default_save_state` — **closed** in Revision 1 (`stateSource` `"default"` vs `"stored"` in steps 4, 7–8).
+
+**discuss** — Canon Scope gap (not scored): `astral.ui.frontend-file-placement` governs the two UI paths; intentionally absent from this child’s frozen `none` list per dispatch partition.
+
+**acceptable** — AC 2 component tests not in plan stages (Betty / `qa-child` per execution contract).
+
+**acceptable** — Duplicate field display in `ReportSectionList` + form block (plan ⚠️ decision).
+
+**acceptable** — Prerequisite on AST-2223 detail envelope + PUT; execution contract Stage-blocked if API missing on worktree.
+
+**acceptable** — `CompanyDetailModal`-style `onSave` / `showFooter` wiring; optional `onSaved` leaves `SearchResults` unchanged (out of Scope).
+
+R5: child AC 1–2 fully mapped; no orphan stages. R6: Files Changed ⊆ ticket **Scope**; no server/config edits; UAT fitness cites parent AC quotes and rejects client-hard-coded states; self-assessment via Estimate confirm line. Plan Discuss: **one** completed round (concern in issue doc + Hedy `round=1 reply`); re-validation at publish tip addresses the sole fix-now.
+
+context_tokens≈62000
+
+[plan-rubric] PROCEED (Commit: a5282e7) Post-save draft fixed
