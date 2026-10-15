@@ -5149,3 +5149,13 @@ Config only, no handlers. `CONTACT_CONTEXT_COMMAND_CONFIG` (six suffixes → `ar
 
 **Bible shasum (after publish):** `git show origin/sub/AST-2206/AST-2210-registry-estelle-prompts:docs/test-bible/utils/config.md | shasum`; same for `docs/test-bible/core/repo_admin_json.md`.
 
+### AST-2217 · AST-2215 (fetch_timesheet registries)
+
+`FETCH_TIMESHEET_CONFIG` (poller defaults: `entity_type` / `trigger_state` / `freq_hrs` None, `auto_mode` False) plus `TIMESHEET_REQUEST_TYPES`, `TIMESHEET_RECEIPT_FIELDS`, `LEDGER_TIMESHEET_STATES`, `TIMESHEET_SEARCH_SERVER_ID`. Reconcile constants left in place for AST-2218.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| New — fetch_timesheet dispatch-row defaults | `FETCH_TIMESHEET_CONFIG` | `TestAst2217FetchTimesheetRegistries::test_fetch_timesheet_config_poller_defaults` |
+| New — request / receipt / ledger / search-server registries | `TIMESHEET_*` / `LEDGER_TIMESHEET_STATES` | `…::test_request_receipt_ledger_registries` |
+
+**Primary manifest:** [`../data/database/timesheets.md`](../data/database/timesheets.md) § AST-2217.
