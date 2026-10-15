@@ -177,3 +177,53 @@ Do not double-close on the happy path (structure so the success close and the ex
 ## Estimate
 
 Confirm Chuckles estimate: 2 — agree
+
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-2220
+**Overall:** APPROVED
+**Corpus:** b7ab2203048ce0beb2869a12200ab7fa696c8066
+**Publish ref:** `sub/AST-2215/AST-2220-contact-estelle-ledger-row` @ `9187008ca81e727934a9e97a11d0f12f3192d730`
+
+## Canon scores
+
+patt.entity.batch-processing | A | | 
+stat.logging.debug | A | | 
+
+## Traceability
+
+Parent AC: 9 → Stages 1–2 (ledger open/close `NEW`, `CONTACT_AGENT`, shared `batch_id`); 1–8,10–11 → N/A (siblings); Stages map to parent FS 8 + Purpose contact-queue bullet; child Linear AC empty — plan cites parent AC 9 in UAT fitness.
+
+## Findings
+
+### acceptable — Scope gate closure (`agent.py`)
+
+- **Severity:** acceptable
+- **Location:** `[scope-gate]` comment; ticket `## Scope` + plan Files Changed
+- **Finding:** Prior gate correctly flagged `CONTACT_AGENT` wiring; Scope now includes optional `request_type` on `do_task`; plan Stage 1 matches.
+- **Recommendation:** None.
+
+### discuss — Build ordering vs AST-2217
+
+- **Severity:** discuss
+- **Location:** Boundaries / Stage 2 (`timesheet_state`, attribution registry)
+- **Finding:** Plan assumes AST-2217 landed (`update_dispatch_ledger` accepts `timesheet_state`, `do_task`→`_send_to_server` attribution path, `TIMESHEET_REQUEST_TYPES`).
+- **Recommendation:** Chuckles merge/build order: #1 UT before #4 build, or engineer confirms ftr carries #1 schema — not a plan rewrite.
+
+### acceptable — Ledger close before post-LLM work (land / Slack)
+
+- **Severity:** acceptable
+- **Location:** Stage 2b try/close vs current `land_results` block after `do_task`
+- **Finding:** Close sits after primary + follow-up `do_task`, before `out = {…}` (and thus before `contact_land_meteorite`); matches parent AC 9 focus on the Estelle LLM timesheet row, not ancillary land calls.
+- **Recommendation:** Betty AC 9 stub should assert LLM-recorded row only; flag if land ever records billable rows without `batch_id`.
+
+### discuss — Child `## Acceptance criteria` empty on Linear
+
+- **Severity:** discuss
+- **Location:** AST-2220 Description
+- **Finding:** Parent AC 9 is the operative bar; plan `## UAT fitness` quotes it.
+- **Recommendation:** Optional dispatch hygiene: paste child AC checkbox mirroring parent AC 9.
+
+context_tokens≈32000
