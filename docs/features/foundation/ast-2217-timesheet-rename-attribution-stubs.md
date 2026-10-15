@@ -198,3 +198,63 @@ def get_receipt(external_ids: List[str], api_key: str) -> List[Dict[str, Any]]:
 ## Estimate
 
 Confirm Chuckles estimate: 5 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-2217
+**Overall:** APPROVED
+**Corpus:** b7ab2203048ce0beb2869a12200ab7fa696c8066
+**Publish ref:** `sub/AST-2215/AST-2217-timesheet-rename-attribution-stubs` @ `4c2a680bd02a6eb5d2a4e24331b407004f8f25e6`
+
+## Canon scores
+
+patt.entity.batch-processing | A | | 
+stat.dispatch.entity-state-bound | A | | 
+
+## Traceability
+
+Parent AC: 1,3,4,6,7(11) → N/A (AST-2218/2219/2220); 2 → Stages 2–3 + readers; 5 (stub half) → Stages 1,4; 7 (COALESCE) → Stage 2; 8 → Stages 3–4; all stages trace to child Scope / parent FS 5–6,9.
+
+## Findings
+
+### discuss — Canon Scope gap (`astral.config.config-source-of-truth`)
+
+- **Severity:** discuss
+- **Location:** Stage 1 `config.py` registries
+- **Finding:** New `FETCH_TIMESHEET_CONFIG`, request-type / receipt-field / ledger-state registries plainly belong in config-as-SSOT; id not on frozen Citations list (only batch-processing + entity-state-bound).
+- **Recommendation:** Archie may amend Canon Scope at Discussion for Radia comparability; plan behavior already lands literals in `config.py` only.
+
+### discuss — Frozen id alias (`stat.dispatch.entity-state-bound`)
+
+- **Severity:** discuss
+- **Location:** Linear Citations vs `canon/directives/active/stat.dispatch.entity-state-bound.md` (`id: astral.dispatch.entity-state-bound`)
+- **Finding:** Ticket cites `stat.dispatch…`; clerk index resolves `astral.dispatch.entity-state-bound`. Scored intent against statute body; list slug mismatch may confuse column diff tooling.
+- **Recommendation:** Align frozen list to clerk id or document alias; no plan text change required.
+
+### discuss — Child `## Acceptance criteria` empty on Linear
+
+- **Severity:** discuss
+- **Location:** AST-2217 Description
+- **Finding:** Acceptance bullets live on parent AST-2215; plan maps slices via `## UAT fitness` + stages (appropriate for child #1).
+- **Recommendation:** Optional dispatch-parent hygiene: paste numbered child AC mirroring parent checks this ticket owns; not blocking build.
+
+### acceptable — Lightweight ledger batching vs full `batch_id` lock columns
+
+- **Severity:** acceptable
+- **Location:** Stage 2 decision note; parent Architectural definition
+- **Finding:** `claim_ledger_timesheet_fetching` / `FETCHING` without `dispatch_ledger` lock columns is Susan’s documented epic choice; release/`finally` deferred to AST-2218 runner per Boundaries.
+- **Recommendation:** None for this child.
+
+### acceptable — `## UAT fitness` on a feature plan
+
+- **Severity:** acceptable
+- **Location:** Plan header
+- **Finding:** Not UAT-thin mode; section still aids AC 2/5/8 traceability and sibling partition.
+- **Recommendation:** None.
+
+context_tokens≈22000
+```
+
+```text
+
