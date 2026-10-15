@@ -245,3 +245,18 @@ AC1→Stage 1 §2–7 verify; AC2→Stage 1 `draft_resume_base` row + verify; AC
 - Plan Discuss: zero completed `[plan-discuss]` rounds; status `Plan Ready`.
 
 context_tokens≈24000
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1201/AST-2221-base-resume-chain-registry-and-seed-prompts`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| plan | `65663db21` | Plan doc |
+| Joan | `cd90b642f` | validate — plan approved |
+| 1 | `4052fca21` | Register nine hops, chain/ERROR states, `requested_resume`, stage-generic resolvers |
+| 2 | `1bf9eea06` | Seed nine Candidate Artifacts `agent_task` rows + `run_next` |
+
+**Tip:** `1bf9eea06`
+
+AC 1–6 verified locally via the ticket `python -c` one-liners (plus `craft_get_rubric` regression and `REQUESTED_RESUME.<hop>` claim-label check). No `src/core/*`.
