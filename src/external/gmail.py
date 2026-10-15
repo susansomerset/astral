@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import base64
 import os
+from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from typing import TypedDict
 
@@ -89,13 +90,28 @@ _LIST_PAGE_SIZE = 500  # Gmail API page size only — not a result cap; paginate
 # Public
 # ---------------------------------------------------------------------------
 
-def send_email(to: str, subject: str, body: str) -> bool:
-    """Send a plain-text email via the Gmail API. Returns True on success."""
+def send_email(to: str, subject: str, body: str, attachments: dict[str, str] | None = None) -> bool:
+    """Send a plain-text email via the Gmail API. Returns True on success.
+
+    ``attachments`` maps filename -> text; each becomes a text/plain attachment
+    on a multipart/mixed message. None or empty sends the single-part message.
+    """
     require_controlled_external_io("gmail.send_email")
     try:
         service = _build_service()
 
-        msg = MIMEText(body, "plain")
+        if attachments:
+            # multipart/mixed: body part first, then one text/plain attachment per file
+            msg = MIMEMultipart("mixed")
+            msg.attach(MIMEText(body, "plain"))
+            for filename, content in attachments.items():
+                part = MIMEText(content, "plain")
+                # add_header quotes the filename -> attachment; filename="<name>"
+                part.add_header("Content-Disposition", "attachment", filename=filename)
+                msg.attach(part)
+        else:
+            # No attachments: same single-part message as before AST-2213
+            msg = MIMEText(body, "plain")
         msg["to"] = to
         msg["from"] = _GMAIL_USER
         msg["subject"] = subject
