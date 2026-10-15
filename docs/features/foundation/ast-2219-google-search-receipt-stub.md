@@ -113,7 +113,17 @@ record_search_timesheet_entry(
 
 Confirm Chuckles estimate: 2 — agree
 
+## Review (build)
+
+**Built @ `781924332`** — `origin/sub/AST-2215/AST-2219-google-search-receipt-stub` (`781924332421f6adced65dc897183d53262e3c40`)
+
+- Stage 1: `GoogleCseSearchResult` + structured `search_google_cse` return; zero-stub `get_receipt` (`platform_cost=None`).
+- Stage 2: `_get_receipt_fn` routes `google_cse`; fetch runner key exception for search provider; optional entity on `record_search_timesheet_entry`.
+- Stage 3: both roster CSE sites unpack result and record `DISPATCH_SEARCH` (resolve skips record when `log_batch_id` unset).
+- Out of scope: OpenRouter/daemon/provision (2218), contact ledger (2220). Betty owns test/bible in Scope.
+
 ## Joan validate
+
 
 ```text
 [plan-rubric]
