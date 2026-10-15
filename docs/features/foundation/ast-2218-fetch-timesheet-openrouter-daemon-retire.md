@@ -284,3 +284,69 @@ Child AC 1→S3–S4; 2→N/A (#1 regression); 3→S1,S4,S5; 4→S4; 5→S2 (+#1
 
 context_tokens≈42000
 ```
+
+## Radia review
+
+```text
+[code-rubric]
+**Ticket:** AST-2218
+**Publish ref:** `6d2a28e8a040ffc6f5892ccf37be7af5e84bc9b4` (`origin/sub/AST-2215/AST-2218-fetch-timesheet-openrouter-daemon-retire`)
+**Corpus:** b7ab2203048ce0beb2869a12200ab7fa696c8066
+**Overall:** CLEAN
+
+## Canon scores
+
+patt.entity.batch-processing | A | |
+stat.dispatch.entity-state-bound | A | |
+stat.logging.info.dispatcher | A | |
+stat.logging.warning | A | |
+stat.logging.error | A | |
+stat.logging.debug | A | |
+
+## Column diff vs plan stage
+
+(aligned) — Joan: all A @ plan tip `2beb713da2b44e3f3862186af0215f4079b35806`; build lands Stages 1–5 through tip `6d2a28e8a` (+ Betty tests/bibles).
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+- **Provision `auto_mode=False` vs due filter** — `ensure_fetch_timesheet_dispatch_task` saves `auto_mode` from `FETCH_TIMESHEET_CONFIG` (false); `_fetch_timesheet_due_tasks` only considers rows with `auto_mode` true (same shape as `_meteorite_email_due_tasks`). Betty due test seeds `auto_mode=True` with an explicit comment. Fresh provision alone never enters the tick due merge until AUTO is enabled on the row (admin / ops).
+  - **@susan:** Is CLICK-seeded `fetch_timesheet` + manual AUTO enable the intended production path, or should provision or due logic treat this poller like a special case?
+  - **Default:** keep current behavior (matches mailbox seed law + plan Stage 4 “`auto_mode=0`” on provision); document ops step to enable AUTO when ready.
+
+- **Vacuous `RECEIPTED` on zero timesheet rows** — `run_fetch_timesheet` Stage 3g: empty `batch_rows` → `all_done` true → `RECEIPTED` (comment cites plan). Joan flagged vs parent AC6 “all its calls.”
+  - **Default:** no product change unless UAT hits a closed ledger with zero `service_timesheet` rows; Betty tests use batches with calls.
+
+### advisory
+
+- **Sibling stack in three-dot diff:** vs `origin/dev`, diff includes AST-2217 + AST-2220 (resolved) product/tests/docs plus epic plan docs — expected before siblings merge to `dev`. AST-2218-owned product surface (commits `9d92ace18`…`bcfc70a72`, plus test bible): `config.py` fold/helpers, `openrouter.py`, `timesheets.py`, `dispatcher.py`, `agent_task.json`, provision script; `contact.py` delta in range is AST-2220 resolve carry (+16 lines), not 2218 scope.
+- **Canon Scope observation:** `astral.config.config-source-of-truth` governs Stage 1 fold + `agent_task.json` but is off the frozen list (Joan plan discuss unchanged).
+- **Runner internal exception:** `run_fetch_timesheet` catches, logs `logger.exception`, returns `total_errors=1` without re-raising; dispatcher `fetch_timesheet` branch may still close its own run ledger as `COMPLETED` while summary carries errors — counts are in `accumulated`; confirm UAT expectations if “failed run” should flip dispatch ledger status.
+- **`get_receipt` length mismatch:** `zip(ids, receipts)` silently drops trailing ids if a stub returns fewer receipts than ids — low risk if externals preserve order/length; worth a defensive assert or failed count if seen in UT.
+
+## What's solid
+
+- **AC1 / daemon retire:** No `threading.Thread` in `timesheets.py`; no `start_batch_openrouter_platform_reconcile` in `src/`; `get_generation_stats` / `get_generation_record` removed (comment-only mention in `openrouter.py` docstring).
+- **Stage 2:** OpenRouter `get_receipt` uses `TIMESHEET_RECEIPT_FIELDS`, never raises; success / `not_ready` / `error` paths; `__all__` updated.
+- **Stage 3:** `record_timesheet_entry` write-only; `run_fetch_timesheet` claim → receipt by `provider` → `update_timesheet_platform` for applied receipts (including stub null cost); per-batch `RECEIPTED` vs `NEW`; `finally` releases only rows still `FETCHING`; `record_search_timesheet_entry` for AST-2219 without roster wiring.
+- **Stage 4:** `ensure_*` / `provision_*`; `_fetch_timesheet_due_tasks` + tick merge; dedicated `_dispatch_one_body` branch with `asyncio.to_thread(run_fetch_timesheet, …)`; `_persist_dispatch_ledger_close` sets `timesheet_state="NEW"` and drops reconcile thread start.
+- **Stage 5:** Provision script matches plan.
+- **Boundaries:** No `google_cse` / `roster` / contact ledger work in 2218 commits; reconcile constants / pending-gen DB helpers not removed.
+- **Logging:** Debug joints on runner and `get_receipt`; warnings for missing keys and not-receipted ids; `error_exc` / `exception` on dispatch and runner failure paths; task-completed INFO via existing `_persist_dispatch_ledger_close` path.
+
+## Recommended actions (Chuckles / downstream — not executed by Radia)
+
+- Append artifact; `docs(AST-2218): Radia review — clean`; push; post slim upshot `--as radia`; **Review Posted** → datt PROCEED to User Testing if no other gates.
+- Optional: capture Susan answer on `auto_mode` / due in parent or ops doc when she weighs in.
+
+context_tokens≈45000
+```
