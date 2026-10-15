@@ -378,3 +378,66 @@ context_tokens≈52000
 **Tip:** `5ac19a088`
 
 Stage 4 smoke (AC 8–13) green locally. AC 14: `TestAst972*` / consult routing / AST-2006 trigger|retry|hop green; `TestAst2006…[entry_fallback]` expects pre-stage `ERROR_CRAFT_GET_RUBRIC` for `REQUESTED_RESUME` — product now correctly lands `ERROR_SHAPE_THE_STORY` (Betty: update want). No `tests/` edits this ticket.
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-2222
+**Publish ref:** `93bb6c4e80c078855bc03aeb77a6d1359360eda9` (`origin/sub/AST-1201/AST-2222-stage-generic-candidate-chain-runner`)
+**Corpus:** b7ab2203048ce0beb2869a12200ab7fa696c8066
+**Overall:** CLEAN
+
+### Canon scores
+
+patt.task.daisy-chain | A | | |
+patt.task.dispatch-retry | A | | |
+patt.entity.batch-processing | A | | |
+patt.artifact.write-operative | A | | |
+stat.batch.claim-process-release | A | | |
+stat.logging.debug | A | | |
+stat.logging.error | A | | |
+
+*(Scored `stat.batch.claim-process-release` against corpus body `astral.batch.claim-process-release` — same pairing Joan documented.)*
+
+### Column diff vs plan stage
+
+(aligned)
+
+### Frame diff
+
+- [ ] **Acceptance criteria / AC 14:** Description requires green `pytest tests/component/core/test_candidate.py tests/component/core/test_dispatcher.py tests/component/core/test_consult.py` (whole modules); QA manifest lists named classes only. Engineer should confirm whether UT gate is manifest-only or full AC 14 file list.
+
+### Findings
+
+#### fix-now
+
+(none on scored canon or in-scope product paths)
+
+#### discuss
+
+- **Location:** `tests/component/core/test_candidate.py` — `TestAst2006RequestedArtifactsEmptyTokens::test_goes_straight_to_hop_error[entry_fallback]` vs `run_requested_artifacts_dispatch` @ `REQUESTED_RESUME`
+- **Finding:** Param expects `ERROR_CRAFT_GET_RUBRIC` when `trigger_state=REQUESTED_RESUME` and `empty_token_task` is absent; with stage resolution from `bare_trigger`, `start_key` is `shape_the_story`, so empty-token routing correctly uses `ERROR_SHAPE_THE_STORY` (`TASK_CONFIG[(empty_token_task or start_key)]`). Build stub notes this; ticket did not edit tests.
+- **Question @susan:** Is AC 14 satisfied by the Betty manifest subset, or must the three whole test modules be green before User Testing?
+- **Default:** Treat as test drift — Betty updates `entry_fallback` `want` to `ERROR_SHAPE_THE_STORY` (and optionally add that case to the AST-2222 manifest or run full AC 14 `pytest` in test-child); no product revert of stage-generic empty-token routing.
+
+#### advisory
+
+- **Sibling product carry:** Three-dot diff vs `origin/dev` includes AST-2221 registry/seed (`src/utils/config.py`, `data/admin/agent_task.json`, AST-2221 plan + config/catalog tests). Expected after `sync` commit `c5c145c94`; AST-2222 scope is still the three `src/core/*` files — not scored as cross-ticket product smuggling.
+- **Frozen citation slug:** `stat.batch.claim-process-release` vs clerk `astral.batch.claim-process-release` — normalize optional for Archie.
+- **AC 6 / AC 7 (verified on tip):** `rg` ban list and `CANDIDATE_STAGE_DISPATCH["requested_artifacts"]` absent from `src/core/dispatcher.py` and `src/core/consult.py`; `draft_title_patterns` / `draft_resume_base` only in consult persist allowlist (AC 6 carve-out). `candidate.py` still references `requested_artifacts` for backward-compatible fallback and chain refactor — out of AC 7 scope.
+- **Plan fidelity:** Stage-generic `_candidate_stage_for_trigger`, `candidate_stage_dispatch_claim_states`, `is_candidate_stage_chain_task`, generalized dispatcher claim expansion, consult `stage_triggers` + resume routing match approved plan; `TestAst2222StageGenericRunner` covers helpers, persist, runner retry/resume, seeded AC 8–11 smoke, consult routes.
+- **Estimate footprint:** Estimate **5** still fits (three core modules + substantial component test file; config carry is sibling).
+
+### What's solid
+
+- Claim expansion and consult resume use `{e["trigger_state"] for e in CANDIDATE_STAGE_DISPATCH.values()}` and `candidate_stage_dispatch_claim_states(bare)` — no hop frozensets in dispatcher/consult.
+- `_persist_craft_dispatch_success`: explicit `draft_title_patterns` → `contact.title_patterns`; candidate hops without `artifact_key` no-op; assembler path unchanged via `draft_resume_base` / `artifact_key`.
+- `_requested_stage_failure_target` + mocked tests document `REQUESTED_RESUME` → `REQUESTED_RESUME_RETRY` → hop `ERROR_<HOP>` without new hop-specific failure code.
+
+### Recommended actions (downstream only)
+
+- Chuckles: append artifact, commit `docs(AST-2222): Radia review — …`, post slim upshot `--as radia`.
+- If Susan confirms full AC 14: Betty fixes `entry_fallback` (and any other whole-file regressions) before **User Testing**; else document manifest-only UT gate on the ticket.
+- datt: **REVIEW** → `resolve-child` only if Susan wants product changes (none recommended); otherwise Betty test patch + re-test then **PROCEED** path.
+
+context_tokens≈42000
