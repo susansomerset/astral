@@ -698,3 +698,51 @@ git checkout HEAD -- data/contact_estelle_activity.json
 **Pass criterion:** items 1–3. Narrowed run, not the zero-arg harness / branch-lock gate.
 
 **Bible shasum (after publish):** `git show origin/sub/AST-2144/AST-2152-code-mode-reply-placement:docs/test-bible/core/contact.md | shasum`
+
+### AST-2212 · AST-2206 (context commands wired through Contact: channel candidate, refusal, `/draft-`, draft-thread revise)
+
+**Parent:** [AST-2206](https://linear.app/astralcareermatch/issue/AST-2206). **Publish:** `origin/sub/AST-2206/AST-2212-contact-wiring-draft-thread`. Plan: `docs/features/contact/ast-2212-contact-wiring-draft-thread.md`. Config / prompts: [`../utils/config.md`](../utils/config.md) § AST-2210. Show/save handlers + lookup: [`candidate.md`](candidate.md) § AST-2211. Threaded fetch: [`../external/slack.md`](../external/slack.md) § AST-2211.
+
+`_run_contact_command`: a `private_channel_only` entry runs only on a private-channel (`group`) @mention, on the channel's mapped candidate (`get_candidate_id_for_slack_channel`), never the sender's. DM, public or mpim → `private_channel_only_reply_text` (public/mpim refused at the AST-2061 gate before resolve); unmapped → `unmapped_channel_reply_text`; gate runs before the empty-payload usage check. `payload_optional` runs the handler on an empty payload; `artifact_key=` is passed only when the entry declares one. `contact_command_draft_context`: full channel history with thread replies (marked `(thread reply)`), name / context (six legacy piece fields dropped) / contact, current body via read-current → `do_task(draft_task, index=cid)` under its own `dispatch_ledger` batch (`contact-<task>-<uuid>`, COMPLETED/FAILED, `log_batch_id` reset in `finally`); never saves; reply = draft + note, posted under the command message. Draft thread: a non-command private-channel @mention whose thread root (refreshed `load_slack_conversation_context`) is a `/draft-` command runs `run_contact_draft_revise_turn` (revise task, whole thread only, ledgered) instead of the Estelle turn and skips paste recovery.
+
+| Area | Component tests |
+| --- | --- |
+| AC 5–7 real SQLite: show/save act on X (Susan's own candidate untouched); identical re-save no new version; empty `/save-` → usage, no version | new **`TestAst2212ContactContextWiring::test_show_save_act_on_channel_candidate_real_db`** |
+| Mapped candidate + `artifact_key=` + payload_optional; entries without a key (`/add-job`) get no kwarg and keep the sender's candidate | **`…::test_handler_gets_mapped_candidate_and_artifact_key`**, **`…::test_entry_without_artifact_key_gets_no_kwarg_and_sender_candidate`** |
+| AC 12 unmapped reply, no handler | **`…::test_unmapped_private_channel_posts_unmapped_reply_only`** |
+| AC 13 refusal: public + mpim (no resolve); DM incl. empty `/save-` (gate before usage); public non-command + failed type lookup stay silent | **`…::test_public_or_mpim_mention_gets_refusal_without_resolve`** (2), **`…::test_dm_gets_refusal_even_with_empty_save`** (2), **`…::test_public_non_command_and_failed_lookup_stay_silent`** |
+| AC 8 / 9 draft: threaded history, read-current body, no stale blob / blob base_resume, one COMPLETED ledger batch on X, batch reset, reply threaded under the command, no save | **`…::test_draft_end_to_end_threads_reply_ledgers_run_saves_nothing`** |
+| Draft failure posts Estelle's sentence + FAILED ledger + warning; empty draft posts nothing; misses (unknown key, no / blank candidate, no stored channel) run nothing; exception still resets the batch | **`…::test_draft_failure_*`**, **`…::test_draft_empty_text_posts_nothing`**, **`…::test_draft_misses_run_nothing`** (3), **`…::test_draft_without_stored_channel_runs_nothing`**, **`…::test_draft_exception_still_resets_batch`** |
+| AC 10 revise: refreshed root lookup, revise task (not Estelle turn), whole draft thread only, in-thread reply + revised draft, paste recovery skipped; failure posts no revise reply; unmapped → unmapped reply | **`…::test_mention_in_draft_thread_runs_revise_turn`**, **`…::test_revise_failure_posts_no_revise_reply`**, **`…::test_revise_in_unmapped_channel_posts_unmapped_reply`** |
+| Non-draft thread → normal turn; command inside a draft thread is a command (no root lookup) | **`…::test_non_draft_thread_runs_normal_turn`**, **`…::test_command_in_draft_thread_is_a_command`** |
+| AC 11 un-mentioned thread reply → `not_dm`, nothing runs | **`…::test_unmentioned_thread_reply_drops`** |
+| Unchanged and green: `/add-job` public silent drop | **`TestAst2061PrivateChannelGate`** |
+
+**Live-only (UAT, not component):** AC 8–10's `list_agent_data_runs` / `get_agent_data` counts need a real `do_task`; component tests prove the ledger batch is open around `do_task` with `store_agent_data=True` and the live content carries `ZEBRA-7731`. `_wire` pins `slack_debug_enabled` off — durable debug state leaks from earlier Contact tests otherwise.
+
+**Broken / obsolete this pass:** none (A/B vs `ftr` `contact.py`: no new red across `test_contact.py`, `test_api_contact.py`, `test_candidate.py`, `test_slack.py`; 44 pre-existing failures unchanged).
+
+**Integration:** none — do not invent.
+
+## QA test manifest — AST-2212
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_contact.py::TestAst2212ContactContextWiring \
+  tests/component/core/test_contact.py::TestAst2061PrivateChannelGate \
+  tests/component/core/test_contact.py::TestAst2035ContactCommandIntercept \
+  tests/component/core/test_contact.py::TestAst2152CheckStatusEndToEnd \
+  tests/component/core/test_contact.py::TestAst1788AdminSlackChannelOrchestration \
+  tests/component/core/test_candidate.py::TestAst2211ContactContextHandlers \
+  tests/component/external/test_slack.py::TestAst2211FullHistoryThreadReplies \
+  tests/component/utils/test_config.py::TestAst2210ContextCommandRegistry \
+  -q
+# AC 3 — must print nothing
+grep -rnE '(draft|save|show)-(strengths|dealbreakers|priorities|ideal-day|bio-summary|backstory)' src/core/
+# AC 4 — must print nothing
+git diff origin/dev...HEAD --stat -- src/core/intake.py
+```
+
+**Pass criterion:** 130 passed; AC 3 / AC 4 empty. Not the zero-arg harness. Use `/home/susan/astral/.venv/bin/python` on this worktree (`asyncpg` / `nh3`); `git restore data/contact_estelle_activity.json` after the run.
+
+**Bible shasum (after publish):** `git show origin/sub/AST-2206/AST-2212-contact-wiring-draft-thread:docs/test-bible/core/contact.md | shasum`.

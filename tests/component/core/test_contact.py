@@ -13,7 +13,7 @@ import pytest
 
 from src.core import contact as contact_mod
 from src.core import candidate as candidate_mod
-from src.utils.config import CONTACT_CONFIG, CONTACT_TASK_CONFIG, TASK_CONFIG
+from src.utils.config import CONTACT_CONFIG, CONTACT_DRAFT_THREAD_CONFIG, CONTACT_TASK_CONFIG, TASK_CONFIG
 
 
 def _sign(secret: str, timestamp: str, body: bytes) -> str:
@@ -3205,3 +3205,330 @@ class TestAst2152CheckStatusEndToEnd:
         assert out["hear_ack_post"]["ok"] is True
         post.assert_called_once()
         assert post.call_args.kwargs["text"] == CONTACT_CONFIG["hear_ack_reply_text"]
+
+
+# AST-2212 (parent AST-2206): context commands wired through Contact. Branches: private_channel_only
+# gate — public / mpim mention → refusal (no resolve), failed type lookup stays silent, DM → refusal
+# before the empty-payload usage check, unmapped private channel → unmapped reply (no handler), mapped
+# → handler on the channel's candidate with artifact_key= (never for entries without one);
+# payload_optional runs on an empty payload; /draft- handler misses / ledgered run / failure / batch
+# reset; draft-thread root detection (refresh, draft vs non-draft root, command in thread) → revise turn
+# post rule, unmapped; paste recovery skipped; un-mentioned thread reply drops at not_dm.
+_AST2212_CTYPES = {"CPRIV": "group", "CUNMAP": "group", "CPUB": "channel", "CMPIM": "mpim"}
+# Candidate X: the stale strengths blob and blob base_resume must never reach the draft packet / ctx.
+_AST2212_ROW = {
+    "astral_candidate_id": "X", "first": "Dana", "last": "Q", "full": "Dana Q", "pronouns": "she/her",
+    "candidate_data": {
+        "contact": {"slack_channel_id": "CPRIV"},
+        "context": {"raw_resume": "RESUME-TEXT", "strengths": "STALE-BLOB"},
+        "artifacts": {"base_resume": {"x": 1}},
+    },
+}
+
+
+class TestAst2212ContactContextWiring:
+    TS = "5.0"
+    KEY = "candidate.context.strengths"
+    CTYPES = _AST2212_CTYPES
+    ROW = _AST2212_ROW
+    # Channel CPRIV: one plain thread (root 1.0, reply ZEBRA-7731) and one /draft- thread (root 5.0).
+    HISTORY = (
+        {"ts": "1.0", "user": "U2", "text": "hello", "reply_count": 1},
+        {"ts": "2.0", "thread_ts": "1.0", "user": "U2", "text": "ZEBRA-7731"},
+        {"ts": "5.0", "user": "U1", "text": "<@UBOT> /draft-strengths", "reply_count": 2},
+        {"ts": "6.0", "thread_ts": "5.0", "bot_id": "B1", "text": "draft v1"},
+        {"ts": "7.0", "thread_ts": "5.0", "user": "U1", "text": "<@UBOT> is the spitting contest relevant?"},
+    )
+
+    def setup_method(self) -> None:
+        contact_mod._seen_event_ids.clear()
+
+    def _wire(self, monkeypatch: pytest.MonkeyPatch) -> dict:
+        """Listen on; sender U1 is bound to her own candidate SUSAN; CPRIV maps to X. Returns mocks."""
+        import src.data.contact_estelle_activity as activity_mod
+
+        monkeypatch.setitem(CONTACT_CONFIG, "listen_enabled", True)
+        # Durable debug state can leak from earlier Contact tests; pin it so debug= asserts hold.
+        monkeypatch.setattr(contact_mod, "slack_debug_enabled", lambda: False)
+        monkeypatch.setattr(activity_mod, "record_estelle_activity", MagicMock())
+        m = {
+            "resolve": MagicMock(return_value={"astral_candidate_id": "SUSAN", "state": "ACTIVE", "created": False}),
+            "post": MagicMock(return_value={"ok": True, "ts": "9.9"}),
+            "lookup": MagicMock(side_effect=lambda ch, debug=False: {"CPRIV": "X"}.get(ch)),
+            "paste": MagicMock(return_value={"applied": False}),
+        }
+        monkeypatch.setattr(contact_mod, "fetch_channel_type", lambda ch: self.CTYPES[ch])
+        monkeypatch.setattr(contact_mod, "resolve_slack_user", m["resolve"])
+        monkeypatch.setattr(contact_mod, "contact_post_message", m["post"])
+        monkeypatch.setattr(contact_mod, "get_candidate_id_for_slack_channel", m["lookup"])
+        monkeypatch.setattr(contact_mod, "try_meteorite_apply_paste_from_slack", m["paste"])
+        m["turn"] = _stub_estelle_turn(monkeypatch)
+        return m
+
+    def _edges(self, monkeypatch: pytest.MonkeyPatch, parsed: dict | None = None, success: bool = True) -> dict:
+        """Draft/revise edges: candidate row, channel history, current body, ledger, do_task (records batch)."""
+        import src.core.agent as agent_mod
+        from src.utils.logging import log_batch_id
+
+        e: dict = {"tasks": [], "ledger": [], "saves": MagicMock()}
+        e["history"] = MagicMock(side_effect=lambda **kw: [dict(x) for x in self.HISTORY])
+        e["load"] = MagicMock(
+            side_effect=lambda **kw: {"messages": [dict(x) for x in self.HISTORY if kw["thread_ts"] in (x["ts"], x.get("thread_ts"))]}
+        )
+        monkeypatch.setattr(contact_mod, "get_candidate", lambda cid: self.ROW if cid == "X" else None)
+        monkeypatch.setattr(contact_mod, "fetch_full_conversation_history", e["history"])
+        monkeypatch.setattr(contact_mod, "load_slack_conversation_context", e["load"])
+        monkeypatch.setattr(contact_mod, "get_candidate_current", lambda cid, key: f"{cid} saved body")
+        monkeypatch.setattr(candidate_mod, "get_candidate_current", lambda cid, key: f"{cid} saved body")
+        monkeypatch.setattr(candidate_mod, "save_candidate_data", e["saves"])
+        monkeypatch.setattr(contact_mod.database, "save_dispatch_ledger", lambda *a, **kw: e["ledger"].append(("save", a, kw)))
+        monkeypatch.setattr(contact_mod.database, "update_dispatch_ledger", lambda *a, **kw: e["ledger"].append(("update", a, kw)))
+        monkeypatch.setattr(agent_mod, "compute_batch_cost", lambda _b: 0.0)
+
+        async def fake_do_task(task_key, *, live_content, index, ctx, debug, store_agent_data):
+            e["tasks"].append({"task_key": task_key, "live": live_content, "index": index, "ctx": ctx,
+                               "store": store_agent_data, "batch": log_batch_id.get()})
+            default = (
+                {"draft": "Steady under pressure.", "note": "Leaned on the channel."}
+                if task_key.startswith("draft_context_") else {"reply": "Fair, cutting it.", "revised_draft": "Steady."}
+            )
+            return {"success": success, "parsed_response": default if parsed is None else parsed,
+                    "agent_performance": {"status": "success" if success else "failure"}, "error": None if success else "llm_down"}
+
+        monkeypatch.setattr(agent_mod, "do_task", fake_do_task)
+        return e
+
+    def _handle(self, eid: str, text: str, *, channel: str = "CPRIV", etype: str = "app_mention",
+                ts: str = TS, thread_ts: str | None = None, channel_type: str | None = None) -> dict:
+        ev = {"type": etype, "user": "U1", "channel": channel, "ts": ts, "text": text}
+        if thread_ts:
+            ev["thread_ts"] = thread_ts
+        if channel_type:
+            ev["channel_type"] = channel_type
+        return contact_mod.handle_slack_event({"event_id": eid, "event": ev}, debug=False)
+
+    @staticmethod
+    def _texts(post: MagicMock) -> list:
+        return [c.kwargs.get("text") for c in post.call_args_list]
+
+    # --- runner + gates (ticket AC 5–7, 12, 13) ---
+
+    def test_show_save_act_on_channel_candidate_real_db(self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch) -> None:
+        # AC 5 / 6 / 7: Susan posts in X's channel; show + save land on X, never on SUSAN.
+        db = sqlite_in_memory
+        for cid in ("X", "SUSAN"):
+            db.save_candidate(cid, state="ACTIVE_SEARCH", candidate_data={})
+        candidate_mod.save_candidate_data("SUSAN", self.KEY, "SUSAN strengths")
+        m = self._wire(monkeypatch)
+
+        def versions(cid: str) -> int:
+            return len(db.list_artifacts("candidate", cid, "strengths", current_only=False))
+
+        self._handle("Ev-2212-show0", "<@UBOT> /show-strengths")
+        assert self._texts(m["post"])[-1] == contact_mod.format_contact_reply_text("No strengths saved yet for this candidate.")
+        self._handle("Ev-2212-save", "<@UBOT> /save-strengths Steady under pressure.")
+        assert candidate_mod.get_candidate_current("X", self.KEY) == "Steady under pressure."
+        assert (versions("X"), versions("SUSAN")) == (1, 1)
+        self._handle("Ev-2212-save-again", "<@UBOT> /save-strengths Steady under pressure.")
+        assert versions("X") == 1
+        self._handle("Ev-2212-show1", "<@UBOT> /show-strengths")
+        assert self._texts(m["post"])[-1] == contact_mod.format_contact_reply_text("Steady under pressure.")
+        # AC 7: no text → usage reply, no handler, no version.
+        self._handle("Ev-2212-save-empty", "<@UBOT> /save-strengths")
+        assert self._texts(m["post"])[-1].startswith("Usage:")
+        assert versions("X") == 1
+        m["turn"].assert_not_called()
+
+    def test_handler_gets_mapped_candidate_and_artifact_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        m = self._wire(monkeypatch)
+        show = MagicMock(return_value={"ok": True, "meteorite_id": None, "error": None, "reply_text": "body"})
+        monkeypatch.setattr(candidate_mod, "contact_command_show_context", show)
+        self._handle("Ev-2212-kwarg", "<@UBOT> /show-strengths")
+        # payload_optional: empty payload still runs the handler.
+        assert show.call_args.args == ("X", "")
+        assert show.call_args.kwargs["artifact_key"] == self.KEY
+        m["lookup"].assert_called_once_with("CPRIV", debug=False)
+
+    def test_entry_without_artifact_key_gets_no_kwarg_and_sender_candidate(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        m = self._wire(monkeypatch)
+        handler = MagicMock(return_value={"ok": True, "meteorite_id": 7, "error": None})
+        monkeypatch.setattr(contact_mod, "_resolve_contact_task_handler", MagicMock(return_value=handler))
+        self._handle("Ev-2212-addjob", "<@UBOT> /add-job https://x.io/1")
+        assert handler.call_args.args[0] == "SUSAN"
+        assert "artifact_key" not in handler.call_args.kwargs
+        m["lookup"].assert_not_called()
+
+    def test_unmapped_private_channel_posts_unmapped_reply_only(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # AC 12
+        m = self._wire(monkeypatch)
+        show = MagicMock()
+        monkeypatch.setattr(candidate_mod, "contact_command_show_context", show)
+        out = self._handle("Ev-2212-unmapped", "<@UBOT> /show-strengths", channel="CUNMAP")
+        assert self._texts(m["post"]) == [contact_mod.format_contact_reply_text(CONTACT_CONFIG["unmapped_channel_reply_text"])]
+        show.assert_not_called()
+        assert out["estelle_turn"]["command"]["mode"] == "unmapped"
+
+    @pytest.mark.parametrize("channel", ["CPUB", "CMPIM"])
+    def test_public_or_mpim_mention_gets_refusal_without_resolve(self, monkeypatch: pytest.MonkeyPatch, channel: str) -> None:
+        # AC 13
+        m = self._wire(monkeypatch)
+        show = MagicMock()
+        monkeypatch.setattr(candidate_mod, "contact_command_show_context", show)
+        out = self._handle(f"Ev-2212-refuse-{channel}", "<@UBOT> /show-strengths", channel=channel)
+        assert self._texts(m["post"]) == [contact_mod.format_contact_reply_text(CONTACT_CONFIG["private_channel_only_reply_text"])]
+        assert out["accepted"] is True and out["reason"] == "private_channel_only"
+        show.assert_not_called()
+        m["resolve"].assert_not_called()
+
+    @pytest.mark.parametrize("text", ["/show-strengths", "/save-strengths"])
+    def test_dm_gets_refusal_even_with_empty_save(self, monkeypatch: pytest.MonkeyPatch, text: str) -> None:
+        # AC 13: the gate runs before the empty-payload usage check.
+        m = self._wire(monkeypatch)
+        self._handle(f"Ev-2212-dm-{text}", text, channel="D1", etype="message", channel_type="im")
+        assert self._texts(m["post"]) == [contact_mod.format_contact_reply_text(CONTACT_CONFIG["private_channel_only_reply_text"])]
+        m["lookup"].assert_not_called()
+
+    def test_public_non_command_and_failed_lookup_stay_silent(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        m = self._wire(monkeypatch)
+        out = self._handle("Ev-2212-pub-hello", "<@UBOT> hello", channel="CPUB")
+        assert out == {"accepted": False, "reason": "channel_not_private"}
+        # A failed type lookup may be the private channel itself: no refusal there.
+        monkeypatch.setattr(contact_mod, "fetch_channel_type", MagicMock(side_effect=RuntimeError("missing_scope")))
+        out = self._handle("Ev-2212-pub-err", "<@UBOT> /show-strengths", channel="CPRIV")
+        assert out == {"accepted": False, "reason": "channel_not_private"}
+        m["post"].assert_not_called()
+        m["resolve"].assert_not_called()
+
+    # --- /draft- handler (AC 8 / 9) ---
+
+    def test_draft_end_to_end_threads_reply_ledgers_run_saves_nothing(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from src.utils.logging import log_batch_id
+
+        m = self._wire(monkeypatch)
+        e = self._edges(monkeypatch)
+        self._handle("Ev-2212-draft", "<@UBOT> /draft-strengths")
+        [task] = e["tasks"]
+        assert (task["task_key"], task["index"], task["store"]) == ("draft_context_strengths", "X", True)
+        # AC 9: full history with thread replies (marked), current body via read-current, no stale blob.
+        e["history"].assert_called_once_with(channel="CPRIV", include_thread_replies=True)
+        live = task["live"]
+        assert "ZEBRA-7731" in live and "(thread reply) ZEBRA-7731" in live
+        assert "X saved body" in live and "RESUME-TEXT" in live and "STALE-BLOB" not in live
+        assert "base_resume" not in task["ctx"]["candidate_data"].get("artifacts", {})
+        # AC 8: one ledgered batch on X (what list_agent_data_runs joins on); batch reset after.
+        assert task["batch"].startswith("contact-draft_context_strengths-")
+        assert [x[0] for x in e["ledger"]] == ["save", "update"]
+        assert e["ledger"][0][1][:3] == (task["batch"], "contact-draft_context_strengths", "X")
+        assert e["ledger"][1][2]["status"] == "COMPLETED"
+        assert log_batch_id.get() is None
+        # Reply under the command message; draft then note; nothing saved.
+        call = m["post"].call_args
+        assert call.kwargs["thread_ts"] == self.TS
+        assert call.kwargs["text"] == contact_mod.format_contact_reply_text("Steady under pressure.\n\nLeaned on the channel.")
+        e["saves"].assert_not_called()
+
+    def test_draft_failure_posts_draft_sentence_and_fails_ledger(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        self._wire(monkeypatch)
+        e = self._edges(monkeypatch, parsed={"draft": "Not enough in the channel yet."}, success=False)
+        caplog.set_level("WARNING")
+        out = contact_mod.contact_command_draft_context("X", "", source_id="CPRIV:5.0", artifact_key=self.KEY)
+        assert out == {"ok": False, "meteorite_id": None, "error": "llm_down", "reply_text": "Not enough in the channel yet."}
+        assert e["ledger"][1][2]["status"] == "FAILED"
+        assert any("X | contact draft" in r.getMessage() for r in caplog.records if r.levelname == "WARNING")
+
+    def test_draft_empty_text_posts_nothing(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._wire(monkeypatch)
+        self._edges(monkeypatch, parsed={"draft": "  "})
+        out = contact_mod.contact_command_draft_context("X", "", source_id="CPRIV:5.0", artifact_key=self.KEY)
+        assert (out["ok"], out["reply_text"], out["error"]) == (False, None, "no_draft")
+
+    @pytest.mark.parametrize(
+        ("cid", "key", "error"),
+        [("X", "candidate.artifacts.base_resume", "unknown_artifact_key"), ("NOPE", KEY, "no_candidate"), ("", KEY, "no_candidate")],
+    )
+    def test_draft_misses_run_nothing(self, monkeypatch: pytest.MonkeyPatch, cid: str, key: str, error: str) -> None:
+        self._wire(monkeypatch)
+        e = self._edges(monkeypatch)
+        out = contact_mod.contact_command_draft_context(cid, "", source_id="CPRIV:5.0", artifact_key=key)
+        assert out == {"ok": False, "meteorite_id": None, "error": error, "reply_text": None}
+        assert e["tasks"] == [] and e["ledger"] == []
+
+    def test_draft_without_stored_channel_runs_nothing(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._wire(monkeypatch)
+        e = self._edges(monkeypatch)
+        monkeypatch.setattr(contact_mod, "get_candidate", lambda cid: {"astral_candidate_id": "X", "candidate_data": {}})
+        out = contact_mod.contact_command_draft_context("X", "", source_id="CPRIV:5.0", artifact_key=self.KEY)
+        assert out["error"] == "no_slack_channel" and e["tasks"] == []
+
+    def test_draft_exception_still_resets_batch(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        import src.core.agent as agent_mod
+        from src.utils.logging import log_batch_id
+
+        self._wire(monkeypatch)
+        self._edges(monkeypatch)
+        monkeypatch.setattr(agent_mod, "do_task", AsyncMock(side_effect=RuntimeError("boom")))
+        with pytest.raises(RuntimeError, match="boom"):
+            contact_mod.contact_command_draft_context("X", "", source_id="CPRIV:5.0", artifact_key=self.KEY)
+        assert log_batch_id.get() is None
+
+    # --- Contact draft thread (AC 10 / 11) ---
+
+    def test_mention_in_draft_thread_runs_revise_turn(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        m = self._wire(monkeypatch)
+        e = self._edges(monkeypatch)
+        out = self._handle("Ev-2212-revise", "<@UBOT> is the spitting contest relevant?", ts="7.0", thread_ts=self.TS)
+        e["load"].assert_called_once_with(channel="CPRIV", thread_ts=self.TS, refresh=True, debug=False)
+        m["turn"].assert_not_called()
+        m["paste"].assert_not_called()
+        [task] = e["tasks"]
+        assert (task["task_key"], task["index"]) == (CONTACT_DRAFT_THREAD_CONFIG["revise_task_key"], "X")
+        # Whole draft thread only (the other thread's ZEBRA reply stays out); current body included.
+        assert "draft v1" in task["live"] and "spitting contest" in task["live"] and "ZEBRA-7731" not in task["live"]
+        assert "X saved body" in task["live"]
+        assert task["batch"].startswith("contact-contact_draft_revise-")
+        call = m["post"].call_args
+        assert call.kwargs["thread_ts"] == self.TS
+        assert call.kwargs["text"] == contact_mod.format_contact_reply_text("Fair, cutting it.\n\nSteady.")
+        assert out["estelle_turn"]["command"] == {"id": "draft-strengths", "mode": "revise", "ok": True, "meteorite_id": None, "error": None}
+        e["saves"].assert_not_called()
+
+    def test_revise_failure_posts_no_revise_reply(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        m = self._wire(monkeypatch)
+        e = self._edges(monkeypatch, success=False)
+        out = self._handle("Ev-2212-revise-fail", "<@UBOT> again?", ts="7.0", thread_ts=self.TS)
+        assert len(e["tasks"]) == 1
+        assert out["estelle_turn"]["slack_post"] is None
+        assert all("Fair, cutting it." not in (t or "") for t in self._texts(m["post"]))
+
+    def test_revise_in_unmapped_channel_posts_unmapped_reply(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        m = self._wire(monkeypatch)
+        e = self._edges(monkeypatch)
+        m["lookup"].side_effect = lambda ch, debug=False: None
+        self._handle("Ev-2212-revise-unmapped", "<@UBOT> hm?", ts="7.0", thread_ts=self.TS)
+        assert e["tasks"] == []
+        assert self._texts(m["post"]) == [contact_mod.format_contact_reply_text(CONTACT_CONFIG["unmapped_channel_reply_text"])]
+
+    def test_non_draft_thread_runs_normal_turn(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        m = self._wire(monkeypatch)
+        e = self._edges(monkeypatch)
+        self._handle("Ev-2212-plain-thread", "<@UBOT> thoughts?", ts="3.0", thread_ts="1.0")
+        m["turn"].assert_called_once()
+        assert e["tasks"] == []
+
+    def test_command_in_draft_thread_is_a_command(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        m = self._wire(monkeypatch)
+        e = self._edges(monkeypatch)
+        self._handle("Ev-2212-cmd-in-thread", "<@UBOT> /show-strengths", ts="8.0", thread_ts=self.TS)
+        e["load"].assert_not_called()
+        assert e["tasks"] == []
+        assert self._texts(m["post"]) == [contact_mod.format_contact_reply_text("X saved body")]
+
+    def test_unmentioned_thread_reply_drops(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # AC 11: a plain reply in a private channel is a `message` event → not_dm, nothing runs.
+        m = self._wire(monkeypatch)
+        e = self._edges(monkeypatch)
+        out = self._handle("Ev-2212-nomention", "is it relevant?", etype="message", ts="7.0", thread_ts=self.TS)
+        assert out == {"accepted": False, "reason": "not_dm"}
+        assert e["tasks"] == [] and m["post"].call_count == 0

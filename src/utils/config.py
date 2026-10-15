@@ -60,7 +60,7 @@ Config sections:
   METEORITE_BOT_BLOCKED_NOTIFY_CONFIG — BOT_BLOCKED_SCRAPE_METEORITE Estelle DM notify + nag limits (AST-1561)
   REVIEW_DUPLICATE_METEORITE_CONFIG — Ruth duplicate-review closed outcomes + peer id key (AST-1773)
   SEED_CONFIG — SQL-first seed register (idempotent INSERT tuples per table-purpose); dispatch_task-* are Linear paste only, never auto-executed (AST-1496)
-  CONTACT_CONFIG  — Contact listen + debug flags, Slack env-name contracts, skills ACL, Slack commands registry (AST-1066 / AST-1206 / AST-2035; distinct from TASK_CONFIG)
+  CONTACT_CONFIG  — Contact listen + debug flags, Slack env-name contracts, skills ACL, Slack commands registry incl. 18 context commands generated from CONTACT_CONTEXT_COMMAND_CONFIG (AST-1066 / AST-1206 / AST-2035 / AST-2206; distinct from TASK_CONFIG)
   CANDIDATE_CONTACT_UNIQUENESS_CONFIG — contact uniqueness / within-candidate dedupe field paths + compare rules (AST-1079; sibling to CANDIDATE_LOOKUP_CONFIG)
 """
 
@@ -193,6 +193,12 @@ _CRAFT_RESUME_NORMALIZE_TASK_KEYS = frozenset({
     "craft_resume_base",
     "simple_resume_parse",
 })
+
+# AST-2206: shared by the six draft_context_* tasks (principal Estelle drafts one context piece).
+_CONTACT_DRAFT_RESPONSE_SCHEMA: Dict[str, Any] = {
+    "draft": {"type": "str", "required": True},
+    "note": {"type": "str", "required": False},
+}
 
 # ---------------------------------------------------------------------------
 # Implicit retry substate (AST-1804): {base}_RETRY is valid wherever {base} is a
@@ -1232,6 +1238,83 @@ TASK_CONFIG = {
         "task_type": "CHAT",
         "agent_task": "contact_estelle_turn",
     },
+    # AST-2206: principal Estelle drafts one candidate context piece from the Slack channel
+    # history + resume/profile. Drafting never saves (no artifact_key on purpose).
+    "draft_context_strengths": {
+        "print_label": "Draft Context: Strengths",
+        "response_format": "json",
+        "response_schema": _CONTACT_DRAFT_RESPONSE_SCHEMA,
+        "entity_type": None,
+        "requires_candidate_key": True,
+        "trigger_state": None,
+        "task_type": "CRAFT",
+        "agent_task": "draft_context_strengths",
+    },
+    "draft_context_deal_breakers": {
+        "print_label": "Draft Context: Deal Breakers",
+        "response_format": "json",
+        "response_schema": _CONTACT_DRAFT_RESPONSE_SCHEMA,
+        "entity_type": None,
+        "requires_candidate_key": True,
+        "trigger_state": None,
+        "task_type": "CRAFT",
+        "agent_task": "draft_context_deal_breakers",
+    },
+    "draft_context_priorities": {
+        "print_label": "Draft Context: Priorities",
+        "response_format": "json",
+        "response_schema": _CONTACT_DRAFT_RESPONSE_SCHEMA,
+        "entity_type": None,
+        "requires_candidate_key": True,
+        "trigger_state": None,
+        "task_type": "CRAFT",
+        "agent_task": "draft_context_priorities",
+    },
+    "draft_context_ideal_day": {
+        "print_label": "Draft Context: Ideal Day",
+        "response_format": "json",
+        "response_schema": _CONTACT_DRAFT_RESPONSE_SCHEMA,
+        "entity_type": None,
+        "requires_candidate_key": True,
+        "trigger_state": None,
+        "task_type": "CRAFT",
+        "agent_task": "draft_context_ideal_day",
+    },
+    "draft_context_bio_summary": {
+        "print_label": "Draft Context: Bio Summary",
+        "response_format": "json",
+        "response_schema": _CONTACT_DRAFT_RESPONSE_SCHEMA,
+        "entity_type": None,
+        "requires_candidate_key": True,
+        "trigger_state": None,
+        "task_type": "CRAFT",
+        "agent_task": "draft_context_bio_summary",
+    },
+    "draft_context_backstory": {
+        "print_label": "Draft Context: Backstory",
+        "response_format": "json",
+        "response_schema": _CONTACT_DRAFT_RESPONSE_SCHEMA,
+        "entity_type": None,
+        "requires_candidate_key": True,
+        "trigger_state": None,
+        "task_type": "CRAFT",
+        "agent_task": "draft_context_backstory",
+    },
+    # AST-2206: contact Estelle's turn in a /draft-<context> thread — prose reply, revised draft
+    # only when asked. Named by CONTACT_DRAFT_THREAD_CONFIG["revise_task_key"].
+    "contact_draft_revise": {
+        "print_label": "Contact Draft Revise",
+        "response_format": "json",
+        "response_schema": {
+            "reply": {"type": "str", "required": True},
+            "revised_draft": {"type": "str", "required": False},
+        },
+        "entity_type": None,
+        "requires_candidate_key": True,
+        "trigger_state": None,
+        "task_type": "CHAT",
+        "agent_task": "contact_draft_revise",
+    },
 }
 # AST-1851: every LLM task runs on the candidate's platform key — a system-key task is a bug.
 assert all(cfg.get("requires_candidate_key") is True for cfg in TASK_CONFIG.values()), [
@@ -2006,6 +2089,82 @@ for _mode in CANDIDATE_CONTACT_UNIQUENESS_CONFIG["compare"].values():
     assert _mode in ("casefold", "exact"), _mode
 
 # ---------------------------------------------------------------------------
+# CONTACT_CONTEXT_COMMAND_CONFIG (AST-2206): Contact context commands — /draft-, /save-,
+# /show-<suffix> for six candidate context pieces. Keyed by command suffix (the token after
+# the verb). Each row names the ARTIFACT_CONFIG key the commands act on, the TASK_CONFIG draft
+# task principal Estelle runs, and the label used in command descriptions. The 18
+# CONTACT_CONFIG["commands"] entries are generated from this block x _CONTACT_CONTEXT_COMMAND_VERBS;
+# never hand-list them. The artifact-key assert sits after ARTIFACT_CONFIG (defined later).
+# ---------------------------------------------------------------------------
+CONTACT_CONTEXT_COMMAND_CONFIG = {
+    "strengths": {
+        "artifact_key": "candidate.context.strengths",
+        "draft_task": "draft_context_strengths",
+        "label": "strengths",
+    },
+    "dealbreakers": {
+        "artifact_key": "candidate.context.deal_breakers",
+        "draft_task": "draft_context_deal_breakers",
+        "label": "deal breakers",
+    },
+    "priorities": {
+        "artifact_key": "candidate.context.priorities",
+        "draft_task": "draft_context_priorities",
+        "label": "priorities",
+    },
+    "ideal-day": {
+        "artifact_key": "candidate.context.ideal_day",
+        "draft_task": "draft_context_ideal_day",
+        "label": "ideal day",
+    },
+    "bio-summary": {
+        "artifact_key": "candidate.context.bio_summary",
+        "draft_task": "draft_context_bio_summary",
+        "label": "bio summary",
+    },
+    "backstory": {
+        "artifact_key": "candidate.context.backstory",
+        "draft_task": "draft_context_backstory",
+        "label": "backstory",
+    },
+}
+for _ctx_suffix, _ctx_meta in CONTACT_CONTEXT_COMMAND_CONFIG.items():
+    assert _ctx_suffix.split() == [_ctx_suffix] and not _ctx_suffix.startswith("/"), _ctx_suffix
+    for _field in ("artifact_key", "draft_task", "label"):
+        assert isinstance(_ctx_meta.get(_field), str) and _ctx_meta[_field].strip(), (_ctx_suffix, _field)
+    assert _ctx_meta["draft_task"] in TASK_CONFIG, _ctx_suffix
+# One artifact key per row — the draft handler finds its draft_task by the entry's artifact_key.
+assert len({_m["artifact_key"] for _m in CONTACT_CONTEXT_COMMAND_CONFIG.values()}) == len(
+    CONTACT_CONTEXT_COMMAND_CONFIG
+)
+# Per-verb template for the generated context commands; {label} / {suffix} are filled per row.
+# draft-/show- run on an empty payload (payload_optional); save- keeps the usage reply for one.
+_CONTACT_CONTEXT_COMMAND_VERBS = {
+    "draft": {
+        "handler": "src.core.contact.contact_command_draft_context",
+        "mode": "code",
+        "description": "Draft {label} for this channel's candidate from the channel history, resume, and profile. Nothing is saved.",
+        "usage_reply_text": "Usage: @Estelle /draft-{suffix}",
+        "payload_optional": True,
+        # The draft (and its discussion) always threads under the command message.
+        "reply_placement": "always_no_share",
+    },
+    "save": {
+        "handler": "src.core.candidate.contact_command_save_context",
+        "mode": "code",
+        "description": "Save the text after the command as this channel's candidate's new current {label}.",
+        "usage_reply_text": "Usage: @Estelle /save-{suffix} <text>",
+    },
+    "show": {
+        "handler": "src.core.candidate.contact_command_show_context",
+        "mode": "code",
+        "description": "Show this channel's candidate's currently saved {label}.",
+        "usage_reply_text": "Usage: @Estelle /show-{suffix}",
+        "payload_optional": True,
+    },
+}
+
+# ---------------------------------------------------------------------------
 # CONTACT_CONFIG: Astral Contact / Estelle foundation (AST-1066 / AST-1043).
 # Skills ACL is Contact-only — never dispatch TASK_CONFIG / agent_task catalog rows.
 # Secret *values* live in environ; this block stores env *names* + behavior flags.
@@ -2028,6 +2187,12 @@ CONTACT_CONFIG = {
     "hear_ack_reply_text": "That didn't work as planned.  Let's ask @susan.",
     # AST-1668 / AST-2072: reply to an unbound Slack sender (bound senders get no recognition post).
     "unknown_recognition_reply_text": "Sorry, I don't recognize you, yet.  Let's check with @susan",
+    # AST-2206: reply to a private_channel_only command posted outside a private channel (a DM,
+    # or an @mention in a public channel). Nothing else runs.
+    "private_channel_only_reply_text": "I can only do that in the candidate's private channel.",
+    # AST-2206: reply to a private_channel_only command in a private channel that no candidate's
+    # contact.slack_channel_id names. No handler runs.
+    "unmapped_channel_reply_text": "This channel isn't linked to a candidate yet.  Let's check with @susan",
     # AST-2072: where every Estelle reply to an inbound Slack message lands.
     #   threads_only      — in-thread only when the user posted in a thread; else a new top-level post.
     #   always_no_share   — always in a thread (the user's thread, or a new one under their message).
@@ -2037,7 +2202,8 @@ CONTACT_CONFIG = {
     # Environ name contracts — readers use os.environ[CONTACT_CONFIG["…_env"]] (no .get).
     "bot_token_env": "SLACK_BOT_TOKEN",
     "signing_secret_env": "SLACK_SIGNING_SECRET",
-    # AST-2061: Estelle has no write skills — candidate is read-only to Contact.
+    # AST-2061: no Estelle write skills — this map stays empty. Contact's only writes are pinhole
+    # command handlers: meteorites, and /save-<context> artifact versions (AST-2206).
     # Map kept (empty) for contact_skills()/admin routes; keys must never appear in TASK_CONFIG.
     "skills": {},
     # AST-2035: Slack commands — `@Estelle /<command id> <payload>`, recognized only as the
@@ -2046,6 +2212,10 @@ CONTACT_CONFIG = {
     # mode "code": fixed usage post, no LLM turn; the handler's reply_text when it returns one, else
     # ack_reply_template on ok (AST-2144). mode "agent": one Estelle turn sees the result.
     # Optional reply_placement overrides thread_response for this command's replies (AST-2144).
+    # AST-2206 optional fields: payload_optional (an empty payload runs the handler instead of the
+    # usage reply); artifact_key (handed to the handler as the artifact_key= kwarg);
+    # private_channel_only (runs only in a mapped private channel, on that channel's candidate;
+    # anywhere else private_channel_only_reply_text posts and nothing runs).
     "commands": {
         "add-job": {
             "handler": "src.core.meteorite.insert_slack_meteorite",
@@ -2071,6 +2241,18 @@ CONTACT_CONFIG = {
             # Appended as {deeplink} only when the origin env is set; "" otherwise. Format with url=.
             "deeplink_template": "\n{url}",
             "no_match_reply_text": "Nothing matched that. Try a job link, title, or company.",
+        },
+        # AST-2206: 18 context commands generated from CONTACT_CONTEXT_COMMAND_CONFIG x verbs.
+        **{
+            f"{_verb}-{_suffix}": {
+                **_verb_meta,
+                "description": _verb_meta["description"].format(label=_ctx["label"]),
+                "usage_reply_text": _verb_meta["usage_reply_text"].format(suffix=_suffix),
+                "artifact_key": _ctx["artifact_key"],
+                "private_channel_only": True,
+            }
+            for _suffix, _ctx in CONTACT_CONTEXT_COMMAND_CONFIG.items()
+            for _verb, _verb_meta in _CONTACT_CONTEXT_COMMAND_VERBS.items()
         },
     },
     # AST-1069: Events API Request URL path (Flask route under /api).
@@ -2102,6 +2284,8 @@ assert isinstance(CONTACT_CONFIG["activity_state_filename"], str) and CONTACT_CO
 assert isinstance(CONTACT_CONFIG["production_deploy_env"], str) and CONTACT_CONFIG["production_deploy_env"].strip()
 assert isinstance(CONTACT_CONFIG["hear_ack_reply_text"], str) and CONTACT_CONFIG["hear_ack_reply_text"].strip()
 assert isinstance(CONTACT_CONFIG["unknown_recognition_reply_text"], str) and CONTACT_CONFIG["unknown_recognition_reply_text"].strip()
+assert isinstance(CONTACT_CONFIG["private_channel_only_reply_text"], str) and CONTACT_CONFIG["private_channel_only_reply_text"].strip()
+assert isinstance(CONTACT_CONFIG["unmapped_channel_reply_text"], str) and CONTACT_CONFIG["unmapped_channel_reply_text"].strip()
 # AST-2072 / AST-2144: reply-placement vocabulary — global thread_response and per-command reply_placement.
 _CONTACT_THREAD_RESPONSE_MODES = ("threads_only", "always_no_share", "always_with_share")
 assert CONTACT_CONFIG["thread_response"] in _CONTACT_THREAD_RESPONSE_MODES, CONTACT_CONFIG["thread_response"]
@@ -2170,6 +2354,12 @@ for _cmd_id, _cmd_meta in CONTACT_CONFIG["commands"].items():
     assert not _lookup or _lookup == _CONTACT_COMMAND_JOB_LOOKUP_FIELDS, (_cmd_id, sorted(_lookup))
     if "reply_placement" in _cmd_meta:
         assert _cmd_meta["reply_placement"] in _CONTACT_THREAD_RESPONSE_MODES, _cmd_id
+    # AST-2206: optional context-command fields.
+    for _flag in ("payload_optional", "private_channel_only"):
+        if _flag in _cmd_meta:
+            assert isinstance(_cmd_meta[_flag], bool), (_cmd_id, _flag)
+    if "artifact_key" in _cmd_meta:
+        assert isinstance(_cmd_meta["artifact_key"], str) and _cmd_meta["artifact_key"].strip(), _cmd_id
     assert _cmd_id not in CONTACT_CONFIG["skills"], _cmd_id
 
 # AST-1049: Manage Email Create — strip/extract email HTML + subject inclusion before meteorite job create.
@@ -5511,6 +5701,13 @@ assert CONTACT_ESTELLE_CONFIG["turn_context_message_limit"] > 0
 assert isinstance(CONTACT_ESTELLE_CONFIG["turn_context_text_max_chars"], int)
 assert CONTACT_ESTELLE_CONFIG["turn_context_text_max_chars"] > 0
 
+# AST-2206: Contact draft thread — an @mention reply in a thread rooted at a /draft-<context>
+# command runs this task (contact Estelle) instead of CONTACT_ESTELLE_CONFIG["task_key"].
+CONTACT_DRAFT_THREAD_CONFIG = {
+    "revise_task_key": "contact_draft_revise",
+}
+assert CONTACT_DRAFT_THREAD_CONFIG["revise_task_key"] in TASK_CONFIG
+
 # CONTACT_TASK_CONFIG: allowlisted Contact task keys (AST-1515 / AST-1414).
 # Distinct from CONTACT_CONFIG skills ACL and TASK_CONFIG dispatch catalog.
 CONTACT_TASK_CONFIG = {
@@ -5570,7 +5767,8 @@ for _ct_key, _ct_meta in CONTACT_TASK_CONFIG.items():
 for _cmd_id in CONTACT_CONFIG["commands"]:
     assert _cmd_id not in CONTACT_TASK_CONFIG, _cmd_id
 # AST-2061 pinhole: every Contact command/task handler must be listed here, keyed by dotted path.
-# Writes are meteorite-only (never create_meteorite_job / job / candidate); everything else reads.
+# Contact writes only meteorites ("write meteorite", src.core.meteorite.*) and artifact versions
+# ("write artifact", AST-2206) — never create_meteorite_job / job / candidate rows; the rest reads.
 _CONTACT_PINHOLE_HANDLERS = {
     "src.core.meteorite.insert_slack_meteorite": "write meteorite (NEW)",
     "src.core.gazer.contact_task_gazer_scrape": "read (external fetch, no platform write)",
@@ -5579,9 +5777,14 @@ _CONTACT_PINHOLE_HANDLERS = {
     "src.core.tracker.contact_task_get_job_data": "read job",
     "src.core.tracker.contact_task_get_company_data": "read company",
     "src.core.tracker.contact_task_get_candidate_data": "read candidate",
+    "src.core.candidate.contact_command_show_context": "read artifact",
+    "src.core.candidate.contact_command_save_context": "write artifact",
+    "src.core.contact.contact_command_draft_context": "read artifact (LLM draft, no artifact write)",
 }
 assert all(
-    _h.startswith("src.core.meteorite.") for _h, _kind in _CONTACT_PINHOLE_HANDLERS.items()
+    (_kind.startswith("write meteorite") and _h.startswith("src.core.meteorite."))
+    or _kind.startswith("write artifact")
+    for _h, _kind in _CONTACT_PINHOLE_HANDLERS.items()
     if _kind.startswith("write")
 )
 for _h in [m["handler"] for m in CONTACT_TASK_CONFIG.values()] + [
@@ -7042,6 +7245,9 @@ assert set(ARTIFACT_CONFIG.keys()) == {
     "candidate.context.ideal_day",
     "candidate.context.writing_preferences",
 }
+# AST-2206: every context command acts on a registered artifact (registry defined above CONTACT_CONFIG).
+for _ctx_suffix, _ctx_meta in CONTACT_CONTEXT_COMMAND_CONFIG.items():
+    assert _ctx_meta["artifact_key"] in ARTIFACT_CONFIG, _ctx_suffix
 # Sibling job blob keys stay out of the catalog (parent AC / AST-1590 AC2 / AST-1678 AC3).
 for _sibling in (
     "notes",
