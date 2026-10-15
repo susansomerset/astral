@@ -1,120 +1,123 @@
 # -*- coding: utf-8 -*-
-"""Core-owned persistence for API cost / timesheet rows (data layer write path).
+"""Core-owned persistence for service_timesheet rows and the fetch_timesheet runner (AST-2218).
 
-External `anthropic.send_to_anthropic` stays utils-only; core passes this as
-`record_timesheet` so inline token accounting still lands immediately after each call.
-
-OpenRouter platform cost: after a dispatch batch completes, a daemon thread runs
-`reconcile_pending_gen_platform` — passive /generation lookups for all gen-* rows
-still missing platform_cost (6 passes at 30…180s), then refreshes closed ledger totals
-for every batch that gained platform_cost on that pass.
-Per-call background reconcile (AST-1966) stays off via TIMESHEET_RECONCILE_ENABLED.
+External clients pass `record_timesheet` so inline token accounting lands after each call.
+Platform receipts are fetched by the candidate-bound `fetch_timesheet` dispatch task — no daemon
+threads. Search-call recording is exposed for AST-2219; roster wiring is out of this module's callers.
 """
 
-import contextvars
-import json
-import threading
-import time
-from typing import Any, Optional
+import uuid
+from collections import defaultdict
+from typing import Any, Dict, List, Optional, Set
 
 from src.data.database import (
     _add_timesheet_entry,
-    count_pending_gen_platform_timesheets,
+    claim_ledger_timesheet_fetching,
     get_candidate,
     get_dispatch_ledger,
-    list_pending_gen_platform_timesheets,
+    list_timesheet_rows_for_batches,
+    set_ledger_timesheet_state,
     sum_cost_by_batch,
     update_dispatch_ledger,
     update_timesheet_platform,
 )
-from src.external.openrouter import get_generation_record, get_generation_stats
-from src.utils.config import (
-    TIMESHEET_BATCH_RECONCILE_ENABLED,
-    TIMESHEET_BATCH_RECONCILE_PING_AT_SECONDS,
-    TIMESHEET_RECONCILE_BACKOFF_BASE_SECONDS,
-    TIMESHEET_RECONCILE_ENABLED,
-    TIMESHEET_RECONCILE_INITIAL_WAIT_SECONDS,
-    TIMESHEET_RECONCILE_RETRIES,
-    get_model_routing,
-)
+from src.utils.config import TIMESHEET_SEARCH_SERVER_ID
 from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
 
-_OPENROUTER_SERVER = "openrouter"
+_SUMMARY_ZERO: Dict[str, int] = {
+    "total_processed": 0,
+    "total_passed": 0,
+    "total_failed": 0,
+    "total_errors": 0,
+}
+
+# completion_status values that mean "not receipted yet" (OpenRouter get_receipt).
+_NOT_RECEIPTED_STATUSES = frozenset({"error", "not_ready"})
 
 
 def record_timesheet_entry(**kwargs: Any) -> None:
+    """Write one timesheet row. No background reconcile (AST-2218)."""
     _add_timesheet_entry(**kwargs)
-    if not TIMESHEET_RECONCILE_ENABLED:
-        return
-    agent_req_id = kwargs.get("agent_req_id")
-    server_id = kwargs.get("provider", "anthropic")
-    if not agent_req_id or get_model_routing(server_id, kwargs.get("model_code")) == "direct":
-        return
-    threading.Thread(
-        target=contextvars.copy_context().run,
-        args=(reconcile_timesheet_platform, agent_req_id, server_id, kwargs.get("candidate_id"), kwargs.get("batch_id")),
-        daemon=True,
-    ).start()
 
 
-def start_batch_openrouter_platform_reconcile(batch_id: Optional[str]) -> None:
-    """Queue OpenRouter platform reconcile after dispatch; no-op when disabled or nothing pending globally."""
-    if not TIMESHEET_BATCH_RECONCILE_ENABLED:
-        return
-    if count_pending_gen_platform_timesheets() == 0:
-        logger.debug(
-            "No pending gen-* timesheet rows (trigger batch %s); skipping platform reconcile",
-            batch_id or "-",
-        )
-        return
-    threading.Thread(
-        target=contextvars.copy_context().run,
-        args=(reconcile_pending_gen_platform,),
-        daemon=True,
-    ).start()
+def record_search_timesheet_entry(
+    candidate_id: Optional[str],
+    batch_id: Optional[str],
+    hit_count: int,
+    *,
+    call_start: Optional[str] = None,
+    call_stop: Optional[str] = None,
+    completion_status: str = "success",
+) -> None:
+    """Record one DISPATCH_SEARCH row (AST-2218 recorder; AST-2219 wires roster call sites)."""
+    record_timesheet_entry(
+        agent_req_id=f"search-{uuid.uuid4()}",
+        task_key_uuid=None,
+        model_code=None,
+        candidate_id=candidate_id,
+        batch_id=batch_id,
+        batch_size=1,
+        cache_write_tokens=0,
+        cache_read_tokens=0,
+        no_cache_prompt_tokens=0,
+        no_cache_live_tokens=0,
+        total_no_cache_input_tokens=0,
+        total_output_tokens=0,
+        calc_cost_cache_write=0.0,
+        calc_cost_cache_read=0.0,
+        calc_cost_no_cache_input=0.0,
+        calc_cost_output=0.0,
+        provider=TIMESHEET_SEARCH_SERVER_ID,
+        request_type="DISPATCH_SEARCH",
+        entity_type=None,
+        entity_id=None,
+        call_start=call_start,
+        call_stop=call_stop,
+        response_item_count=int(hit_count or 0),
+        response_char_length=0,
+        completion_status=completion_status,
+    )
 
 
-def _sleep_until(deadline: float) -> None:
-    while True:
-        remaining = deadline - time.monotonic()
-        if remaining <= 0:
-            return
-        time.sleep(min(remaining, 1.0))
-
-
-def _openrouter_key_for_candidate(candidate_id: Optional[str]) -> Optional[str]:
-    key = ((get_candidate(candidate_id) or {}).get("candidate_api_keys") or {}).get(_OPENROUTER_SERVER)
+def _api_key_for_server(candidate_id: str, server_id: str) -> Optional[str]:
+    key = ((get_candidate(candidate_id) or {}).get("candidate_api_keys") or {}).get(server_id)
     return key if key else None
 
 
-def _try_reconcile_gen_row(agent_req_id: str, candidate_id: Optional[str]) -> bool:
-    """One /generation lookup; writes platform columns + metadata blob on success. Never raises."""
-    key = _openrouter_key_for_candidate(candidate_id)
-    if not key:
-        logger.debug("%s | no openrouter key for candidate %s; skipping platform lookup", agent_req_id, candidate_id or "-")
-        return False
-    logger.debug("Calling get_generation_record: id=%s", agent_req_id)
-    record = get_generation_record(agent_req_id, key)
-    logger.debug("Response from get_generation_record: id=%s success=%s", agent_req_id, record.get("success"))
-    if not record.get("success"):
-        return False
-    data = record["data"]
+def _get_receipt_fn(provider: str):
+    """Resolve the billing external's get_receipt by timesheet provider (server id)."""
+    if provider == "openrouter":
+        from src.external.openrouter import get_receipt
+        return get_receipt
+    if provider == "anthropic":
+        from src.external.anthropic import get_receipt
+        return get_receipt
+    from src.external.llm_compat import get_receipt
+    return get_receipt
+
+
+def _receipt_is_applied(receipt: Dict[str, Any]) -> bool:
+    """True when the receipt should stamp platform columns (billed or stub-complete)."""
+    status = str(receipt.get("completion_status") or "")
+    return status not in _NOT_RECEIPTED_STATUSES
+
+
+def _apply_receipt(agent_req_id: str, receipt: Dict[str, Any]) -> None:
+    """Write vendor half onto the timesheet row; host/reasoning left None (not on shared shape)."""
     update_timesheet_platform(
         agent_req_id,
-        float(data["total_cost"]),
-        data.get("native_tokens_prompt"),
-        data.get("native_tokens_completion"),
-        data.get("native_tokens_cached"),
-        data.get("native_tokens_reasoning"),
-        data.get("provider_name"),
-        platform_metadata=json.dumps(data, separators=(",", ":"), default=str),
+        receipt.get("platform_cost"),
+        receipt.get("native_tokens_prompt"),
+        receipt.get("native_tokens_completion"),
+        receipt.get("native_tokens_cached"),
+        None,  # native_tokens_reasoning — not on TIMESHEET_RECEIPT_FIELDS
+        None,  # host
     )
-    return True
 
 
-def _refresh_closed_batch_ledger_total(batch_id: str) -> None:
+def _refresh_closed_ledger_totals(batch_id: str) -> None:
     ledger = get_dispatch_ledger(batch_id)
     if not ledger or not ledger.get("completed_at"):
         return
@@ -124,84 +127,92 @@ def _refresh_closed_batch_ledger_total(batch_id: str) -> None:
     update_dispatch_ledger(batch_id, total_cost=total_cost, entity_cost=round(entity_cost, 7))
 
 
-def reconcile_pending_gen_platform() -> None:
-    """Passive gen-* platform fill globally: ping at 30…180s while any rows lack platform_cost."""
-    try:
-        if count_pending_gen_platform_timesheets() == 0:
-            return
-        started = time.monotonic()
-        logger.debug("Beginning global platform reconcile at %s", TIMESHEET_BATCH_RECONCILE_PING_AT_SECONDS)
-        for ping_at in TIMESHEET_BATCH_RECONCILE_PING_AT_SECONDS:
-            _sleep_until(started + float(ping_at))
-            pending = list_pending_gen_platform_timesheets()
-            if not pending:
-                logger.debug("No pending gen-* rows at %ss; stopping reconcile", ping_at)
-                break
-            batches_touched: set[str] = set()
-            for row in pending:
-                if _try_reconcile_gen_row(row["agent_req_id"], row.get("candidate_id")):
-                    bid = str(row.get("batch_id") or "").strip()
-                    if bid:
-                        batches_touched.add(bid)
-            for bid in batches_touched:
-                _refresh_closed_batch_ledger_total(bid)
-        logger.debug("End global platform reconcile")
-    except Exception as exc:
-        logger.exception(
-            "global platform cost reconcile\n  %s: %s\n  Stopping reconcile; dispatch is unaffected",
-            type(exc).__name__,
-            exc,
-        )
+def run_fetch_timesheet(candidate_id: str) -> Dict[str, int]:
+    """Claim NEW ledger rows → FETCHING, fetch receipts, RECEIPTED/NEW, release on finally.
 
-
-def reconcile_timesheet_platform(
-    agent_req_id: str, server_id: str, candidate_id: Optional[str], batch_id: Optional[str]
-) -> None:
-    """Legacy per-call background reconcile (TIMESHEET_RECONCILE_ENABLED). Never raises."""
+    Returns dispatcher summary counts. Never leaves rows in FETCHING after return.
+    """
+    cid = str(candidate_id or "").strip()
+    summary = dict(_SUMMARY_ZERO)
+    claimed: List[str] = []
+    receipted_ids: Set[str] = set()
+    logger.debug("fetch_timesheet begin candidate_id=%s", cid or "-")
     try:
-        key = ((get_candidate(candidate_id) or {}).get("candidate_api_keys") or {}).get(server_id)
-        if not key:
-            logger.warning(
-                "%s | batch %s -> no platform cost [candidate %s has no API key for server %s]. The row keeps its calculated cost",
-                agent_req_id, batch_id or "-", candidate_id or "-", server_id,
+        if not cid:
+            return summary
+        claimed = claim_ledger_timesheet_fetching(cid)
+        if not claimed:
+            logger.debug("fetch_timesheet end candidate_id=%s claimed=0", cid)
+            return summary
+        rows = list_timesheet_rows_for_batches(claimed)
+        summary["total_processed"] = len(rows)
+
+        by_provider: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+        for row in rows:
+            prov = str(row.get("provider") or "").strip() or "anthropic"
+            by_provider[prov].append(row)
+
+        for provider, group in by_provider.items():
+            ids = [str(r.get("agent_req_id") or "") for r in group if r.get("agent_req_id")]
+            if not ids:
+                continue
+            key = _api_key_for_server(cid, provider)
+            if not key:
+                logger.warning(
+                    "fetch_timesheet | candidate %s has no API key for server %s — skipping %s id(s)",
+                    cid, provider, len(ids),
+                )
+                summary["total_failed"] += len(ids)
+                continue
+            get_receipt = _get_receipt_fn(provider)
+            logger.debug("Calling get_receipt: provider=%s ids=%s", provider, ids)
+            receipts = get_receipt(ids, key)
+            logger.debug("Response from get_receipt: provider=%s n=%s", provider, len(receipts))
+            # Align by index with the ids we sent.
+            for agent_req_id, receipt in zip(ids, receipts):
+                if not _receipt_is_applied(receipt):
+                    logger.warning(
+                        "fetch_timesheet | id %s provider %s not receipted [%s]",
+                        agent_req_id, provider, receipt.get("completion_status"),
+                    )
+                    summary["total_failed"] += 1
+                    continue
+                _apply_receipt(agent_req_id, receipt)
+                receipted_ids.add(agent_req_id)
+                summary["total_passed"] += 1
+
+        # Per claimed ledger: RECEIPTED iff every timesheet row for that batch is receipted
+        # (vacuous when the batch has zero timesheet rows — plan Stage 3g).
+        rows_by_batch: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+        for row in rows:
+            bid = str(row.get("batch_id") or "").strip()
+            if bid:
+                rows_by_batch[bid].append(row)
+        for batch_id in claimed:
+            batch_rows = rows_by_batch.get(batch_id, [])
+            all_done = all(
+                str(r.get("agent_req_id") or "") in receipted_ids for r in batch_rows
             )
-            return
-        logger.debug("Beginning generation-stats loop on %s tries for %s", TIMESHEET_RECONCILE_RETRIES, agent_req_id)
+            if all_done:
+                set_ledger_timesheet_state(batch_id, "RECEIPTED")
+                _refresh_closed_ledger_totals(batch_id)
+            else:
+                set_ledger_timesheet_state(batch_id, "NEW")
         logger.debug(
-            "Waiting %s s before the first generation-stats lookup for %s",
-            TIMESHEET_RECONCILE_INITIAL_WAIT_SECONDS, agent_req_id,
+            "fetch_timesheet end candidate_id=%s processed=%s passed=%s failed=%s",
+            cid, summary["total_processed"], summary["total_passed"], summary["total_failed"],
         )
-        time.sleep(TIMESHEET_RECONCILE_INITIAL_WAIT_SECONDS)
-        stats: dict[str, Any] = {"success": False, "error": "not started"}
-        for attempt in range(TIMESHEET_RECONCILE_RETRIES):
-            if attempt:
-                wait = TIMESHEET_RECONCILE_BACKOFF_BASE_SECONDS * 2 ** (attempt - 1)
-                logger.debug("Retrying get_generation_stats for %s in %s s (try %s)", agent_req_id, wait, attempt + 1)
-                time.sleep(wait)
-            logger.debug("Calling get_generation_stats: id=%s", agent_req_id)
-            stats = get_generation_stats(agent_req_id, key)
-            logger.debug("Response from get_generation_stats: %s", stats)
-            if stats["success"]:
-                break
-        logger.debug("End generation-stats loop after %s tries for %s", attempt + 1, agent_req_id)
-        if not stats["success"]:
-            logger.warning(
-                "%s | batch %s -> no platform cost after %s tries [%s]. The row keeps its calculated cost",
-                agent_req_id, batch_id or "-", TIMESHEET_RECONCILE_RETRIES, stats["error"],
-            )
-            return
-        update_timesheet_platform(
-            agent_req_id, stats["total_cost"], stats["native_tokens_prompt"], stats["native_tokens_completion"],
-            stats["native_tokens_cached"], stats["native_tokens_reasoning"], stats["provider_name"],
-        )
-        ledger = get_dispatch_ledger(batch_id) if batch_id else None
-        if ledger and ledger.get("completed_at"):
-            total_cost = sum_cost_by_batch([batch_id]).get(batch_id, 0.0)
-            total_processed = ledger.get("total_processed") or 0
-            entity_cost = total_cost / total_processed if total_processed > 0 else total_cost
-            update_dispatch_ledger(batch_id, total_cost=total_cost, entity_cost=round(entity_cost, 7))
+        return summary
     except Exception as exc:
+        summary["total_errors"] = 1
         logger.exception(
-            "%s | batch %s platform cost reconcile\n  %s: %s\n  Stopping this row's reconcile; the call and batch are unaffected",
-            agent_req_id, batch_id or "-", type(exc).__name__, exc,
+            "fetch_timesheet | candidate %s\n  %s: %s\n  Releasing FETCHING rows to NEW",
+            cid or "-", type(exc).__name__, exc,
         )
+        return summary
+    finally:
+        # Release any still-FETCHING claim (exception or partial path).
+        for batch_id in claimed:
+            ledger = get_dispatch_ledger(batch_id)
+            if ledger and ledger.get("timesheet_state") == "FETCHING":
+                set_ledger_timesheet_state(batch_id, "NEW")
