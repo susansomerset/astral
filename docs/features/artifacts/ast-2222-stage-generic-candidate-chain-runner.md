@@ -143,3 +143,73 @@ rg -n "shape_the_story|draft_resume_experiences|draft_supporting_sections|draft_
 ## Estimate
 
 Confirm Chuckles estimate: 5 — agree
+
+## Joan validate
+
+[plan-discuss] round=1 concern
+[plan-rubric]
+**Ticket:** AST-2222
+**Overall:** REVISE
+**Corpus:** b7ab2203048ce0beb2869a12200ab7fa696c8066
+**Publish ref:** `sub/AST-1201/AST-2222-stage-generic-candidate-chain-runner` @ `90422686034224f64db270d2f043685c3f737fb5`
+
+### Canon scores
+
+patt.task.daisy-chain | A | | |
+patt.task.dispatch-retry | A | | |
+patt.entity.batch-processing | A | | |
+patt.artifact.write-operative | A | | |
+stat.batch.claim-process-release | A | | |
+stat.logging.debug | A | | |
+stat.logging.error | A | | |
+
+### Traceability
+
+AC6→Stage 3 §2 `rg` (hop-name ban); AC7→Stage 2–3 §2 `rg` (hardcoded stage); AC8–AC13→**unmapped** in stage Done-when / verify (only quoted in `## UAT fitness`); AC14→implied by narrative + “existing tests” but **no** named `pytest` step in any stage verify block
+
+### Findings
+
+#### fix-now
+
+- **Location:** Stages 1–3 Done-when / Stage 3 verify
+- **Finding:** Child AC 8–13 (end-to-end `REQUESTED_RESUME` run, tagline/meta, `contact.title_patterns`, assembler-only artifact growth, mid-chain resume, retry→`ERROR_<HOP>`) have no implementation verification steps—only AC 6–7 `rg` gates. `## UAT fitness` restates parent AC but does not assign them to a stage, fixture, or manual repro the engineer runs before publish.
+- **Recommendation:** Add a Stage 4 (or extend Stage 3 verify) with explicit pass/fail checks for AC 8–13—e.g. documented manual repro on a seeded candidate, or pointers to existing component/integration fixtures if Betty already owns them—and name the precondition (AST-2221 registry on tip + live `agent_task` `run_next`).
+
+#### fix-now
+
+- **Location:** Stage 3 verify / Execution contract
+- **Finding:** AC 14 requires `pytest tests/component/core/test_candidate.py tests/component/core/test_dispatcher.py tests/component/core/test_consult.py` plus rubric regression; the plan forbids editing tests but never lists running that command in a Done-when block.
+- **Recommendation:** Add a final verify bullet (exit 0) for that `pytest` invocation so R5 covers AC 14 and engineers do not rely on implicit habit.
+
+#### discuss
+
+- **Location:** Linear Citations vs clerk ids
+- **Finding:** Frozen list cites `stat.batch.claim-process-release`; corpus id is `astral.batch.claim-process-release` (`canon_clerk expand` fails on the cited slug). Plan acknowledges the pairing; scored against claim-process-release placement on the existing pool-claim path.
+- **Recommendation:** Archie may normalize the frozen slug; not a product blocker once verify gaps are fixed.
+
+#### discuss
+
+- **Location:** Prerequisite (build tip)
+- **Finding:** Runtime work depends on AST-2221 registry/seed on the epic tip; plan documents assert-and-stop—good—but notes a prior `sync-child` / ftr slug mismatch risk.
+- **Recommendation:** Chuckles/engineer confirm ftr merge before Stage 1; comment on ticket if assert fails (plan already says stop).
+
+#### acceptable
+
+- **Location:** Explicit scope gate / Files Changed
+- **Finding:** Plan limits edits to `candidate.py`, `dispatcher.py`, `consult.py`; defers config/seed to AST-2221; persist gate names `draft_title_patterns` / `draft_resume_base` only where AC 6 allows; chain walk uses `CANDIDATE_STAGE_DISPATCH` + `run_next` (no `BASE_RESUME_CHAIN` / hop frozensets in dispatcher/consult).
+- **Recommendation:** None after verify additions.
+
+#### acceptable
+
+- **Location:** Procedure §1 — assignee
+- **Finding:** Assignee is Hedy Lamarr, not Joan; spawn requested this pass.
+- **Recommendation:** Chuckles restores implementer after posting.
+
+### R6 checklist (summary)
+
+- Definition fidelity: matches child Scope and parent runtime slice; no config/seed/UI creep.
+- DRY / scope: refactors chain walk through `_walk_candidate_stage_chain_task_keys`; stage-trigger set pattern in dispatcher/consult.
+- Self-assessment: Estimate `5 — agree` matches three core files + prerequisite gate.
+- Plan Discuss: zero completed rounds; entering round 1 with this REVISE.
+
+context_tokens≈42000
