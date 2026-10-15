@@ -296,3 +296,66 @@ AC6→Stage 3 §2 `rg` (hop-name ban); AC7→Stage 2–3 §2 `rg` (hardcoded sta
 - Plan Discuss: zero completed rounds; entering round 1 with this REVISE.
 
 context_tokens≈42000
+
+## Joan validate (round 2 — APPROVED)
+
+[plan-rubric]
+**Ticket:** AST-2222
+**Overall:** APPROVED
+**Corpus:** b7ab2203048ce0beb2869a12200ab7fa696c8066
+**Publish ref:** `sub/AST-1201/AST-2222-stage-generic-candidate-chain-runner` @ `20fec2fbba55e0914d924a4801d7d11065b5fd95`
+
+### Canon scores
+
+patt.task.daisy-chain | A | | |
+patt.task.dispatch-retry | A | | |
+patt.entity.batch-processing | A | | |
+patt.artifact.write-operative | A | | |
+stat.batch.claim-process-release | A | | |
+stat.logging.debug | A | | |
+stat.logging.error | A | | |
+
+### Traceability
+
+AC6→Stage 3 §2 `rg`; AC7→Stage 2–3 `rg`; AC8–AC13→Stage 4 §1–6 (mocked chain smoke); AC10/AC11 slice→Stage 1 §6 persist script; AC13 machinery→Stage 1 Done-when AC map + Stage 4 §6; AC14→Stage 4 §7 `run_component_tests.sh`
+
+### Findings
+
+#### discuss
+
+- **Location:** Linear Citations vs clerk ids
+- **Finding:** Frozen list cites `stat.batch.claim-process-release`; corpus id is `astral.batch.claim-process-release`. Plan documents the pairing; no claim/release redesign proposed.
+- **Recommendation:** Archie may normalize slug; not blocking.
+
+#### discuss
+
+- **Location:** Prerequisite / sibling merge
+- **Finding:** Stage 4 and Stages 1–3 assume AST-2221 registry + live `run_next` on the epic tip; plan documents assert-and-stop and ftr sync caveat.
+- **Recommendation:** Confirm prerequisite before Stage 1 product commits (plan already gates).
+
+#### acceptable
+
+- **Location:** Revision 1 / Stage 4
+- **Finding:** Prior fix-now (AC 8–13 unmapped, AC 14 pytest unnamed) addressed: Stage 4 pass/fail for AC 8–13, Stage 1 §6 unit verify, AC-map lines on Stages 1–3, execution contract “no Code Complete until AC 8–14 green.”
+- **Recommendation:** None.
+
+#### acceptable
+
+- **Location:** Explicit scope gate
+- **Finding:** Three core files only; stage-generic chain via `CANDIDATE_STAGE_DISPATCH` + `run_next`; AC 6 hop-name ban satisfied by design; `draft_title_patterns` / `draft_resume_base` only in persist gates where allowed.
+- **Recommendation:** None.
+
+#### acceptable
+
+- **Location:** Plan Discuss
+- **Finding:** One completed round (`round=1` concern in issue doc + Hedy `round=1` reply @ tip `20fec2fb`); assignee Joan for this pass.
+- **Recommendation:** Chuckles restores implementer on approve.
+
+### R6 checklist (summary)
+
+- Definition fidelity: runtime slice matches child Scope; config/seed/UI out of scope.
+- DRY / scope: shared `_walk_candidate_stage_chain_task_keys`; no dispatcher hop frozensets.
+- Self-assessment: Estimate `5 — agree` matches Stages 1–3 product + Stage 4 verify-only.
+- Stage 4 local smoke (no new `tests/` commits) is explicit and aligned with Betty ownership.
+
+context_tokens≈52000
