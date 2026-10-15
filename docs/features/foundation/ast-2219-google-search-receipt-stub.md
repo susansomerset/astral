@@ -112,3 +112,68 @@ record_search_timesheet_entry(
 ## Estimate
 
 Confirm Chuckles estimate: 2 — agree
+
+## Joan validate
+
+```text
+[plan-rubric]
+**Ticket:** AST-2219
+**Overall:** APPROVED
+**Corpus:** b7ab2203048ce0beb2869a12200ab7fa696c8066
+**Publish ref:** `sub/AST-2215/AST-2219-google-search-receipt-stub` @ `c082b82936ab2c7d9d172b71c07039335fcf2239`
+
+## Canon scores
+
+stat.logging.debug | A | | 
+
+## Traceability
+
+Child AC 10 → Stages 1–3 (CSE record + stub `get_receipt` + runner route); parent AC 1–9,11 → N/A (#1/#2/#4); Stage 2 depends on AST-2218 runner (not re-owned here); stages map to parent FS 7 + Technical scope CSE recording.
+
+## Findings
+
+### acceptable — Scope gate (`timesheets.py`)
+
+- **Severity:** acceptable
+- **Location:** `[scope-gate]`; Stage 2; ticket `## Scope`
+- **Finding:** Without `google_cse` routing and key skip, `DISPATCH_SEARCH` rows never stub-receipt and batches stall in `FETCHING`/`NEW`; amended Scope + Stage 2 match the gate ask.
+- **Recommendation:** None.
+
+### discuss — Build ordering (#1 + #2 before #3)
+
+- **Severity:** discuss
+- **Location:** Preamble; Stages 2–3
+- **Finding:** Plan assumes `record_search_timesheet_entry`, `TIMESHEET_SEARCH_SERVER_ID`, `run_fetch_timesheet`, and registries from AST-2217/2218.
+- **Recommendation:** Integrate on ftr after siblings merge; Betty AC10 is the primary child check.
+
+### discuss — `batch_id` when `log_batch_id` unset
+
+- **Severity:** discuss
+- **Location:** Stage 3 `resolve_company_website` (`batch_id=log_batch_id.get()`)
+- **Finding:** Parent AC10 is “inside a batch”; plan does not say skip record when `batch_id` is `None`.
+- **Recommendation:** Engineer/Betty: only call `record_search_timesheet_entry` when `batch_id` is truthy, or document intentional no-op — avoids orphan rows if a CSE hop runs outside a claim.
+
+### discuss — Assignee not Joan (process)
+
+- **Severity:** discuss
+- **Location:** Linear assignee Katherine Johnson
+- **Finding:** validate-plan gate expects Joan at spawn; review run per Chuckles spawn prompt.
+- **Recommendation:** Chuckles handoff only; no plan change.
+
+### acceptable — CSE layer stays log-free
+
+- **Severity:** acceptable
+- **Location:** `google_cse.py` module contract; Stage 1
+- **Finding:** Debug stays on roster Calling/Response joints; no new `google_cse` logging — matches external-layer rule and sole canon id.
+- **Recommendation:** None.
+
+### acceptable — Zero-hit searches still recorded
+
+- **Severity:** acceptable
+- **Location:** Stage 3 decisions
+- **Finding:** Aligns with parent “each Google search query writes one row” and AC10 item count semantics.
+- **Recommendation:** None.
+
+context_tokens≈48000
+```
+
