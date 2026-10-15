@@ -2687,7 +2687,10 @@ async def run_consult_task(
             dispatch_chain_row_matches_job,
             parse_dispatch_hop_label,
         )
-        from src.core.candidate import run_requested_artifacts_dispatch
+        from src.core.candidate import (
+            is_candidate_stage_chain_task,
+            run_requested_artifacts_dispatch,
+        )
         tk = (dispatch_task_key or "").strip()
         cid = (entities[0].get("astral_candidate_id") or entities[0].get("candidate_id") or "")
         if tk == INFLOW_CONFIG["discovery"]["task_key"]:
@@ -2699,11 +2702,18 @@ async def run_consult_task(
         skip_daisy = bool(
             (ctx or {}).get("skip_daisy_chain") or (ctx or {}).get("suppress_run_next")
         )
+        # AC 6: named persist-gate allowlist only; other stage hops via is_candidate_stage_chain_task.
         persistable = (
             tk in CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY
-            or tk in ("craft_company_search_terms", "craft_resume_base")
+            or tk in (
+                "craft_company_search_terms",
+                "craft_resume_base",
+                "draft_title_patterns",
+                "draft_resume_base",
+            )
+            or is_candidate_stage_chain_task(tk)
         )
-        stage_tr = CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["trigger_state"]
+        stage_triggers = {e["trigger_state"] for e in CANDIDATE_STAGE_DISPATCH.values()}
         row_tr = (input_state or "").strip()
         parsed_row = parse_dispatch_hop_label(row_tr)
         registry_tr = parsed_row[0] if parsed_row else row_tr
@@ -2711,7 +2721,7 @@ async def run_consult_task(
         # patt.task.daisy-chain §4: resume when entity hop label + parent run_next → this row's task_key
         # (same helper as job BUILD_ARTIFACTS reclaim; not a walked hop membership list).
         if (
-            registry_tr == stage_tr
+            registry_tr in stage_triggers
             and tk in TASK_CONFIG
             and (
                 dispatch_chain_row_matches_job(row_tr, tk, cand_st)
