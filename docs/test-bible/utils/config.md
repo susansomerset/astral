@@ -5159,3 +5159,14 @@ Config only, no handlers. `CONTACT_CONTEXT_COMMAND_CONFIG` (six suffixes → `ar
 | New — request / receipt / ledger / search-server registries | `TIMESHEET_*` / `LEDGER_TIMESHEET_STATES` | `…::test_request_receipt_ledger_registries` |
 
 **Primary manifest:** [`../data/database/timesheets.md`](../data/database/timesheets.md) § AST-2217.
+
+### AST-2218 · AST-2215 (`dispatch_task_admin_defaults` fold for fetch_timesheet)
+
+Mailbox-twin fold: `fetch_timesheet` → `{entity_type, trigger_state}=None`, `sort_by=None`, `batch_call_mode=0`. `is_fetch_timesheet_task_key`. Reconcile constants left in place (unused).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| New — admin defaults null entity/trigger | `dispatch_task_admin_defaults` | `TestAst2218FetchTimesheetAdminDefaults::test_fold_returns_null_entity_trigger` |
+| New — task-key helper | `is_fetch_timesheet_task_key` | `…::test_is_fetch_timesheet_task_key` |
+
+**Primary manifest:** [`../core/timesheets.md`](../core/timesheets.md) § AST-2218.

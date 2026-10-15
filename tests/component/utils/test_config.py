@@ -8825,3 +8825,18 @@ class TestAst2217FetchTimesheetRegistries:
         # Reconcile constants left in place for AST-2218 (byte-stable shape).
         assert hasattr(cfg, "TIMESHEET_RECONCILE_ENABLED")
         assert hasattr(cfg, "TIMESHEET_BATCH_RECONCILE_ENABLED")
+
+class TestAst2218FetchTimesheetAdminDefaults:
+    """AST-2218: dispatch_task_admin_defaults fold + is_fetch_timesheet_task_key."""
+
+    def test_fold_returns_null_entity_trigger(self) -> None:
+        from src.utils import config as cfg
+        d = cfg.dispatch_task_admin_defaults("fetch_timesheet")
+        assert d["entity_type"] is None and d["trigger_state"] is None
+        assert d["sort_by"] is None and d["batch_call_mode"] == 0
+
+    def test_is_fetch_timesheet_task_key(self) -> None:
+        from src.utils import config as cfg
+        assert cfg.is_fetch_timesheet_task_key("fetch_timesheet") is True
+        assert cfg.is_fetch_timesheet_task_key(" fetch_timesheet ") is True
+        assert cfg.is_fetch_timesheet_task_key("evaluate_jd") is False
