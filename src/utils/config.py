@@ -3664,6 +3664,11 @@ def is_meteorite_email_mailbox_task_key(task_key: str) -> bool:
     cfg = METEORITE_EMAIL_PARSE_CONFIG
     return tk == cfg["task_key"] or tk == cfg["legacy_agent_task_key"]
 
+
+def is_fetch_timesheet_task_key(task_key: str) -> bool:
+    """True for the candidate-bound fetch_timesheet poller (AST-2218)."""
+    return (task_key or "").strip() == FETCH_TIMESHEET_CONFIG["task_key"]
+
 # AST-1054: meteorite dispatch_task row specs (unique per candidate on task_key+trigger_state).
 # score_floor 0 on score-gated triggers — claim never excludes for low latest_score.
 # Twin keys meteorite_like / meteorite_upshot match AST-1055 TASK_CONFIG + agent_task names.
@@ -4383,6 +4388,14 @@ def dispatch_task_admin_defaults(
         return {
             "entity_type": METEORITE_EMAIL_PARSE_CONFIG["admin_entity_type"],
             "trigger_state": None,
+            "sort_by": None,
+            "batch_call_mode": 0,
+        }
+    # AST-2218: fetch_timesheet poller — entity/trigger null (stat.dispatch.entity-state-bound).
+    if tk == FETCH_TIMESHEET_CONFIG["task_key"]:
+        return {
+            "entity_type": FETCH_TIMESHEET_CONFIG["entity_type"],
+            "trigger_state": FETCH_TIMESHEET_CONFIG["trigger_state"],
             "sort_by": None,
             "batch_call_mode": 0,
         }
