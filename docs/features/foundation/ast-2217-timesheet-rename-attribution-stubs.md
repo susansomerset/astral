@@ -257,7 +257,7 @@ context_tokens≈22000
 
 ## Review (build)
 
-**Built @ `6ce60061b`** — `origin/sub/AST-2215/AST-2217-timesheet-rename-attribution-stubs` (`6ce60061bdf215b876ddf1147d292028218783aa`)
+**Built @ `96565b42b`** — `origin/sub/AST-2215/AST-2217-timesheet-rename-attribution-stubs` (`96565b42be35037c0fa455b58d499703b208f1de`)
 
 - Stage 1: FETCH_TIMESHEET_CONFIG + request-type / receipt-field / ledger-state registries + TIMESHEET_SEARCH_SERVER_ID; reconcile constants untouched.
 - Stage 2: agent_timesheets renamed in place to service_timesheet; attribution + persisted provider; ledger timesheet_state; queue helpers; update_timesheet_platform accepts null platform_cost; pending-gen helpers retargeted.
