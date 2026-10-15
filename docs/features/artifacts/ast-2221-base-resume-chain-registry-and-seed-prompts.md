@@ -185,3 +185,63 @@ Also confirm `craft_get_rubric` still resolves to `REQUESTED_ARTIFACTS` / `candi
 ## Estimate
 
 Confirm Chuckles estimate: 3 — agree
+
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-2221
+**Overall:** APPROVED
+**Corpus:** b7ab2203048ce0beb2869a12200ab7fa696c8066
+**Publish ref:** `sub/AST-1201/AST-2221-base-resume-chain-registry-and-seed-prompts` @ `65663db21d092d76b672e7843a68f44ca3c60b6c`
+
+## Canon scores
+
+patt.task.daisy-chain | A | | |
+patt.task.dispatch-retry | A | | |
+stat.dispatch.entity-state-bound | A | | |
+
+## Traceability
+
+AC1→Stage 1 §2–7 verify; AC2→Stage 1 `draft_resume_base` row + verify; AC3→Stage 2 §1–3; AC4→Stage 1 §3–4 + verify; AC5→Stage 1 §5 + verify; AC6→Stage 1 §6 + verify (craft_get_rubric regression called out in §7)
+
+## Findings
+
+#### discuss
+
+- **Location:** Linear AST-2221 — frozen list slug vs corpus id
+- **Finding:** Ticket cites `stat.dispatch.entity-state-bound`; corpus id is `astral.dispatch.entity-state-bound` (`canon_clerk expand` fails on the cited slug). Scored against the active statute body on this ref; Archie may normalize the frozen slug for Radia comparability.
+- **Recommendation:** Optional Canon Scope / Citations amend to `astral.dispatch.entity-state-bound`; not blocking build.
+
+#### discuss
+
+- **Location:** Canon Scope (frozen list) vs `src/utils/config.py`
+- **Finding:** `astral.config.config-source-of-truth` plainly governs new TASK_CONFIG / stage tuples but is absent from the three-id frozen list (same pattern as AST-1672 sibling note).
+- **Recommendation:** Archie may amend parent/child Canon Scope at Discussion; do not widen the list in flight.
+
+#### acceptable
+
+- **Location:** Procedure §1 — assignee
+- **Finding:** Status `Plan Ready` but assignee is Ada Lovelace, not Joan; spawn prompt explicitly requested this validate pass.
+- **Recommendation:** Chuckles restores implementer after posting; no plan change.
+
+#### acceptable
+
+- **Location:** Explicit scope gate / Out of scope
+- **Finding:** Plan files and stages match child `## Scope` only (`config.py`, `agent_task.json`); core runtime, title-pattern migration, and prompt polish are explicitly deferred to AST-2222 / out of scope — aligned with parent partition.
+- **Recommendation:** None.
+
+#### acceptable
+
+- **Location:** Stage 1 §6 — resolver generalization
+- **Finding:** Plan generalizes the three resolvers via `CANDIDATE_STAGE_DISPATCH` iteration and documents mid-chain hops as sibling-owned (AC6 entry-hop only) — consistent with `patt.task.daisy-chain` (config framework, no hop-specific chain manager code in this ticket).
+- **Recommendation:** None.
+
+### R6 checklist (summary)
+
+- Definition fidelity: implements child slice of parent Functional/Technical scope; no `src/core/*`; parent end-to-end AC 7–14 correctly out of this child's AC set.
+- DRY / scope: reuses `_EXPERIENCE_JOB_ARRAY_FIELD`, `_CRAFT_RESUME_BASE_RESPONSE_SCHEMA` by reference; mirrors existing BUILD_ARTIFACTS / CANDIDATE_CRAFT chain tuple pattern; no sibling scope creep.
+- Self-assessment: Estimate `3 — agree` matches two-stage config+seed footprint.
+- Plan Discuss: zero completed `[plan-discuss]` rounds; status `Plan Ready`.
+
+context_tokens≈24000
