@@ -225,3 +225,55 @@ context_tokens≈62000
 **Checks:** `npx tsc -b --noEmit` in `src/ui/frontend`; `rg -n 'LANDED|"CHECK_UNIQUE"|"NEW"'` on modal → empty; `validate-sub-log --stage=build` ok. Synced `origin/ftr/AST-2216-meteorite-text-editable` (AST-2223 API) via registry parent segment.
 
 **Tests:** Betty at Code Complete (`qa-child`) — engineers do not land test-tree changes.
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-2224
+**Publish ref:** `1563b9c794f12939a38453bfd5dfd1dc268c7e50` (`origin/sub/AST-2216/AST-2224-meteorite-modal-edit-form`)
+**Corpus:** b7ab2203048ce0beb2869a12200ab7fa696c8066
+**Overall:** CLEAN
+
+## Canon scores
+
+Frozen list empty (`Citations: none` per dispatch partition) — no directives to score.
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| *(none on frozen list)* | — | | |
+
+## Column diff vs plan stage
+
+no plan-stage canon scores attached (Joan R3 table also empty)
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **sibling product carry on publish ref** — Three-dot diff vs `origin/dev` also includes AST-2223 server product (`src/utils/config.py`, `src/core/meteorite.py`, `src/ui/api/api_meteorite.py`) plus sibling docs/tests. Build stub documents ftr sync for API prerequisite; not AST-2224 Files Changed. **Default:** treat as epic-line integration carry; do not re-scope or revert on this ticket.
+
+- **sibling test / bible carry** — Same diff adds AST-2223 component tests and bible sections. Expected on a merged epic line; Betty-owned manifest coverage for both children.
+
+- **Canon Scope (off-list, not graded)** — `astral.ui.frontend-file-placement` governs `MeteoriteDetailModal.tsx` and `JobsMeteorites.tsx`; intentionally absent from frozen `none` list (Joan pre-documented). Touched paths match plan (component + page wiring only).
+
+- **Plan execution contract vs test-tree on branch** — Plan says engineers do not edit `tests/`; branch tip includes AST-2224 (and carry) frontend/component tests. Aligns with qa-child / Tests Passed workflow, not a product defect.
+
+## What's solid
+
+- **Plan fidelity (owned files):** `buildDraft(..., "default" | "stored")` on GET vs PUT 200; `applyDetailPayload` / `parseDetailPayload`; edit form iterates `editableFields` with textarea / select / text; footer Save via `showFooter` + `onSave`; PUT body keys exactly `editableFields`; 4xx sets `saveError`, no `onSaved`; 200 refreshes from response body (no extra GET), `buildDraft(..., "stored")`, `onSaved?.()` once; `JobsMeteorites` passes `onSaved={load}`.
+- **AC 1 React half:** `rg` on `MeteoriteDetailModal.tsx` — no `LANDED` / `"CHECK_UNIQUE"` / `"NEW"`.
+- **AC 12:** Component tests cover editable controls + default state select, non-editable (no Save), 200 + stored state after save + single `onSaved`, 409 server text without callback; page test covers list reload via `onSaved={load}`.
+- **Joan round=1 fix:** Post-save state from `meteorite.state`, not `default_save_state` — implemented and asserted in tests.
+
