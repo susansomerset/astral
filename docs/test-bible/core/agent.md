@@ -2259,3 +2259,7 @@ Parent AC **8**: `do_task` passes `request_type="DISPATCH_AGENT"`, task `entity_
 | New — multi-entity leaves entity_id empty | `do_task` → `_send_to_server` | `…::test_multi_entity_leaves_entity_id_empty` |
 
 **Primary manifest:** [`../data/database/timesheets.md`](../data/database/timesheets.md) § AST-2217. **Integration:** none.
+
+### AST-2220 · AST-2215 (`do_task` optional `request_type`)
+
+`do_task(..., request_type=...)` defaults to `DISPATCH_AGENT`; contact turns pass `CONTACT_AGENT` (AST-2220). Pass-through to `_send_to_server` / recorded timesheet. Primary coverage: [`contact.md`](contact.md) § AST-2220. Dispatch default still covered by AST-2217 `TestAst2217CallTimeAttribution`.

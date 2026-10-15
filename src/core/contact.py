@@ -87,6 +87,9 @@ from src.utils.logging import flush_log_buffer, get_logger, log_batch_id, log_de
 
 logger = get_logger(__name__)
 
+# TIMESHEET_REQUEST_TYPES; AST-2220 — contact LLM turns stamp this on the recorded call.
+_CONTACT_TIMESHEET_REQUEST_TYPE = "CONTACT_AGENT"
+
 # Process-local event_id dedupe (single gunicorn worker). OrderedDict as ring.
 _seen_event_ids: "OrderedDict[str, None]" = OrderedDict()
 _seen_lock = threading.Lock()
@@ -1118,7 +1121,11 @@ def run_contact_estelle_turn(
     )
 
     # Late import avoids core→agent cycles at module load.
-    from src.core.agent import conversational_turn_from_do_task_result, do_task
+    from src.core.agent import (
+        compute_batch_cost,
+        conversational_turn_from_do_task_result,
+        do_task,
+    )
 
     max_chars = int(CONTACT_ESTELLE_CONFIG["turn_context_text_max_chars"])
     msg_limit = int(CONTACT_ESTELLE_CONFIG["turn_context_message_limit"])
@@ -1210,183 +1217,230 @@ def run_contact_estelle_turn(
         "candidate_api_keys": dict(row.get("candidate_api_keys") or {}),
     }
 
-    # d. do_task + envelope helper
-    task_key = CONTACT_ESTELLE_CONFIG["task_key"]
-    logger.debug(
-        "Calling agent.do_task: [task_key=%s, index=%s]",
-        task_key, astral_candidate_id or channel,
+    # AST-2220: one ledger row for the whole Estelle turn (primary + optional follow-up).
+    batch_id = f"contact-estelle-{uuid.uuid4()}"
+    started_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    logger.debug("Calling save_dispatch_ledger: [batch_id=%s, candidate_id=%s]", batch_id, cid)
+    database.save_dispatch_ledger(
+        batch_id, "contact-estelle", cid, started_at, entity_type="candidate", batch_size=1
     )
-    result = asyncio.run(
-        do_task(
-            task_key,
-            live_content=live_content,
-            index=astral_candidate_id or channel,
-            ctx=turn_ctx,
-            debug=debug,
-            store_agent_data=True,
-        )
-    )
-    logger.debug("Response from agent.do_task: %s", result)
-    turn = conversational_turn_from_do_task_result(result)
-
-    reply_raw = turn.get("reply") if isinstance(turn.get("reply"), str) else ""
-    markup_spans = parse_contact_task_markup(reply_raw)
-    reply_stripped = strip_contact_task_markup(reply_raw)
-    contact_task_results = run_contact_task_dispatch(
-        astral_candidate_id=astral_candidate_id or "",
-        markup_spans=markup_spans,
-        debug=debug,
-    )
-    listed_markup = any(key in CONTACT_TASK_CONFIG for key, _ in markup_spans)
-    reply_for_slack = reply_stripped
-    if listed_markup:
-        follow_lines = [
-            f"channel={channel}",
-            f"thread_ts={thread_ts or ''}",
-            f"astral_candidate_id={astral_candidate_id or ''}",
-            f"candidate_state={candidate_state or ''}",
-            "",
-            "## Contact task results (same inbound event)",
-        ]
-        for row in contact_task_results:
-            follow_lines.append(_trim(json.dumps(row, default=str)))
-        follow_lines.append("")
-        follow_lines.append("## Conversation")
-        for m in messages:
-            if not isinstance(m, dict):
-                continue
-            who = m.get("user") or m.get("bot_id") or "unknown"
-            follow_lines.append(f"[{who}] {_trim(m.get('text') or '')}")
-        follow_lines.append("")
-        follow_lines.append("## Latest inbound")
-        follow_lines.append(_trim(text if isinstance(text, str) else ""))
-        follow_live_content = "\n".join(follow_lines)
+    _ledger_token = log_batch_id.set(batch_id)
+    _ledger_closed = False
+    try:
+        # d. do_task + envelope helper
+        task_key = CONTACT_ESTELLE_CONFIG["task_key"]
         logger.debug(
-            "Calling agent.do_task: [task_key=%s, index=%s, follow_up=True]",
-            task_key, astral_candidate_id or channel,
+            "Calling agent.do_task: [task_key=%s, index=%s, batch_id=%s, request_type=%s]",
+            task_key, astral_candidate_id or channel, batch_id, _CONTACT_TIMESHEET_REQUEST_TYPE,
         )
-        follow_result = asyncio.run(
+        result = asyncio.run(
             do_task(
                 task_key,
-                live_content=follow_live_content,
+                live_content=live_content,
                 index=astral_candidate_id or channel,
                 ctx=turn_ctx,
                 debug=debug,
                 store_agent_data=True,
+                request_type=_CONTACT_TIMESHEET_REQUEST_TYPE,
             )
         )
-        logger.debug("Response from agent.do_task: %s", follow_result)
-        follow_turn = conversational_turn_from_do_task_result(follow_result)
-        turn = follow_turn
-        reply_for_slack = strip_contact_task_markup(
-            follow_turn.get("reply") if isinstance(follow_turn.get("reply"), str) else ""
-        )
+        logger.debug("Response from agent.do_task: %s", result)
+        turn = conversational_turn_from_do_task_result(result)
 
-    # e. AST-2061: no skill_calls — Estelle never writes candidate.
-    parsed = result.get("parsed_response") if isinstance(result, dict) else None
-
-    # e2. Optional land_calls → contact_land_meteorite (AST-1531; not ACL skill)
-    land_results: List[Dict[str, Any]] = []
-    raw_land = parsed.get("land_calls") if isinstance(parsed, dict) else None
-    land_items = raw_land if isinstance(raw_land, list) else []
-    # Prefer message_ts, then thread_ts, then channel for Slack source-ref id.
-    slack_sid = ""
-    for cand in (message_ts, thread_ts, channel):
-        if isinstance(cand, str) and cand.strip():
-            slack_sid = cand.strip()
-            break
-    for item in land_items:
-        if not isinstance(item, dict):
-            continue
-        if not (isinstance(astral_candidate_id, str) and astral_candidate_id.strip()):
-            land_results.append({"ok": False, "error": "no_candidate"})
-            logger.warning("%s -> %s [%s]", "land_meteorite", "land_failed", "no_candidate")
-            continue
-        try:
-            from src.core.meteorite import (
-                apply_paste,
-                find_meteorite_bot_blocked_paste_source,
-            )
-
-            paste_row = find_meteorite_bot_blocked_paste_source(
-                candidate_id=astral_candidate_id
-            )
-            if paste_row is not None and isinstance(text, str) and text.strip():
-                apply_out = apply_paste(int(paste_row["id"]), _unwrap_slack_links(text), debug=debug)
-                land_results.append({"ok": True, "result": apply_out, "via": "apply_paste"})
-                continue
-            if isinstance(item.get("scraps"), list) and item["scraps"]:
-                land_out = contact_land_meteorite(
-                    astral_candidate_id,
-                    source_kind="slack",
-                    source_id=slack_sid,
-                    scraps=item["scraps"],
-                    debug=debug,
-                )
-            else:
-                land_out = contact_land_meteorite(
-                    astral_candidate_id,
-                    source_kind="slack",
-                    source_id=slack_sid,
-                    text=item.get("text") if isinstance(item.get("text"), str) else None,
-                    job_link=(
-                        item.get("job_link")
-                        if isinstance(item.get("job_link"), str)
-                        else None
-                    ),
-                    employer_name=(
-                        item.get("employer_name")
-                        if isinstance(item.get("employer_name"), str)
-                        else None
-                    ),
-                    debug=debug,
-                )
-            land_results.append({"ok": True, "result": land_out})
-        except Exception as exc:
-            land_results.append({"ok": False, "error": str(exc)})
-            logger.warning("%s -> %s [%s]", "land_meteorite", "land_failed", str(exc))
-
-    # f. Outbound reply — only success/concern with non-empty reply
-    reply = turn.get("reply")
-    slack_post = None
-    outcome = turn.get("outcome")
-    reply_ok = (
-        bool(turn.get("success"))
-        and isinstance(reply_for_slack, str)
-        and bool(reply_for_slack.strip())
-        and outcome in ("success", "concern")
-    )
-    if reply_ok:
-        reply_ts, reply_broadcast = _contact_reply_placement(thread_ts, message_ts)
-        outbound = format_contact_reply_text(reply_for_slack)
-        slack_post = contact_post_message(
-            channel=channel,
-            text=outbound,
-            thread_ts=reply_ts,
-            reply_broadcast=reply_broadcast,
+        reply_raw = turn.get("reply") if isinstance(turn.get("reply"), str) else ""
+        markup_spans = parse_contact_task_markup(reply_raw)
+        reply_stripped = strip_contact_task_markup(reply_raw)
+        contact_task_results = run_contact_task_dispatch(
+            astral_candidate_id=astral_candidate_id or "",
+            markup_spans=markup_spans,
             debug=debug,
         )
+        listed_markup = any(key in CONTACT_TASK_CONFIG for key, _ in markup_spans)
+        reply_for_slack = reply_stripped
+        if listed_markup:
+            follow_lines = [
+                f"channel={channel}",
+                f"thread_ts={thread_ts or ''}",
+                f"astral_candidate_id={astral_candidate_id or ''}",
+                f"candidate_state={candidate_state or ''}",
+                "",
+                "## Contact task results (same inbound event)",
+            ]
+            for row in contact_task_results:
+                follow_lines.append(_trim(json.dumps(row, default=str)))
+            follow_lines.append("")
+            follow_lines.append("## Conversation")
+            for m in messages:
+                if not isinstance(m, dict):
+                    continue
+                who = m.get("user") or m.get("bot_id") or "unknown"
+                follow_lines.append(f"[{who}] {_trim(m.get('text') or '')}")
+            follow_lines.append("")
+            follow_lines.append("## Latest inbound")
+            follow_lines.append(_trim(text if isinstance(text, str) else ""))
+            follow_live_content = "\n".join(follow_lines)
+            logger.debug(
+                "Calling agent.do_task: [task_key=%s, index=%s, follow_up=True, "
+                "batch_id=%s, request_type=%s]",
+                task_key, astral_candidate_id or channel, batch_id,
+                _CONTACT_TIMESHEET_REQUEST_TYPE,
+            )
+            follow_result = asyncio.run(
+                do_task(
+                    task_key,
+                    live_content=follow_live_content,
+                    index=astral_candidate_id or channel,
+                    ctx=turn_ctx,
+                    debug=debug,
+                    store_agent_data=True,
+                    request_type=_CONTACT_TIMESHEET_REQUEST_TYPE,
+                )
+            )
+            logger.debug("Response from agent.do_task: %s", follow_result)
+            follow_turn = conversational_turn_from_do_task_result(follow_result)
+            turn = follow_turn
+            reply_for_slack = strip_contact_task_markup(
+                follow_turn.get("reply") if isinstance(follow_turn.get("reply"), str) else ""
+            )
 
-    # g. Admin aside rides the always-on listen info line (never Slack, never a warning).
-    aside = turn.get("admin_aside")
+        # e. AST-2061: no skill_calls — Estelle never writes candidate.
+        parsed = result.get("parsed_response") if isinstance(result, dict) else None
 
-    do_task_error = None
-    if isinstance(result, dict) and not result.get("success"):
-        do_task_error = result.get("error")
+        # e2. Optional land_calls → contact_land_meteorite (AST-1531; not ACL skill)
+        land_results: List[Dict[str, Any]] = []
+        raw_land = parsed.get("land_calls") if isinstance(parsed, dict) else None
+        land_items = raw_land if isinstance(raw_land, list) else []
+        # Prefer message_ts, then thread_ts, then channel for Slack source-ref id.
+        slack_sid = ""
+        for cand in (message_ts, thread_ts, channel):
+            if isinstance(cand, str) and cand.strip():
+                slack_sid = cand.strip()
+                break
+        for item in land_items:
+            if not isinstance(item, dict):
+                continue
+            if not (isinstance(astral_candidate_id, str) and astral_candidate_id.strip()):
+                land_results.append({"ok": False, "error": "no_candidate"})
+                logger.warning("%s -> %s [%s]", "land_meteorite", "land_failed", "no_candidate")
+                continue
+            try:
+                from src.core.meteorite import (
+                    apply_paste,
+                    find_meteorite_bot_blocked_paste_source,
+                )
 
-    out = {
-        "ok": bool(turn.get("success")) and do_task_error is None,
-        "outcome": outcome,
-        "reply": reply if isinstance(reply, str) else None,
-        "admin_aside": aside if isinstance(aside, str) else None,
-        "skill_results": [],
-        "land_results": land_results,
-        "contact_task_results": contact_task_results,
-        "slack_post": slack_post,
-        "error": do_task_error,
-    }
-    logger.debug("Response from run_contact_estelle_turn: %s", out)
-    return out
+                paste_row = find_meteorite_bot_blocked_paste_source(
+                    candidate_id=astral_candidate_id
+                )
+                if paste_row is not None and isinstance(text, str) and text.strip():
+                    apply_out = apply_paste(int(paste_row["id"]), _unwrap_slack_links(text), debug=debug)
+                    land_results.append({"ok": True, "result": apply_out, "via": "apply_paste"})
+                    continue
+                if isinstance(item.get("scraps"), list) and item["scraps"]:
+                    land_out = contact_land_meteorite(
+                        astral_candidate_id,
+                        source_kind="slack",
+                        source_id=slack_sid,
+                        scraps=item["scraps"],
+                        debug=debug,
+                    )
+                else:
+                    land_out = contact_land_meteorite(
+                        astral_candidate_id,
+                        source_kind="slack",
+                        source_id=slack_sid,
+                        text=item.get("text") if isinstance(item.get("text"), str) else None,
+                        job_link=(
+                            item.get("job_link")
+                            if isinstance(item.get("job_link"), str)
+                            else None
+                        ),
+                        employer_name=(
+                            item.get("employer_name")
+                            if isinstance(item.get("employer_name"), str)
+                            else None
+                        ),
+                        debug=debug,
+                    )
+                land_results.append({"ok": True, "result": land_out})
+            except Exception as exc:
+                land_results.append({"ok": False, "error": str(exc)})
+                logger.warning("%s -> %s [%s]", "land_meteorite", "land_failed", str(exc))
+
+        # f. Outbound reply — only success/concern with non-empty reply
+        reply = turn.get("reply")
+        slack_post = None
+        outcome = turn.get("outcome")
+        reply_ok = (
+            bool(turn.get("success"))
+            and isinstance(reply_for_slack, str)
+            and bool(reply_for_slack.strip())
+            and outcome in ("success", "concern")
+        )
+        if reply_ok:
+            reply_ts, reply_broadcast = _contact_reply_placement(thread_ts, message_ts)
+            outbound = format_contact_reply_text(reply_for_slack)
+            slack_post = contact_post_message(
+                channel=channel,
+                text=outbound,
+                thread_ts=reply_ts,
+                reply_broadcast=reply_broadcast,
+                debug=debug,
+            )
+
+        # g. Admin aside rides the always-on listen info line (never Slack, never a warning).
+        aside = turn.get("admin_aside")
+
+        do_task_error = None
+        if isinstance(result, dict) and not result.get("success"):
+            do_task_error = result.get("error")
+
+        ok = bool(turn.get("success")) and do_task_error is None
+        logger.debug(
+            "Calling update_dispatch_ledger: [batch_id=%s, ok=%s, timesheet_state=NEW]",
+            batch_id, ok,
+        )
+        database.update_dispatch_ledger(
+            batch_id,
+            status="COMPLETED" if ok else "FAILED",
+            completed_at=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
+            total_processed=1,
+            total_passed=int(ok),
+            total_failed=int(not ok),
+            total_cost=compute_batch_cost(batch_id),
+            timesheet_state="NEW",
+        )
+        _ledger_closed = True
+
+        out = {
+            "ok": ok,
+            "outcome": outcome,
+            "reply": reply if isinstance(reply, str) else None,
+            "admin_aside": aside if isinstance(aside, str) else None,
+            "skill_results": [],
+            "land_results": land_results,
+            "contact_task_results": contact_task_results,
+            "slack_post": slack_post,
+            "error": do_task_error,
+        }
+        logger.debug("Response from run_contact_estelle_turn: %s", out)
+        return out
+    except Exception:
+        if not _ledger_closed:
+            database.update_dispatch_ledger(
+                batch_id,
+                status="FAILED",
+                completed_at=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
+                total_processed=1,
+                total_passed=0,
+                total_failed=1,
+                total_cost=compute_batch_cost(batch_id),
+                timesheet_state="NEW",
+            )
+        raise
+    finally:
+        flush_log_buffer()
+        log_batch_id.reset(_ledger_token)
 
 
 # AST-2206: Slack channel_type of a private channel (fetch_channel_type vocabulary: im | mpim | group | channel).
@@ -1439,6 +1493,7 @@ def _run_contact_ledgered_task(task_key: str, *, cid: str, row: dict, live_conte
 
     list_agent_data_runs joins agent_data to dispatch_ledger on batch_id, and do_task stores prompt
     blocks only under an active batch. Same ledger shape as intake.validate_preamble_answer.
+    Closes with timesheet_state NEW and CONTACT_AGENT attribution (AST-2220).
     Returns the do_task result plus batch_id.
     """
     # Late import avoids core→agent cycles at module load.
@@ -1452,7 +1507,10 @@ def _run_contact_ledgered_task(task_key: str, *, cid: str, row: dict, live_conte
     )
     token = log_batch_id.set(batch_id)
     try:
-        logger.debug("Calling agent.do_task: [task_key=%s, index=%s, batch_id=%s]", task_key, cid, batch_id)
+        logger.debug(
+            "Calling agent.do_task: [task_key=%s, index=%s, batch_id=%s, request_type=%s]",
+            task_key, cid, batch_id, _CONTACT_TIMESHEET_REQUEST_TYPE,
+        )
         result = asyncio.run(
             do_task(
                 task_key,
@@ -1461,11 +1519,15 @@ def _run_contact_ledgered_task(task_key: str, *, cid: str, row: dict, live_conte
                 ctx=_contact_task_ctx(cid, row),
                 debug=debug,
                 store_agent_data=True,
+                request_type=_CONTACT_TIMESHEET_REQUEST_TYPE,
             )
         )
         logger.debug("Response from agent.do_task: %s", result)
         ok = isinstance(result, dict) and bool(result.get("success"))
-        logger.debug("Calling update_dispatch_ledger: [batch_id=%s, ok=%s]", batch_id, ok)
+        logger.debug(
+            "Calling update_dispatch_ledger: [batch_id=%s, ok=%s, timesheet_state=NEW]",
+            batch_id, ok,
+        )
         database.update_dispatch_ledger(
             batch_id,
             status="COMPLETED" if ok else "FAILED",
@@ -1474,6 +1536,7 @@ def _run_contact_ledgered_task(task_key: str, *, cid: str, row: dict, live_conte
             total_passed=int(ok),
             total_failed=int(not ok),
             total_cost=compute_batch_cost(batch_id),
+            timesheet_state="NEW",
         )
         return {**(result if isinstance(result, dict) else {}), "batch_id": batch_id}
     finally:

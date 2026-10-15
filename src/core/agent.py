@@ -1794,6 +1794,7 @@ async def do_task(
     debug: bool = False,
     store_agent_data: bool = True,
     chain_context: Optional[Dict[str, str]] = None,
+    request_type: str = "DISPATCH_AGENT",
 ) -> Dict[str, Any]:
     """Run a task by key. Fetches prompts from DB, resolves tokens, calls Anthropic API.
     Stores prompt + response blocks in agent_data when store_agent_data=True.
@@ -1813,6 +1814,7 @@ async def do_task(
         debug: Emit verbose log lines.
         store_agent_data: When True, persist prompt/response blocks to agent_data table.
         chain_context: Optional extra chain-source token values (AST-303 parent hop → child).
+        request_type: Timesheet attribution; default DISPATCH_AGENT. Contact turns pass CONTACT_AGENT (AST-2220).
 
     Returns:
         Dict with success, api_response, parsed_response, timesheet, error (if failed).
@@ -2154,7 +2156,7 @@ async def do_task(
         "Calling _send_to_server: [task_key=%s, server=%s, model=%s, max_tokens=%s, temp=%s, effort=%s, skip_cache=%s, candidate=%s]",
         task_key, server_id, sku, agent_max_tokens, agent_temperature, tier.get("reasoning_effort"), skip_cache, candidate_id or "",
     )
-    # AST-2217: multi-entity calls leave entity_id empty; request_type is DISPATCH_AGENT here (contact = AST-2220).
+    # AST-2217: multi-entity calls leave entity_id empty; request_type from caller (contact = CONTACT_AGENT, AST-2220).
     _multi = batch_size > 1 or len(_ents) > 1
     result = await _send_to_server(
         user_blocks,
@@ -2174,7 +2176,7 @@ async def do_task(
         no_cache_live_tokens=no_cache_live_tokens,
         batch_size=batch_size,
         forced_tool=forced_tool,
-        request_type="DISPATCH_AGENT",
+        request_type=request_type,
         entity_type=entity_type or None,
         entity_id=None if _multi else (index if index else None),
     )

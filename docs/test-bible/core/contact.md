@@ -746,3 +746,32 @@ git diff origin/dev...HEAD --stat -- src/core/intake.py
 **Pass criterion:** 130 passed; AC 3 / AC 4 empty. Not the zero-arg harness. Use `/home/susan/astral/.venv/bin/python` on this worktree (`asyncpg` / `nh3`); `git restore data/contact_estelle_activity.json` after the run.
 
 **Bible shasum (after publish):** `git show origin/sub/AST-2206/AST-2212-contact-wiring-draft-thread:docs/test-bible/core/contact.md | shasum`.
+
+### AST-2220 · AST-2215 (contact Estelle / peer turns — ledger NEW + CONTACT_AGENT)
+
+Parent AC **9**. `run_contact_estelle_turn` and `_run_contact_ledgered_task` open a `dispatch_ledger` row, set `log_batch_id`, pass `request_type=CONTACT_AGENT` into `do_task`, and close with `timesheet_state="NEW"` (including FAILED). One Estelle turn = one batch (primary + optional follow-up share `batch_id`). `do_task` optional `request_type` (default `DISPATCH_AGENT`) is Stage 1 in `agent.py` — see also [`agent.md`](agent.md) § AST-2217 / AST-2220.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| New — Estelle success: ledger COMPLETED + NEW; timesheet shares batch_id + CONTACT_AGENT | `run_contact_estelle_turn` | `TestAst2220ContactEstelleLedgerRow::test_estelle_turn_ledger_new_and_contact_agent_timesheet` |
+| New — Estelle failure still closes FAILED + NEW with CONTACT_AGENT timesheet | `run_contact_estelle_turn` | `…::test_estelle_failure_still_closes_ledger_new` |
+| New — peer ledgered helper same contract | `_run_contact_ledgered_task` | `…::test_peer_ledgered_task_contact_agent_and_new` |
+| New — listen_off opens no ledger | `run_contact_estelle_turn` | `…::test_listen_off_opens_no_ledger` |
+| Broken / revised — AST-2212 `fake_do_task` accepts `request_type`; draft ledger asserts NEW + CONTACT_AGENT | `TestAst2212ContactContextWiring._edges` | `…::test_draft_end_to_end_…` · `…::test_draft_failure_…` |
+
+**Integration:** none — do not invent.
+
+## QA test manifest
+
+```bash
+./scripts/testing/run_component_tests.sh   tests/component/core/test_contact.py::TestAst2220ContactEstelleLedgerRow   tests/component/core/test_contact.py::TestAst2212ContactContextWiring
+```
+
+**Pass criterion:** pytest green on the nodes above. Not the zero-arg harness.
+
+**Bible shasums (at `test(AST-2220)` tip `1dbb0efe5`):**
+
+```text
+docs/test-bible/core/agent.md   789b258c9efd2db6bd52923b0879b956c3e9c03d
+# contact.md: git show origin/sub/AST-2215/AST-2220-contact-estelle-ledger-row:docs/test-bible/core/contact.md | shasum
+```
