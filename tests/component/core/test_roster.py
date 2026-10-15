@@ -18,7 +18,7 @@ from src.utils.config import COMPANY_STATES, PROVIDER_CALL_BUDGET, ROSTER_CONFIG
 
 @pytest.fixture(autouse=True)
 def _telescope_tmp_db(sqlite_in_memory):
-    """AST-2134: roster writers keep scrapes via gazer -> database.save_telescope_data. Pin the DB to tmp
+    """AST-2134: roster writers keep scrapes via gazer -> database.save_web_data. Pin the DB to tmp
     so an unpatched keep never reaches the default ASTRAL_DB_DIR (data/astral.db may be a live symlink)."""
     return sqlite_in_memory
 
@@ -7457,15 +7457,15 @@ class TestAst2088UpshotReadableCompanyName:
 
 
 # AST-2134: roster company writers keep scrapes via gazer (blob holds row ids); readers resolve via gazer.
-# Real telescope_data rows in the autouse tmp DB; only scrapers / agent calls are stubbed.
+# Real web_data rows in the autouse tmp DB; only scrapers / agent calls are stubbed.
 class TestAst2134RosterTelescope:
     def _keep(self, text: str, url: str = "https://acme.com/p", data_type: str = "VISIBLE_TEXT") -> str:
-        return gazer_mod.keep_telescope_data(None, url, data_type, text)
+        return gazer_mod.keep_web_data(None, url, data_type, text)
 
     def _drop(self, db, row_id: str) -> None:
         conn = db._get_connection()
         try:
-            conn.execute("DELETE FROM telescope_data WHERE telescope_data_id = ?", (row_id,))
+            conn.execute("DELETE FROM web_data WHERE web_data_id = ?", (row_id,))
             conn.commit()
         finally:
             conn.close()
@@ -7588,7 +7588,7 @@ class TestAst2134RosterTelescope:
         assert [set(e) for e in wc] == [{"url", "id"}] and gazer_mod.is_telescope_id(wc[0]["id"])
         conn = db._get_connection()
         try:
-            row = conn.execute("SELECT candidate_id, url, data_type FROM telescope_data WHERE telescope_data_id=?",
+            row = conn.execute("SELECT candidate_id, url, data_type FROM web_data WHERE web_data_id=?",
                                (wc[0]["id"],)).fetchone()
         finally:
             conn.close()
@@ -7612,7 +7612,7 @@ class TestAst2134RosterTelescope:
         assert gazer_mod.resolve_telescope_value(rid) == "Job list text"
         conn = db._get_connection()
         try:
-            row = conn.execute("SELECT candidate_id, url, data_type FROM telescope_data WHERE telescope_data_id=?",
+            row = conn.execute("SELECT candidate_id, url, data_type FROM web_data WHERE web_data_id=?",
                                (rid,)).fetchone()
         finally:
             conn.close()

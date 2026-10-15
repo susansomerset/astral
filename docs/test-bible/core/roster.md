@@ -1287,7 +1287,7 @@ git diff origin/dev -- src/core/roster.py | grep -n '_apply_prefilter_decoded_co
 
 **Integration:** none.
 
-### AST-2134 · AST-2130 (roster company scrapes + admin preview on telescope_data)
+### AST-2134 · AST-2130 (roster company scrapes + admin preview on web_data)
 
 **Parent:** [AST-2130](https://linear.app/astralcareermatch/issue/AST-2130). **Publish:** `origin/sub/AST-2130/AST-2134-roster-telescope-data`. Plan: `docs/features/foundation/ast-2134-roster-company-scrapes-and-admin-preview-on-telescope-data.md`. Gazer API: [`gazer.md`](gazer.md) § AST-2132. Admin preview: [`../ui/api/api_admin.md`](../ui/api/api_admin.md) § AST-2134.
 
@@ -1314,7 +1314,7 @@ Writers keep via gazer and store row ids: `_fetch_nav_links` / `_fetch_prefilter
 1. `./scripts/testing/run_component_tests.sh tests/component/core/test_roster.py tests/component/core/test_gazer.py tests/component/ui/api/test_api_admin.py -q -k "Ast2134 or TestAst719 or nav_links_saves or website_content_scrapes or TestFetchJobPagesBatch"` — 36 passed.
 2. No-regression: the same three files plus `tests/component/core/{test_gazer_scrape_failure,test_bootstrap,test_consult,test_dispatcher}.py`, `tests/component/utils/test_debug_logging.py`, `tests/component/ui/api/test_api_system.py` — failure set equals the ftr baseline (98 nodes, counts above).
 3. AC8 (AST-2133, closed here): `git grep -n -E "\.get\((jd_key|[\"']job_description[\"'])" -- src/core src/ui/api ':!src/core/tracker.py'` → empty.
-4. Live DB untouched: run with `ASTRAL_DB_DIR=<empty tmp dir>`; `telescope_data` row count in `~/astral/data/astral.db` is the same before and after items 1–2, and the tmp dir gains no `telescope_data` table from item 2's roster run.
+4. Live DB untouched: run with `ASTRAL_DB_DIR=<empty tmp dir>`; `web_data` row count in `~/astral/data/astral.db` is the same before and after items 1–2, and the tmp dir gains no `web_data` table from item 2's roster run.
 
 **Pass criterion:** items 1–4 — narrowed run, not the zero-arg harness / branch-lock gate (pre-existing reds on the ftr tip).
 

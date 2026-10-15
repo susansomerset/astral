@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+from email import message_from_bytes
 from types import SimpleNamespace
 from typing import Any, Dict, List, Optional
 from unittest.mock import MagicMock
@@ -102,6 +103,38 @@ class TestSendEmail:
         assert gmail_mod.send_email("to@example.com", "S", "B") is True
         assert captured["scopes"] == gmail_mod._GMAIL_SCOPES
         assert captured["scopes"] == ["https://www.googleapis.com/auth/gmail.modify"]
+
+
+# Branches: truthy attachments -> multipart/mixed (body + one text/plain attachment
+# per filename); None / {} / omitted -> unchanged single-part text/plain (AST-2213).
+class TestAst2213Attachments:
+    @staticmethod
+    def _sent_message(monkeypatch, fake_gmail_service, **kwargs: Any):
+        # Send through the fake service, then decode the raw it was handed back into a Message.
+        monkeypatch.setattr(gmail_mod, "build", lambda *a, **k: fake_gmail_service["service"])
+        assert gmail_mod.send_email("to@example.com", "Subj", "Body text", **kwargs) is True
+        raw = fake_gmail_service["calls"][0]["body"]["raw"]
+        return message_from_bytes(base64.urlsafe_b64decode(raw))
+
+    def test_attachment_builds_multipart_mixed(self, monkeypatch, fake_gmail_service) -> None:
+        msg = self._sent_message(monkeypatch, fake_gmail_service, attachments={"b-1.txt": "full log"})
+        assert msg.get_content_type() == "multipart/mixed"
+        assert msg["to"] == "to@example.com"
+        assert msg["subject"] == "Subj"
+        body_part, attach_part = msg.get_payload()
+        assert body_part.get_content_type() == "text/plain"
+        assert body_part.get("Content-Disposition") is None
+        assert body_part.get_payload(decode=True).decode() == "Body text"
+        assert attach_part.get_content_type() == "text/plain"
+        assert attach_part["Content-Disposition"] == 'attachment; filename="b-1.txt"'
+        assert attach_part.get_payload(decode=True).decode() == "full log"
+
+    @pytest.mark.parametrize("kwargs", [{}, {"attachments": None}, {"attachments": {}}])
+    def test_no_attachments_stays_single_text_plain(self, monkeypatch, fake_gmail_service, kwargs) -> None:
+        msg = self._sent_message(monkeypatch, fake_gmail_service, **kwargs)
+        assert msg.get_content_type() == "text/plain"
+        assert not msg.is_multipart()
+        assert msg.get_payload(decode=True).decode() == "Body text"
 
 
 # Branches: empty inbox; pagination; skip bad ids; raise on API failure; unread flag.
@@ -226,6 +259,7 @@ class TestGetMessageHtml:
             "subject": "",
             "from_address": "",
             "to_address": "",
+            "date": "",
         }
 
     def test_includes_subject_and_from_headers(self, monkeypatch) -> None:
@@ -252,6 +286,7 @@ class TestGetMessageHtml:
             "subject": "JD role",
             "from_address": "Ada <ada@ex.com>",
             "to_address": "Susan <susan@ex.com>",
+            "date": "",
         }
 
     def test_top_level_html_and_empty_when_missing(self, monkeypatch) -> None:
@@ -298,6 +333,7 @@ class TestGetMessageHtml:
             "subject": "",
             "from_address": "",
             "to_address": "",
+            "date": "",
         }
         assert gmail_mod.get_message_html("empty-data")["html_body"] == ""
         assert gmail_mod.get_message_html("bad-body")["html_body"] == ""
@@ -308,6 +344,7 @@ class TestGetMessageHtml:
             "subject": "",
             "from_address": "",
             "to_address": "",
+            "date": "",
         }
         assert gmail_mod.get_message_html("no-payload")["html_body"] == ""
 

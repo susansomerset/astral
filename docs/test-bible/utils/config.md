@@ -4933,7 +4933,7 @@ All 8 new/revised nodes red on pre-AST-2024 `config.py` / `agent_task.json`, gre
 
 **Parent:** [AST-2055](https://linear.app/astralcareermatch/issue/AST-2055) (fix child [AST-2061](https://linear.app/astralcareermatch/issue/AST-2061)). **Publish:** `origin/sub/AST-2055/AST-2062-estelle-pinhole-tests`.
 
-AST-2061 config: `CONTACT_CONFIG["skills"] = {}` (map kept for `contact_skills()` / admin routes), `CONTACT_CONFIG["allowed_channel_types"] = ("im", "group")` with import-time asserts (tuple, Slack vocabulary, never `"channel"`), `create_contact_meteorite` removed from `CONTACT_TASK_CONFIG`, and the `_CONTACT_PINHOLE_HANDLERS` allowlist + import-time assert (every task/command handler listed; `write` kinds only under `src.core.meteorite.`). Contact behavior: [`../core/contact.md`](../core/contact.md) § AST-2062.
+AST-2061 config: `CONTACT_CONFIG["skills"] = {}` (map kept for `contact_skills()` / admin routes), `CONTACT_CONFIG["allowed_channel_types"] = ("im", "group")` with import-time asserts (tuple, Slack vocabulary, never `"channel"`), `create_contact_meteorite` removed from `CONTACT_TASK_CONFIG`, and the `_CONTACT_PINHOLE_HANDLERS` allowlist + import-time assert (every task/command handler listed; `write` kinds only under `src.core.meteorite.` — **amended by § AST-2210**: `write meteorite` under `src.core.meteorite.` or `write artifact`). Contact behavior: [`../core/contact.md`](../core/contact.md) § AST-2062.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
@@ -5031,15 +5031,15 @@ Config only, no branches. `line` is appended to `RESUME_STRUCTURE_BODY_FORMATS`.
 
 Manifest: [`../core/tracker.md`](../core/tracker.md) § AST-2081.
 
-### AST-2131 · AST-2130 (TELESCOPE_DATA_CONFIG + jd_telescope_data_id)
+### AST-2131 · AST-2130 (WEB_DATA_CONFIG + jd_web_data_id)
 
-Config literals plus one module-level guard: every `TELESCOPE_DATA_CONFIG["company_data_id_keys"]` entry must be in `ROSTER_CONFIG["company_data_keys"]`. New block is fully line/branch covered.
+Config literals plus one module-level guard: every `WEB_DATA_CONFIG["company_data_id_keys"]` entry must be in `ROSTER_CONFIG["company_data_keys"]`. New block is fully line/branch covered.
 
 | Area | Component tests |
 | --- | --- |
-| `data_types` id→value shape (`VISIBLE_TEXT`, `PAGE_LINKS`, reserved `DOM_CONTENT`); exact id-key tuple ⊆ `company_data_keys` | new **`TestAst2131TelescopeDataConfig::test_data_types_and_id_keys`** |
-| `TRACKER_CONFIG["job_data_keys"]["jd_telescope_data_id"]`; `job_description` unchanged | **`TestAst2131TelescopeDataConfig::test_job_data_keys_gain_jd_telescope_data_id`** |
-| Guard fires when an id key leaves `company_data_keys` (AST-2105 `_splice_exec` re-exec) | **`TestAst2131TelescopeDataConfig::test_guard_rejects_id_key_missing_from_company_data_keys`** |
+| `data_types` id→value shape (`VISIBLE_TEXT`, `PAGE_LINKS`, reserved `DOM_CONTENT`); exact id-key tuple ⊆ `company_data_keys` | new **`TestAst2131WebDataConfig::test_data_types_and_id_keys`** |
+| `TRACKER_CONFIG["job_data_keys"]["jd_web_data_id"]`; `job_description` unchanged | **`TestAst2131WebDataConfig::test_job_data_keys_gain_jd_web_data_id`** |
+| Guard fires when an id key leaves `company_data_keys` (AST-2105 `_splice_exec` re-exec) | **`TestAst2131WebDataConfig::test_guard_rejects_id_key_missing_from_company_data_keys`** |
 
 Pre-existing: 22 `test_config.py` failures identical on `origin/ftr/AST-2130-telescope-data` (removed symbols, e.g. `SURFER_BATCH_CONFIG`, `METEORITE_RETENTION_CONFIG`) — not this ticket.
 
@@ -5109,3 +5109,43 @@ Manifest: [`../data/database/telescope_data.md`](../data/database/telescope_data
 ### AST-2180 · AST-2172
 
 **Revised:** `TestAst1055MeteoriteLikeUpshotTasks::test_rubric_owner_batch_and_encoded_membership` no longer reads the retired agent encoded-batch set. It asserts that `meteorite_like`'s output type carries `structured_output: True`. Manifest: [`../core/agent.md`](../core/agent.md) § AST-2180.
+
+### AST-2210 · AST-2206 (context command registry, generated commands, draft/revise tasks, pinhole amendment)
+
+**Parent:** [AST-2206](https://linear.app/astralcareermatch/issue/AST-2206). **Publish:** `origin/sub/AST-2206/AST-2210-registry-estelle-prompts`. Plan: `docs/features/contact/ast-2210-context-command-registry-and-estelle-prompts.md`.
+
+Config only, no handlers. `CONTACT_CONTEXT_COMMAND_CONFIG` (six suffixes → `artifact_key` / `draft_task` / `label`; import-time asserts: token-shaped suffix, non-empty fields, `draft_task` in `TASK_CONFIG`, one artifact key per row, every artifact key in `ARTIFACT_CONFIG`) × `_CONTACT_CONTEXT_COMMAND_VERBS` generates the 18 `draft-`/`save-`/`show-<suffix>` entries in `CONTACT_CONFIG["commands"]`. Optional entry fields + asserts: `payload_optional` (bool; draft/show only), `private_channel_only` (bool; all 18), `artifact_key` (non-empty str). Draft entries carry `reply_placement: "always_no_share"`. New reply texts `private_channel_only_reply_text` / `unmapped_channel_reply_text`. Six `draft_context_*` CRAFT tasks + `contact_draft_revise` CHAT task, none with `artifact_key` (drafting never saves). `CONTACT_DRAFT_THREAD_CONFIG["revise_task_key"]`. Pinhole: show `read artifact`, save `write artifact`, draft `read artifact (LLM draft, no artifact write)`; write-kind assert amended to `write meteorite` (under `src.core.meteorite.`) or `write artifact`. Seven `data/admin/agent_task.json` rows: [`../core/repo_admin_json.md`](../core/repo_admin_json.md) § AST-2210.
+
+**Interim (plan-accepted):** handlers resolve "unavailable" and `payload_optional` is inert in the runner until siblings **AST-2211** / **AST-2212** — not a product bug on this child.
+
+| Area | Component tests |
+| --- | --- |
+| AC 1 exact 18 ids; AC 2 no hand-listed id literal in `config.py`; per-verb handler / mode / `artifact_key` / `private_channel_only` / usage + description / `payload_optional` (absent on save) / `reply_placement` (draft only) | new **`TestAst2210ContextCommandRegistry`** — `test_ac1_*`, `test_ac2_*`, `test_entry_fields_per_verb` |
+| Registry rows resolve; draft + revise tasks carry no `artifact_key`; response schemas; revise key | same — `test_registry_rows_resolve_and_drafts_never_save` |
+| Reply texts (exact, double space deliberate); AC 4 three pinhole rows | same — `test_reply_texts`, `test_ac4_pinhole_rows` |
+| Real import-time asserts (AST-2151 `_splice_exec`, anchors must appear once): non-bool `payload_optional`; unregistered artifact key; duplicate artifact key; `write candidate` kind outside meteorite/artifact | same class (4) |
+| Revised: AC 4 amended write rule + save handler is `write artifact` | **`TestAst2061ContactPinholeConfig::test_every_contact_handler_in_pinhole`** |
+
+**Broken / obsolete this pass (isolated A/B vs `ftr` product):** `TestAst2061ContactPinholeConfig::test_every_contact_handler_in_pinhole` — asserted every `write` kind sits under `src.core.meteorite.`; the parent spec amends that rule. Revised. No other new red across `test_config.py`, `test_repo_admin_json.py`, `test_agent.py`, `test_meteorite.py`, `test_contact.py`.
+
+**Pre-existing red, not this ticket:** 63 failures across `test_config.py` + `test_repo_admin_json.py`, identical on `origin/ftr/AST-2206-contact-context-draft-commands` product. `test_contact.py` / `test_meteorite.py` need `asyncpg` / `nh3` in the interpreter to collect.
+
+**Integration:** none — no `tests/integration/` scenario reads `CONTACT_CONFIG["commands"]` or the pinhole map; do not invent.
+
+## QA test manifest — AST-2210
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst2210ContextCommandRegistry \
+  tests/component/utils/test_config.py::TestAst2061ContactPinholeConfig \
+  tests/component/utils/test_config.py::TestAst2151CheckStatusRegistry \
+  tests/component/core/test_repo_admin_json.py::TestAst2210ContextDraftCatalogRows \
+  tests/component/core/test_repo_admin_json.py::TestAst1072ContactEstelleTurnCatalogRow \
+  -q
+./scripts/testing/run_component_tests.sh tests/component/utils/test_config.py -k pinhole -q
+```
+
+**Pass criterion:** 24 passed on the first command; 6 passed on the `-k pinhole` run (ticket AC 4). Not the zero-arg harness.
+
+**Bible shasum (after publish):** `git show origin/sub/AST-2206/AST-2210-registry-estelle-prompts:docs/test-bible/utils/config.md | shasum`; same for `docs/test-bible/core/repo_admin_json.md`.
+

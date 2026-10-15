@@ -19,14 +19,21 @@ def _stub_alert(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
 
 # Branches: send_email ok; send_email False; unexpected exception swallowed.
 class TestAutoRunError:
-    def test_sends_alert_with_log_body(self, log_entries: List[Dict[str, Any]], monkeypatch: pytest.MonkeyPatch) -> None:
-        # Isolate deploy-label fallback from host ASTRAL_DEPLOY_ENV (AC 3).
+    # AST-2214 AC 1/2/4: header before the fence, WARNING/ERROR-only body, full log attached oldest-first.
+    _MIXED_ROWS = [
+        {"created_at": "t1", "level": "DEBUG", "message": "dbg-msg"},
+        {"created_at": "t2", "level": "INFO", "message": "info-msg"},
+        {"created_at": "t3", "level": "WARNING", "message": "warn-msg"},
+        {"created_at": "t4", "level": "ERROR", "message": "err-msg"},
+    ]
+
+    def test_sends_header_filtered_body_and_full_log_attachment(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Isolate deploy-label fallback from host ASTRAL_DEPLOY_ENV.
         monkeypatch.delenv("ASTRAL_DEPLOY_ENV", raising=False)
-        # DB returns newest-first; monitor reverses for the email body.
+        monkeypatch.setattr(monitor_mod.database, "get_candidate", lambda candidate_id: {"last": "Somerset"})
+        # DB returns newest-first; monitor reverses to chronological.
         monkeypatch.setattr(
-            monitor_mod.database,
-            "list_log_entries",
-            lambda batch_id: list(reversed(log_entries)),
+            monitor_mod.database, "list_log_entries", lambda batch_id: list(reversed(self._MIXED_ROWS)),
         )
         send = MagicMock(return_value=True)
         monkeypatch.setattr(monitor_mod, "send_email", send)
@@ -34,17 +41,31 @@ class TestAutoRunError:
         monitor_mod.auto_run_error(
             "qualify_job_listings",
             "batch-1",
-            {"total_errors": 2, "total_processed": 5},
+            {"total_errors": 2, "total_processed": 5, "total_passed": 3, "total_failed": 0},
             "failure",
+            "cand-1",
         )
 
         send.assert_called_once()
-        _, kwargs = send.call_args
-        assert kwargs["subject"].startswith("[Astral] qualify_job_listings failure:")
-        body_lines = kwargs["body"].splitlines()
-        assert body_lines[0] == "```" and body_lines[-1] == "```"
-        assert body_lines[1].endswith("older")
-        assert body_lines[-2].endswith("newer")
+        kw = send.call_args.kwargs
+        assert kw["subject"].startswith("[Astral/Somerset] qualify_job_listings failure:")
+        lines = kw["body"].splitlines()
+        # AC 1: six labelled header lines, in order, ahead of the fence
+        assert lines[:6] == [
+            "Deploy: Astral",
+            "Candidate: cand-1 (Somerset)",
+            "Task: qualify_job_listings",
+            "Batch: batch-1",
+            "Status: failure",
+            "Processed: 5  Passed: 3  Failed: 0  Errors: 2",
+        ]
+        # AC 2: blank separator, then a fence holding only WARNING + ERROR rows
+        assert lines[6:] == ["", "```", "t3  [WARNING]  warn-msg", "t4  [ERROR]  err-msg", "```"]
+        assert "dbg-msg" not in kw["body"] and "info-msg" not in kw["body"]
+        # AC 4: exactly one <batch_id>.txt attachment, every level, oldest first
+        assert kw["attachments"] == {
+            "batch-1.txt": "t1  [DEBUG]  dbg-msg\nt2  [INFO]  info-msg\nt3  [WARNING]  warn-msg\nt4  [ERROR]  err-msg",
+        }
 
     def test_logs_when_send_email_returns_false(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(monitor_mod.database, "list_log_entries", lambda batch_id: [])
@@ -58,7 +79,7 @@ class TestAutoRunError:
         monitor_mod.auto_run_error("task", "batch-3", {"total_errors": 1, "total_processed": 0}, "failure")
 
 
-# Branches: deploy label from env; Astral fallback; last-name suffix; missing profile last.
+# Branches: deploy label from env; Astral fallback; last-name suffix; blank `last` column; missing row.
 class TestAutoRunErrorSubjectPrefix:
     def test_local_env_with_candidate_last_name(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("ASTRAL_DEPLOY_ENV", "local")
@@ -66,7 +87,7 @@ class TestAutoRunErrorSubjectPrefix:
             monitor_mod.database,
             "get_candidate",
             lambda candidate_id: {
-                "candidate_data": {"profile": {"last": "Somerset"}},
+                "last": "Somerset",  # name column (AST-1014), not candidate_data.profile
             },
         )
         send = _stub_alert(monkeypatch)
@@ -89,7 +110,7 @@ class TestAutoRunErrorSubjectPrefix:
             monitor_mod.database,
             "get_candidate",
             lambda candidate_id: {
-                "candidate_data": {"profile": {"last": "Nguyen"}},
+                "last": "Nguyen",
             },
         )
         send = _stub_alert(monkeypatch)
@@ -112,7 +133,7 @@ class TestAutoRunErrorSubjectPrefix:
             monitor_mod.database,
             "get_candidate",
             lambda candidate_id: {
-                "candidate_data": {"profile": {"last": "Somerset"}},
+                "last": "Somerset",  # name column (AST-1014), not candidate_data.profile
             },
         )
         send = _stub_alert(monkeypatch)
@@ -131,7 +152,7 @@ class TestAutoRunErrorSubjectPrefix:
 
     def test_missing_candidate_last_name_omits_suffix(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("ASTRAL_DEPLOY_ENV", "local")
-        monkeypatch.setattr(monitor_mod.database, "get_candidate", lambda candidate_id: {"candidate_data": {"profile": {}}})
+        monkeypatch.setattr(monitor_mod.database, "get_candidate", lambda candidate_id: {"last": "  "})
         send = _stub_alert(monkeypatch)
 
         monitor_mod.auto_run_error("task", "batch-no-last", {"total_errors": 1, "total_processed": 0}, "failure", "cand-4")
@@ -148,30 +169,57 @@ class TestAutoRunErrorSubjectPrefix:
         assert send.call_args.kwargs["subject"].startswith("[staging] task failure:")
 
 
-# Branches: empty log list; chronological formatting.
-class TestFormatLogBody:
-    def test_returns_placeholder_when_no_entries(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(monitor_mod.database, "list_log_entries", lambda batch_id: [])
-        assert monitor_mod._format_log_body("batch-x") == "(no log entries found for this batch)"
+# Branches (AST-2214): no WARNING/ERROR rows -> notice, no fence; no rows at all -> attachment placeholder;
+# header '-' for missing candidate / counts; bare candidate id when no last name; fence outruns inner backticks.
+class TestAst2214AlertShape:
+    def test_info_only_rows_give_notice_not_empty_fence(
+        self, log_entries: List[Dict[str, Any]], monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        # AC 3: conftest log_entries carries an ERROR row; keep only the INFO one
+        info_only = [e for e in log_entries if e["level"] == "INFO"]
+        monkeypatch.setattr(monitor_mod.database, "list_log_entries", lambda batch_id: info_only)
+        send = MagicMock(return_value=True)
+        monkeypatch.setattr(monitor_mod, "send_email", send)
 
-    def test_formats_entries_chronologically(self, log_entries: List[Dict[str, Any]], monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(monitor_mod.database, "list_log_entries", lambda batch_id: list(reversed(log_entries)))
-        body = monitor_mod._format_log_body("batch-y")
-        lines = body.splitlines()
-        assert lines[0] == "```" and lines[-1] == "```"  # fenced for Linear
-        assert lines[1].endswith("older")
-        assert lines[-2].endswith("newer")
+        monitor_mod.auto_run_error("task", "batch-info", {"total_errors": 1, "total_processed": 1}, "failure")
 
-    def test_fence_outruns_backticks_inside_the_logs(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        kw = send.call_args.kwargs
+        assert kw["body"].splitlines()[-1] == "(no WARNING or ERROR entries for this batch)"
+        assert "```" not in kw["body"]
+        # INFO row still rides in the attachment
+        assert kw["attachments"] == {"batch-info.txt": "2026-05-13 12:00:00  [INFO]  older"}
+
+    def test_no_rows_still_attaches_placeholder(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        send = _stub_alert(monkeypatch)
+
+        monitor_mod.auto_run_error("task", "batch-empty", {"total_errors": 1, "total_processed": 0}, "failure")
+
+        assert send.call_args.kwargs["attachments"] == {"batch-empty.txt": "(no log entries found for this batch)"}
+
+    def test_header_dashes_for_missing_values(self) -> None:
+        header = monitor_mod._format_alert_header("", "", None, "", "", "", {}).splitlines()
+        assert header == [
+            "Deploy: -",
+            "Candidate: -",
+            "Task: -",
+            "Batch: -",
+            "Status: -",
+            "Processed: -  Passed: -  Failed: -  Errors: -",
+        ]
+
+    def test_header_bare_candidate_id_without_last_name(self) -> None:
+        header = monitor_mod._format_alert_header("local", " cand-9 ", None, "t", "b", "failure", {}).splitlines()
+        assert header[1] == "Candidate: cand-9"
+
+    def test_fence_outruns_backticks_inside_the_logs(self) -> None:
         entries = [{"created_at": "t1", "level": "ERROR", "message": "raw ```json {} ```` tail"}]
-        monkeypatch.setattr(monitor_mod.database, "list_log_entries", lambda batch_id: entries)
-        lines = monitor_mod._format_log_body("batch-z").splitlines()
+        lines = monitor_mod._format_warning_error_block(entries).splitlines()
         assert lines[0] == "`````" and lines[-1] == "`````"  # longest inner run is 4
         assert "```json" in lines[1]
 
 
 # Branches: subject names the task's own server label (AST-1880); short body (no log dump); Held line only when held > 0;
-# send_email False logged; unexpected exception swallowed.
+# send_email False logged; unexpected exception swallowed; AST-2214 admin recipient (sorted join), empty admin -> WARNING, no send.
 class TestAst1867ProviderBalanceOutage:
     """AST-1867 / AST-1870: one short alert per AUTO run stopped by a provider balance refusal."""
 
@@ -185,6 +233,8 @@ class TestAst1867ProviderBalanceOutage:
         monkeypatch.setattr(monitor_mod, "task_llm_server_id", lambda task_key: "deepseek")
         monkeypatch.setattr(monitor_mod, "get_deploy_label", lambda: "local")
         monkeypatch.setattr(monitor_mod, "_resolve_candidate_last_name", lambda cid: "Somerset")
+        # AST-2214: balance alerts go to the admin(s); test env has none configured
+        monkeypatch.setitem(monitor_mod.AUTH_CONFIG, "admin_emails", frozenset({"admin@example.com"}))
         return _stub_alert(monkeypatch)
 
     def test_subject_names_provider_and_body_is_short(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -206,9 +256,32 @@ class TestAst1867ProviderBalanceOutage:
             "Held (state unchanged): 2",
             "Entity state was held; the task stays enabled and resumes once provider credit is restored.",
         ]
-        assert kw["to"] == monitor_mod.ASTRAL_CONFIG["support_email"]
-        # no batch log dump
+        # AST-2214 AC 5: admin, not the support alias; no log, no attachment
+        assert kw["to"] == "admin@example.com"
+        assert kw["to"] != monitor_mod.ASTRAL_CONFIG["support_email"]
+        assert "attachments" not in kw
         list_logs.assert_not_called()
+
+    def test_no_admin_configured_warns_once_and_skips_send(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        send = self._stub(monkeypatch)
+        monkeypatch.setitem(monitor_mod.AUTH_CONFIG, "admin_emails", frozenset())
+        log = MagicMock()
+        monkeypatch.setattr(monitor_mod, "logger", log)
+
+        monitor_mod.provider_balance_outage("task", "b-6", dict(self._ACC), {"error": self._REFUSAL_ERR, "held": 0})
+
+        send.assert_not_called()
+        log.warning.assert_called_once()
+        assert "ASTRAL_ADMIN_EMAILS" in log.warning.call_args.args[0]
+        assert log.warning.call_args.args[1] == "b-6"
+
+    def test_multiple_admins_joined_in_sorted_order(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        send = self._stub(monkeypatch)
+        monkeypatch.setitem(monitor_mod.AUTH_CONFIG, "admin_emails", frozenset({"zed@example.com", "amy@example.com"}))
+
+        monitor_mod.provider_balance_outage("task", "b-7", dict(self._ACC), {"error": self._REFUSAL_ERR, "held": 0})
+
+        assert send.call_args.kwargs["to"] == "amy@example.com, zed@example.com"
 
     def test_provider_label_resolved_from_refused_task(self, monkeypatch: pytest.MonkeyPatch) -> None:
         send = self._stub(monkeypatch)

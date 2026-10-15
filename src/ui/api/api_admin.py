@@ -66,7 +66,7 @@ from src.utils.config import (
     resolve_tokens,
     empty_render_for_prompts,
     TASK_CONFIG,
-    TELESCOPE_DATA_CONFIG,
+    WEB_DATA_CONFIG,
     UI_CONFIG,
     JOB_STATES,
     COMPANY_STATES,
@@ -1461,7 +1461,7 @@ def _build_adhoc_live_content(task_key: str, entity_id: str, entity_ids: Optiona
     entity_ids: for batch-mode tasks (qualify_job_listings), pass a list of IDs.
     entity_id: for single-entity tasks, pass one ID.
     Returns empty string if entity not found or task doesn't use live_content."""
-    # telescope_data reads go through gazer (AST-2134)
+    # web_data reads go through gazer (AST-2134)
     from src.core.gazer import resolve_telescope_value
     from src.utils.formatting import enumerate_array
 
@@ -1476,7 +1476,7 @@ def _build_adhoc_live_content(task_key: str, entity_id: str, entity_ids: Optiona
         # Telescope row ids resolve via gazer; legacy text passes through unchanged (AST-2134).
         logger.debug("Calling resolve_telescope_value: [company=%s company_data=%s]", entity_id, cdata)
         cdata = {
-            k: (resolve_telescope_value(v) if k in TELESCOPE_DATA_CONFIG["company_data_id_keys"] else v)
+            k: (resolve_telescope_value(v) if k in WEB_DATA_CONFIG["company_data_id_keys"] else v)
             for k, v in cdata.items()
         }
         logger.debug("Response from resolve_telescope_value: %s", cdata)

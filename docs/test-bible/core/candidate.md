@@ -2487,3 +2487,43 @@ New public `resume_structure_editor_payload(resolved)`. It was lifted out of the
 | `[V01, AB]` via `meteorite_grade_do` → `invalid vector codes: V01` | same | **`…::test_v01_code_is_invalid`** |
 
 **Broken / obsolete (rewritten, not annotated):** `TestAst2008RubricCodeUptick::test_uptick_is_pure_and_passes_non_dict_and_blank_codes` → `…_fills_blank_codes`; `TestAst2091RubricDispatchError::test_duplicates_case_insensitive_sorted_and_blank_codes_ignored` → split into the two rows above. AST-2091 empty / craft / alias / blank-candidate guards unchanged.
+
+### AST-2211 · AST-2206 (Contact `/show-` + `/save-` context handlers, channel → candidate lookup)
+
+**Parent:** [AST-2206](https://linear.app/astralcareermatch/issue/AST-2206). **Publish:** `origin/sub/AST-2206/AST-2211-show-save-handlers-threaded-history`. Plan: `docs/features/contact/ast-2211-show-save-handlers-threaded-history.md`. Threaded history half: [`../external/slack.md`](../external/slack.md) § AST-2211.
+
+`get_candidate_id_for_slack_channel(channel_id, *, debug=False)` — the one non-deleted candidate whose `contact.slack_channel_id` matches; blank / unmapped / ambiguous → `None` (ambiguous logs one warning naming channel + ids). `contact_command_show_context` (read-current via `get_candidate_current`; miss → `No {label} saved yet for this candidate.`) and `contact_command_save_context` (`sanitize_contact_text` → `save_candidate_data`; ack `Saved. That's now the current {label}.`; empty after sanitize → warning + the entry's `usage_reply_text`, no write). Both: blank candidate → `no_candidate` (no reply); `artifact_key` not one of the six context keys → warning + `unknown_artifact_key`, no read/write. Runner wiring is sibling **AST-2212**. `candidate.py` is in `LOCKED_AT_100`; the new block (lookup → save handler) is fully line + branch covered by this class alone.
+
+| Area | Component tests |
+| --- | --- |
+| Lookup: unique hit (trimmed, blank-id row ignored), `include_deleted=False` | new **`TestAst2211ContactContextHandlers::test_lookup_unique_hit_non_deleted_only`** |
+| Lookup: ambiguous → `None` + one warning; unmapped → `None`, no warning | **`…::test_lookup_ambiguous_warns_and_unmapped_is_quiet`** |
+| Lookup: blank channel never lists candidates; `debug=True` sets the flag | **`…::test_lookup_blank_channel_skips_list_and_debug_sets_flag`** |
+| Both handlers: blank candidate → `no_candidate` | **`…::test_blank_candidate_returns_no_candidate`** (2) |
+| Both handlers: `None` / `candidate.artifacts.base_resume` key → warning, no read, no write | **`…::test_unknown_key_warns_and_touches_nothing`** (4) |
+| Every context key, real SQLite: show miss text → save (nh3 drops tags + script) ack → show returns saved body; one version | **`…::test_show_save_round_trip_every_context`** (6) |
+| Identical-after-sanitize re-save adds no version; changed text adds one | **`…::test_identical_resave_adds_no_version`** |
+| Empty after sanitize → `Usage: @Estelle /save-ideal-day <text>`, no version, warning | **`…::test_empty_after_sanitize_posts_usage_and_writes_nothing`** |
+
+**Broken / obsolete this pass:** none. **Pre-existing red, not this ticket:** 27 failures across `test_candidate.py` + `test_slack.py`, identical with and without this pass's test edits (e.g. `TestAst1576SaveCandidateDataOperative`).
+
+**Integration:** none — do not invent.
+
+## QA test manifest — AST-2211
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst2211ContactContextHandlers \
+  tests/component/external/test_slack.py::TestAst2211FullHistoryThreadReplies \
+  tests/component/external/test_slack.py::TestAst1787ChannelListMembershipFullHistory \
+  tests/component/core/test_contact.py::TestAst1788AdminSlackChannelOrchestration \
+  tests/component/ui/api/test_api_contact.py::TestAst1788AdminSlackChannelApis \
+  tests/component/utils/test_config.py::TestAst2210ContextCommandRegistry \
+  -q
+# Ticket AC 3 — must print nothing
+grep -rnE '(draft|save|show)-(strengths|dealbreakers|priorities|ideal-day|bio-summary|backstory)' src/core/
+```
+
+**Pass criterion:** 54 passed; AC 3 grep empty. Not the zero-arg harness. `test_contact.py` needs `asyncpg` / `nh3` in the interpreter (use `/home/susan/astral/.venv/bin/python` on this worktree); restore `data/contact_estelle_activity.json` if a `test_contact.py` run dirties it.
+
+**Bible shasum (after publish):** `git show origin/sub/AST-2206/AST-2211-show-save-handlers-threaded-history:docs/test-bible/core/candidate.md | shasum`; same for `docs/test-bible/external/slack.md`.

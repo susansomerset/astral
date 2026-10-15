@@ -70,7 +70,7 @@ from src.utils.config import (
     PROVIDER_CALL_BUDGET,
     ROSTER_CONFIG,
     TASK_CONFIG,
-    TELESCOPE_DATA_CONFIG,
+    WEB_DATA_CONFIG,
     is_registered_state,
     registered_base,
     retry_base,
@@ -1958,7 +1958,7 @@ async def prefilter_company(
 
 
 def _company_candidate_id(company: dict[str, Any]) -> str | None:
-    """candidate_id for telescope_data rows; coat-check callers may pass a partial company dict."""
+    """candidate_id for web_data rows; coat-check callers may pass a partial company dict."""
     return company.get("candidate_id") or (get_company(company.get("short_name") or "") or {}).get("candidate_id")
 
 
@@ -2021,7 +2021,7 @@ def _rebuilt_pjl_nav_links(cdata: dict) -> str:
 def _resolved_company_data(cdata: dict) -> dict:
     """Copy of company_data with telescope row ids resolved and pjl_nav_links rebuilt when not stored (AST-2134)."""
     out = dict(cdata or {})
-    for key in TELESCOPE_DATA_CONFIG["company_data_id_keys"]:
+    for key in WEB_DATA_CONFIG["company_data_id_keys"]:
         if out.get(key) is not None:
             out[key] = _resolve_company_value(key, out[key])
     if out.get("pjl_nav_links") is None and out.get("pjl_scrape_pages"):
@@ -2030,12 +2030,12 @@ def _resolved_company_data(cdata: dict) -> dict:
 
 
 def _keep_job_list_visible(short_name: str, url: str, text: str) -> str | None:
-    """Keep the selected job-list page text in telescope_data; return the row id job_list_visible stores (AST-2134)."""
-    from src.core.gazer import keep_telescope_data  # lazy: gazer imports roster
+    """Keep the selected job-list page text in web_data; return the row id job_list_visible stores (AST-2134)."""
+    from src.core.gazer import keep_web_data  # lazy: gazer imports roster
     candidate_id = _company_candidate_id({"short_name": short_name})
-    logger.debug("Calling keep_telescope_data: [candidate_id=%s url=%s text=%s]", candidate_id, url, text)
-    row_id = keep_telescope_data(candidate_id, url, TELESCOPE_DATA_CONFIG["data_types"]["VISIBLE_TEXT"], text)
-    logger.debug("Response from keep_telescope_data: %s", row_id)
+    logger.debug("Calling keep_web_data: [candidate_id=%s url=%s text=%s]", candidate_id, url, text)
+    row_id = keep_web_data(candidate_id, url, WEB_DATA_CONFIG["data_types"]["VISIBLE_TEXT"], text)
+    logger.debug("Response from keep_web_data: %s", row_id)
     return row_id
 
 
@@ -2835,7 +2835,7 @@ def _merge_pjl_scrape_record(existing_pages: list, new_record: dict) -> list:
     text = (new_record.get("visible_text") or "").strip()
     if new_record.get("error") or not text:
         return existing_pages
-    # Page text and links live in telescope_data; the ledger keeps the row ids gazer kept them under (AST-2134).
+    # Page text and links live in web_data; the ledger keeps the row ids gazer kept them under (AST-2134).
     row: Dict[str, Any] = {"url": new_record["url"], "id": new_record.get("visible_text_id")}
     if new_record.get("page_links_id"):
         row["links_id"] = new_record["page_links_id"]
@@ -3698,7 +3698,7 @@ async def get_company_data(company: Dict[str, Any], key: str) -> Any:
         company_data = {}
     if key in company_data and company_data[key] is not None:
         value = company_data[key]
-        if key in TELESCOPE_DATA_CONFIG["company_data_id_keys"]:
+        if key in WEB_DATA_CONFIG["company_data_id_keys"]:
             # Row ids resolve via gazer; a deleted capture (None) falls through to fetch-on-missing (AC 11).
             value = _resolve_company_value(key, value)
         if value is not None:

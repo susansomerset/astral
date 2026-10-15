@@ -5,7 +5,7 @@ In-scope: scrape_one, process_gazer_batch, fetch_jd_batch, fetch_relative_jd_bat
 fetch_website_batch, fetch_job_pages_batch, validate_title_batch,
 contact_task_gazer_scrape (AST-1516 contact-task scrape),
 ingest_meteorite_jobs_from_email_html (AST-1061 gazer-reads-email).
-telescope_data owner (AST-2132): keep_telescope_data, keep_page_scrape, scrape_visible_text_and_keep, scrape_page_links_and_keep, resolve_telescope_value — the only core caller of the telescope_data data functions.
+web_data owner (AST-2132): keep_web_data, keep_page_scrape, scrape_visible_text_and_keep, scrape_page_links_and_keep, resolve_telescope_value — the only core caller of the web_data data functions.
 Re-exports get_new_company_batch and clear_company_batch from roster for callers
 that want a single import from core.
 Orchestration for job list scraping and scan lifecycle (scrape -> tracker ingest -> record);
@@ -33,18 +33,18 @@ from src.utils.config import (
     METEORITE_EMAIL_INGEST_CONFIG,
     ROSTER_CONFIG,
     SOURCE_ENTITY_TYPE_METEORITE,
-    TELESCOPE_DATA_CONFIG,
+    WEB_DATA_CONFIG,
     TRACKER_CONFIG,
 )
 from src.core.tracker import ingest_jobs, persist_http_job_link, save_job_data, transition_job_state
 from src.core.meteorite import create_meteorite_job
 from src.data.database import (
     get_company,
-    get_telescope_data_for_ids,
+    get_web_data_for_ids,
     job_link_exists_for_candidate,
     record_to_company_job_scan,
     raw_job_listing_is_duplicate,
-    save_telescope_data,
+    save_web_data,
     text_matches_known_company_job_id_for_candidate,
     update_company_last_scan_at,
 )
@@ -74,10 +74,10 @@ from src.utils.logging import get_logger, truncate_debug_content
 
 _log = get_logger(__name__)
 
-# AST-2132: gazer owns telescope_data. Row ids are uuid4 strings (database.save_telescope_data).
+# AST-2132: gazer owns web_data. Row ids are uuid4 strings (database.save_web_data).
 _TELESCOPE_ID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
-_VISIBLE_TEXT = TELESCOPE_DATA_CONFIG["data_types"]["VISIBLE_TEXT"]
-_PAGE_LINKS = TELESCOPE_DATA_CONFIG["data_types"]["PAGE_LINKS"]
+_VISIBLE_TEXT = WEB_DATA_CONFIG["data_types"]["VISIBLE_TEXT"]
+_PAGE_LINKS = WEB_DATA_CONFIG["data_types"]["PAGE_LINKS"]
 
 
 def _is_fetch_website_infra_error(error: str) -> bool:
@@ -152,17 +152,17 @@ def is_bot_wall(text: str) -> bool:
     return hits >= cfg.get("bot_threshold", 2)
 
 
-# ---- telescope_data (AST-2132) ----
+# ---- web_data (AST-2132) ----
 
 def is_telescope_id(value: Any) -> bool:
-    """True when value is a telescope_data row id (uuid-shaped str), not legacy scraped text."""
+    """True when value is a web_data row id (uuid-shaped str), not legacy scraped text."""
     return isinstance(value, str) and bool(_TELESCOPE_ID_RE.match(value))
 
 
-def keep_telescope_data(
+def keep_web_data(
     candidate_id: str | None, url: str, data_type: str, content: str,
 ) -> str | None:
-    """Store one scrape result in telescope_data and return its row id; None when content is blank.
+    """Store one scrape result in web_data and return its row id; None when content is blank.
 
     data_type is passed through unchecked (free text by design). Links are stored as the
     enumerated string readers use today, so resolving an id never needs the type.
@@ -170,11 +170,11 @@ def keep_telescope_data(
     if not (content or "").strip():
         return None
     _log.debug(
-        "Calling save_telescope_data: [candidate_id=%s url=%s data_type=%s content=%s]",
+        "Calling save_web_data: [candidate_id=%s url=%s data_type=%s content=%s]",
         candidate_id, url, data_type, content,
     )
-    row_id = save_telescope_data(candidate_id, url, data_type, content)
-    _log.debug("Response from save_telescope_data: %s", row_id)
+    row_id = save_web_data(candidate_id, url, data_type, content)
+    _log.debug("Response from save_web_data: %s", row_id)
     return row_id
 
 
@@ -184,33 +184,33 @@ def keep_page_scrape(
     """Keep a page-contract scrape (roster scrape_company_homepage_content / _scrape_pjl_page result):
     visible_text as VISIBLE_TEXT, enumerated_nav_links as PAGE_LINKS. Returns (text_id, links_id)."""
     return (
-        keep_telescope_data(candidate_id, url, _VISIBLE_TEXT, scrape.get("visible_text") or ""),
-        keep_telescope_data(candidate_id, url, _PAGE_LINKS, scrape.get("enumerated_nav_links") or ""),
+        keep_web_data(candidate_id, url, _VISIBLE_TEXT, scrape.get("visible_text") or ""),
+        keep_web_data(candidate_id, url, _PAGE_LINKS, scrape.get("enumerated_nav_links") or ""),
     )
 
 
 async def scrape_visible_text_and_keep(
     candidate_id: str | None, url: str, *, context: Any = None,
 ) -> tuple[str, str, str | None]:
-    """Telescope visible text for url, kept in telescope_data. Returns (text, final_url, row_id).
+    """Telescope visible text for url, kept in web_data. Returns (text, final_url, row_id).
     Scrape errors propagate — callers already route them."""
     _log.debug("Calling get_visible_text: [url=%s]", url)
     text, final_url = await get_visible_text(url=url, context=context, return_final_url=True)
     _log.debug("Response from get_visible_text: final_url=%s text=%s", final_url, text)
     text = text or ""
-    return text, final_url or url, keep_telescope_data(candidate_id, url, _VISIBLE_TEXT, text)
+    return text, final_url or url, keep_web_data(candidate_id, url, _VISIBLE_TEXT, text)
 
 
 async def scrape_page_links_and_keep(
     candidate_id: str | None, url: str, *, context: Any = None,
 ) -> tuple[list[str], str | None]:
     """Telescope link list for url (depth 1, unverified — roster's nav_links fetch shape), kept in
-    telescope_data as the enumerated list. Returns (urls, row_id). Scrape errors propagate."""
+    web_data as the enumerated list. Returns (urls, row_id). Scrape errors propagate."""
     _log.debug("Calling extract_site_page_list: [url=%s]", url)
     urls = await extract_site_page_list(url, max_depth=1, verify=False, context=context) or []
     _log.debug("Response from extract_site_page_list: %s", urls)
     enumerated = enumerate_array("", urls) if urls else ""
-    return urls, keep_telescope_data(candidate_id, url, _PAGE_LINKS, enumerated)
+    return urls, keep_web_data(candidate_id, url, _PAGE_LINKS, enumerated)
 
 
 def resolve_telescope_value(value: Any) -> Any:
@@ -227,13 +227,13 @@ def resolve_telescope_value(value: Any) -> Any:
         ids = [e["id"] for e in value if isinstance(e, dict) and is_telescope_id(e.get("id"))]
     else:
         return value
-    _log.debug("Calling get_telescope_data_for_ids: %s", ids)
-    rows = get_telescope_data_for_ids(ids)
-    _log.debug("Response from get_telescope_data_for_ids: %s", rows)
+    _log.debug("Calling get_web_data_for_ids: %s", ids)
+    rows = get_web_data_for_ids(ids)
+    _log.debug("Response from get_web_data_for_ids: %s", rows)
     missing = [i for i in ids if i not in rows]
     if missing:
         _log.warning(
-            "telescope_data %s missing — resolving without them; fetch-on-missing callers re-scrape",
+            "web_data %s missing — resolving without them; fetch-on-missing callers re-scrape",
             missing,
         )
     if isinstance(value, str):
@@ -287,18 +287,18 @@ def _classify_jd(text: str) -> str:
 
 def _apply_jd_gates(
     job: dict[str, Any], text: str, *, short_state: str, pass_state: str, classified_states: Dict[str, str],
-    telescope_data_id: str | None, transition: bool = True,
+    web_data_id: str | None, transition: bool = True,
 ) -> bool:
     """Shared JD gates for fetch_jd_batch and fetch_relative_jd_batch (AST-2025).
 
     collapse blank lines -> empty check -> prune -> min_chars -> classify. Stores the scraped-JD
-    reference (telescope_data row id of the raw capture) — never JD text; job_description stays
+    reference (web_data row id of the raw capture) — never JD text; job_description stays
     the preamble (AST-2130) — and transitions the job. Empty / too-short -> short_state; classified -> the calling task's
     GAZER_CONFIG classified_states (cookie / bot / missing / closed); ok -> pass_state.
     transition=False (coat-check, AST-2145): same gates, state never moves, classified capture not referenced.
     Returns True only when the gates passed (job reached pass_state when transition=True).
     """
-    ref_key = TRACKER_CONFIG["job_data_keys"]["jd_telescope_data_id"]
+    ref_key = TRACKER_CONFIG["job_data_keys"]["jd_web_data_id"]
     min_chars = TRACKER_CONFIG.get("jd_min_chars", 200)
     aid = job.get("astral_job_id", "")
     # Log label: coat-check mode must never claim a move it didn't make
@@ -323,14 +323,14 @@ def _apply_jd_gates(
         if not transition:
             return False
         # Reference the kept capture so the bad page stays inspectable; job_description (preamble) is untouched
-        save_job_data(aid, {ref_key: telescope_data_id})
+        save_job_data(aid, {ref_key: web_data_id})
         transition_job_state([aid], error_state)
         return False
-    save_job_data(aid, {ref_key: telescope_data_id})
+    save_job_data(aid, {ref_key: web_data_id})
     # Write back into in-memory dict so coat-check is a true no-op if called after this
     if not isinstance(job.get("job_data"), dict):
         job["job_data"] = {}
-    job["job_data"][ref_key] = telescope_data_id
+    job["job_data"][ref_key] = web_data_id
     if transition:
         transition_job_state([aid], pass_state)
     return True
@@ -408,7 +408,7 @@ async def fetch_jd_batch(
         gated = _apply_jd_gates(
             job, text, short_state=fail_state, pass_state=pass_state,
             classified_states=GAZER_CONFIG["fetch_jd"]["classified_states"],
-            telescope_data_id=row_id, transition=transition,
+            web_data_id=row_id, transition=transition,
         )
         _log.debug("Response from JD gates: %s", gated)
         if gated:
@@ -472,7 +472,7 @@ async def fetch_relative_jd_batch(batch_id: str, jobs: list[dict[str, Any]]) -> 
             transition_job_state([aid], fail_state)
             failed += 1
             return
-        row_id = keep_telescope_data(job.get("candidate_id"), final_url, _VISIBLE_TEXT, text)
+        row_id = keep_web_data(job.get("candidate_id"), final_url, _VISIBLE_TEXT, text)
         if not final_url.startswith(("http://", "https://")):
             _log.warning("%s -> %s [click-through returned non-http final_url %r]", aid, fail_state, final_url)
             transition_job_state([aid], fail_state)
@@ -486,7 +486,7 @@ async def fetch_relative_jd_batch(batch_id: str, jobs: list[dict[str, Any]]) -> 
         )
         gated = _apply_jd_gates(
             job, text, short_state=short_state, pass_state=pass_state, classified_states=cfg["classified_states"],
-            telescope_data_id=row_id,
+            web_data_id=row_id,
         )
         _log.debug("Response from JD gates: %s", gated)
         if gated:
