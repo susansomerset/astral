@@ -4117,6 +4117,6 @@ cd src/ui/frontend && npm run test:component -- \
 
 **Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
 
-**Bible path shasums (record after publish):**
-- `docs/test-bible/frontend/components.md`
-- `docs/test-bible/frontend/pages.md`
+**Bible path shasums (publish tip `2b5a8f786`):**
+- `docs/test-bible/frontend/components.md` — `02f1b04adf3b3953651804b5f19d8db18208b65b`
+- `docs/test-bible/frontend/pages.md` — `7dd54eed4d2ffc854170b508a0e283487e8e0b62`
