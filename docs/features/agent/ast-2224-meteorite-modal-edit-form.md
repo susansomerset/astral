@@ -27,7 +27,7 @@ Do **not** edit: `src/utils/config.py`, `src/core/meteorite.py`, `src/ui/api/api
 
 ## Stage 1: MeteoriteDetailModal edit form + save
 
-**Done when:** With a mocked detail payload where `editable: true` and `editable_fields` / `state_options` / `default_save_state` are set, the modal shows one control per listed field (textarea for `content`, `<select>` for `state` pre-selected to `default_save_state`, text inputs otherwise) and a Save control; with `editable: false` or missing, today's read-only `ReportSectionList` path remains and there is no Save. Save success re-GETs detail, applies the new payload, and invokes `onSaved` once; Save 409 shows `body.error` and does not invoke `onSaved`. `rg -n 'LANDED\|"CHECK_UNIQUE"\|"NEW"' src/ui/frontend/src/components/MeteoriteDetailModal.tsx` returns nothing. `npx tsc -b` in `src/ui/frontend` passes for the touched component (or repo-equivalent frontend typecheck).
+**Done when:** With a mocked detail payload where `editable: true` and `editable_fields` / `state_options` / `default_save_state` are set, the modal shows one control per listed field (textarea for `content`, `<select>` for `state` pre-selected to `default_save_state` on first open, text inputs otherwise) and a Save control; with `editable: false` or missing, today's read-only `ReportSectionList` path remains and there is no Save. Save success applies the PUT/re-read payload, sets `draft.state` from the refreshed `meteorite.state` (not `default_save_state`), and invokes `onSaved` once; Save 409 shows `body.error` and does not invoke `onSaved`. `rg -n 'LANDED\|"CHECK_UNIQUE"\|"NEW"' src/ui/frontend/src/components/MeteoriteDetailModal.tsx` returns nothing. `npx tsc -b` in `src/ui/frontend` passes for the touched component (or repo-equivalent frontend typecheck).
 
 1. In `src/ui/frontend/src/components/MeteoriteDetailModal.tsx`, extend `Props`:
 
@@ -54,11 +54,16 @@ Export signature becomes `function MeteoriteDetailModal({ meteoriteId, onClose, 
 
 3. Add draft + save UI state: `draft: Record<string, string>`, `saving: boolean`, `saveError: string | null`.
 
-4. When load succeeds and `editable` is true, initialize `draft` as follows (do this in the same success path as step 2, and again after a successful save re-fetch in step 8):
+4. When load succeeds and `editable` is true, initialize `draft` via a helper used by both first open and post-save refresh. Signature (same file):
+
+   `function buildDraft(editableFields: string[], meteorite: MeteoriteDetail | null, defaultSaveState: string, stateSource: "default" | "stored"): Record<string, string>`
 
    - For each `key` in `editableFields` **in server order**:
-     - If `key === "state"`: `draft[key] = defaultSaveState` (server default — **not** `meteorite.state`).
+     - If `key === "state"`:
+       - `stateSource === "default"` → `draft[key] = defaultSaveState` (server default — **not** `meteorite.state`). Used on **first open** / initial GET only (parent functional scope item 2).
+       - `stateSource === "stored"` → `draft[key] = String(meteorite?.state ?? "")` (refreshed stored value). Used **after PUT 200** so the select matches the re-read row (parent AC 12 + functional scope item 7) — do **not** reset to `default_save_state` post-save.
      - Else: `draft[key] = String(meteorite?.[key] ?? "")` — raw string, **no** `formatMeteoriteContent` pretty-print (that helper stays display-only on the read-only content path).
+   - Initial GET success path (step 2): `buildDraft(..., "default")`.
    - If not editable: `draft = {}` and `saveError = null`.
 
 5. When `editable` is true, render an edit form **above** the existing `ReportSectionList` (keep sections for classify_outcome / timestamps / provenance id+sources / linked job — read-only context). Form rules:
@@ -83,9 +88,9 @@ Export signature becomes `function MeteoriteDetailModal({ meteoriteId, onClose, 
    - Body = plain object: for each `key` in `editableFields`, `body[key] = draft[key] ?? ""` (exactly those keys — AST-2223 Stage 2h requires `content` + `state` present).
    - `api(\`/api/meteorites/${meteoriteId}\`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })`.
    - If `!res.ok`: parse JSON if possible; `setSaveError(String(body.error ?? "Save failed"))`; **do not** call `onSaved`; return.
-   - If `res.ok`: parse JSON; apply the same envelope + meteorite + sections setters as the GET success path (step 2), re-init draft (step 4), then `onSaved?.()` **once**. Do **not** call `onClose` (modal stays open with refreshed detail — parent AC 7 / functional scope).
+   - If `res.ok`: parse JSON; apply envelope + meteorite + sections via `applyDetailPayload` (step 8); then `setDraft(buildDraft(editableFields, meteorite, defaultSaveState, "stored"))` — **stored**, not `"default"` (Joan round=1 fix-now); then `onSaved?.()` **once**. Do **not** call `onClose` (modal stays open with refreshed detail — parent AC 7 / functional scope).
 
-8. Extract a small internal helper (same file) `applyDetailPayload(data: …)` used by both the initial GET and the PUT 200 path so load and post-save refresh stay identical — no duplicated field mapping.
+8. Extract a small internal helper (same file) `applyDetailPayload(data: …)` used by both the initial GET and the PUT 200 path so envelope/meteorite/sections mapping stays identical. Draft init is **not** inside `applyDetailPayload` — callers pass `stateSource` into `buildDraft` (`"default"` on GET open, `"stored"` on PUT 200).
 
 9. Hard rule for AC 1 React half: this file must contain **no** string literals `LANDED`, `CHECK_UNIQUE`, or `NEW` (quoted or bare identifiers used as state names). State options and defaults come only from the envelope variables.
 
@@ -121,6 +126,12 @@ to:
 ## Estimate
 
 Confirm Chuckles estimate: 3 — agree
+
+## Revisions
+
+### Revision 1 — 2026-10-15
+Driven by: Joan `[plan-discuss] round=1 concern` — fix-now: post-save draft re-init always set `draft.state = defaultSaveState`, contradicting parent “re-read” after save.
+Changes: Split draft init via `buildDraft(..., stateSource)` — `"default"` on first GET open; `"stored"` (`meteorite.state`) after PUT 200. Step 7/8 updated so `applyDetailPayload` does not own draft; callers choose `stateSource`.
 
 ## Joan validate
 
