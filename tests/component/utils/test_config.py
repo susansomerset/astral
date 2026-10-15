@@ -8804,3 +8804,27 @@ class TestAst2177StructuredOutputConfig:
         assert "agent_payload" in prefix
         assert "agent_payload" not in structured
         assert structured.startswith("agent_performance refers ONLY") and "failure_note" in structured
+
+
+class TestAst2223CandidateMeteoriteEditConfig:
+    """AST-2223: CANDIDATE_METEORITE_EDIT_CONFIG — locked / pick-list / default / editable fields."""
+
+    def test_config_is_source_of_truth(self) -> None:
+        cme = cfg.CANDIDATE_METEORITE_EDIT_CONFIG
+        assert cme["locked_states"] == ("LANDED",)
+        assert cme["default_save_state"] == "CHECK_UNIQUE"
+        assert cme["default_save_state"] in cme["state_options"]
+        assert set(cme["locked_states"]).isdisjoint(cme["state_options"])
+        assert set(cme["state_options"]) == set(cfg.METEORITE_STATES) - set(cme["locked_states"])
+        assert "LANDED" not in cme["state_options"]
+        assert "state" in cme["editable_fields"] and "content" in cme["editable_fields"]
+        assert cfg.METEORITE_CONFIG["electronic_contact_column"] in cme["editable_fields"]
+        # Editable list is exactly the six plan columns (electronic contact from METEORITE_CONFIG).
+        assert list(cme["editable_fields"]) == [
+            "state",
+            "content",
+            "link",
+            "job_title",
+            "employer_name",
+            cfg.METEORITE_CONFIG["electronic_contact_column"],
+        ]
