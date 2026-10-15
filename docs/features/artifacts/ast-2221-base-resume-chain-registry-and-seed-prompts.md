@@ -260,3 +260,59 @@ context_tokens≈24000
 **Tip:** `1bf9eea06`
 
 AC 1–6 verified locally via the ticket `python -c` one-liners (plus `craft_get_rubric` regression and `REQUESTED_RESUME.<hop>` claim-label check). No `src/core/*`.
+
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-2221
+**Publish ref:** `b561ab7fc4aa44602e083e4f9f7181b4827632ef` (`origin/sub/AST-1201/AST-2221-base-resume-chain-registry-and-seed-prompts`)
+**Corpus:** b7ab2203048ce0beb2869a12200ab7fa696c8066
+**Overall:** CLEAN
+
+## Canon scores
+
+patt.task.daisy-chain | A | | |
+patt.task.dispatch-retry | A | | |
+stat.dispatch.entity-state-bound | A | | |
+
+*(Scored `stat.dispatch.entity-state-bound` from frozen Citations against corpus body `astral.dispatch.entity-state-bound` — `canon_clerk expand` rejects the cited slug; same resolution Joan used at plan.)*
+
+## Column diff vs plan stage
+
+(aligned)
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **Frozen citation slug:** Linear lists `stat.dispatch.entity-state-bound`; expandable id is `astral.dispatch.entity-state-bound` (`canon/directives/active/stat.dispatch.entity-state-bound.md`). Optional Canon Scope normalize for comparability — not a diff defect.
+- **Canon Scope (off-list):** `astral.config.config-source-of-truth` plainly applies to new `TASK_CONFIG` / stage tuples but is absent from the three-id frozen list (Joan noted same pattern on AST-1672). Diff is config-as-source-of-truth registration only; no second scoring pass performed.
+- **Plan fidelity:** Diff matches plan stages and explicit scope gate — `src/utils/config.py`, `data/admin/agent_task.json`, plus Betty manifest tests and bible notes; no `src/core/*`.
+- **Estimate footprint:** Estimate **3** still fits (config registry + seed + focused component tests).
+- **Tests:** `TestAst2221BaseResumeChainConfig` and `TestAst2221BaseResumeChainCatalogRows` lock AC 1–6; revised AST-972 / AST-1022 / AST-1252 locks cover stage-dispatch regression; `TestAst786AgentTaskRepoJsonSeed` pin carry documented as masked pre-existing.
+
+## What's solid
+
+- Mirrors existing `BUILD_ARTIFACTS` / `CANDIDATE_CRAFT` tuple + `error_state` loop pattern; `draft_resume_base` uses `_CRAFT_RESUME_BASE_RESPONSE_SCHEMA` by identity and `artifact_key` `candidate.artifacts.base_resume`; `draft_resume_experiences` reuses `_EXPERIENCE_JOB_ARRAY_FIELD` by identity.
+- Nine seed rows: `run_next` walk from `shape_the_story` matches `BASE_RESUME_CHAIN_TASK_KEYS`; prompts/agents/group/seq per plan; terminal empty `run_next`.
+- Stage-generic resolver loop over `CANDIDATE_STAGE_DISPATCH` plus `REQUESTED_RESUME` in `is_valid_candidate_batch_claim_state` stage triggers — entry-hop + hop-label claim path without hop-specific chain manager code.
+
+## Recommended actions (downstream only — not performed here)
+
+- Chuckles: append this artifact, `docs(AST-2221): Radia review — clean`, post slim upshot `--as radia`, move **Review Posted**; datt **PROCEED** → **User Testing** (no fix-now).
+- Archie (optional): normalize frozen slug to `astral.dispatch.entity-state-bound` or alias in canon index; consider adding `astral.config.config-source-of-truth` to Canon Scope on a future Discussion amend — not required to ship this slice.
+
+context_tokens≈38000
