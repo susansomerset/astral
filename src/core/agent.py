@@ -1753,6 +1753,9 @@ async def _send_to_server(
     no_cache_live_tokens: int,
     batch_size: int = 1,
     forced_tool: Optional[Dict[str, Any]] = None,
+    request_type: str = "DISPATCH_AGENT",
+    entity_type: Optional[str] = None,
+    entity_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """One outbound call on the server's protocol client: Anthropic SDK or the shared compat client."""
     common = dict(
@@ -1768,6 +1771,9 @@ async def _send_to_server(
         batch_size=batch_size,
         record_timesheet=record_timesheet_entry,
         forced_tool=forced_tool,
+        request_type=request_type,
+        entity_type=entity_type,
+        entity_id=entity_id,
     )
     if get_llm_server(server_id)["protocol"] == "anthropic":
         # api_key is always non-empty here, so send_to_anthropic never takes its env-key client.
@@ -2148,6 +2154,8 @@ async def do_task(
         "Calling _send_to_server: [task_key=%s, server=%s, model=%s, max_tokens=%s, temp=%s, effort=%s, skip_cache=%s, candidate=%s]",
         task_key, server_id, sku, agent_max_tokens, agent_temperature, tier.get("reasoning_effort"), skip_cache, candidate_id or "",
     )
+    # AST-2217: multi-entity calls leave entity_id empty; request_type is DISPATCH_AGENT here (contact = AST-2220).
+    _multi = batch_size > 1 or len(_ents) > 1
     result = await _send_to_server(
         user_blocks,
         server_id=server_id,
@@ -2166,6 +2174,9 @@ async def do_task(
         no_cache_live_tokens=no_cache_live_tokens,
         batch_size=batch_size,
         forced_tool=forced_tool,
+        request_type="DISPATCH_AGENT",
+        entity_type=entity_type or None,
+        entity_id=None if _multi else (index if index else None),
     )
     logger.debug("Response from _send_to_server: %s", result)
     # Call outcome onto the active batch's ledger row — dispatcher batch, or the hop row
@@ -3272,6 +3283,9 @@ async def run_adhoc(
         no_cache_prompt_tokens=no_cache_prompt_tokens,
         no_cache_live_tokens=no_cache_live_tokens,
         forced_tool=forced_tool,
+        request_type="DISPATCH_AGENT",
+        entity_type=None,
+        entity_id=None,
     )
     result["runtime_prompt"] = runtime_prompt
     return result

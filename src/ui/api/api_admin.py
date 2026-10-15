@@ -490,7 +490,7 @@ def _enrich_tasks(candidate_id: str) -> list:
             avg_live = avg_output = None
             if task_key_uuid:
                 r = conn.execute(
-                    "SELECT AVG(no_cache_live_tokens) AS avg_live, AVG(total_output_tokens) AS avg_output FROM agent_timesheets WHERE task_key_uuid = ?",
+                    "SELECT AVG(no_cache_live_tokens) AS avg_live, AVG(total_output_tokens) AS avg_output FROM service_timesheet WHERE task_key_uuid = ?",
                     (task_key_uuid,)
                 ).fetchone()
                 if r and r[0] is not None:

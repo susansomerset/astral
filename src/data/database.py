@@ -2772,6 +2772,8 @@ def _add_timesheet_entry(
     Server id must be a catalog server or TIMESHEET_SEARCH_SERVER_ID (AST-2217); SKU need not be catalog-priced."""
     if provider not in ALLOWED_TIMESHEET_PROVIDERS and provider != TIMESHEET_SEARCH_SERVER_ID:
         raise ValueError(f"Invalid timesheet provider {provider!r}")
+    if completion_status is None and agent_performance:
+        completion_status = agent_performance
     # anthropic_timesheets mirror keeps the pre-attribution column set.
     anth_vals = (
         agent_req_id, task_key_uuid, model_code, candidate_id, batch_id, batch_size,
