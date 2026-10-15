@@ -230,7 +230,7 @@ context_tokens≈32000
 
 ## Review (build)
 
-**Built @ `866018ee8`** — `origin/sub/AST-2215/AST-2220-contact-estelle-ledger-row` (`866018ee871b3864fce79e1a293df8772cc0dcac`)
+**Built @ `050ce556a`** — `origin/sub/AST-2215/AST-2220-contact-estelle-ledger-row` (`050ce556a026063ac8fc9c4cda1376c4b04303bc`)
 
 - Stage 1: `do_task` optional `request_type` (default `DISPATCH_AGENT`) passed to `_send_to_server`.
 - Stage 2: `run_contact_estelle_turn` opens/closes one `contact-estelle` ledger with `timesheet_state=NEW`; primary + follow-up `do_task` pass `CONTACT_AGENT`; `_run_contact_ledgered_task` peer same attribution + NEW on close.
