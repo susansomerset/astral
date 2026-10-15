@@ -63,6 +63,8 @@ Corpus `@` plan: `b7ab2203048ce0beb2869a12200ab7fa696c8066` (dirty=false).
 
 **Done when:** From a tip that includes AST-2221, `requested_artifacts_dispatch_claim_states()` still returns bare `REQUESTED_ARTIFACTS` + retry + live craft hop labels; a parallel call for `REQUESTED_RESUME` returns bare + retry + nine `REQUESTED_RESUME.<hop>` labels from the live `run_next` walk; `_persist_craft_dispatch_success` no-ops intermediate base-resume hops, writes `contact.title_patterns` for `draft_title_patterns`, and still handles craft search-terms / rubric artifacts; `run_requested_artifacts_dispatch` resolves stage (pass/entry) from the bare trigger instead of hardcoding `["requested_artifacts"]`. Existing requested-artifacts unit behaviour unchanged.
 
+**AC map (partial — full e2e in Stage 4):** AC 10 (title-patterns contact write), AC 11 (intermediate no-op / no "unsupported craft task_key"), AC 13 machinery (`_requested_stage_failure_target` still routes bare → retry → hop `error_state` for `REQUESTED_RESUME`).
+
 1. In `src/core/candidate.py`, add a small stage lookup used by claim walk + runner (private helpers; names are planner picks — keep them next to the existing requested-artifacts block ~2622):
 
    * `_candidate_stage_for_trigger(bare_trigger: str) -> dict` — loop `CANDIDATE_STAGE_DISPATCH.values()`; return the entry whose `trigger_state == bare_trigger`. If none match, raise `ValueError` naming the trigger (caller decides how to surface).
@@ -96,9 +98,35 @@ Corpus `@` plan: `b7ab2203048ce0beb2869a12200ab7fa696c8066` (dirty=false).
 
 5. Do **not** edit `agent.py`. `draft_resume_base` already takes the `TASK_CONFIG["artifact_key"]` branch in `do_task` (`save_candidate_data` for `resume_structure` + `base_resume`) before `_persist_craft_dispatch_success` — that path stays the sole assembler write (AC 11 / `patt.artifact.write-operative`).
 
+6. **Stage 1 verify (exit 0)** — persist unit checks only (no full chain); do not edit `tests/`:
+
+```bash
+python - <<'PY'
+from src.core import candidate as c
+from src.utils.config import CANDIDATE_STAGE_DISPATCH, dispatch_hop_label
+# Claim labels for both stages
+ra = c.requested_artifacts_dispatch_claim_states()
+assert CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["trigger_state"] in ra
+rr = c.candidate_stage_dispatch_claim_states("REQUESTED_RESUME")
+assert "REQUESTED_RESUME" in rr and "REQUESTED_RESUME_RETRY" in rr
+assert dispatch_hop_label("REQUESTED_RESUME", "draft_highlights") in rr
+# AC10 / AC11 persist shape (monkeypatch save; no DB required if patched)
+calls = []
+c.save_candidate_data = lambda cid, data, *a, **k: calls.append((cid, data)) or None
+c._persist_craft_dispatch_success("c1", "draft_title_patterns", {"title_patterns": "Eng.*\nSr Eng"})
+assert calls and calls[0][1] == {"contact": {"title_patterns": "Eng.*\nSr Eng"}}
+calls.clear()
+c._persist_craft_dispatch_success("c1", "shape_the_story", {"story": "x"})  # no-op, no raise
+assert calls == []
+print("stage1 verify ok")
+PY
+```
+
 ## Stage 2: Dispatcher claim expansion (`dispatcher.py`)
 
 **Done when:** `rg -n 'CANDIDATE_STAGE_DISPATCH\["requested_artifacts"\]' src/core/dispatcher.py` is empty; a candidate claim whose `input_state` bare trigger is any stage trigger (including `REQUESTED_RESUME` and `REQUESTED_ARTIFACTS`, bare or `.<hop>`) uses `candidate_stage_dispatch_claim_states` for that bare trigger; non-stage candidate triggers still use plain `dispatch_claim_states`.
+
+**AC map:** AC 7 (dispatcher half of stage-generic consumers).
 
 1. In `src/core/dispatcher.py` candidate claim block (~710–719):
 
@@ -114,6 +142,8 @@ Corpus `@` plan: `b7ab2203048ce0beb2869a12200ab7fa696c8066` (dirty=false).
 
 **Done when:** `rg -n 'CANDIDATE_STAGE_DISPATCH\["requested_artifacts"\]' src/core/consult.py` is empty; the AC 6 hop-name `rg` over `dispatcher.py` + `consult.py` is empty except allowed persist-gate names; a `REQUESTED_RESUME` / `REQUESTED_RESUME.<hop>` row with a matching stage chain task_key calls `run_requested_artifacts_dispatch`; `REQUESTED_ARTIFACTS` routing unchanged; skip-daisy persistable admits base-resume hops including `draft_title_patterns`.
 
+**AC map:** AC 6 (hop-name ban), AC 7 (consult half of stage-generic consumers). AC 14 pytest is Stage 4.
+
 1. In `src/core/consult.py` candidate branch (~2682–2731):
 
    * Replace `stage_tr = CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["trigger_state"]` with membership: `stage_triggers = {e["trigger_state"] for e in CANDIDATE_STAGE_DISPATCH.values()}` and `registry_tr in stage_triggers` (keep using `parse_dispatch_hop_label` for `registry_tr`).
@@ -128,21 +158,74 @@ Corpus `@` plan: `b7ab2203048ce0beb2869a12200ab7fa696c8066` (dirty=false).
 
 ```bash
 rg -n 'CANDIDATE_STAGE_DISPATCH\["requested_artifacts"\]' src/core/dispatcher.py src/core/consult.py
-# expect: no matches
+# expect: no matches  (AC 7)
 
 rg -n "shape_the_story|draft_resume_experiences|draft_supporting_sections|draft_highlights|draft_core_competencies|draft_professional_summary|draft_keywords|BASE_RESUME_CHAIN" src/core/dispatcher.py src/core/consult.py
-# expect: no matches (draft_title_patterns / draft_resume_base may appear only in consult persistable / candidate persist)
+# expect: no matches  (AC 6; draft_title_patterns / draft_resume_base may appear only in consult persistable / candidate persist)
 ```
+
+## Stage 4: Acceptance verify (AC 8–14) — no product edits
+
+**Done when:** Every check below exits 0 / asserts pass on the publish-ref tip after Stages 1–3. No new rows in **Files Changed**. No commit unless a prior stage must be fixed (then fix in that stage's file and re-verify). Precondition: Prerequisite assert (AST-2221 registry + live `agent_task` `run_next` for the nine hops) already green.
+
+**AC map:** AC 8–13 (runtime behaviour) + AC 14 (rubric regression pytest).
+
+Mirror the existing mocked `run_requested_artifacts_dispatch` patterns in `tests/component/core/test_candidate.py` (AST-1252 / AST-1388 / retry cases ~2122–2291) — engineer runs these as a **local smoke** (REPL / `python -` / `debug/spikes/` only; **do not** land new pytest under `tests/`). Betty owns any new committed coverage via qa-child.
+
+1. **AC 8 — End-to-end run.** Candidate at `REQUESTED_RESUME` with a current `candidate.artifacts.base_resume` pin. Monkeypatch `do_task` so each of the nine chain hops returns `success` with a schema-valid `parsed_response` (assembler hop includes non-empty `candidate_tagline` + full craft-resume-base shape; title-patterns hop returns `{"title_patterns": "..."}`). Call `await run_requested_artifacts_dispatch(cid, task_key="shape_the_story", trigger_state="REQUESTED_RESUME")`.
+   * **Pass:** candidate state `RESUME_READY`; current `base_resume` `artifact_uuid` ≠ prior uuid (prior `current=0`); agent_data has one RESPONSE per hop task_key under that claim's batch.
+   * **Fail:** stuck on `REQUESTED_RESUME.<hop>`, same uuid, or missing RESPONSE.
+
+2. **AC 9 — Keywords → meta.** Using the candidate from AC 8: current `base_resume` body has non-empty `candidate_tagline`; `builder.build_base_resume(...)` HTML contains `<meta name="description" content="Resume of … specializing in <that tagline>">`.
+   * **Fail:** empty tagline or missing meta description.
+
+3. **AC 10 — Title patterns on contact.** After AC 8: `candidate_data.contact.title_patterns` is non-empty and equals the terminal hop's validated string (newline-separated if list was coerced). No artifact row typed as title-patterns.
+   * **Fail:** field unchanged/empty, or written under an artifact key.
+
+4. **AC 11 — Assembler-only artifacts.** Across AC 8, count of new current artifact versions for this candidate grows by exactly `base_resume` + `resume_structure` from `draft_resume_base`. Intermediate hops did not raise `unsupported craft task_key`.
+   * **Fail:** extra artifact rows or intermediate persist error.
+
+5. **AC 12 — Resume, don't restart.** Set candidate state to `REQUESTED_RESUME.draft_highlights` (via `dispatch_hop_label`). Claim/run again with the same `shape_the_story` row (`task_key` from hop resume / `dispatch_chain_row_matches_job` path — start at the hop consult would resume). Assert next hop executed is `draft_core_competencies` and agent_data for that claim has **no** new `shape_the_story` RESPONSE.
+   * **Fail:** chain restarts at hop 1.
+
+6. **AC 13 — Retry then error.** With candidate on bare `REQUESTED_RESUME`, force `do_task` failure once → state `REQUESTED_RESUME_RETRY`. Force the same failure again from retry → state equals that hop's `TASK_CONFIG[task_key]["error_state"]` (`ERROR_<HOP>`).
+   * **Fail:** any other landing state. (Same shape as existing REQUESTED_ARTIFACTS tests `test_*_retry` / error at ~2160–2182.)
+
+7. **AC 14 — Rubric chain unbroken.** Run (exit 0):
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py \
+  tests/component/core/test_dispatcher.py \
+  tests/component/core/test_consult.py \
+  -q
+```
+
+Pass criterion: pytest green. Additionally confirm (same suite or a one-line follow-up) that a `craft_get_rubric` @ `REQUESTED_ARTIFACTS` path still transitions to `ARTIFACTS_READY` — covered by existing `TestRequestedArtifactsDispatch` cases in `test_candidate.py` when the suite is green.
 
 ## Execution contract
 
-- Stages in order; one commit per stage on the epic worktree; publish each to `origin/sub/AST-1201/AST-2222-stage-generic-candidate-chain-runner`.
-- Do not add files outside **Files Changed**. Do not touch `tests/` / bible (Betty).
+- Stages 1–3 in order; one product commit per stage on the epic worktree; publish each to `origin/sub/AST-1201/AST-2222-stage-generic-candidate-chain-runner`.
+- Stage 4 is verify-only (no Files Changed). Do not add files outside **Files Changed**. Do not touch `tests/` / bible (Betty).
 - If AST-2221 registry is missing on the tip, or a step contradicts the live signatures, stop and comment on the **parent** with the Stage blocked template — do not improvise config.
+- Do not publish Code Complete until Stage 4 AC 8–14 checks pass.
 
 ## Estimate
 
 Confirm Chuckles estimate: 5 — agree
+
+## Revisions
+
+### Revision 1 — 2026-10-15
+
+Driven by: Joan `[plan-discuss] round=1 concern` / `[plan-rubric] REVIEW … map AC8–14 verify steps` (fix-now: map AC 8–13 into stage Done-when/verify; name pytest for AC 14).
+
+Changes:
+
+* Added **AC map** lines on Stages 1–3 Done-when (partial vs full e2e).
+* Stage 1 §6 persist/claim unit verify script (AC 10/11 slice).
+* New **Stage 4: Acceptance verify (AC 8–14)** with explicit pass/fail for AC 8–13 (mocked chain smoke mirroring existing REQUESTED_ARTIFACTS tests) and the AC 14 `run_component_tests.sh` pytest invocation.
+* Execution contract: Stage 4 verify-only; no Code Complete until AC 8–14 green.
 
 ## Joan validate
 
