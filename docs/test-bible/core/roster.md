@@ -1364,8 +1364,10 @@ Child AC **10**. Both roster CSE sites record via `record_search_timesheet_entry
 
 **Pass criterion:** pytest green on the nodes above. Not the zero-arg harness.
 
-**Bible shasums (after publish):**
+**Bible shasums (publish tip after this docs commit):**
 
 ```text
-# filled in docs(AST-2219) follow-up tip
+docs/test-bible/external/google_cse.md 86a58edf4b2f75c1c4ce8dc511237fbb88c6c2c3
+docs/test-bible/core/timesheets.md     0d673050c050303311b3d5dbf5b51506f424f9af
+# roster.md: git show origin/sub/AST-2215/AST-2219-google-search-receipt-stub:docs/test-bible/core/roster.md | shasum
 ```
