@@ -1,0 +1,145 @@
+# AST-2222 — Stage-generic candidate chain runner
+
+**Linear:** [AST-2222](https://linear.app/astralcareermatch/issue/AST-2222)
+**Parent:** [AST-1201](https://linear.app/astralcareermatch/issue/AST-1201) — We need a daisy chain to generate the base resume content
+**Publish ref:** `sub/AST-1201/AST-2222-stage-generic-candidate-chain-runner`
+
+Generalizes the candidate stage runner, claim expansion, and consult routing from `requested_artifacts`-only to any `CANDIDATE_STAGE_DISPATCH` stage. After sibling [AST-2221](https://linear.app/astralcareermatch/issue/AST-2221) (registry + seed), a `shape_the_story` dispatch row at `REQUESTED_RESUME` walks the nine-hop base-resume chain in one claim: intermediate hops persist only agent_data RESPONSE, `draft_resume_base` rotates `base_resume` / `resume_structure` via the existing `artifact_key` path, `draft_title_patterns` overwrites `contact.title_patterns`, success lands `RESUME_READY`, mid-chain reclaim resumes, and first/second failure follow retry → `ERROR_<HOP>`. `REQUESTED_ARTIFACTS` behaviour stays the same.
+
+## UAT fitness
+
+- **AC restored:** Parent AC sentences this change satisfies (from ticket Description / parent Acceptance criteria):
+  > 6. **No chain-walk special-casing.** `rg -n "shape_the_story|draft_resume_experiences|draft_supporting_sections|draft_highlights|draft_core_competencies|draft_professional_summary|draft_keywords|BASE_RESUME_CHAIN" src/core/dispatcher.py src/core/consult.py` returns nothing. Fail: dispatcher/consult hardcode hop membership or order instead of resolving through stage config + `run_next`. (`draft_title_patterns` / `draft_resume_base` may appear only in the candidate persist gate, parallel to `craft_company_search_terms`.)
+  > 7. **Stage-generic resolvers (runtime consumers).** `rg -n 'CANDIDATE_STAGE_DISPATCH\["requested_artifacts"\]' src/core/dispatcher.py src/core/consult.py` returns nothing. Fail: a hit.
+  > 8. **End-to-end run.** A candidate in `REQUESTED_RESUME` with a current `candidate.artifacts.base_resume`: running the `shape_the_story` dispatch row once leaves the candidate in `RESUME_READY`. The current `base_resume` artifact row has a new `artifact_uuid` (the prior row is now `current=0`). agent_data holds one RESPONSE for each of the nine task_keys under that claim's batch. Fail: state stuck on `REQUESTED_RESUME.<hop>`, same `artifact_uuid` as before, or any hop missing a RESPONSE.
+  > 9. **Keywords reach the meta tag.** After the run in AC 8, the current `base_resume` has a non-empty `candidate_tagline`, and the base resume HTML (`builder.build_base_resume`) contains `<meta name="description" content="Resume of … specializing in <that tagline>">`. Fail: empty tagline, or no meta description.
+  > 10. **Title patterns land on contact.** After the run in AC 8, `candidate_data.contact.title_patterns` is a non-empty string matching the terminal hop's validated output (newline-separated if multiple). Fail: field unchanged, empty, or written under an artifact key.
+  > 11. **Only the assembler writes artifacts.** Across the run in AC 8, the candidate's artifact rows grow by exactly the `base_resume` + `resume_structure` versions from `draft_resume_base`. No intermediate hop raises "unsupported craft task_key". Fail: extra artifact rows (including any title-patterns artifact), or the chain erroring on an intermediate persist.
+  > 12. **Resume, don't restart.** A candidate left at `REQUESTED_RESUME.draft_highlights` and claimed again by the same row continues at `draft_core_competencies`. agent_data shows no new `shape_the_story` RESPONSE for that claim. Fail: the chain reruns from hop 1.
+  > 13. **Retry then error.** A forced hop failure with the candidate on `REQUESTED_RESUME` lands it on `REQUESTED_RESUME_RETRY`; the same failure on retry lands it on that hop's `ERROR_<HOP>`. Fail: any other landing state.
+  > 14. **Rubric chain unbroken.** The existing component tests for the requested-artifacts runner and candidate claim expansion pass unchanged (`pytest tests/component/core/test_candidate.py tests/component/core/test_dispatcher.py tests/component/core/test_consult.py`), and a `craft_get_rubric` @ `REQUESTED_ARTIFACTS` run still ends at `ARTIFACTS_READY`. Fail: any regression.
+- **Correct outcome:** Operator puts a candidate in `REQUESTED_RESUME` and runs the `shape_the_story` dispatch row once; the candidate lands in `RESUME_READY` with a new current base resume (keywords in tagline / meta description), `contact.title_patterns` updated from the terminal hop, and mid-chain reclaim / retry→error matching the existing artifacts stage. Rubric chain at `REQUESTED_ARTIFACTS` still ends at `ARTIFACTS_READY`.
+- **Sibling check:** [AST-2221](https://linear.app/astralcareermatch/issue/AST-2221) (User Testing) owns `BASE_RESUME_CHAIN_TASK_KEYS`, nine `TASK_CONFIG` hops + schemas, `requested_resume` stage entry (`trigger_state=REQUESTED_RESUME`, `pass_state=RESUME_READY`, entry `shape_the_story`), stage-generic config resolvers, and seed `run_next` links. This ticket does not touch `config.py` / `agent_task.json`. Build tip must include AST-2221 product (via `origin/ftr/AST-1201-base-resume-daisy-chain` or equivalent sync) before Stages execute — verify `CANDIDATE_STAGE_DISPATCH["requested_resume"]` and `TASK_CONFIG["shape_the_story"]` exist. Config resolvers already stage-generic after AST-2221; this ticket makes **runtime consumers** (dispatcher / consult / runner) match.
+- **Not sufficient:** Removing the stacktrace / exception / 5xx alone is **not** done.
+- **Wrong fix rejected:** Special-casing only `REQUESTED_RESUME` / hardcoding the nine hop keys in `dispatcher.py` or `consult.py` (violates AC 6–7 and `patt.task.daisy-chain`). Also wrong: writing title patterns into the artifact table, or forcing intermediate hops through `save_candidate_data` artifact paths. Persist gate may name `draft_title_patterns` / `draft_resume_base` only (parallel to `craft_company_search_terms`); everything else resolves through stage config + live `run_next`.
+
+## Explicit scope gate
+
+This ticket's **Scope** names only:
+
+* `src/core/candidate.py` — generalize stage runner / claim-state builder / chain walk; per-hop persist no-op for intermediate base-resume hops; `draft_title_patterns` → `contact.title_patterns`
+* `src/core/dispatcher.py` — candidate claim expansion for mid-chain hop labels for every stage trigger
+* `src/core/consult.py` — candidate dispatch branch routes any stage trigger (+ hop labels) to the generalized runner; persistable gate admits base-resume chain hops
+
+No `src/utils/config.py`. No `data/admin/agent_task.json`. No UI for Generate. No title-patterns → artifact migration.
+
+## Prerequisite (build tip, not a product stage)
+
+Before Stage 1 product commits: epic worktree tip must include AST-2221 registry. Prefer re-running `sync-child.sh` so `origin/ftr/AST-1201-base-resume-daisy-chain` is merged (spawn's `--ftr AST-1201` short form did not match the published ftr slug and skipped). Confirm with:
+
+```bash
+python -c "from src.utils.config import CANDIDATE_STAGE_DISPATCH, TASK_CONFIG; assert 'requested_resume' in CANDIDATE_STAGE_DISPATCH; assert TASK_CONFIG['shape_the_story']['entity_type']=='candidate'"
+```
+
+If the assert fails, stop and comment on AST-2222 — do not invent config.
+
+## Files Changed (planned)
+
+| File | Change | Layer |
+|------|--------|-------|
+| `src/core/candidate.py` | Stage-from-trigger resolve; generic chain walk + claim states; generalize `run_requested_artifacts_dispatch`; persist no-op / `draft_title_patterns` contact write | core |
+| `src/core/dispatcher.py` | Mid-chain claim expansion for any `CANDIDATE_STAGE_DISPATCH` trigger | core |
+| `src/core/consult.py` | Stage-trigger set + resume routing; persistable gate admits base-resume hops without naming intermediate keys | core |
+
+## Canon Scope (plan-time)
+
+**Patterns (read in full):** `patt.task.daisy-chain`, `patt.task.dispatch-retry`, `patt.entity.batch-processing`, `patt.artifact.write-operative`.
+
+**Statutes (id-only until build):** `stat.batch.claim-process-release` (ticket citation; clerk roster also lists `astral.batch.claim-process-release` — same claim→process→release placement), `stat.logging.debug`, `stat.logging.error`.
+
+Corpus `@` plan: `b7ab2203048ce0beb2869a12200ab7fa696c8066` (dirty=false).
+
+## Stage 1: Stage-generic helpers + persist + runner (`candidate.py`)
+
+**Done when:** From a tip that includes AST-2221, `requested_artifacts_dispatch_claim_states()` still returns bare `REQUESTED_ARTIFACTS` + retry + live craft hop labels; a parallel call for `REQUESTED_RESUME` returns bare + retry + nine `REQUESTED_RESUME.<hop>` labels from the live `run_next` walk; `_persist_craft_dispatch_success` no-ops intermediate base-resume hops, writes `contact.title_patterns` for `draft_title_patterns`, and still handles craft search-terms / rubric artifacts; `run_requested_artifacts_dispatch` resolves stage (pass/entry) from the bare trigger instead of hardcoding `["requested_artifacts"]`. Existing requested-artifacts unit behaviour unchanged.
+
+1. In `src/core/candidate.py`, add a small stage lookup used by claim walk + runner (private helpers; names are planner picks — keep them next to the existing requested-artifacts block ~2622):
+
+   * `_candidate_stage_for_trigger(bare_trigger: str) -> dict` — loop `CANDIDATE_STAGE_DISPATCH.values()`; return the entry whose `trigger_state == bare_trigger`. If none match, raise `ValueError` naming the trigger (caller decides how to surface).
+   * `_walk_candidate_stage_chain_task_keys(stage: dict) -> list[str]` — same cycle-safe walk as `_walk_requested_artifacts_chain_task_keys`, but start from `stage["task_key"]` and follow `_current_agent_task_run_next`. Refactor `_walk_requested_artifacts_chain_task_keys` to call this with `CANDIDATE_STAGE_DISPATCH["requested_artifacts"]` (behaviour identical).
+
+2. Generalize claim-state expansion:
+
+   * Add `candidate_stage_dispatch_claim_states(trigger_state: str) -> List[str]` — parse hop label if needed to get bare trigger; `states = list(dispatch_claim_states(bare, "candidate"))`; append `dispatch_hop_label(bare, tk)` for each key from `_walk_candidate_stage_chain_task_keys(_candidate_stage_for_trigger(bare))`; de-dupe preserving order (same pattern as today's `requested_artifacts_dispatch_claim_states`).
+   * Keep **`requested_artifacts_dispatch_claim_states()`** as a one-liner that calls `candidate_stage_dispatch_claim_states(CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["trigger_state"])` so existing imports/tests keep working (AC 14).
+
+3. In `_persist_craft_dispatch_success` (~4037):
+
+   * Keep the `craft_company_search_terms` branch unchanged.
+   * **Before** the `CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY` branch, add `draft_title_patterns`:
+     * `parsed` must be a `dict`.
+     * Read `parsed.get("title_patterns")`. If it is a `list`, coerce to a newline-joined string of stripped non-empty items; if it is a `str`, strip it; otherwise raise `ValueError` naming the type.
+     * Empty after coerce → `ValueError`.
+     * Persist with `save_candidate_data(candidate_id, {"contact": {"title_patterns": text}})` (dict library merge — same field Manage Candidates / intake already use). Do **not** call `save_candidate_data` with an artifact-key string for this hop.
+     * `return`.
+   * Keep the existing rubric `artifact_key` branch unchanged.
+   * Replace the final `raise ValueError(f"unsupported craft task_key…")` with: if `TASK_CONFIG.get(task_key)` has `entity_type == "candidate"` and no truthy `artifact_key`, **`return`** (agent_data RESPONSE already landed — intermediate base-resume hops). Otherwise keep the raise for truly unsupported keys.
+
+   ⚠️ **Decision:** No-op is keyed off `TASK_CONFIG` entity + missing `artifact_key`, not an imported `BASE_RESUME_CHAIN_TASK_KEYS` membership list — keeps persist stage-generic when future stages add non-artifact hops, and avoids pulling chain tuples into the persist path. `draft_title_patterns` stays an explicit named branch (ticket + AC 6 allow it in the persist gate only).
+
+4. In `run_requested_artifacts_dispatch` (~4079): **do not rename** the function (tests monkeypatch this symbol).
+
+   * After resolving `bare_trigger` from `trigger_state` / hop label (existing logic), replace `stage = CANDIDATE_STAGE_DISPATCH["requested_artifacts"]` with `stage = _candidate_stage_for_trigger(bare_trigger)`.
+   * `pass_state = stage["pass_state"]`; default `start_key` still `(task_key or "").strip() or (stage.get("task_key") or "").strip()`.
+   * Keep `persist_candidate_craft_hops=True`, empty-token → hop `error_state`, success → `transition_candidate_state(..., pass_state)` when `bare_trigger == stage["trigger_state"]` and not `skip_daisy_chain`, and the existing failure / hop-label held / `_requested_stage_failure_target` paths.
+   * Logging strings may keep `run_requested_artifacts_dispatch` in the message (stable for existing log asserts).
+
+5. Do **not** edit `agent.py`. `draft_resume_base` already takes the `TASK_CONFIG["artifact_key"]` branch in `do_task` (`save_candidate_data` for `resume_structure` + `base_resume`) before `_persist_craft_dispatch_success` — that path stays the sole assembler write (AC 11 / `patt.artifact.write-operative`).
+
+## Stage 2: Dispatcher claim expansion (`dispatcher.py`)
+
+**Done when:** `rg -n 'CANDIDATE_STAGE_DISPATCH\["requested_artifacts"\]' src/core/dispatcher.py` is empty; a candidate claim whose `input_state` bare trigger is any stage trigger (including `REQUESTED_RESUME` and `REQUESTED_ARTIFACTS`, bare or `.<hop>`) uses `candidate_stage_dispatch_claim_states` for that bare trigger; non-stage candidate triggers still use plain `dispatch_claim_states`.
+
+1. In `src/core/dispatcher.py` candidate claim block (~710–719):
+
+   * Remove the hardcode `stage = CANDIDATE_STAGE_DISPATCH["requested_artifacts"]` and the equality check against that one `stage_trigger`.
+   * Build `stage_triggers = {e["trigger_state"] for e in CANDIDATE_STAGE_DISPATCH.values()}`.
+   * Let `bare = parsed_in[0] if parsed_in else raw_in`.
+   * If `bare in stage_triggers`, set `claim_states = candidate_stage_dispatch_claim_states(bare)` (import from `src.core.candidate` — prefer the new generic name; do not import `requested_artifacts_dispatch_claim_states` here).
+   * Leave the rest of `get_new_candidate_batch(...)` wiring unchanged.
+
+⚠️ **Decision:** Expansion is trigger-set membership, not a walked hop-name list in the dispatcher — satisfies AC 6 and `patt.task.daisy-chain` §4 (reclaim via hop labels + parent `run_next`, not a membership frozenset in dispatcher).
+
+## Stage 3: Consult routing + persistable gate (`consult.py`)
+
+**Done when:** `rg -n 'CANDIDATE_STAGE_DISPATCH\["requested_artifacts"\]' src/core/consult.py` is empty; the AC 6 hop-name `rg` over `dispatcher.py` + `consult.py` is empty except allowed persist-gate names; a `REQUESTED_RESUME` / `REQUESTED_RESUME.<hop>` row with a matching stage chain task_key calls `run_requested_artifacts_dispatch`; `REQUESTED_ARTIFACTS` routing unchanged; skip-daisy persistable admits base-resume hops including `draft_title_patterns`.
+
+1. In `src/core/consult.py` candidate branch (~2682–2731):
+
+   * Replace `stage_tr = CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["trigger_state"]` with membership: `stage_triggers = {e["trigger_state"] for e in CANDIDATE_STAGE_DISPATCH.values()}` and `registry_tr in stage_triggers` (keep using `parse_dispatch_hop_label` for `registry_tr`).
+   * Keep `dispatch_chain_row_matches_job(row_tr, tk, cand_st)` as the resume predicate (same helper as job BUILD_ARTIFACTS — do **not** add a hop membership list).
+   * Expand `persistable` for the `skip_daisy and persistable` arm:
+     * Keep existing `CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY` / `craft_company_search_terms` / `craft_resume_base`.
+     * Admit `draft_title_patterns` and `draft_resume_base` by name (AC 6 allowlist for the persist gate).
+     * Admit other stage-chain hops **without naming them** by calling a new helper on candidate, e.g. `is_candidate_stage_chain_task(tk) -> bool`: true when `tk` appears in `_walk_candidate_stage_chain_task_keys(stage)` for **any** stage in `CANDIDATE_STAGE_DISPATCH`. Implement that helper in Stage 1's candidate.py block if not already added; consult only imports and calls it.
+   * Still call `run_requested_artifacts_dispatch(...)` with the same kwargs (`task_key`, `trigger_state=input_state`, `skip_daisy_chain`).
+
+2. Verify locally before commit (exit 0) — product tree only; do not edit tests:
+
+```bash
+rg -n 'CANDIDATE_STAGE_DISPATCH\["requested_artifacts"\]' src/core/dispatcher.py src/core/consult.py
+# expect: no matches
+
+rg -n "shape_the_story|draft_resume_experiences|draft_supporting_sections|draft_highlights|draft_core_competencies|draft_professional_summary|draft_keywords|BASE_RESUME_CHAIN" src/core/dispatcher.py src/core/consult.py
+# expect: no matches (draft_title_patterns / draft_resume_base may appear only in consult persistable / candidate persist)
+```
+
+## Execution contract
+
+- Stages in order; one commit per stage on the epic worktree; publish each to `origin/sub/AST-1201/AST-2222-stage-generic-candidate-chain-runner`.
+- Do not add files outside **Files Changed**. Do not touch `tests/` / bible (Betty).
+- If AST-2221 registry is missing on the tip, or a step contradicts the live signatures, stop and comment on the **parent** with the Stage blocked template — do not improvise config.
+
+## Estimate
+
+Confirm Chuckles estimate: 5 — agree
