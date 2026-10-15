@@ -187,3 +187,56 @@ Child AC 10 → Stages 1–3 (CSE record + stub `get_receipt` + runner route); p
 context_tokens≈48000
 ```
 
+## Radia review
+
+```text
+[code-rubric]
+**Ticket:** AST-2219
+**Publish ref:** `16e3b32500c4fabbe67adaacfb400997824a5be7` (`origin/sub/AST-2215/AST-2219-google-search-receipt-stub`)
+**Corpus:** b7ab2203048ce0beb2869a12200ab7fa696c8066
+**Overall:** CLEAN
+
+## Canon scores
+
+stat.logging.debug | A | |
+
+## Column diff vs plan stage
+
+(aligned) — Joan: A @ plan tip `c082b82936ab2c7d9d172b71c07039335fcf2239`; build lands Stages 1–3 through tip `16e3b3250` (+ Betty tests/bibles).
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **Sibling stack in three-dot diff:** vs `origin/dev`, diff includes AST-2217 / 2218 / 2220 product, tests, and plan docs (expected before epic lands on `dev`). AST-2219-owned product commits (`035cec931`…`781924332`): `google_cse.py`, `timesheets.py`, `roster.py` only (+91 / −22 lines).
+- **Joan `batch_id` discuss — addressed on resolve path:** `resolve_company_website` records only when `log_batch_id.get()` is truthy (comment cites AC10 / avoid orphans). `run_inflow_discovery_batch` always records after successful CSE — `batch_id` is a required function argument there, so orphans are not expected in normal dispatch.
+- **Build ordering:** Depends on AST-2217/2218 (`record_search_timesheet_entry`, `TIMESHEET_SEARCH_SERVER_ID`, `run_fetch_timesheet`); satisfied on this publish ref.
+- **Canon Scope:** single frozen id `stat.logging.debug`; `google_cse` correctly stays log-free per external-layer contract; debug remains on roster Calling/Response joints.
+
+## What's solid
+
+- **Stage 1:** `GoogleCseSearchResult` + `_search_result` on all successful exit paths; `get_receipt` zero-stub with exact `TIMESHEET_RECEIPT_FIELDS`, `platform_cost=None`, `completion_status="stub"`, no HTTP; `__all__` updated.
+- **Stage 2:** `_get_receipt_fn` routes `TIMESHEET_SEARCH_SERVER_ID` → `google_cse.get_receipt`; `run_fetch_timesheet` uses empty key for CSE without skip-on-missing-key; optional `entity_type` / `entity_id` on `record_search_timesheet_entry`.
+- **Stage 3:** Both CSE sites unpack `result["hits"]`; record `DISPATCH_SEARCH` with timing and entity attribution; CSE failures do not record; early website skip unchanged.
+- **Boundaries:** No dispatcher/OpenRouter/daemon/contact/config registry edits in 2219 commits.
+- **Tests (Betty, Tests Passed):** `test_google_cse` AST-2219 stub/shape; `test_roster` AC10 recording + no-record when batch unset on resolve.
+
+## Recommended actions (Chuckles / downstream — not executed by Radia)
+
+- Append artifact; `docs(AST-2219): Radia review — clean`; push; post slim upshot `--as radia`; **Review Posted** → User Testing.
+
+context_tokens≈38000
+```
+
