@@ -212,3 +212,16 @@ R5: child AC 1–2 fully mapped; no orphan stages. R6: Files Changed ⊆ ticket 
 context_tokens≈62000
 
 [plan-rubric] PROCEED (Commit: a5282e7) Post-save draft fixed
+
+## Review stub (Hedy / build)
+
+**Publish ref:** `origin/sub/AST-2216/AST-2224-meteorite-modal-edit-form`  
+**Product tip:** `a24a63bd5` — Stages 1–2 (edit form + Save/re-read/`onSaved`; JobsMeteorites `onSaved={load}`)
+
+**Stages:**
+1. `10873f48d` — MeteoriteDetailModal envelope form, PUT save, `buildDraft` default/stored
+2. `a24a63bd5` — JobsMeteorites passes `load` as `onSaved`
+
+**Checks:** `npx tsc -b --noEmit` in `src/ui/frontend`; `rg -n 'LANDED|"CHECK_UNIQUE"|"NEW"'` on modal → empty; `validate-sub-log --stage=build` ok. Synced `origin/ftr/AST-2216-meteorite-text-editable` (AST-2223 API) via registry parent segment.
+
+**Tests:** Betty at Code Complete (`qa-child`) — engineers do not land test-tree changes.
