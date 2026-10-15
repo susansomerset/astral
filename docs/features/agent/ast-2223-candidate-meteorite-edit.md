@@ -248,3 +248,17 @@ Confirm Chuckles estimate: 3 — agree
 - Estimate confirm `3 — agree` matches scope and staged decomposition.
 
 context_tokens≈42000
+
+## Review stub (Ada / build)
+
+**Publish ref:** `origin/sub/AST-2216/AST-2223-candidate-meteorite-edit`  
+**Product tip:** `b3e6dcef3` — Stages 1–3 (`CANDIDATE_METEORITE_EDIT_CONFIG`; `is_meteorite_editable` + `save_candidate_meteorite_edit`; PUT `/api/meteorites/<id>` + detail edit envelope)
+
+**Stages:**
+1. `a10875d16` — config block + load-time asserts
+2. `b8495ddde` — core edit + editability helper
+3. `b3e6dcef3` — API PUT + detail GET envelope
+
+**Checks:** `py_compile` on changed `.py` files; `rg` AC11 clean (no NEW/LANDED/CHECK_UNIQUE literals in `api_meteorite.py`); `validate-sub-log --stage=build` ok.
+
+**Tests:** Betty at Code Complete (`qa-child`) — engineers do not land test-tree changes.
