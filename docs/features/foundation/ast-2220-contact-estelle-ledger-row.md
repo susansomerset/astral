@@ -236,3 +236,58 @@ context_tokens≈32000
 - Stage 2: `run_contact_estelle_turn` opens/closes one `contact-estelle` ledger with `timesheet_state=NEW`; primary + follow-up `do_task` pass `CONTACT_AGENT`; `_run_contact_ledgered_task` peer same attribution + NEW on close.
 - Betty owns `tests/component/core/test_contact.py` + bible AC 9.
 
+
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-2220
+**Publish ref:** `442105796baca3bf1981e08105bf8c74e9ccfe65` (`origin/sub/AST-2215/AST-2220-contact-estelle-ledger-row`)
+**Corpus:** b7ab2203048ce0beb2869a12200ab7fa696c8066
+**Overall:** FIX-NOW
+
+## Canon scores
+
+patt.entity.batch-processing | A | |
+stat.logging.debug | A | |
+
+## Column diff vs plan stage
+
+(aligned) — Joan: both A @ plan tip `9187008ca81e727934a9e97a11d0f12f3192d730`; build adds `request_type` on `do_task` + contact ledger wrap through tip `442105796`.
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### fix-now
+
+- **`_run_contact_ledgered_task` exception path** — `src/core/contact.py`: `run_contact_estelle_turn` closes the ledger with `status=FAILED` and `timesheet_state="NEW"` in `except` before re-raise; `_run_contact_ledgered_task` only closes inside the happy `try` after `do_task` returns. If `asyncio.run(do_task(...))` raises, the ledger row stays open (no `completed_at`, no `timesheet_state=NEW`), breaking parent AC **9** for peer contact markup paths. Mirror the Estelle `except` + `_ledger_closed` guard (or equivalent) on the peer helper.
+
+### discuss
+
+- **Ledger close vs ancillary work** — `run_contact_estelle_turn` closes the ledger after `land_calls` and optional Slack post, still before `out = {…}`. Plan Stage 2b text allows “just above `out`”; Joan’s acceptable note imagined close before `contact_land_meteorite`. `log_batch_id` remains set through land/Slack.
+  - **@susan:** Should contact ledger close immediately after the last `do_task`, excluding land/Slack from the open batch window?
+  - **Default:** leave close where it is (land/Slack are not LLM timesheet writers today; Betty AC 9 asserts LLM rows only).
+
+### advisory
+
+- **Sibling product + test carry (AST-2217):** Three-dot diff vs `origin/dev` includes full AST-2217 stack (`database.py`, `config.py`, externals, attribution tests/bibles, `ast-2217` plan doc) because #1 is not on `dev` yet. AST-2220’s own product commits are only `src/core/agent.py` (+`request_type` kwarg) and `src/core/contact.py` (`a28f6e9c3`…`866018ee8`). Expected epic ordering; not scope smuggling on this child.
+- **Build ordering:** Stage 2 assumes AST-2217 (`timesheet_state` on `update_dispatch_ledger`, `service_timesheet` attribution, `_send_to_server` path). Satisfied on this publish ref; Joan plan discuss unchanged.
+- **Estimate footprint:** Confirmed **2** — 2220-owned product surface matches plan; large stat is stacked #1.
+
+## What's solid
+
+- Stage 1: `do_task(..., request_type=...)` defaults to `DISPATCH_AGENT`; wired through to `_send_to_server` without ContextVar.
+- Stage 2b: Estelle turn opens one `contact-estelle-{uuid}` ledger, sets `log_batch_id`, passes `CONTACT_AGENT` on primary and follow-up `do_task`, closes with `timesheet_state="NEW"` on success/failure, `except` path for escape before close, `finally` resets contextvar + flushes log buffer.
+- Peer helper: `CONTACT_AGENT` + `timesheet_state="NEW"` on normal success/failure close; debug joints name `request_type` / `timesheet_state` where passed.
+- Betty: `test_contact.py` AC 9 coverage for Estelle + peer (`timesheet_state`, `batch_id`, `CONTACT_AGENT` on ledger and timesheet rows).
+- Boundaries: no runner, dispatcher close path, OpenRouter, Google CSE, or new schema edits in 2220-owned commits.
+
+## Recommended actions (Chuckles / downstream — not executed by Radia)
+
+- Append artifact; `docs(AST-2220): Radia review — findings`; push; post slim upshot `--as radia`; **Review Posted** → `resolve-child` for peer `except` close.
+- After AST-2217 lands on `dev`, future three-dot reviews of later siblings should shrink carry noise only; no action required for this verdict.
+
+context_tokens≈42000
