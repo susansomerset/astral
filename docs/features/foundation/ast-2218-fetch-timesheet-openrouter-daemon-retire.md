@@ -204,3 +204,72 @@ if __name__ == "__main__":
 ## Estimate
 
 Confirm Chuckles estimate: 5 — agree
+
+## Joan validate
+
+```text
+[plan-rubric]
+**Ticket:** AST-2218
+**Overall:** APPROVED
+**Corpus:** b7ab2203048ce0beb2869a12200ab7fa696c8066
+**Publish ref:** `sub/AST-2215/AST-2218-fetch-timesheet-openrouter-daemon-retire` @ `2beb713da2b44e3f3862186af0215f4079b35806`
+
+## Canon scores
+
+patt.entity.batch-processing | A | | 
+stat.dispatch.entity-state-bound | A | | 
+stat.logging.info.dispatcher | A | | 
+stat.logging.warning | A | | 
+stat.logging.error | A | | 
+stat.logging.debug | A | | 
+
+## Traceability
+
+Child AC 1→S3–S4; 2→N/A (#1 regression); 3→S1,S4,S5; 4→S4; 5→S2 (+#1 stubs); 6–7,10→S3; 8→N/A (#1); 9→N/A (#4); plan `## Traceability` table matches; no orphan stages.
+
+## Findings
+
+### acceptable — Scope gate (`dispatch_task_admin_defaults`)
+
+- **Severity:** acceptable
+- **Location:** `[scope-gate]`; Stage 1; ticket `## Scope`
+- **Finding:** `fetch_timesheet` KeyError without mailbox-style fold would break AC3; amended Scope + Stage 1 mirror `METEORITE_EMAIL_MAILBOX_CONFIG` pattern with `FETCH_TIMESHEET_CONFIG`.
+- **Recommendation:** None.
+
+### discuss — Build ordering vs AST-2217
+
+- **Severity:** discuss
+- **Location:** Preamble; Stages 2–4 (`TIMESHEET_*`, `claim_ledger_*`, stubs)
+- **Finding:** Runner assumes AST-2217 schema/helpers and Anthropic/llm_compat stubs on the integration branch.
+- **Recommendation:** Merge/build #1 before #2; Betty AC2/8 are regression-only on this sub.
+
+### discuss — Canon Scope gap (`astral.config.config-source-of-truth`)
+
+- **Severity:** discuss
+- **Location:** Stage 1 (`config.py` fold); `agent_task.json`
+- **Finding:** New catalog row + admin defaults fold are config SSOT work; id not on frozen Citations list.
+- **Recommendation:** Archie may amend Canon Scope for Radia comparability; plan already centralizes in `config.py` / `agent_task.json`.
+
+### discuss — Vacuous `RECEIPTED` when a batch has zero timesheet rows
+
+- **Severity:** discuss
+- **Location:** Stage 3g (`every row receipted` including empty batch)
+- **Finding:** Logical ∀ over zero rows marks `RECEIPTED`; parent AC6 wording is “all its **calls**” — edge case if a closed ledger has no rows yet.
+- **Recommendation:** Engineer/Betty: if AC6 test uses batches with calls only, no change; else tighten g to require ≥1 row or explicit product rule.
+
+### acceptable — Search recorder without roster wiring
+
+- **Severity:** acceptable
+- **Location:** Stage 3.5; Boundaries
+- **Finding:** `record_search_timesheet_entry` lands for AST-2219; no scope creep into `roster.py`.
+- **Recommendation:** None.
+
+### acceptable — Child AC carries parent slices owned by siblings
+
+- **Severity:** acceptable
+- **Location:** Ticket AC 2, 5 (CSE stub), 8, 9
+- **Finding:** Copied parent AC set for epic parity; plan Boundaries + Traceability mark #1/#3/#4 ownership correctly.
+- **Recommendation:** Betty manifests should scope tests to this sub’s greps/files where possible.
+
+context_tokens≈42000
+```
