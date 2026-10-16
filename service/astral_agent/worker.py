@@ -1,4 +1,4 @@
-"""Queue consumer — claims jobs up to WORKER_CONCURRENCY and runs the stub executor.
+"""Queue consumer — claims jobs up to WORKER_CONCURRENCY and runs the provider executor.
 
 Wake-ups come from LISTEN agent_job_new; polling every QUEUE_POLL_SECONDS is the
 backstop. Every DB call is wrapped: a Postgres blip slows the worker down, it never
@@ -19,6 +19,7 @@ import asyncpg
 import executor
 import jobqueue
 from logging_util import get_logger, set_worker_label
+from providers.errors import ProviderJobError
 from settings import settings
 
 _log = get_logger(__name__)
@@ -283,6 +284,24 @@ class QueueWorker:
             result = await executor.execute(raw)
         except asyncio.CancelledError:
             raise
+        except ProviderJobError as exc:
+            _log.error(
+                "%s | astral-agent job rejected: %s %s",
+                _short_id(job.id),
+                exc.error_class,
+                exc.detail,
+            )
+            status = await self._db_write(
+                jobqueue.fail,
+                job_id=job.id,
+                worker_id=self.worker_id,
+                error=exc.detail[:2000],
+                error_class=exc.error_class,
+                retry_in_seconds=None,
+            )
+            if status == "failed":
+                self._stats["failed"] += 1
+            return
         except Exception as exc:
             _log.exception(
                 "%s | astral-agent job crashed: %s: %s",
@@ -295,7 +314,7 @@ class QueueWorker:
                 job_id=job.id,
                 worker_id=self.worker_id,
                 error=str(exc)[:2000],
-                error_class="stub_error",
+                error_class="executor_error",
                 retry_in_seconds=None,
             )
             if status == "failed":
@@ -313,10 +332,19 @@ class QueueWorker:
                 _short_id(job.id),
             )
             return
+        if isinstance(result, dict) and result.get("success") is False:
+            _log.warning(
+                "%s | astral-agent provider soft-fail: %s %s",
+                _short_id(job.id),
+                result.get("failure_class") or "-",
+                str(result.get("error") or "")[:200],
+            )
         self._stats["done"] += 1
         _log.info(
-            "%s | astral-agent job done: stub elapsed:%.1fs wait:%.1fs",
+            "%s | astral-agent job done: server:%s model:%s elapsed:%.1fs wait:%.1fs",
             _short_id(job.id),
+            raw.get("server_id") or "-",
+            raw.get("model") or "-",
             time.monotonic() - started,
             job.wait_s,
         )

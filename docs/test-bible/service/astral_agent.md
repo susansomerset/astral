@@ -9,7 +9,8 @@ Isolated FastAPI Postgres queue consumer — **not** under `src/`. Flat imports 
 | Source | Test file | Branch lock |
 | --- | --- | --- |
 | Tree / Dockerfile / requirements / ban greps | `tests/component/service/test_astral_agent_fence.py` | no |
-| Settings, stub executor, result codec, claim/lease/terminal | `tests/component/service/test_astral_agent_queue.py` | no |
+| Settings, executor, codec, claim/lease/terminal | `tests/component/service/test_astral_agent_queue.py` | no |
+| Provider errors + executor validate/dispatch | `tests/component/service/test_astral_agent_providers.py` | no |
 | `app.py` `/healthz` + `/wake` | `tests/component/service/test_astral_agent_app.py` | no |
 | Railway Phase 1 + fence extension | `tests/component/service/test_astral_agent_deploy_ci.py` | no |
 
@@ -92,3 +93,44 @@ Isolated FastAPI Postgres queue consumer — **not** under `src/`. Flat imports 
 **Bible shasums (publish tip `edc4cded6`):**
 - `docs/test-bible/service/astral_agent.md` — `c30f52ecaac0747919975f428fe0aafcdda30e90  -`
 - `docs/test-bible/service/telescope.md` — `03454db08734dc5a50d1b13f177981d81db62d59  -`
+
+### AST-2239 · AST-2235 (provider wrappers inside the worker)
+
+**Scope:** `service/astral_agent/providers/*` + live `executor.execute`; worker soft-fail→`complete` / `ProviderJobError`→`fail`; thin-stub `send_to_anthropic` / `send_to_llm_compat`. No `agent.py` cutover.
+
+| Area | Component tests |
+| --- | --- |
+| Classify / soft_fail / success_result / tool_use | `test_astral_agent_providers.py::TestAst2239ProviderErrors` |
+| Executor validate + anthropic/compat dispatch | `…::TestAst2239ExecutorValidate` + revised `test_astral_agent_queue.py::TestAst2237Executor` |
+| Claim→complete / soft-fail complete / bad_request / executor_error | `test_astral_agent_queue.py::TestAst2237ClaimLeaseTerminal` (revised) |
+| requirements anthropic+httpx; recursive ban greps | `test_astral_agent_fence.py` (revised) |
+| Platform `send_to_*` raise retired | `test_anthropic.py::TestAst2239SendToAnthropicRetired`, `test_llm_compat.py::TestAst2239SendToLlmCompatRetired` |
+
+**Broken / obsolete revised:** AST-2237 stub echo / `stub_error` / requirements-without-providers asserts. Platform `send_to_*` HTTP suites skipped (`@_SEND_RETIRED`) — wire coverage lives under `service/astral_agent/providers` until AST-2240 retargets callers.
+
+## QA test manifest
+
+1. **Service providers + queue revise (required):**
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/service/test_astral_agent_fence.py \
+  tests/component/service/test_astral_agent_queue.py \
+  tests/component/service/test_astral_agent_providers.py \
+  -q
+```
+2. **Platform retirement (required):**
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/external/test_anthropic.py::TestAst2239SendToAnthropicRetired \
+  tests/component/external/test_llm_compat.py::TestAst2239SendToLlmCompatRetired \
+  -q
+```
+
+**Pass criterion:** pytest green on both commands — not zero-arg harness / branch-lock gate.
+
+**Out of scope:** live provider HTTP, `do_task` cutover (**AST-2240**), platform enqueue (**AST-2238**).
+
+**Bible shasums (publish tip `1280e4fb3`):**
+- `docs/test-bible/service/astral_agent.md` — `e94d4ee58dac6d58fcdf27fa00e527665f6de89c  -`
+- `docs/test-bible/external/anthropic.md` — `c586f9a409a26252ba9881477f7f1a73bb5e0bc6  -`
+- `docs/test-bible/external/llm_compat.md` — `4e51a00948a13396c0a77b534d5c7e999c61dd2d  -`

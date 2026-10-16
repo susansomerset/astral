@@ -39,17 +39,17 @@ class TestAst2237ServiceTree:
 class TestAst2237ImportAndBanFence:
     def test_py_files_have_zero_src_imports(self, root: Path) -> None:
         offenders: list[str] = []
-        for path in sorted(root.glob("*.py")):
+        for path in sorted(root.rglob("*.py")):
             if _SRC_IMPORT.search(path.read_text(encoding="utf-8")):
-                offenders.append(path.name)
+                offenders.append(str(path.relative_to(root)))
         assert offenders == [], f"src imports under service/astral_agent/: {offenders}"
 
     def test_ban_strings_absent(self, root: Path) -> None:
         hits: list[str] = []
-        for path in sorted(root.glob("*.py")):
+        for path in sorted(root.rglob("*.py")):
             text = path.read_text(encoding="utf-8")
             if _BAN.search(text):
-                hits.append(path.name)
+                hits.append(str(path.relative_to(root)))
         assert hits == [], f"AC3/AC5 ban hits under service/astral_agent/: {hits}"
 
 
@@ -62,13 +62,13 @@ class TestAst2237DockerfileAndRequirements:
         assert "EXPOSE 8080" in dockerfile
         assert "python:3.12-slim-bookworm" in dockerfile
 
-    def test_requirements_pins_fastapi_uvicorn_asyncpg_only(self, root: Path) -> None:
+    def test_requirements_pins_queue_and_provider_sdks(self, root: Path) -> None:
+        # AST-2239 adds anthropic+httpx; Playwright / OpenAI stay out.
         req = (root / "requirements.txt").read_text(encoding="utf-8")
         assert "fastapi" in req
         assert "uvicorn" in req
         assert "asyncpg" in req
-        # Provider SDKs / Playwright land with siblings — not this skeleton.
+        assert "anthropic" in req.lower()
+        assert "httpx" in req.lower()
         assert "playwright" not in req.lower()
-        assert "anthropic" not in req.lower()
         assert "openai" not in req.lower()
-        assert "httpx" not in req.lower()
