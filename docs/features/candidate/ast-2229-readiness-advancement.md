@@ -191,3 +191,17 @@ AC11 → Stage 1 (`check_profile_complete`, `incomplete_profile`; no state write
 **R6 (summary):** Scope gate holds (`candidate.py` + `dispatcher.py` only). Forward-only hops, demote ban via `candidate_stage`, no `REQUESTED_*` / `*_RETRY` / `ERROR_*` scheduled hops, tick order after stale aging matches parent pipeline table. Sibling boundaries respected. Estimate confirm 5 is plausible.
 
 context_tokens≈58000
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-2225/AST-2229-readiness-advancement`
+**Plan path:** `docs/features/candidate/ast-2229-readiness-advancement.md`
+
+**Built tip:** `15e47846cdbc5d1c83df322dcf2f05ebdda9f721` (`15e47846c`)
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `4511f5e41` | `check_profile_complete` / `incomplete_profile` / `_READINESS_HOPS` / `advance_candidate_readiness` |
+| 2 | `15e47846c` | `_tick_loop` calls `advance_candidate_readiness` after stale aging |
+
+**Betty note:** Core + dispatcher tick only. No test-tree edits. AC11 = profile signal (no demote); AC12 = tick → advance; AC13 = hop targets are real `trigger_state` strings (`REQUESTED_RESUME` / `REQUESTED_ARTIFACTS` / `ACTIVE_SEARCH`).
