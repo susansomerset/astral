@@ -1,3 +1,92 @@
+<!-- linear-archive: AST-2105 archived 2026-10-16 -->
+
+## Linear archive (AST-2105)
+
+**Archived:** 2026-10-16  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-2105/skipped-group-rules-in-config-and-manifest-group-the-skipped-jobs-list  
+**Status at archive:** Archive  
+**Project:** Astral Interface  
+**Assignee:** ada  
+**Priority / estimate:** None / 2  
+**Parent:** AST-2102 — Group the Skipped jobs list by Fail, Bot block and Error  
+**Blocked by / blocks / related:** parent: AST-2102; blocks: AST-2106
+
+### Description
+
+## What this implements
+
+After [AST-2073](https://linear.app/astralcareermatch/issue/AST-2073) is Done. Delivers the config side: the ordered Error / Bot block / Fail / Other rule registry (prefixes and explicit members), its guard, and the `groups` entry on the manifest `jobs.skipped` block. Does **not** touch any React file (#2).
+
+## Citations
+
+none. No in-force directive governs config registries or the manifest dict.
+
+## Scope
+
+`src/utils/config.py`. Technical scope: group rule registry; guard; manifest (the `config.py` items above, verbatim):
+
+* `config.py`
+  * **Group rule registry.** A new ordered constant for the Skipped groups. Each entry has a group key, a display label, a list of state-name prefixes, and a list of explicit member states. Explicit members are `CANDIDATE_SKIPPED` and the existing below-dispatch virtual key, both on Fail. The last entry (Other) has neither prefixes nor members: it is the catch-all. Prefixes and members are written once here and nowhere else.
+  * **Guard.** A module-level assert checks that every explicit member is a `SKIPPED_STATES` key or the below-dispatch virtual key, and that only the last group is a catch-all.
+  * **Manifest.** `build_state_ui_manifest()`'s `jobs.skipped` block gains a `groups` entry emitted from the registry (ordered key, label, prefixes, members). `section_order`, `section_labels`, and the bulk-retry map are unchanged.
+
+## Acceptance criteria
+
+1. **Manifest groups.** `GET /api/state_ui_manifest` → `jobs.skipped.groups[*].label` is exactly `["Error","Bot block","Fail","Other"]`. Error's prefixes are `["ERROR_"]` and Bot block's are `["BOT_BLOCKED_"]`. Fail's prefixes are `["FAILED_","METEORITE_FAILED_","JD_SCRAPE_FAIL_"]`, and its members are `CANDIDATE_SKIPPED` plus `jobs.skipped.below_dispatch_key`. Other has empty prefixes and members. **Fail:** any other label, order, prefix, or member.
+2. **Rules partition today's list as intended.** On a tree with AST-2073 merged, run:
+
+```python
+python3 -c "
+from src.utils import config as c
+g = c.build_state_ui_manifest()['jobs']['skipped']['groups']
+def grp(s):
+    for x in g:
+        if s in x['members']: return x['label']
+    for x in g:
+        if any(s.startswith(p) for p in x['prefixes']): return x['label']
+    return g[-1]['label']
+print(sorted(s for s in c.SKIPPED_STATES if grp(s) == 'Other'))"
+```
+
+**Pass:** prints `['INVALID_TITLE']`. **Fail:** any other list. For example, a `FAILED_TECHNICAL*` or bare `BOT_BLOCKED` still present means AST-2073 hasn't landed, and an `ERROR_`/`BOT_BLOCKED_` name in Other means the rules are wrong.
+3\. **Guard bites.** Temporarily adding `"NOT_A_STATE"` to Fail's members makes `python -c "import src.utils.config"` raise `AssertionError`. **Fail:** the import succeeds.
+11\. **Builds clean.** `python -c "import src.utils.config"` exits 0. **Fail:** non-zero exit.
+
+## Boundaries
+
+Does not touch `StateUiContext.tsx` or `JobsSkipped.tsx` (#2 owns the page). Does not rename any state; AST-2073 owns state names.
+
+## Notes for planning
+
+Blocked by [AST-2073](https://linear.app/astralcareermatch/issue/AST-2073), which rewrites the same Skipped blocks in `config.py` and puts in place the `ERROR_*` / `BOT_BLOCKED_*` names these prefixes rely on. Build against a tree where AST-2073's rename is present: `origin/dev` if it has landed, otherwise merge `origin/ftr/AST-2073-revise-terminal-states`. On AST-2086's branch, the rules give Error 31, Bot block 4, Fail 13 (including `CANDIDATE_SKIPPED`), and Other = `INVALID_TITLE` only.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/AST-2102-group-skipped-jobs`, child `sub/AST-2102/AST-2105-skipped-group-rules`. Created at dispatch-parent; exact refs in the epic registry (`epic_registry.py show AST-2102`).
+
+### Comments
+
+#### radia — 2026-10-10T02:28:56.626Z
+[code-rubric] PROCEED (Commit: a030f1aa5) Skipped groups manifest clean context_tokens≈28000
+
+#### ada — 2026-10-10T02:27:41.975Z
+`origin/sub/AST-2102/AST-2105-skipped-group-rules` @ `a030f1aa5` — manifest green.
+1. `TestAst2105SkippedGroupRules` — 5 passed (all 5 red on pre-build `68782e475` config.py).
+2. `test_config.py` — 23 failed / 644 passed; the same 23 fail on pre-build `68782e475` (dev + AST-2073), zero new.
+3. `import src.utils.config` — exit 0.
+Host note: run with `ASTRAL_PYTHON=~/astral/.venv/bin/python` (host has only python3.14; `ensure_component_venv.sh` looks for 3.10–3.12).
+
+#### betty — 2026-10-10T02:25:48.224Z
+`origin/sub/AST-2102/AST-2105-skipped-group-rules` @ `a030f1aa5` · group rules tests landed
+
+#### joan — 2026-10-10T02:23:12.177Z
+[plan-rubric] PROCEED (Commit: a1d2e90ea) Config groups manifest ready context_tokens≈42000
+
+#### ada — 2026-10-10T02:21:42.390Z
+`origin/sub/AST-2102/AST-2105-skipped-group-rules` @ `a1d2e90ea` · plan on AST-2073 tree
+
+---
+
 # AST-2105 — Skipped group rules in config and manifest
 
 - **Ticket:** [AST-2105](https://linear.app/astralcareermatch/issue/AST-2105) (child of [AST-2102](https://linear.app/astralcareermatch/issue/AST-2102) — Group the Skipped jobs list by Fail, Bot block and Error)

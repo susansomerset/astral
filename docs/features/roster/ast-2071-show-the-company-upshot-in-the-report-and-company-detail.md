@@ -1,3 +1,73 @@
+<!-- linear-archive: AST-2071 archived 2026-10-16 -->
+
+## Linear archive (AST-2071)
+
+**Archived:** 2026-10-16  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-2071/show-the-company-upshot-in-the-report-and-company-detail-company  
+**Status at archive:** Archive  
+**Project:** Astral Roster  
+**Assignee:** katherine  
+**Priority / estimate:** None / 2  
+**Parent:** AST-2054 — Company Upshot - new task  
+**Blocked by / blocks / related:** parent: AST-2054
+
+### Description
+
+## What this implements
+
+Exposes `company_upshot` on the company API. The Recommended report's Company Upshot section shows prose only (grade notes removed there), and the company detail modal gets an Upshot row. It doesn't generate anything (#2). It only reads the `company_data.company_upshot` key named in #1, so it can be built in parallel with #2.
+
+## Citations
+
+`stat.logging.debug`, `stat.logging.error` (only if the API change adds a handler).
+
+## Scope
+
+* `src/ui/api/api_companies.py` — **modified** — lift `company_upshot` to the top level of the company payload.
+* `src/ui/frontend/src/components/JobAnalysisReportModal.tsx` — **modified** — the Company Upshot section renders `company_upshot` only.
+* `src/ui/frontend/src/components/CompanyDetailModal.tsx` — **modified** — add an Upshot row.
+* Technical:
+  * `src/ui/api/api_companies.py`: **modified** `_flatten_for_view` to also lift `company_data.company_upshot`, defaulting to `""`.
+  * `src/ui/frontend/src/components/JobAnalysisReportModal.tsx`: **modified** company fetch and `company_upshot` section render. It reads `company_upshot`, and the `prefilter_company_notes` read and display are removed from this section. Default-expanded follows whether an upshot exists.
+  * `src/ui/frontend/src/components/CompanyDetailModal.tsx`: **modified**. Adds `company_upshot` to the detail type and an **Upshot** detail row when it's non-empty. The existing Notes row is unchanged.
+
+## Acceptance criteria
+
+12. **API exposes it.** `GET /api/companies/<short_name>` returns a top-level `company_upshot` field (`""` when absent). Fail: the field is missing.
+13. **Report shows prose only.** In the Recommended report Summary tab, Company Upshot shows `company_upshot` when it's non-empty, and "No company upshot on file." otherwise. `grep -n prefilter_company_notes src/ui/frontend/src/components/JobAnalysisReportModal.tsx` returns nothing. Fail: grade notes shown, or the grep matches.
+14. **Detail modal shows it.** Opening a company with a non-empty `company_upshot` from the Watch list shows an **Upshot** row with that text. Fail: no row, or a row shown when the upshot is empty.
+
+## Boundaries
+
+Does not generate upshots (#2) or register config (#1).
+
+## Notes for planning
+
+Parent [AST-2054](https://linear.app/astralcareermatch/issue/AST-2054) — see its Pipeline flow table and Architectural definition (canon links). Terminal error state is `ERROR_UPSHOT` (Susan).
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/<parent-segment>`, child `sub/<parent-id>/<child-segment>`. Created at dispatch-parent. Resolve via `epic_registry.py show AST-2054`.
+
+### Comments
+
+#### radia — 2026-10-08T23:36:47.242Z
+[code-rubric] PROCEED (Commit: 491c7610a) company upshot display clean
+
+#### betty — 2026-10-08T23:34:01.536Z
+`origin/sub/AST-2054/AST-2071-upshot-display` @ `491c7610a` · upshot tests and bible ready
+
+#### katherine — 2026-10-08T23:04:24.840Z
+`origin/sub/AST-2054/AST-2071-upshot-display` @ `7ad3ca5b5` · pre-existing, untouched: ruff I001 `api_companies.py:3`; eslint warning `JobAnalysisReportModal.tsx:286` exhaustive-deps
+
+#### joan — 2026-10-08T23:02:11.770Z
+[plan-rubric] PROCEED (Commit: 8ef3f6b2a) display plan ready
+
+#### katherine — 2026-10-08T23:00:45.920Z
+`origin/sub/AST-2054/AST-2071-upshot-display` @ `8ef3f6b2a` · three-stage display plan
+
+---
+
 # AST-2071 — Show the company upshot in the report and company detail
 
 - **Ticket:** [AST-2071](https://linear.app/astralcareermatch/issue/AST-2071)

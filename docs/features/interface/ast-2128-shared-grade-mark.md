@@ -1,3 +1,76 @@
+<!-- linear-archive: AST-2128 archived 2026-10-16 -->
+
+## Linear archive (AST-2128)
+
+**Archived:** 2026-10-16  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-2128/shared-grade-mark-add-shapes-light-and-shapes-dark-themes-one-shape  
+**Status at archive:** Archive  
+**Project:** Astral Interface  
+**Assignee:** hedy  
+**Priority / estimate:** None / 2  
+**Parent:** AST-2101 — Add "Shapes - Light" and "Shapes - Dark" themes (one shape per grade)  
+**Blocked by / blocks / related:** parent: AST-2101; blocks: AST-2129; related: AST-2100
+
+### Description
+
+## What this implements
+
+Moves every grade mark onto one shared component. The component renders today's classes and letter, gives each mark the grade letter as its accessible name, and carries the hidden shape SVG for its grade. There is no visual change on any theme, because nothing displays the SVG yet. Does **not** add themes or CSS; that is #2. Blocked by [AST-2100](https://linear.app/astralcareermatch/issue/AST-2100) landing on dev.
+
+## Citations
+
+none. No in-force pattern or statute governs frontend display components (see Architectural definition).
+
+## Scope
+
+* `src/ui/frontend/src/components/GradeMark.tsx`: **new**. The single shared grade mark. It renders today's grade-dot classes and letter, adds the accessible name, and carries its grade's shape geometry.
+* `src/ui/frontend/src/lib/recommendedJobReport.tsx`, `src/ui/frontend/src/components/AgentAnalysisHeader.tsx`, `src/ui/frontend/src/pages/JobsProcessing.tsx`, `src/ui/frontend/src/pages/JobsSkipped.tsx`: **modified**. Each renders the shared mark.
+* `tests/component/frontend/components/test_GradeMark.test.tsx`: **new**. `docs/test-bible/frontend/components.md`: **modified**.
+
+Technical scope (from parent):
+
+* `GradeMark.tsx`: new component. It takes a grade letter, an optional tooltip and a letterless flag. It renders the existing `grade-dot dot-<g>` (+ `grade-dot-letterless`) span with the grade letter as its only text (none when letterless). The span carries an image role whose accessible name is the grade letter. It also holds an inline SVG (hidden from assistive tech) with that grade's shape path from the brief, in a geometry map keyed by grade letter. The letter is rendered once, so a lettered mark's text content stays the single grade letter and existing call-site tests that read `.grade-dot` classes or text stay valid.
+* `recommendedJobReport.tsx`, `AgentAnalysisHeader.tsx`, `JobsProcessing.tsx`, `JobsSkipped.tsx`: modified render. Each local grade-dot span or helper is replaced by the shared mark with the same props it has today. There is no other behaviour change.
+* **Tests and bible (Betty,** `qa-child`**)**: a new GradeMark test covers per-grade path, accessible name, text content and the letterless case. `test_AppCss` handles selector-list blocks and twin exemptions. `test_config` asserts four ids. The three bible pages are updated to match. (this child: the GradeMark test and `components.md` only.)
+
+## Acceptance criteria
+
+6. **Accessible name.** In `test_GradeMark`, for each of A, B, C, D, F and X, both lettered and letterless, `getByRole("img", { name: <grade> })` finds the mark and the SVG is `aria-hidden`. **Fail:** no image role, or an empty or different name.
+7. **Text content unchanged.** A lettered mark's `textContent` equals its grade letter and a letterless mark's is empty. The existing Vitests `test_recommendedJobReport`, `test_JobsProcessing`, `test_JobsSkipped`, `test_JobsRecommended`, `test_JobAnalysisReportModal` and `test_JobDetailModal` pass unchanged. **Fail:** doubled letters, or any of those suites needing edits for markup reasons.
+8. **One mark.** `git grep -n 'grade-dot dot-' -- src/ui/frontend/src` returns hits only in `GradeMark.tsx`. **Fail:** any other file still builds its own grade-dot span (a parallel shape path per page).
+9. **Builds clean.** `npx tsc --noEmit` in `src/ui/frontend` exits 0, `python -c "import src.utils.config"` exits 0, and `test_AppCss.test.tsx` and `test_config.py::TestAst2047ThemeRegistry` pass. **Fail:** a non-zero exit or a failing case.
+
+## Boundaries
+
+Does not add themes, registry entries or any `App.css` rule — the shape SVG stays undisplayed on every theme until child #2. Does not change Light/Dark visuals.
+
+## Notes for planning
+
+Canon Scope: none (parent Architectural definition). Open questions resolved by Susan: shape drawn per option **(A)** (shared mark always carries its shape SVG; CSS scoped to the Shapes theme ids shows it), X ring per option **(a)** (wider under-stroke in `--grade-x-ring`). [AST-2100](https://linear.app/astralcareermatch/issue/AST-2100) has landed on `origin/dev`.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/<parent-segment>`, child `sub/<parent-id>/<child-segment>`. Created at dispatch-parent. Resolve with `epic_registry.py show AST-2101`.
+
+### Comments
+
+#### radia — 2026-10-10T05:57:47.471Z
+[code-rubric] PROCEED (Commit: e9b55072d) Shared GradeMark lands clean
+
+#### betty — 2026-10-10T05:55:12.600Z
+`origin/sub/AST-2101/AST-2128-shared-grade-mark` @ `e9b55072d` · GradeMark tests; AppCss baseline-red
+
+#### hedy — 2026-10-10T05:52:18.252Z
+`origin/sub/AST-2101/AST-2128-shared-grade-mark` @ `ec5551f8c`
+
+#### joan — 2026-10-10T05:50:10.645Z
+[plan-rubric] PROCEED (Commit: 6c8984b73) Shared mark plan solid
+
+#### hedy — 2026-10-10T05:48:35.802Z
+`origin/sub/AST-2101/AST-2128-shared-grade-mark` @ `6c8984b73` · shared mark, SVG hidden
+
+---
+
 # Shared grade mark
 
 - **Ticket:** [AST-2128](https://linear.app/astralcareermatch/issue/AST-2128) — child of [AST-2101](https://linear.app/astralcareermatch/issue/AST-2101) (Add "Shapes - Light" and "Shapes - Dark" themes)

@@ -2161,8 +2161,9 @@ def _tick_loop() -> None:
     while True:
         try:
             # late: avoid cycle with candidate → dispatcher (module-top import)
-            from src.core.candidate import age_stale_candidate_states
+            from src.core.candidate import age_stale_candidate_states, advance_candidate_readiness
             age_stale_candidate_states()
+            advance_candidate_readiness()
             # AST-1122: run due admin Scheduled Queries (interval_hours cadence)
             try:
                 database.run_due_scheduled_queries()

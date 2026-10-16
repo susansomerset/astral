@@ -1,3 +1,63 @@
+<!-- linear-archive: AST-2135 archived 2026-10-16 -->
+
+## Linear archive (AST-2135)
+
+**Archived:** 2026-10-16  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-2135/export-load-clear-existing-company-scrape-data-create-a-new-table  
+**Status at archive:** Archive  
+**Project:** Astral Foundation  
+**Assignee:** hedy  
+**Priority / estimate:** None / 3  
+**Parent:** AST-2130 — Create a new table telescope_data  
+**Blocked by / blocks / related:** parent: AST-2130
+
+### Description
+
+## What this implements
+
+After #3 and #4 (all readers must resolve ids before blobs are cleared). Three-step move of existing company scrape content into `telescope_data`. Observable: AC 10, and AC 6 across all companies after `clear`. Does **not** touch jobs (existing JD text is already valid preamble).
+
+## Citations
+
+`stat.logging.debug`, `stat.logging.warning`, `stat.logging.info.entity`.
+
+## Scope
+
+`scripts/migrations/migrate_company_scrape_to_telescope_data.py` — new script with three modes: **export** (read every company's scraped keys, write a JSON file of telescope rows with pre-assigned uuids, the company's `candidate_id`, and the id each blob key should hold; no DB writes), **load** (upsert the file into `telescope_data` by uuid; re-run adds nothing), **clear** (replace each scraped key in `company_data` with its row id(s) from the file; refuses if any referenced row is missing).
+
+## Acceptance criteria
+
+10. **Migration is staged and safe.** `export` writes the JSON file and a `SELECT short_name, company_data FROM company` dump plus `SELECT COUNT(*) FROM telescope_data` are unchanged. `load` run twice: the second run adds 0 rows. `clear` run against an empty `telescope_data` exits non-zero and changes no company row. After `load` then `clear`, AC 5 and AC 6 hold for every company. Fail: export writes to the DB, load duplicates, or clear proceeds with rows missing.
+11. **Company readers unchanged.** For one company, the admin ad-hoc preview for `prefilter_company`, `select_job_page` and `gaze` returns byte-identical text before migration (text in blob) and after `clear` (ids in blob). Fail: any diff.
+
+## Boundaries
+
+AC 6 across all companies after clear. No writer/reader changes (#2–#4); jobs untouched.
+
+## Notes for planning
+
+Parent: AST-2130. Citations above are the frozen Canon Scope subset for this child.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/AST-2130-telescope-data`, child `sub/AST-2130/AST-2135-company-scrape-migration`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-10-11T00:48:09.412Z
+[code-rubric] PROCEED (Commit: 2268ab7) staged migration script clean
+
+#### betty — 2026-10-11T00:46:03.660Z
+2268ab781 — migration tests, bible, manifest
+
+#### joan — 2026-10-11T00:38:10.853Z
+[plan-rubric] PROCEED (Commit: 5045098ec) migration export-load-clear plan
+
+#### hedy — 2026-10-11T00:37:12.023Z
+`origin/sub/AST-2130/AST-2135-company-scrape-migration` @ `5045098ec` · plan ready, three flags
+
+---
+
 # AST-2135 — Export / load / clear existing company scrape data
 
 **Parent:** [AST-2130 — Create a new table telescope_data](https://linear.app/astralcareermatch/issue/AST-2130)

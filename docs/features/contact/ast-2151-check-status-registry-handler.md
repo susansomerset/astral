@@ -1,3 +1,88 @@
+<!-- linear-archive: AST-2151 archived 2026-10-16 -->
+
+## Linear archive (AST-2151)
+
+**Archived:** 2026-10-16  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-2151/check-status-registry-entry-deeplink-origin-and-job-handler-add-check  
+**Status at archive:** Archive  
+**Project:** Astral Contact  
+**Assignee:** ada  
+**Priority / estimate:** None / 2  
+**Parent:** AST-2144 — Add /check-status to Estelle's functions  
+**Blocked by / blocks / related:** parent: AST-2144; blocks: AST-2152
+
+### Description
+
+## What this implements
+
+Adds the `check-status` entry with its reply templates and `always_with_share` placement, relaxes the registry asserts (optional ack template, placement vocabulary), adds the pinhole row and the `RAILWAY_PUBLIC_DOMAIN` origin contract, and adds the tracker handler that finds the sender's job(s) and composes the terse summary-plus-deeplink reply (one / several / none / no origin). Ships AC 1–2 and the handler side of AC 4 and AC 7–10. It does **not** touch `src/core/contact.py`. Until #2 lands, the composed text and placement aren't used.
+
+## Citations
+
+`patt.contact.command-intercept`; `stat.logging.debug`; `stat.logging.warning`.
+
+## Scope
+
+* `src/utils/config.py`: **modified**.
+  * `CONTACT_CONFIG["commands"]`, **new entry** `check-status` with:
+    * `mode: "code"`
+    * a handler dotted path into `src.core.tracker`
+    * `description` and `usage_reply_text`
+    * **new fields** for the reply templates the handler formats: a single-match template (title, date received, state, state timestamp, deeplink), a several-match header plus a per-match line template (title, company, state, deeplink), and a no-match text
+    * **new field** for an optional per-command reply placement using the existing `thread_response` vocabulary, set to `always_with_share` for `check-status`
+  * Registry asserts, **modified**: `ack_reply_template` is optional and still carries `{meteorite_id}` when present. The new template fields get shape asserts on entries that declare them. The placement field, when present, must be a `thread_response` value.
+  * `_CONTACT_PINHOLE_HANDLERS`, **new row** for the `/check-status` handler, kind `read job`.
+  * Deeplink origin, **new** env-name contract holding `RAILWAY_PUBLIC_DOMAIN`, alongside `JOBS_DETAIL_ROUTE_PREFIX`. The deeplink is `https://` + env value + prefix + `/` + URL-encoded job id. Read with `os.environ.get`; unset or empty means no links.
+* `src/core/tracker.py`: **modified**. **New function**, the `/check-status` command handler with the command-handler signature `(candidate_id, payload, *, source_id, thread_ts, debug)`. It reuses the existing candidate-scoped matcher and ownership check behind `contact_task_get_job_by_pattern`, with no new query and no hydration. It formats the entry's templates from `job_title`, `company`, `created_at`, `state`, and `state_changed_at`, with times through `format_contact_timezone_clock` in the candidate's contact timezone.
+  * One match: `ok` plus the reply text.
+  * Several matches: `ok` plus the list.
+  * No match: not-`ok`, `unmatched_pattern`, plus the no-match text.
+  * Origin env unset: no links, one warning, still replies.
+  * No writes.
+
+## Acceptance criteria
+
+AC 4 and AC 7–10: the handler side only (composed reply text / ok / error). The end-to-end posting is the sibling's.
+
+1. **Registry.** `python3 -c "from src.utils.config import CONTACT_CONFIG as C; e=C['commands']['check-status']; print(e['mode'])"` prints `code`, and the entry's placement field equals `always_with_share`. **Fails if:** a KeyError, or any other value.
+2. **Pinhole.** `python3 -c "from src.utils.config import CONTACT_CONFIG as C, _CONTACT_PINHOLE_HANDLERS as P; print(P[C['commands']['check-status']['handler']])"` prints a value starting with `read`. **Fails if:** a KeyError, or a `write…` value.
+3. **One match.** The candidate owns exactly one job whose title contains the pattern, and `RAILWAY_PUBLIC_DOMAIN=astral.example`. `handle_slack_event` on a bound `app_mention` `/check-status <pattern>` makes exactly one `post_message` call. Its text contains the job title, the raw state key, `format_contact_timezone_clock` output for both `created_at` and `state_changed_at` in the candidate's timezone, and `https://astral.example/jobs/detail/<url-encoded job id>`. **Fails if:** any of these is missing, or there are 0 or 2+ posts.
+4. **Several matches.** Two owned jobs match. One post contains both titles and both `/jobs/detail/<id>` links. **Fails if:** either id or link is missing.
+5. **Candidate scope.** A job owned by another candidate whose title matches exactly is absent from the post: its id and title do not appear. **Fails if:** either appears.
+6. **No match.** The post text equals the entry's no-match text (after `format_contact_reply_text`), threaded and shared as in AC 5, and the hear-ack text is **not** posted. **Fails if:** there's no post, the hear-ack posts, or the text or placement differs.
+7. **No origin.** With `RAILWAY_PUBLIC_DOMAIN` unset, AC 4 still posts the title, state, and times, with no `/jobs/detail/` text, and `caplog` shows exactly one WARNING naming the missing deeplink. **Fails if:** there's no post, a link appears, or there are 0 or 2+ warnings.
+
+## Boundaries
+
+Does not touch `src/core/contact.py`: the posting rule and per-command placement belong to sibling #2 (Code-mode handler reply + per-command placement). Until #2 lands, the composed text and placement aren't used. No LLM turn, no thread context, no state-label map (out of scope per parent).
+
+## Notes for planning
+
+Parent: [AST-2144](https://linear.app/astralcareermatch/issue/AST-2144). Canon Scope comes from the parent's Architectural definition. `patt.contact.command-intercept` has a pending Archie change request there (handler-composed code-mode reply, optional ack, per-command placement), so don't treat the directive text as already amended. Deeplink path shape = the Copy Link in `JobAnalysisReportModal.tsx` (`/jobs/detail/<encoded id>`); origin = `https://` + `RAILWAY_PUBLIC_DOMAIN` (Susan, define pass 2).
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/AST-2144-check-status`, child `sub/AST-2144/AST-2151-<slug>`. Created at dispatch-parent. Resolve the exact publish ref with `epic_registry.py show AST-2144 --ref AST-2151`.
+
+### Comments
+
+#### radia — 2026-10-12T18:47:20.540Z
+[code-rubric] PROCEED (Commit: cac60b36e) Registry + handler clean
+
+#### betty — 2026-10-12T18:43:39.828Z
+`origin/sub/AST-2144/AST-2151-check-status-registry-handler` @ `cac60b36e` · handler + registry tests
+
+#### ada — 2026-10-12T18:39:02.584Z
+`origin/sub/AST-2144/AST-2151-check-status-registry-handler` @ `7132b3f1a`
+
+#### joan — 2026-10-12T18:36:53.017Z
+[plan-rubric] PROCEED (Commit: 5bda360) Registry and handler plan solid
+
+#### ada — 2026-10-12T18:35:12.039Z
+`origin/sub/AST-2144/AST-2151-check-status-registry-handler` @ `5bda36039` · plan ready, two stages
+
+---
+
 # AST-2151 — Check-status registry entry, deeplink origin, and job handler
 
 **Linear:** [AST-2151](https://linear.app/astralcareermatch/issue/AST-2151)

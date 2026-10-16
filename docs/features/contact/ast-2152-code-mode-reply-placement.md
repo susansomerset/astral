@@ -1,3 +1,78 @@
+<!-- linear-archive: AST-2152 archived 2026-10-16 -->
+
+## Linear archive (AST-2152)
+
+**Archived:** 2026-10-16  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-2152/code-mode-handler-reply-per-command-placement-add-check-status-to  
+**Status at archive:** Archive  
+**Project:** Astral Contact  
+**Assignee:** hedy  
+**Priority / estimate:** None / 2  
+**Parent:** AST-2144 — Add /check-status to Estelle's functions  
+**Blocked by / blocks / related:** parent: AST-2144
+
+### Description
+
+## What this implements
+
+After #1. `_contact_reply_placement` takes an optional override. `_run_contact_command` uses the entry's placement for the usage reply and every `code`-mode post, and posts a handler-composed reply on a hit or a miss. It keeps the ack-template / hear-ack path for handlers that return no reply text (`add-job`). Ships AC 3, AC 5–6, AC 11–15, and the end-to-end posting of AC 4 and AC 7–10. It does **not** own config or the handler (#1).
+
+## Citations
+
+`patt.contact.command-intercept`; `stat.logging.info.contact`; `stat.logging.error`.
+
+## Scope
+
+* `src/core/contact.py`: **modified**.
+  * `_contact_reply_placement`, **modified**: it accepts an optional placement mode that overrides `CONTACT_CONFIG["thread_response"]` for that call, and stays the single placement rule.
+  * `_run_contact_command`, **modified**: it resolves placement with the entry's override when present, for the usage reply and every `code`-mode post. In `code` mode, when the handler returns reply text, that text is posted (via `format_contact_reply_text` / `contact_post_message`) whether the result is `ok` or not. When it returns none, today's behavior holds: `ack_reply_template` on `ok`, nothing on a miss. `add-job` is unchanged, `agent` mode is untouched, and `anchor_ts` is unchanged.
+
+## Acceptance criteria
+
+AC 4 and AC 7–10: the end-to-end posting side, on top of #1's handler.
+
+ 3. **Parse.** `parse_contact_command("<@UBOT> /check-status Senior Engineer")` returns `("check-status", "Senior Engineer")`, and `parse_contact_command("<@UBOT> /check-status <https://x.com/j/1|x.com/j/1>")` returns `("check-status", "https://x.com/j/1")`. **Fails if:** `None`, or a payload that differs.
+ 4. **One match.** The candidate owns exactly one job whose title contains the pattern, and `RAILWAY_PUBLIC_DOMAIN=astral.example`. `handle_slack_event` on a bound `app_mention` `/check-status <pattern>` makes exactly one `post_message` call. Its text contains the job title, the raw state key, `format_contact_timezone_clock` output for both `created_at` and `state_changed_at` in the candidate's timezone, and `https://astral.example/jobs/detail/<url-encoded job id>`. **Fails if:** any of these is missing, or there are 0 or 2+ posts.
+ 5. **Thread + share.** For AC 4 with `CONTACT_CONFIG["thread_response"] == "threads_only"` and a top-level inbound message, that `post_message` call has `thread_ts` equal to the inbound `ts` and `reply_broadcast=True`. If the inbound message was already in thread `T`, `thread_ts == T`. **Fails if:** `thread_ts` is missing or wrong, or `reply_broadcast` isn't `True`.
+ 6. **No LLM, no paste, no write.** For AC 4, `do_task`, `try_meteorite_apply_paste_from_slack`, and `insert_slack_meteorite` are each called zero times, and the job row is byte-identical before and after. **Fails if:** any call happens, or the row changes.
+ 7. **Several matches.** Two owned jobs match. One post contains both titles and both `/jobs/detail/<id>` links. **Fails if:** either id or link is missing.
+ 8. **Candidate scope.** A job owned by another candidate whose title matches exactly is absent from the post: its id and title do not appear. **Fails if:** either appears.
+ 9. **No match.** The post text equals the entry's no-match text (after `format_contact_reply_text`), threaded and shared as in AC 5, and the hear-ack text is **not** posted. **Fails if:** there's no post, the hear-ack posts, or the text or placement differs.
+10. **No origin.** With `RAILWAY_PUBLIC_DOMAIN` unset, AC 4 still posts the title, state, and times, with no `/jobs/detail/` text, and `caplog` shows exactly one WARNING naming the missing deeplink. **Fails if:** there's no post, a link appears, or there are 0 or 2+ warnings.
+11. **Bare command.** `/check-status` with no payload posts the entry's `usage_reply_text`, threaded and shared as in AC 5, and the handler is called zero times. **Fails if:** the handler runs, or the text or placement differs.
+12. **Placement unchanged elsewhere.** With `threads_only`, a top-level non-command `@Estelle hi` reply and a top-level `/add-job <link>` ack each post with no `thread_ts` and no `reply_broadcast`. **Fails if:** either is threaded or broadcast.
+13. **Listen line.** With debug off, `caplog` at INFO for AC 4 shows exactly one `contact listen` line whose `action:` list contains `check-status:code`. **Fails if:** zero or several such lines, or the key is missing.
+14. **No literals in core.** `rg -n "check-status|jobs/detail|RAILWAY_PUBLIC_DOMAIN|always_with_share" src/core` returns only the pre-existing `always_with_share` line(s) inside `_contact_reply_placement`, and none of the other strings. **Fails if:** any other hit. The command id, route prefix, env name, and per-command placement live only in config.
+15. `/add-job` **unchanged.** `tests/component/core/test_contact.py::TestAst2035ContactCommandIntercept` passes unmodified, including the `code`-mode miss path that falls to the hear-ack. **Fails if:** any test in that class fails or needed editing.
+
+## Boundaries
+
+Does not own `src/utils/config.py` or `src/core/tracker.py`: the registry entry, templates, origin contract, pinhole row, and handler belong to sibling #1 (blocker). `agent` mode, `anchor_ts`, and `/add-job` behavior are unchanged.
+
+## Notes for planning
+
+Parent: [AST-2144](https://linear.app/astralcareermatch/issue/AST-2144). Canon Scope comes from the parent's Architectural definition. `patt.contact.command-intercept` has a pending Archie change request there (handler-composed code-mode reply, optional ack, per-command placement), so don't treat the directive text as already amended. Deeplink path shape = the Copy Link in `JobAnalysisReportModal.tsx` (`/jobs/detail/<encoded id>`); origin = `https://` + `RAILWAY_PUBLIC_DOMAIN` (Susan, define pass 2).
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/AST-2144-check-status`, child `sub/AST-2144/AST-2152-<slug>`. Created at dispatch-parent. Resolve the exact publish ref with `epic_registry.py show AST-2144 --ref AST-2152`.
+
+### Comments
+
+#### radia — 2026-10-12T19:01:32.045Z
+[code-rubric] PROCEED (Commit: 68bc813eb) Contact reply + placement clean
+
+#### betty — 2026-10-12T18:58:51.434Z
+`origin/sub/AST-2144/AST-2152-code-mode-reply-placement` @ `68bc813eb` · end-to-end + placement tests
+
+#### joan — 2026-10-12T18:52:50.434Z
+[plan-rubric] PROCEED (Commit: c54da3712) Contact reply and placement plan
+
+#### hedy — 2026-10-12T18:51:05.624Z
+`origin/sub/AST-2144/AST-2152-code-mode-reply-placement` @ `c54da3712` · plan: placement override, reply_text
+
+---
+
 # AST-2152 — Code-mode handler reply + per-command placement
 
 **Linear:** [AST-2152](https://linear.app/astralcareermatch/issue/AST-2152)

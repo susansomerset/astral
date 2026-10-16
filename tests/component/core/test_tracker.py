@@ -3169,6 +3169,39 @@ class TestAst1872JobStateAdmitsTransition:
             tracker_mod.job_state_admits_transition("RECOMMENDED", "NOT_A_JOB_STATE")
 
 
+# AST-2232: lifecycle date helpers — discovered = created_at; first matching state_history wins.
+class TestAst2232JobLifecycleDates:
+    def test_discovered_at_from_created_at(self) -> None:
+        assert tracker_mod.job_discovered_at({"created_at": "2026-03-01T00:00:00Z"}) == "2026-03-01T00:00:00Z"
+        assert tracker_mod.job_discovered_at({"created_at": "  "}) is None
+        assert tracker_mod.job_discovered_at({}) is None
+
+    def test_first_state_history_wins(self) -> None:
+        job = {
+            "state_history": [
+                {"to_state": "NEW", "timestamp": "t0"},
+                {"to_state": "RECOMMENDED", "timestamp": "t1"},
+                {"to_state": "RECOMMENDED", "timestamp": "t2"},
+                {"to_state": "CANDIDATE_APPLIED", "timestamp": "t3"},
+            ]
+        }
+        assert tracker_mod.job_recommended_at(job) == "t1"
+        assert tracker_mod.job_applied_at(job) == "t3"
+        assert tracker_mod.job_first_state_history_at(job, "RECOMMENDED") == "t1"
+
+    def test_missing_or_blank_history(self) -> None:
+        assert tracker_mod.job_recommended_at({}) is None
+        assert tracker_mod.job_applied_at({"state_history": []}) is None
+        assert tracker_mod.job_first_state_history_at(
+            {"state_history": [{"to_state": "RECOMMENDED", "timestamp": "  "}]}, "RECOMMENDED"
+        ) is None
+        assert tracker_mod.job_first_state_history_at(
+            {"state_history": ["not-a-dict", {"to_state": "RECOMMENDED", "timestamp": "ok"}]},
+            "RECOMMENDED",
+        ) == "ok"
+        assert tracker_mod.job_first_state_history_at({"state_history": []}, "") is None
+
+
 # AST-1974 · AST-1970: candidate_skip_job — not found / illegal (claim untouched) / legal with + without
 # batch claim / hop-label state; list_jobs + count_jobs facades forward exclude_states.
 class TestAst1974CandidateSkipJob:

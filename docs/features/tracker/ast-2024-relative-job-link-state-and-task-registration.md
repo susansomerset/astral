@@ -1,3 +1,77 @@
+<!-- linear-archive: AST-2024 archived 2026-10-16 -->
+
+## Linear archive (AST-2024)
+
+**Archived:** 2026-10-16  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-2024/relative-job-link-state-and-task-registration-new-fetch-task-for  
+**Status at archive:** Archive  
+**Project:** Astral Tracker  
+**Assignee:** ada  
+**Priority / estimate:** None / 2  
+**Parent:** AST-2022 — New Fetch task for RELATIVE_JOB_LINK  
+**Blocked by / blocks / related:** parent: AST-2022; blocks: AST-2025
+
+### Description
+
+## What this implements
+
+The job state registry, the fetch task's config and dispatch binding, the agent_task catalog row, and UI labels. After this, `RELATIVE_JOB_LINK` and `RELATIVE_LINK_FAIL` are legal job states (the latter skipped and bulk-retryable), and the new task key shows in Scheduled Actions as `job` / `RELATIVE_JOB_LINK`. Does **not** route qualify output or run the fetch (#3).
+
+## Citations
+
+`astral.dispatch.entity-state-bound`, `patt.entity.batch-criteria`.
+
+## Scope
+
+* `src/utils/config.py`:
+  * New `JOB_STATES` entry `RELATIVE_JOB_LINK` (prior: `NEW` only; `NEW_RETRY` resolves through its base). `RELATIVE_LINK_FAIL` is in its priors too, for bulk retry.
+  * New `JOB_STATES` entry `RELATIVE_LINK_FAIL` (prior: `RELATIVE_JOB_LINK`). It's added to `SKIPPED_STATES`, the skipped section order and labels, and the skipped bulk-retry map (→ `RELATIVE_JOB_LINK`).
+  * `RELATIVE_JOB_LINK` added to the priors of `JD_READY`, `BOT_BLOCKED`, and the four `JD_SCRAPE_FAIL*` states.
+  * New `GAZER_CONFIG` block for the fetch task (trigger state, pass / fail / error states), plus matching branches in the dispatch trigger-state and entity-type rules.
+  * New `qualify_job_listings` config key naming the relative-link destination state.
+  * `JOBS_PROCESSING_UI_SECTIONS` row for `RELATIVE_JOB_LINK`.
+* `data/admin/agent_task.json`: new row (`agent_id` `telescope`, Job Review group, sequenced after `fetch_jd`).
+
+## Acceptance criteria
+
+1. **Registry.** The following command exits 0. Fail: `KeyError` or `AssertionError`, or `VALID_TITLE` appears in either new state's priors.
+
+   ```
+   python -c "from src.utils.config import JOB_STATES as J, SKIPPED_STATES as S, JOBS_SKIPPED_BULK_RETRY_TO_STATE as R; assert set(J['RELATIVE_JOB_LINK']['prior_states'])=={'NEW','RELATIVE_LINK_FAIL'}; assert J['RELATIVE_LINK_FAIL']['prior_states']==['RELATIVE_JOB_LINK']; assert 'RELATIVE_LINK_FAIL' in S and R['RELATIVE_LINK_FAIL']=='RELATIVE_JOB_LINK'; assert all('RELATIVE_JOB_LINK' in J[s]['prior_states'] for s in ('JD_READY','BOT_BLOCKED','JD_SCRAPE_FAIL','JD_SCRAPE_FAIL_COOKIE','JD_SCRAPE_FAIL_MISSING','JD_SCRAPE_FAIL_CLOSED'))"
+   ```
+2. **UI.** The Jobs processing view shows a labelled `RELATIVE_JOB_LINK` section, and the Jobs skipped view shows a labelled `RELATIVE_LINK_FAIL` section with bulk retry, whenever such jobs exist. A bulk retry there moves the jobs to `RELATIVE_JOB_LINK`. Fail: a section is missing, the jobs are invisible, or retry lands anywhere else.
+
+## Boundaries
+
+Does not own: Telescope click option (#1). Qualify routing, the gazer runner, and the dispatch router branch (#3). The qualify prompt in agent_task.json (Susan edits it herself).
+
+## Notes for planning
+
+Parent: AST-2022 (full definition, Pipeline flow, Architectural definition links). Canon Scope for this child = Citations above.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/<parent-segment>`, child `sub/<parent-id>/<child-segment>`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-10-08T03:51:13.839Z
+[code-rubric] PROCEED (Commit: 52c2d08) registry and dispatch registration
+
+#### betty — 2026-10-08T03:49:04.343Z
+`origin/sub/AST-2022/AST-2024-relative-job-link-state` @ `52c2d084c` · registry pins revised, gaps added
+
+#### ada — 2026-10-08T03:44:52.574Z
+`origin/sub/AST-2022/AST-2024-relative-job-link-state` @ `7be49d735`
+
+#### joan — 2026-10-08T02:39:05.844Z
+[plan-rubric] PROCEED (Commit: 201426ea0) registry and dispatch registration
+
+#### ada — 2026-10-08T02:37:39.048Z
+`origin/sub/AST-2022/AST-2024-relative-job-link-state` @ `201426ea0` · registry plan, two stages
+
+---
+
 # AST-2024 — RELATIVE_JOB_LINK state and task registration
 
 - **Ticket:** [AST-2024](https://linear.app/astralcareermatch/issue/AST-2024)

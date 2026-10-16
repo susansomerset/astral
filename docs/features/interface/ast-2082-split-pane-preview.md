@@ -1,3 +1,81 @@
+<!-- linear-archive: AST-2082 archived 2026-10-16 -->
+
+## Linear archive (AST-2082)
+
+**Archived:** 2026-10-16  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-2082/split-pane-layout-print-previewthumbnail-full-screen-modal-resume-edit  
+**Status at archive:** Archive  
+**Project:** Astral Interface  
+**Assignee:** hedy  
+**Priority / estimate:** None / 3  
+**Parent:** AST-2046 — Resume Edit Overhaul  
+**Blocked by / blocks / related:** parent: AST-2046; blocks: AST-2084; blocks: AST-2083
+
+### Description
+
+## What this implements
+
+Ships the reusable split pane with its draggable divider, the print preview that doubles as a thumbnail, one shared fetch/open helper for print HTML, and the full-screen modal size. Does not own the resume editor (#3) or wire any page or modal (#4).
+
+## Citations
+
+`patt.artifact.read-current` (preview renders through the existing current-reading builder routes).
+
+## Scope
+
+`src/ui/frontend/src/components/SplitPanePage.tsx` — **new** — the split-pane layout: left/right panels with a user-draggable divider, for page or modal use. `src/ui/frontend/src/components/PrintPreview.tsx` — **new** — shows generated resume or cover letter HTML; full panel or click-to-open thumbnail; refetches when told a save landed. `src/ui/frontend/src/lib/printHtml.ts` — **new** — one shared helper to fetch base resume, job resume, or cover letter HTML and to open it as a blob in a new tab (replaces the two copies of that logic in the base page and the JAR modal). `src/ui/frontend/src/components/Modal.tsx` — **modified** — full-screen size for split-pane modals.
+
+Technical:
+
+* `SplitPanePage.tsx`: new component taking left and right content. Divider drag updates the left panel width in component state. Page mode fills the content area from the nav edge to the viewport's right edge; modal mode fills its container. Layout uses inline styles because the width is drag-driven state.
+* `PrintPreview.tsx`: new component taking a target (base resume for a candidate, job resume, or cover letter for a job) and a refresh signal. It fetches HTML through `printHtml.ts` and shows it in an iframe, with the builder's error text when the fetch fails. A thumbnail mode renders it scaled down and non-interactive, with an `onClick`.
+* `printHtml.ts`: new helpers. One fetches HTML for base (`/candidate/resume/base?candidate_id=`), job resume (`/candidate/resume/<job_id>`), or cover letter (`/candidate/cover/<job_id>`), returning the text or the error message. One opens HTML as a blob in a new tab with the existing popup-blocked handling.
+* `Modal.tsx`: add a full-screen size option alongside `wide`. Existing callers are unchanged.
+
+## Acceptance criteria
+
+1. **Split pane spans the content area.** On Base Resume Content, the left panel's left edge equals the nav menu's right edge (0 when the nav is hidden). The right panel's right edge equals `window.innerWidth`. In the job edit modal, both panels together span the viewport width. *Fail:* a gap or page padding on either side.
+2. **Divider resizes.** Dragging the divider 100 px right grows the left panel by 100 px (±2) and shrinks the right panel by the same. *Fail:* no change, or only one panel changes.
+3. **Preview = print HTML.** The right panel's iframe content equals the body of `GET /candidate/resume/base?candidate_id=<id>` (base), `GET /candidate/resume/<jobId>` (job resume), or `GET /candidate/cover/<jobId>` (cover letter). *Fail:* different HTML, or no iframe.
+
+## Boundaries
+
+Does not own the resume editor (#3) or wire any page or modal (#4). Sibling slices under [AST-2046](https://linear.app/astralcareermatch/issue/AST-2046): #1: job-structure-line-format; #3: resume-editor; #4: wire-resume-surfaces.
+
+## Notes for planning
+
+Citations above; decisions 1–9 and the full architectural definition live on the parent [AST-2046](https://linear.app/astralcareermatch/issue/AST-2046). Estimate: 3.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/AST-2046-resume-edit-overhaul`,
+child `sub/AST-2046/AST-2082-split-pane-preview`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-10-09T02:23:13.248Z
+[code-rubric] PROCEED (Commit: 3d101f16e) Preview via print GET; four files
+
+#### betty — 2026-10-09T02:17:01.178Z
+`origin/sub/AST-2046/AST-2082-split-pane-preview` @ `d47bca25f` · 31 tests, no drift
+
+#### hedy — 2026-10-09T02:02:50.438Z
+[check-linear] blocked: `validate-sub-log.sh --stage=build` → `BLOCKED: git pull merge on sub`
+
+Build is done and published: `origin/sub/AST-2046/AST-2082-split-pane-preview` @ `78edbc31c`. Each stage passed build + lint.
+
+The flagged commit isn't from this sub. It's `42e3eabff Merge remote-tracking branch 'origin/dev' into tmp-refresh-AST-2054-company-upshot`, which reached `origin/dev` with AST-2054 (#272). `origin/ftr/AST-2046-resume-edit-overhaul` doesn't contain it yet, so the `sub --not ftr` range picks it up after the required dev merge. Every sibling sub synced with dev will hit the same block at merge-child.
+
+Fix (Chuckles): `refresh-ftr.sh` for AST-2046 (merge origin/dev into ftr). Then I re-run validate-sub-log and move to Code Complete. Staying at Plan Approved until then.
+
+#### joan — 2026-10-09T02:00:48.924Z
+[plan-rubric] PROCEED (Commit: 495a7901c) Primitives plan; read-current clear.
+
+#### hedy — 2026-10-09T01:59:39.326Z
+`origin/sub/AST-2046/AST-2082-split-pane-preview` @ `495a7901c` · plan ready, four decisions flagged
+
+---
+
 # AST-2082 — Split-pane layout, print preview/thumbnail, full-screen modal (Resume Edit Overhaul)
 
 - **Parent:** [AST-2046 Resume Edit Overhaul](https://linear.app/astralcareermatch/issue/AST-2046)

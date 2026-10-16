@@ -1,3 +1,73 @@
+<!-- linear-archive: AST-2174 archived 2026-10-16 -->
+
+## Linear archive (AST-2174)
+
+**Archived:** 2026-10-16  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-2174/sidebar-search-box-and-results-page-add-universal-entity-search  
+**Status at archive:** Archive  
+**Project:** Astral Interface  
+**Assignee:** hedy  
+**Priority / estimate:** None / 3  
+**Parent:** AST-2168 — Add Universal Entity Search  
+**Blocked by / blocks / related:** parent: AST-2168
+
+### Description
+
+## What this implements
+
+After #1. Delivers the nav-panel search input (above Jobs), the `/search?q=…` route, and the results list page that renders #1's per-type lists as Jobs / Companies / Meteorites sections and opens the right existing modal per result. Does **not** own matching, ordering, or the job-modal decision — it renders what #1 returns.
+
+## Citations
+
+none — no in-force directive governs React pages or routes.
+
+## Scope
+
+`src/ui/frontend/src/pages/SearchResults.tsx`, `src/ui/frontend/src/routes.tsx`, `src/ui/frontend/src/components/NavigationShell.tsx`, `src/ui/frontend/src/App.css`. Technical scope: the `SearchResults.tsx`, `routes.tsx`, `NavigationShell.tsx`, and `App.css` items above, verbatim.
+
+* `SearchResults.tsx` — new page. Reads `q` from the URL and the selected candidate from `CandidateContext`. Fetches `/api/search` on `q` or candidate change. Renders one section per non-empty entity type, in the order Jobs, Companies, Meteorites, each with a heading and match count, rows in the order the API returned them (no client-side reordering of tiers). Columns: display name, state, matched field(s). Reuse the shared `ListPage` table look where it fits (`plan-child`'s call). Hosts `JobAnalysisReportModal`, `JobDetailModal`, `CompanyDetailModal`, and `MeteoriteDetailModal`, opening the one named by the result's entity type and (for jobs) modal kind. Re-fetches on modal close / save. Shows "Select a candidate" with no candidate, and "No results" when all three lists are empty.
+* `routes.tsx` — adds the `search` path to the shell children; header comment notes it as deeplink-only (no `NAV_CONFIG` item).
+* `NavigationShell.tsx` — adds a search input at the top of the `sidebar-scroll` area, above the first nav group (Jobs) — not in the fixed `sidebar-chrome` with the candidate picker. Shown in both wide and narrow (drawer) layouts. Submit (Enter) with a non-blank trimmed value navigates to `/search?q=<encoded>`. No search-as-you-type.
+* `App.css` — styles for the sidebar search input and any results-page tweaks.
+
+## Acceptance criteria
+
+ 8. **Job modal by list.** For candidate A, one job each on Ready (`CANDIDATE_REVIEW`), Review (`RECOMMENDED`), an Applied state, a Processing state, a Skipped state, and a Processing-state job below its dispatch score floor: the API's Jobs list for each is `ready`, `review`, `applied`, `processing`, `skipped`, `skipped`, and modal kind is `report` for the first three and `detail` for the last three. Clicking each in the UI opens `JobAnalysisReportModal` or `JobDetailModal` to match. **Fail:** any mismatch.
+ 9. **Company and meteorite modals.** Clicking a company result opens `CompanyDetailModal` for that `short_name`. Clicking a meteorite result opens `MeteoriteDetailModal` for that id. **Fail:** wrong modal, wrong entity, or a page navigation away from results.
+10. **Search box placement and URL.** The search input renders inside `.sidebar-scroll`, directly above the Jobs nav group, and not inside `.sidebar-chrome`; scrolling the nav panel scrolls it under the candidate picker. **Fail:** the input sits in `.sidebar-chrome`, below Jobs, or stays fixed while the menu scrolls. Typing `acme` in the box and pressing Enter lands on `/search?q=acme` with results. Reloading that URL shows the same results. Pressing Enter on a blank box does nothing. **Fail:** no navigation, empty results on reload, or a request with blank `q`.
+11. **Grouped by type.** `GET /api/search` returns an object whose keys are exactly `job`, `company`, `meteorite`, each a list. For a string matching two jobs and one meteorite but no company, the page shows a Jobs (2) section then a Meteorites (1) section, and no Companies section. A string matching nothing shows "No results" and no section headings. **Fail:** other keys, a Companies heading, wrong order or count, or an empty section heading.
+12. **Candidate switch.** On `/search?q=acme`, switching the sidebar candidate from A to B re-fetches and shows only B's results. With no candidate selected, the page shows "Select a candidate" and no `/api/search` request is made. **Fail:** A's results remain, or a request goes out with no candidate.
+13. **Modal close refreshes.** Moving a company's state in `CompanyDetailModal` and closing it updates that row's State column on the results page without a reload. **Fail:** stale state.
+14. **Builds clean.** From repo root, `PYTHONPATH=.:src python -c "import src.utils.config, src.core.search, ui.api.api_search"` exits 0. In `src/ui/frontend`, `npm run build` exits 0 and `npm run lint` reports no problem absent on `origin/dev`. **Fail:** non-zero exit or a new lint problem.
+
+## Boundaries
+
+Does not own matching, ordering, field lists, or the job-modal decision — it renders what #1's `GET /api/search` returns. No backend file. For ACs 8 and 11, this child owns the UI half (the right modal opens; Jobs/Companies/Meteorites sections). For AC 15, this child owns `npm run build` / `npm run lint`.
+
+## Notes for planning
+
+Blocked by #1 (needs the API shape). Susan (define round 1): search bar on the nav panel proper — scrolls under the selected candidate, above the Jobs category; results are a list page with matches by entity type, showing only types with matches.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/AST-2168-universal-entity-search`, child `sub/AST-2168/AST-2174-search-results-page`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-10-12T23:29:57.321Z
+[code-rubric] PROCEED (Commit: e026730b5) UI plan delivered clean
+
+#### betty — 2026-10-12T23:27:37.118Z
+`origin/sub/AST-2168/AST-2174-search-results-page` @ `e026730b5` · search UI tests landed
+
+#### joan — 2026-10-12T23:23:18.407Z
+[plan-rubric] PROCEED (Commit: 78fc17e7) Frontend search UI plan ready. context_tokens≈34000
+
+#### hedy — 2026-10-12T23:21:30.589Z
+`origin/sub/AST-2168/AST-2174-search-results-page` @ `78fc17e7b` · plan ready, estimate agreed
+
+---
+
 # AST-2174 — Sidebar search box and results page
 
 - **Ticket:** [AST-2174](https://linear.app/astralcareermatch/issue/AST-2174) (child of [AST-2168](https://linear.app/astralcareermatch/issue/AST-2168) — Add Universal Entity Search)

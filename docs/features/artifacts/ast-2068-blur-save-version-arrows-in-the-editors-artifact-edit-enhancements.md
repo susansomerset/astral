@@ -1,3 +1,65 @@
+<!-- linear-archive: AST-2068 archived 2026-10-16 -->
+
+## Linear archive (AST-2068)
+
+**Archived:** 2026-10-16  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-2068/blur-save-version-arrows-in-the-editors-artifact-edit-enhancements  
+**Status at archive:** Archive  
+**Project:** Astral Artifacts  
+**Assignee:** katherine  
+**Priority / estimate:** None / 3  
+**Parent:** AST-2043 — Artifact Edit Enhancements  
+**Blocked by / blocks / related:** parent: AST-2043
+
+### Description
+
+## What this implements
+
+After #2. Blur-save replaces the 2-second timer. One shared arrow control, mounted artifact-level and per-criterion in `ArtifactEditor` and artifact-level in `ContextTextPage`. Saves unsaved edits before a move and re-hydrates after it. Does not own backend behavior.
+
+## Citations
+
+`patt.artifact.ui-consistency`, `patt.artifact.read-current`.
+
+## Scope
+
+`src/ui/frontend/src/components/ArtifactVersionNav.tsx` — shared back/forward arrows + position indicator control. `src/ui/frontend/src/components/ArtifactEditor.tsx` — blur-save replaces the autosave timer. Artifact-level nav for catalog keys, per-criterion nav in rubric mode. Flush unsaved edits before a move, reload after. `src/ui/frontend/src/components/ContextTextPage.tsx` — artifact-level nav for the seven `candidate.context.*` pages, and reload after a move.
+
+## Acceptance criteria
+
+1. **Blur saves exactly one version.** On Base Resume Content, type 20+ characters into one section without leaving it. `list_artifacts("candidate", <id>, "base_resume")` row count is unchanged while typing. After blur it grows by exactly 1. *Fail:* growth before blur, or more than 1 after.
+2. **Unchanged blur saves nothing.** Focus a section and blur it without editing. The row count is unchanged. Repeat on a Criteria page: `list_rubric_vectors(<id>, <task>, current_only=False)` count is unchanged. *Fail:* any growth.
+3. **Timer is gone.** `git grep -n "AUTOSAVE_MS" -- src/ui/frontend/src/components/ArtifactEditor.tsx` returns nothing. *Fail:* any match.
+4. **UI arrows.** On Base Resume Content, JAR Cover Letter, Bio Summary, and one criterion on Do Job Criteria: back is disabled at 1 of N, forward is disabled at N of N, and pressing back shows the previous body with the indicator reading N-1 of N. *Fail:* body unchanged, wrong indicator, or arrows missing on any listed surface.
+
+## Boundaries
+
+Does not own backend behavior (siblings #1, #2). Company Search Terms page and the JAR Application Questions tab stay as-is.
+
+## Notes for planning
+
+Citations above are this child's Canon Scope (subset of parent [AST-2043](https://linear.app/astralcareermatch/issue/AST-2043) Architectural definition). Parent Technical scope has the function/table-level detail for these files.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/AST-2043-artifact-versions`, child `sub/AST-2043/AST-2068-version-ui`. Created at dispatch-parent. Resolve with `epic_registry.py show AST-2043 --ref AST-2068`.
+
+### Comments
+
+#### radia — 2026-10-09T00:32:58.058Z
+[code-rubric] PROCEED (Commit: 41eeeddeb) blur-save and version arrows clean
+
+#### betty — 2026-10-09T00:30:53.859Z
+`origin/sub/AST-2043/AST-2068-version-ui` @ `41eeeddeb` · 15 revised, arrows covered
+
+#### joan — 2026-10-09T00:04:56.076Z
+[plan-rubric] PROCEED (Commit: 7c52976bb) blur-save version arrows UI
+
+#### katherine — 2026-10-09T00:03:34.641Z
+`origin/sub/AST-2043/AST-2068-version-ui` @ `7c52976bb` · plan ready, four stages
+
+---
+
 # AST-2068 — Blur-save + version arrows in the editors (Artifact Edit Enhancements)
 
 - **Ticket:** [AST-2068](https://linear.app/astralcareermatch/issue/AST-2068)

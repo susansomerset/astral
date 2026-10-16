@@ -1,3 +1,62 @@
+<!-- linear-archive: AST-2067 archived 2026-10-16 -->
+
+## Linear archive (AST-2067)
+
+**Archived:** 2026-10-16  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-2067/version-api-routes-artifact-edit-enhancements  
+**Status at archive:** Archive  
+**Project:** Astral Artifacts  
+**Assignee:** hedy  
+**Priority / estimate:** None / 2  
+**Parent:** AST-2043 — Artifact Edit Enhancements  
+**Blocked by / blocks / related:** parent: AST-2043; blocks: AST-2068
+
+### Description
+
+## What this implements
+
+After #1. Version list / set-current routes for candidate keys, job keys, and rubric criteria. Does not own UI (#3).
+
+## Citations
+
+`patt.artifact.read-current`, `patt.artifact.write-operative`, `stat.logging.error`, `stat.logging.info.api`.
+
+## Scope
+
+`src/ui/api/api_candidate.py` — new authenticated routes: version list + set-current for candidate catalog keys and for a rubric criterion. `src/ui/api/api_jobs.py` — new authenticated routes: version list + set-current for job catalog keys.
+
+## Acceptance criteria
+
+7. **Cross-key guard.** Set-current with a uuid from a different artifact key, entity, or rubric code returns 400, and current is unchanged. *Fail:* 200 or a current change.
+
+## Boundaries
+
+Does not own core/data behavior (sibling #1) or UI (sibling #3). Does not touch the `proposed_answers` / `application_responses` routes.
+
+## Notes for planning
+
+Citations above are this child's Canon Scope (subset of parent [AST-2043](https://linear.app/astralcareermatch/issue/AST-2043) Architectural definition). Parent Technical scope has the function/table-level detail for these files.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/AST-2043-artifact-versions`, child `sub/AST-2043/AST-2067-version-api`. Created at dispatch-parent. Resolve with `epic_registry.py show AST-2043 --ref AST-2067`.
+
+### Comments
+
+#### radia — 2026-10-08T23:58:20.725Z
+[code-rubric] PROCEED (Commit: 41d58f9a3) version API routes clean
+
+#### betty — 2026-10-08T23:56:31.677Z
+`origin/sub/AST-2043/AST-2067-version-api` @ `41d58f9a3` · 40 route tests, manifest in bible
+
+#### joan — 2026-10-08T23:50:44.504Z
+[plan-rubric] PROCEED (Commit: 0cc6188af) six version API routes
+
+#### hedy — 2026-10-08T23:49:29.846Z
+`origin/sub/AST-2043/AST-2067-version-api` @ `0cc6188af` · six thin version routes
+
+---
+
 # AST-2067 — Version API routes (Artifact Edit Enhancements)
 
 - **Ticket:** [AST-2067](https://linear.app/astralcareermatch/issue/AST-2067)

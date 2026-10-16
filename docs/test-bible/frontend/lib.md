@@ -480,3 +480,15 @@ cd src/ui/frontend && npx tsc -b --noEmit && npm run test:component -- \
 New `printHtml.ts`. `fetchPrintHtml({kind, id})` reads `base` → `/candidate/resume/base?candidate_id=`, `job_resume` → `/candidate/resume/<id>`, and `cover` → `/candidate/cover/<id>`, with ids URL-encoded. It returns `{ok, html}` (the exact body) or `{ok: false, error}` and never throws. The error is the builder's `error` text, else `HTTP <status>`. A blank body becomes `HTML response was empty`, and a thrown non-Error becomes `Print failed`. For `base` only, the legacy `Candidate missing artifacts.base_resume` error is mapped to the operator copy. `openHtmlInNewTab(html)` opens a blob URL with `window.open(url, "_blank")` (no feature string), sets `opener = null`, revokes the URL after 60 s, and returns `POPUP_BLOCKED_MESSAGE` when the popup is blocked. The base page and JAR modal still use their own copies until **AST-2084**.
 
 **New:** **`tests/component/frontend/lib/test_printHtml.test.ts`** (8). Manifest: [`components.md`](components.md) § AST-2082.
+
+### AST-2234 · AST-2226 (shared Analysis helpers)
+
+**Parent:** AST-2226. **Publish:** `origin/sub/AST-2226/AST-2234-modal-panes-and-wiring`.
+
+Exports `totalScore` (was local in `JobsRecommended`), `phaseThermometerModel`, `jobGradablePercent`, `extractAgentPayloadText`. Retires `materialsPreviewVisible`.
+
+| Helper | Tests |
+| --- | --- |
+| `totalScore` / `phaseThermometerModel` / `jobGradablePercent` / `extractAgentPayloadText` | **`test_recommendedJobReport.test.tsx`** — **`recommendedJobReport — AST-2234 helpers`** |
+
+Manifest: [`components.md`](components.md) § AST-2234.
