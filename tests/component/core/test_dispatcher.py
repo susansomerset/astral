@@ -57,6 +57,11 @@ def _run_one_tick(monkeypatch: pytest.MonkeyPatch) -> None:
         "src.core.candidate.age_stale_candidate_states",
         MagicMock(return_value=0),
     )
+    # AST-2229: tick advances readiness after stale aging — keep unit ticks DB-free
+    monkeypatch.setattr(
+        "src.core.candidate.advance_candidate_readiness",
+        MagicMock(return_value=0),
+    )
     # AST-1022: tick Style D AUTO-off side path lists stage rows — keep unit ticks DB-free
     monkeypatch.setattr(dispatcher_mod.database, "list_dispatch_tasks", lambda: [])
     # AST-1022: tick Style D AUTO-off side path lists stage rows — keep unit ticks DB-free
@@ -2926,6 +2931,21 @@ class TestAst972CandidateStageDispatch:
         with pytest.raises(StopIteration):
             dispatcher_mod._tick_loop()
         aged.assert_called_once_with()
+
+    def test_tick_loop_invokes_readiness_after_stale(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # AST-2229 AC12: advance runs on the tick after age_stale (order via call recording).
+        order: list[str] = []
+        aged = MagicMock(side_effect=lambda: order.append("stale") or 0)
+        advanced = MagicMock(side_effect=lambda: order.append("ready") or 0)
+        monkeypatch.setattr(dispatcher_mod.database, "get_due_tasks", lambda: [])
+        _run_one_tick(monkeypatch)
+        monkeypatch.setattr("src.core.candidate.age_stale_candidate_states", aged)
+        monkeypatch.setattr("src.core.candidate.advance_candidate_readiness", advanced)
+        with pytest.raises(StopIteration):
+            dispatcher_mod._tick_loop()
+        assert order == ["stale", "ready"]
+        aged.assert_called_once_with()
+        advanced.assert_called_once_with()
 
     def test_start_scheduler_invokes_wrapper_retire(self, monkeypatch: pytest.MonkeyPatch) -> None:
         dispatcher_mod._tick_thread = None

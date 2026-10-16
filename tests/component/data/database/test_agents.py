@@ -333,6 +333,54 @@ class TestAst1955AgentSettings:
         assert repo_json_mod.get_repo_admin_json_divergence_status()["agent"]["diverged"] is False
 
 
+
+class TestAst2232AgentName:
+    """AST-2232: agent_name — display TEXT column (not an AGENT_SETTING); public read/write/list."""
+
+    def test_save_get_list_round_trip(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        db.save_agent("a1", "c", agent_name="Grace", model_id="qwen/qwen3-235b-a22b-2507")
+        assert db.get_agent("a1")["agent_name"] == "Grace"
+        assert [r["agent_name"] for r in db.list_agents()] == ["Grace"]
+        db.update_agent("a1", agent_name="Atlas")
+        assert db.get_agent("a1")["agent_name"] == "Atlas"
+        # None on update means leave alone (same rule as max_tokens).
+        db.update_agent("a1", content="c2")
+        assert db.get_agent("a1")["agent_name"] == "Atlas"
+
+    def test_none_on_insert_stores_empty(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        db.save_agent("a1", "c")
+        assert db.get_agent("a1")["agent_name"] == ""
+
+    def test_schema_ensure_adds_column(self, sqlite_in_memory, monkeypatch) -> None:
+        db = sqlite_in_memory
+        conn = db._get_connection()
+        try:
+            conn.execute(
+                "CREATE TABLE agent (agent_id TEXT PRIMARY KEY, content TEXT, model_id TEXT, max_tokens INTEGER, "
+                "quantization TEXT, temperature REAL, reasoning_effort TEXT, provider_allow_fallbacks INTEGER, "
+                "provider_only TEXT, provider_ignore TEXT, provider_sort TEXT, "
+                "requires_structured_output INTEGER, updated_at TIMESTAMP)"
+            )
+            conn.execute(
+                "INSERT INTO agent (agent_id, content, model_id, provider_allow_fallbacks, requires_structured_output) "
+                "VALUES ('old', 'body', 'qwen/qwen3-235b-a22b-2507', 1, 0)"
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        monkeypatch.setattr(db, "_agent_schema_ensured", False)
+        row = db.get_agent("old")
+        conn = db._get_connection()
+        try:
+            cols = {r[1] for r in conn.execute("PRAGMA table_info(agent)").fetchall()}
+        finally:
+            conn.close()
+        assert "agent_name" in cols
+        assert row["agent_name"] is None or row["agent_name"] == ""
+
+
 class TestAst2181RequiresStructuredOutput:
     """AST-2181: requires_structured_output — stored bool agent setting (gates model choice in the admin API,
     never sent). New rows default False; bool type check; INTEGER in SQLite read back as bool; seed export / apply."""
