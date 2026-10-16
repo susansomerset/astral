@@ -122,8 +122,8 @@ def _grader_llm_ok(*, api_label: str = "raw") -> Dict[str, Any]:
 
 
 def _patch_strict_batch_anthropic(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Chain-hop tests mock send_to_anthropic only; the compat client must stay untouched."""
-    monkeypatch.setattr(agent_mod, "send_to_llm_compat", AsyncMock())
+    """AST-2240: both protocols go through _send_to_server; no second client to freeze."""
+    return None
 
 
 @pytest.fixture(autouse=True)
@@ -240,7 +240,7 @@ class TestAst698DoTaskDebugRawResponse:
         _patch_strict_batch_anthropic(monkeypatch)
         monkeypatch.setattr(
             agent_mod,
-            "send_to_anthropic",
+            "_send_to_server",
             AsyncMock(
                 return_value={
                     "success": True,
@@ -271,7 +271,7 @@ class TestAst698DoTaskDebugRawResponse:
         _patch_strict_batch_anthropic(monkeypatch)
         monkeypatch.setattr(
             agent_mod,
-            "send_to_anthropic",
+            "_send_to_server",
             AsyncMock(return_value=_grader_llm_ok(api_label="envelope")),
         )
         out = await agent_mod.do_task(
@@ -295,7 +295,7 @@ class TestAst698DoTaskDebugRawResponse:
         _patch_strict_batch_anthropic(monkeypatch)
         monkeypatch.setattr(
             agent_mod,
-            "send_to_anthropic",
+            "_send_to_server",
             AsyncMock(return_value=_grader_llm_ok(api_label="envelope")),
         )
         out = await agent_mod.do_task(
@@ -1063,7 +1063,7 @@ class TestDoTask:
         monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda task_key: _agent_rows())
         monkeypatch.setattr(
             agent_mod,
-            "send_to_anthropic",
+            "_send_to_server",
             AsyncMock(return_value={"success": False, "error": "api down", "api_response": _api_response("fail")}),
         )
         out = await agent_mod.do_task("evaluate_jd", index="job-1", ctx={**_draft_job_resume_ctx(), "vector_labels": dict(_CR_LABELS)})
@@ -1083,7 +1083,7 @@ class TestDoTask:
         _patch_strict_batch_anthropic(monkeypatch)
         monkeypatch.setattr(
             agent_mod,
-            "send_to_anthropic",
+            "_send_to_server",
             AsyncMock(
                 return_value={
                     "success": True,
@@ -1119,7 +1119,7 @@ class TestDoTask:
                 "timesheet": {},
             }
         )
-        monkeypatch.setattr(agent_mod, "send_to_anthropic", send)
+        monkeypatch.setattr(agent_mod, "_send_to_server", send)
         out = await agent_mod.do_task("evaluate_jd", index="job-1", ctx={**_draft_job_resume_ctx(), "vector_labels": dict(_CR_LABELS)})
         assert out["success"] is False
         assert out["error"] == "Agent failure: nope"
@@ -1151,7 +1151,7 @@ class TestDoTask:
         monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda task_key: _agent_rows())
         monkeypatch.setattr(
             agent_mod,
-            "send_to_anthropic",
+            "_send_to_server",
             AsyncMock(
                 return_value={
                     "success": True,
@@ -1179,7 +1179,7 @@ class TestDoTask:
         monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda task_key: _agent_rows())
         monkeypatch.setattr(
             agent_mod,
-            "send_to_anthropic",
+            "_send_to_server",
             AsyncMock(
                 return_value={
                     "success": True,
@@ -1211,7 +1211,7 @@ class TestDoTask:
         )
         monkeypatch.setattr(
             agent_mod,
-            "send_to_llm_compat",
+            "_send_to_server",
             AsyncMock(
                 return_value={
                     "success": True,
@@ -1223,7 +1223,6 @@ class TestDoTask:
                 }
             ),
         )
-        monkeypatch.setattr(agent_mod, "send_to_anthropic", AsyncMock())
         monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
         out = await agent_mod.do_task(
             "evaluate_jd",
@@ -1244,7 +1243,7 @@ class TestDoTask:
         self, monkeypatch: pytest.MonkeyPatch, batch_token: Any, stub_agent_storage: Dict[str, MagicMock], task_key: str,
     ) -> None:
         monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda task_key: _agent_rows())
-        monkeypatch.setattr(agent_mod, "send_to_anthropic", AsyncMock(return_value={
+        monkeypatch.setattr(agent_mod, "_send_to_server", AsyncMock(return_value={
             "success": True, "parsed_response": "000|CRA2\n001|CRA3", "api_response": _api_response(), "timesheet": {},
         }))
         ctx = {**_rubric_evaluate_jd_ctx(), "batch_entities": _batch_entities("job-1", "job-2")}
@@ -1259,7 +1258,7 @@ class TestDoTask:
         # The old envelope key is not a row id: no row hydrates and the entity is a per-entity decode failure.
         monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda task_key: _agent_rows())
         parsed = {"agent_performance": {"status": "success"}, "agent_payload": {"000": {"CR": {"grade": "A", "confidence": 2}}}}
-        monkeypatch.setattr(agent_mod, "send_to_anthropic", AsyncMock(return_value={
+        monkeypatch.setattr(agent_mod, "_send_to_server", AsyncMock(return_value={
             "success": True, "parsed_response": parsed, "api_response": _api_response(), "timesheet": {},
         }))
         out = await agent_mod.do_task(task_key, index="job-1", ctx=_rubric_evaluate_jd_ctx())
@@ -1283,7 +1282,7 @@ class TestDoTask:
                 "timesheet": {},
             }
         )
-        monkeypatch.setattr(agent_mod, "send_to_anthropic", send)
+        monkeypatch.setattr(agent_mod, "_send_to_server", send)
         out = await agent_mod.do_task(
             "evaluate_jd",
             index="job-1",
@@ -1321,7 +1320,7 @@ class TestDoTask:
                 _grader_llm_ok(api_label="second"),
             ]
         )
-        monkeypatch.setattr(agent_mod, "send_to_anthropic", send)
+        monkeypatch.setattr(agent_mod, "_send_to_server", send)
         monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
         out = await agent_mod.do_task(
             "qualify_job_listings",
@@ -1342,7 +1341,7 @@ class TestDoTask:
         monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda task_key: _agent_rows())
         monkeypatch.setattr(
             agent_mod,
-            "send_to_anthropic",
+            "_send_to_server",
             AsyncMock(
                 return_value={
                     "success": True,
@@ -1382,7 +1381,7 @@ class TestDoTask:
                 _grader_llm_ok(api_label="second"),
             ]
         )
-        monkeypatch.setattr(agent_mod, "send_to_anthropic", send)
+        monkeypatch.setattr(agent_mod, "_send_to_server", send)
         monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
         await agent_mod.do_task(
             "qualify_job_listings",
@@ -1411,7 +1410,7 @@ class TestDoTask:
             lambda *a, **k: ({"CALLER_SYSTEM": "", "CALLER_RESPONSE": "x"}, None),
         )
         send = AsyncMock()
-        monkeypatch.setattr(agent_mod, "send_to_anthropic", send)
+        monkeypatch.setattr(agent_mod, "_send_to_server", send)
         monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
 
         out = await agent_mod.do_task(
@@ -1456,7 +1455,7 @@ class TestDoTask:
         _patch_strict_batch_anthropic(monkeypatch)
         monkeypatch.setattr(
             agent_mod,
-            "send_to_anthropic",
+            "_send_to_server",
             AsyncMock(
                 side_effect=[
                     _grader_llm_ok(api_label="first"),
@@ -1481,7 +1480,7 @@ class TestDoTask:
         monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda task_key: rows)
         monkeypatch.setattr(
             agent_mod,
-            "send_to_anthropic",
+            "_send_to_server",
             AsyncMock(
                 return_value={
                     "success": True,
@@ -1525,7 +1524,7 @@ class TestAst492BrainSettingDoTask:
                 "timesheet": {},
             }
         )
-        monkeypatch.setattr(agent_mod, "send_to_anthropic", send)
+        monkeypatch.setattr(agent_mod, "_send_to_server", send)
         monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
         out = await agent_mod.do_task(
             "evaluate_jd",
@@ -1534,7 +1533,7 @@ class TestAst492BrainSettingDoTask:
         )
         assert out["success"] is True
         assert send.await_args is not None
-        assert send.await_args.kwargs.get("model_code") == "claude-opus-4-6"
+        assert send.await_args.kwargs.get("sku") == "claude-opus-4-6"
 
     @pytest.mark.asyncio
     async def test_compat_model_sends_via_llm_compat_with_catalog_route(
@@ -1547,7 +1546,7 @@ class TestAst492BrainSettingDoTask:
         route = cfg.resolve_agent_settings("deepseek-v4-flash", rows[0])
         monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda task_key: rows)
         send_anth = AsyncMock()
-        monkeypatch.setattr(agent_mod, "send_to_anthropic", send_anth)
+        monkeypatch.setattr(agent_mod, "_send_to_server", send_anth)
         send_compat = AsyncMock(
             return_value={
                 "success": True,
@@ -1556,7 +1555,7 @@ class TestAst492BrainSettingDoTask:
                 "timesheet": {},
             }
         )
-        monkeypatch.setattr(agent_mod, "send_to_llm_compat", send_compat)
+        monkeypatch.setattr(agent_mod, "_send_to_server", send_compat)
         monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
         out = await agent_mod.do_task(
             "evaluate_jd",
@@ -1590,8 +1589,8 @@ class TestAst492BrainSettingDoTask:
         monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda task_key: (agent_row, task_row))
         send_anth = AsyncMock()
         send_compat = AsyncMock()
-        monkeypatch.setattr(agent_mod, "send_to_anthropic", send_anth)
-        monkeypatch.setattr(agent_mod, "send_to_llm_compat", send_compat)
+        monkeypatch.setattr(agent_mod, "_send_to_server", send_anth)
+        monkeypatch.setattr(agent_mod, "_send_to_server", send_compat)
         with pytest.raises(ValueError, match=match):
             await agent_mod.do_task(
                 "evaluate_jd",
@@ -1629,9 +1628,9 @@ class TestAst1956SettingsOnTheWire:
             agent_mod, "_resolve_task_prompts", lambda task_key: _agent_rows(model_id=model_id, **settings)
         )
         send_anth = AsyncMock()
-        monkeypatch.setattr(agent_mod, "send_to_anthropic", send_anth)
+        monkeypatch.setattr(agent_mod, "_send_to_server", send_anth)
         send_compat = AsyncMock(return_value=_grader_llm_ok())
-        monkeypatch.setattr(agent_mod, "send_to_llm_compat", send_compat)
+        monkeypatch.setattr(agent_mod, "_send_to_server", send_compat)
         monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
         out = await agent_mod.do_task("evaluate_jd", index="job-1", ctx=_rubric_evaluate_jd_ctx())
         assert out["success"] is True
@@ -1653,12 +1652,12 @@ class TestAst1956SettingsOnTheWire:
             lambda task_key: _agent_rows(model_id="claude-sonnet-4-6", temperature=0.3, reasoning_effort="high"),
         )
         send = AsyncMock(return_value=_grader_llm_ok())
-        monkeypatch.setattr(agent_mod, "send_to_anthropic", send)
+        monkeypatch.setattr(agent_mod, "_send_to_server", send)
         monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
         out = await agent_mod.do_task("evaluate_jd", index="job-1", ctx=_rubric_evaluate_jd_ctx())
         assert out["success"] is True
         kwa = send.await_args.kwargs
-        assert (kwa["model_code"], kwa["temperature"], kwa["reasoning_effort"]) == ("claude-sonnet-4-6", 0.3, "high")
+        assert (kwa["sku"], kwa["temperature"], kwa["tier"]["reasoning_effort"]) == ("claude-sonnet-4-6", 0.3, "high")
 
     @pytest.mark.asyncio
     async def test_rejected_setting_is_an_ordinary_failure(
@@ -1671,7 +1670,7 @@ class TestAst1956SettingsOnTheWire:
             messages = SimpleNamespace(create=MagicMock(side_effect=RuntimeError(msg)))
 
         monkeypatch.setattr("src.external.llm_compat._get_client", lambda *_a, **_k: _Rejects())
-        monkeypatch.setattr(agent_mod, "send_to_anthropic", AsyncMock())
+        monkeypatch.setattr(agent_mod, "_send_to_server", AsyncMock())
         monkeypatch.setattr(
             agent_mod, "_resolve_task_prompts",
             lambda task_key: _agent_rows(model_id="openai/gpt-oss-120b", reasoning_effort="none"),
@@ -1693,7 +1692,7 @@ class TestAst1956SettingsOnTheWire:
         # AC 5: an empty temperature logs temp=None, never a number.
         _patch_strict_batch_anthropic(monkeypatch)
         monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda task_key: _agent_rows(**settings))
-        monkeypatch.setattr(agent_mod, "send_to_anthropic", AsyncMock(return_value=_grader_llm_ok()))
+        monkeypatch.setattr(agent_mod, "_send_to_server", AsyncMock(return_value=_grader_llm_ok()))
         monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
         from src.utils.logging import log_debug
 
@@ -1713,7 +1712,7 @@ class TestAst1956SettingsOnTheWire:
     ) -> None:
         # run_adhoc gets the same debug line; the route's effort reaches the Anthropic client.
         send = AsyncMock(return_value={"success": True, "parsed_response": "ok"})
-        monkeypatch.setattr(agent_mod, "send_to_anthropic", send)
+        monkeypatch.setattr(agent_mod, "_send_to_server", send)
         route = _route("claude-sonnet-4-6", temperature=None, reasoning_effort="high")
         from src.utils.logging import log_debug
 
@@ -1792,7 +1791,7 @@ class TestAst469ResolveRunNextLive:
                 },
             ]
         )
-        monkeypatch.setattr(agent_mod, "send_to_anthropic", send)
+        monkeypatch.setattr(agent_mod, "_send_to_server", send)
 
         def resolver(_parsed: Dict[str, Any]) -> Tuple[str, str]:
             return (
@@ -1844,7 +1843,7 @@ class TestAst692JobsiteScrapeIssueAgent:
                 "timesheet": {},
             }
         )
-        monkeypatch.setattr(agent_mod, "send_to_anthropic", send)
+        monkeypatch.setattr(agent_mod, "_send_to_server", send)
 
         out = await agent_mod.do_task(
             "select_job_page",
@@ -1884,7 +1883,7 @@ class TestAst834SelectJobPageEmptyRunNext:
                 "timesheet": {},
             }
         )
-        monkeypatch.setattr(agent_mod, "send_to_anthropic", send)
+        monkeypatch.setattr(agent_mod, "_send_to_server", send)
 
         out = await agent_mod.do_task(
             "select_job_page",
@@ -1914,8 +1913,7 @@ class TestRunAdhoc:
         route = _route("deepseek-v4-flash")
         send_compat = AsyncMock(return_value={"success": True, "parsed_response": "ds-ok"})
         send_anth = AsyncMock()
-        monkeypatch.setattr(agent_mod, "send_to_llm_compat", send_compat)
-        monkeypatch.setattr(agent_mod, "send_to_anthropic", send_anth)
+        monkeypatch.setattr(agent_mod, "_send_to_server", send_compat)
         out = await agent_mod.run_adhoc(
             "sys",
             "usr",
@@ -1937,8 +1935,8 @@ class TestRunAdhoc:
         # AST-1879 AC 7: no key for the route's server → failure envelope, neither client called.
         send_compat = AsyncMock()
         send_anth = AsyncMock()
-        monkeypatch.setattr(agent_mod, "send_to_llm_compat", send_compat)
-        monkeypatch.setattr(agent_mod, "send_to_anthropic", send_anth)
+        monkeypatch.setattr(agent_mod, "_send_to_server", send_compat)
+        monkeypatch.setattr(agent_mod, "_send_to_server", send_anth)
         route = _route("kimi-k2.6")
         out = await agent_mod.run_adhoc(
             "sys",
@@ -1957,7 +1955,7 @@ class TestRunAdhoc:
 
     async def test_returns_runtime_prompt(self, monkeypatch: pytest.MonkeyPatch) -> None:
         send_anth = AsyncMock(return_value={"success": True, "parsed_response": "ok"})
-        monkeypatch.setattr(agent_mod, "send_to_anthropic", send_anth)
+        monkeypatch.setattr(agent_mod, "_send_to_server", send_anth)
         route = _route("claude-haiku-4-5")
         out = await agent_mod.run_adhoc(
             "system",
@@ -1973,8 +1971,8 @@ class TestRunAdhoc:
         )
         assert out["runtime_prompt"]
         # Anthropic protocol: SKU as model_code, candidate key as override (never the env client).
-        assert send_anth.await_args.kwargs["model_code"] == "claude-haiku-4-5"
-        assert send_anth.await_args.kwargs["api_key_override"] == "sk-ant"
+        assert send_anth.await_args.kwargs["sku"] == "claude-haiku-4-5"
+        assert send_anth.await_args.kwargs["api_key"] == "sk-ant"
 
 
 class TestResponseSchemaBranches:
@@ -2198,7 +2196,7 @@ class TestDoTaskStorageFailures:
         monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda task_key: _agent_rows())
         monkeypatch.setattr(
             agent_mod,
-            "send_to_anthropic",
+            "_send_to_server",
             AsyncMock(
                 return_value={
                     "success": True,
@@ -2219,7 +2217,7 @@ class TestDoTaskStorageFailures:
 
         monkeypatch.setattr(
             agent_mod,
-            "send_to_anthropic",
+            "_send_to_server",
             AsyncMock(return_value={"success": False, "error": "api down"}),
         )
         out = await agent_mod.do_task("evaluate_jd", index="job-1", ctx={**_draft_job_resume_ctx(), "vector_labels": dict(_CR_LABELS)})
@@ -2239,7 +2237,7 @@ class TestDoTaskStorageFailures:
                 "timesheet": {},
             }
         )
-        monkeypatch.setattr(agent_mod, "send_to_anthropic", send)
+        monkeypatch.setattr(agent_mod, "_send_to_server", send)
         monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
         with monkeypatch.context() as patch:
             patch.setattr(
@@ -2284,7 +2282,7 @@ class TestDoTaskRemainingPaths:
         monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda task_key: _agent_rows())
         monkeypatch.setattr(
             agent_mod,
-            "send_to_anthropic",
+            "_send_to_server",
             AsyncMock(
                 return_value={
                     "success": True,
@@ -2312,7 +2310,7 @@ class TestDoTaskRemainingPaths:
         monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda task_key: _agent_rows())
         monkeypatch.setattr(
             agent_mod,
-            "send_to_anthropic",
+            "_send_to_server",
             AsyncMock(
                 return_value={
                     "success": True,
@@ -2340,7 +2338,7 @@ class TestDoTaskRemainingPaths:
         monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda task_key: _agent_rows())
         monkeypatch.setattr(
             agent_mod,
-            "send_to_anthropic",
+            "_send_to_server",
             AsyncMock(
                 return_value={
                     "success": True,
@@ -2367,7 +2365,7 @@ class TestDoTaskRemainingPaths:
         monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda task_key: _agent_rows())
         monkeypatch.setattr(
             agent_mod,
-            "send_to_anthropic",
+            "_send_to_server",
             AsyncMock(
                 return_value={
                     "success": True,
@@ -2474,7 +2472,7 @@ class TestDoTaskValidationStoreErrors:
         monkeypatch.setattr(agent_mod, "save_agent_data", _save)
         monkeypatch.setattr(
             agent_mod,
-            "send_to_anthropic",
+            "_send_to_server",
             AsyncMock(
                 return_value={
                     "success": True,
@@ -2493,7 +2491,7 @@ class TestDoTaskValidationStoreErrors:
 
         monkeypatch.setattr(
             agent_mod,
-            "send_to_anthropic",
+            "_send_to_server",
             AsyncMock(
                 return_value={
                     "success": True,
@@ -2522,7 +2520,7 @@ class TestAgentPayloadListUnwrap:
         monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda task_key: _agent_rows())
         monkeypatch.setattr(
             agent_mod,
-            "send_to_anthropic",
+            "_send_to_server",
             AsyncMock(
                 return_value={
                     "success": True,
@@ -2566,7 +2564,7 @@ class TestDoTaskFinalBranches:
         monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda task_key: _agent_rows())
         monkeypatch.setattr(
             agent_mod,
-            "send_to_anthropic",
+            "_send_to_server",
             AsyncMock(return_value={"success": False, "error": "api down", "api_response": object()}),
         )
         monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
@@ -2581,7 +2579,7 @@ class TestDoTaskFinalBranches:
         monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda task_key: _agent_rows())
         monkeypatch.setattr(
             agent_mod,
-            "send_to_anthropic",
+            "_send_to_server",
             AsyncMock(
                 return_value={
                     "success": True,
@@ -2607,7 +2605,7 @@ class TestDoTaskFinalBranches:
         monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda task_key: _agent_rows())
         monkeypatch.setattr(
             agent_mod,
-            "send_to_anthropic",
+            "_send_to_server",
             AsyncMock(
                 return_value={
                     "success": True,
@@ -2639,7 +2637,7 @@ class TestDoTaskFinalBranches:
 
         monkeypatch.setattr(agent_mod, "save_agent_data", _save)
         send = AsyncMock(side_effect=lambda *args, **kwargs: _grader_llm_ok())
-        monkeypatch.setattr(agent_mod, "send_to_anthropic", send)
+        monkeypatch.setattr(agent_mod, "_send_to_server", send)
         monkeypatch.setattr(
             agent_mod,
             "_validate_response_schema",
@@ -2686,7 +2684,7 @@ class TestDoTaskStoreExceptions:
         ctx: Dict[str, Any] | None = None,
     ) -> Dict[str, Any]:
         monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda key: _agent_rows())
-        monkeypatch.setattr(agent_mod, "send_to_anthropic", AsyncMock(return_value=send_return))
+        monkeypatch.setattr(agent_mod, "_send_to_server", AsyncMock(return_value=send_return))
 
         def _save(**kwargs: Any) -> str:
             if kwargs.get("block_type") == "RESPONSE":
@@ -2708,7 +2706,7 @@ class TestDoTaskStoreExceptions:
         monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda key: _agent_rows())
         monkeypatch.setattr(
             agent_mod,
-            "send_to_anthropic",
+            "_send_to_server",
             AsyncMock(
                 return_value={
                     "success": True,
@@ -2769,7 +2767,7 @@ class TestDoTaskStoreExceptions:
         monkeypatch.setattr(agent_mod, "save_agent_data", _save)
         monkeypatch.setattr(
             agent_mod,
-            "send_to_anthropic",
+            "_send_to_server",
             AsyncMock(
                 return_value={
                     "success": True,
@@ -2840,7 +2838,7 @@ class TestDoTaskStoreExceptions:
                 "timesheet": {},
             }
 
-        monkeypatch.setattr(agent_mod, "send_to_anthropic", AsyncMock(side_effect=_llm_ok))
+        monkeypatch.setattr(agent_mod, "_send_to_server", AsyncMock(side_effect=_llm_ok))
 
         def _save(**kwargs: Any) -> str:
             if kwargs.get("block_type") == "RESPONSE":
@@ -2890,7 +2888,7 @@ class TestDoTaskStoreExceptions:
         saves = MagicMock(return_value="id")
         monkeypatch.setattr(
             agent_mod,
-            "send_to_anthropic",
+            "_send_to_server",
             AsyncMock(
                 return_value={
                     "success": True,
@@ -2919,7 +2917,7 @@ class TestDoTaskStoreExceptions:
         monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda key: _agent_rows())
         monkeypatch.setattr(
             agent_mod,
-            "send_to_anthropic",
+            "_send_to_server",
             AsyncMock(
                 return_value={
                     "success": True,
@@ -2946,7 +2944,7 @@ class TestDoTaskStoreExceptions:
         )
         monkeypatch.setattr(
             agent_mod,
-            "send_to_anthropic",
+            "_send_to_server",
             AsyncMock(
                 return_value={
                     "success": True,
@@ -2992,7 +2990,7 @@ class TestDoTaskStoreExceptions:
         monkeypatch.setattr(agent_mod, "save_agent_data", _save2)
         monkeypatch.setattr(
             agent_mod,
-            "send_to_anthropic",
+            "_send_to_server",
             AsyncMock(
                 return_value={
                     "success": True,
@@ -3018,7 +3016,7 @@ class TestDoTaskStoreExceptions:
         monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda key: _agent_rows())
         monkeypatch.setattr(
             agent_mod,
-            "send_to_anthropic",
+            "_send_to_server",
             AsyncMock(
                 return_value={
                     "success": True,
@@ -3085,7 +3083,7 @@ class TestDoTaskShouldStoreBranches:
                 "timesheet": {},
             }
         )
-        monkeypatch.setattr(agent_mod, "send_to_anthropic", send)
+        monkeypatch.setattr(agent_mod, "_send_to_server", send)
         out = await agent_mod.do_task("evaluate_jd", index="job-1", ctx={**_draft_job_resume_ctx(), "vector_labels": dict(_CR_LABELS)})
         assert out["success"] is False
         assert not any(c.kwargs.get("block_type") == "RESPONSE" for c in saved.call_args_list)
@@ -3114,7 +3112,7 @@ class TestDoTaskShouldStoreBranches:
         monkeypatch.setattr(agent_mod, "save_agent_data", saved)
         monkeypatch.setattr(
             agent_mod,
-            "send_to_anthropic",
+            "_send_to_server",
             AsyncMock(
                 return_value={
                     "success": False,
@@ -3141,7 +3139,7 @@ class TestDoTaskShouldStoreBranches:
         monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda key: _agent_rows())
         monkeypatch.setattr(
             agent_mod,
-            "send_to_anthropic",
+            "_send_to_server",
             AsyncMock(
                 return_value={
                     "success": True,
@@ -3186,7 +3184,7 @@ class TestDoTaskShouldStoreBranches:
         monkeypatch.setattr(candidate_mod, "validate_draft_job_resume_payload", _val)
         monkeypatch.setattr(
             agent_mod,
-            "send_to_anthropic",
+            "_send_to_server",
             AsyncMock(
                 return_value={
                     "success": True,
@@ -3218,7 +3216,7 @@ class TestDoTaskShouldStoreBranches:
         monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda key: _agent_rows())
         monkeypatch.setattr(
             agent_mod,
-            "send_to_anthropic",
+            "_send_to_server",
             AsyncMock(
                 return_value={
                     "success": True,
@@ -3244,7 +3242,7 @@ class TestDoTaskShouldStoreBranches:
         monkeypatch.setattr(agent_mod, "save_agent_data", saved)
         monkeypatch.setattr(
             agent_mod,
-            "send_to_anthropic",
+            "_send_to_server",
             AsyncMock(
                 return_value={
                     "success": True,
@@ -3271,7 +3269,7 @@ class TestDoTaskShouldStoreBranches:
         monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda key: _agent_rows())
         monkeypatch.setattr(
             agent_mod,
-            "send_to_anthropic",
+            "_send_to_server",
             AsyncMock(
                 return_value={
                     "success": True,
@@ -3298,7 +3296,7 @@ class TestDoTaskShouldStoreBranches:
         monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda key: _agent_rows())
         monkeypatch.setattr(
             agent_mod,
-            "send_to_anthropic",
+            "_send_to_server",
             AsyncMock(
                 return_value={
                     "success": True,
@@ -3323,7 +3321,7 @@ class TestDoTaskShouldStoreBranches:
         monkeypatch.setattr(agent_mod, "save_agent_data", saved)
         monkeypatch.setattr(
             agent_mod,
-            "send_to_anthropic",
+            "_send_to_server",
             AsyncMock(
                 return_value={
                     "success": True,
@@ -3351,7 +3349,7 @@ class TestDoTaskShouldStoreBranches:
         monkeypatch.setattr(agent_mod, "save_agent_data", saved)
         monkeypatch.setattr(
             agent_mod,
-            "send_to_anthropic",
+            "_send_to_server",
             AsyncMock(
                 return_value={
                     "success": True,
@@ -3384,7 +3382,7 @@ class TestDoTaskShouldStoreBranches:
         monkeypatch.setattr(agent_mod, "_validate_response_schema", lambda parsed, schema, task_key: "schema failed")
         monkeypatch.setattr(
             agent_mod,
-            "send_to_anthropic",
+            "_send_to_server",
             AsyncMock(
                 return_value={
                     "success": True,
@@ -3425,7 +3423,7 @@ class TestDoTaskShouldStoreBranches:
         monkeypatch.setattr(agent_mod, "_validate_response_schema", lambda parsed, schema, task_key: None)
         monkeypatch.setattr(
             agent_mod,
-            "send_to_anthropic",
+            "_send_to_server",
             AsyncMock(
                 return_value={
                     "success": True,
@@ -3457,7 +3455,7 @@ class TestDoTaskShouldStoreBranches:
         )
         monkeypatch.setattr(
             agent_mod,
-            "send_to_anthropic",
+            "_send_to_server",
             AsyncMock(
                 return_value={
                     "success": True,
@@ -3487,7 +3485,7 @@ class TestDoTaskShouldStoreBranches:
         )
         monkeypatch.setattr(
             agent_mod,
-            "send_to_anthropic",
+            "_send_to_server",
             AsyncMock(
                 return_value={
                     "success": True,
@@ -3522,7 +3520,7 @@ class TestDoTaskShouldStoreBranches:
         )
         monkeypatch.setattr(
             agent_mod,
-            "send_to_anthropic",
+            "_send_to_server",
             AsyncMock(
                 return_value={
                     "success": True,
@@ -3565,7 +3563,7 @@ class TestDoTaskShouldStoreBranches:
         )
         monkeypatch.setattr(
             agent_mod,
-            "send_to_anthropic",
+            "_send_to_server",
             AsyncMock(
                 return_value={
                     "success": True,
@@ -3596,7 +3594,7 @@ class TestDoTaskStoreExceptionWithoutBatch:
         )
         monkeypatch.setattr(
             agent_mod,
-            "send_to_anthropic",
+            "_send_to_server",
             AsyncMock(
                 return_value={
                     "success": True,
@@ -3625,7 +3623,7 @@ class TestDoTaskStoreExceptionWithoutBatch:
         )
         monkeypatch.setattr(
             agent_mod,
-            "send_to_anthropic",
+            "_send_to_server",
             AsyncMock(
                 return_value={
                     "success": True,
@@ -3654,7 +3652,7 @@ class TestDoTaskStoreExceptionWithoutBatch:
         monkeypatch.setattr(agent_mod, "_validate_response_schema", lambda parsed, schema, task_key: "schema failed")
         monkeypatch.setattr(
             agent_mod,
-            "send_to_anthropic",
+            "_send_to_server",
             AsyncMock(
                 return_value={
                     "success": True,
@@ -3691,7 +3689,7 @@ class TestDoTaskStoreExceptionWithoutBatch:
         monkeypatch.setattr(agent_mod, "_validate_response_schema", lambda parsed, schema, task_key: None)
         monkeypatch.setattr(
             agent_mod,
-            "send_to_anthropic",
+            "_send_to_server",
             AsyncMock(
                 return_value={
                     "success": True,
@@ -3727,7 +3725,7 @@ class TestDoTaskEncodedPostDecodeFallthrough:
         monkeypatch.setattr(agent_mod, "_validate_response_schema", _schema)
         monkeypatch.setattr(
             agent_mod,
-            "send_to_anthropic",
+            "_send_to_server",
             AsyncMock(
                 return_value={
                     "success": True,
@@ -3951,7 +3949,7 @@ class TestAst597MidChainResumeHydrationAndTransitions:
         _patch_strict_batch_anthropic(monkeypatch)
         monkeypatch.setattr(
             agent_mod,
-            "send_to_anthropic",
+            "_send_to_server",
             AsyncMock(
                 return_value={
                     "success": True,
@@ -4017,7 +4015,7 @@ class TestAst597MidChainResumeHydrationAndTransitions:
                 "timesheet": {},
             }
         )
-        monkeypatch.setattr(agent_mod, "send_to_anthropic", send)
+        monkeypatch.setattr(agent_mod, "_send_to_server", send)
         out = await agent_mod.do_task(
             "draft_job_resume",
             index="job-dbg",
@@ -4203,7 +4201,7 @@ class TestAst769GeneralCallerHydration:
                 "timesheet": {},
             }
         )
-        monkeypatch.setattr(agent_mod, "send_to_anthropic", send)
+        monkeypatch.setattr(agent_mod, "_send_to_server", send)
         monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
 
         out = await agent_mod.do_task(
@@ -4285,7 +4283,7 @@ class TestAst769GeneralCallerHydration:
         _patch_strict_batch_anthropic(monkeypatch)
         monkeypatch.setattr(
             agent_mod,
-            "send_to_anthropic",
+            "_send_to_server",
             AsyncMock(
                 return_value={
                     "success": True,
@@ -4329,7 +4327,7 @@ class TestAst769GeneralCallerHydration:
             lambda child: "select_job_page" if child == "parse_job_list" else None,
         )
         send = AsyncMock()
-        monkeypatch.setattr(agent_mod, "send_to_anthropic", send)
+        monkeypatch.setattr(agent_mod, "_send_to_server", send)
 
         out = await agent_mod.do_task(
             "parse_job_list",
@@ -4391,7 +4389,7 @@ class TestAst769GeneralCallerHydration:
         _patch_strict_batch_anthropic(monkeypatch)
         monkeypatch.setattr(
             agent_mod,
-            "send_to_anthropic",
+            "_send_to_server",
             AsyncMock(
                 return_value={
                     "success": True,
@@ -4566,7 +4564,7 @@ class TestAst531RunNextHopLedger:
         _patch_strict_batch_anthropic(monkeypatch)
         monkeypatch.setattr(
             agent_mod,
-            "send_to_anthropic",
+            "_send_to_server",
             AsyncMock(
                 side_effect=[
                     _grader_llm_ok(api_label="first"),
@@ -4625,7 +4623,7 @@ class TestAst531RunNextHopLedger:
             seen.append((agent_mod.log_batch_id.get(), agent_mod.log_candidate_id.get()))
             return _grader_llm_ok(api_label=f"hop{len(seen)}")
 
-        monkeypatch.setattr(agent_mod, "send_to_anthropic", AsyncMock(side_effect=_send))
+        monkeypatch.setattr(agent_mod, "_send_to_server", AsyncMock(side_effect=_send))
         monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
         tb = agent_mod.log_batch_id.set(None)
         tc = agent_mod.log_candidate_id.set(None)
@@ -4666,7 +4664,7 @@ class TestAst531RunNextHopLedger:
         _patch_strict_batch_anthropic(monkeypatch)
         monkeypatch.setattr(
             agent_mod,
-            "send_to_anthropic",
+            "_send_to_server",
             AsyncMock(
                 return_value={
                     "success": True,
@@ -4723,8 +4721,8 @@ class TestAst1960LedgerHost:
 
     def _route(self, monkeypatch: pytest.MonkeyPatch, model_id: str, result: Dict[str, Any]) -> None:
         monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda _k: _agent_rows(model_id=model_id))
-        monkeypatch.setattr(agent_mod, "send_to_llm_compat", AsyncMock(return_value=result))
-        monkeypatch.setattr(agent_mod, "send_to_anthropic", AsyncMock(return_value=result))
+        monkeypatch.setattr(agent_mod, "_send_to_server", AsyncMock(return_value=result))
+        monkeypatch.setattr(agent_mod, "_send_to_server", AsyncMock(return_value=result))
 
     @pytest.mark.asyncio
     async def test_ac1_compat_result_host_lands_on_ledger_row(self, monkeypatch: pytest.MonkeyPatch, ledger: Any) -> None:
@@ -5447,7 +5445,7 @@ class TestAst820VectorFeedbackDebugTrace:
         send = AsyncMock()
         monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda task_key: _agent_rows())
         _patch_strict_batch_anthropic(monkeypatch)
-        monkeypatch.setattr(agent_mod, "send_to_anthropic", send)
+        monkeypatch.setattr(agent_mod, "_send_to_server", send)
         with pytest.raises(ValueError, match="candidate id required"):
             await agent_mod.do_task(
                 "evaluate_jd",
@@ -5495,7 +5493,7 @@ class TestAst848DispatchChainDoTask:
         _patch_strict_batch_anthropic(monkeypatch)
         monkeypatch.setattr(
             agent_mod,
-            "send_to_anthropic",
+            "_send_to_server",
             AsyncMock(
                 return_value={
                     "success": True,
@@ -5536,7 +5534,7 @@ class TestAst848DispatchChainDoTask:
         _patch_strict_batch_anthropic(monkeypatch)
         monkeypatch.setattr(
             agent_mod,
-            "send_to_anthropic",
+            "_send_to_server",
             AsyncMock(
                 return_value={
                     "success": True,
@@ -5577,7 +5575,7 @@ class TestAst848DispatchChainDoTask:
         _patch_strict_batch_anthropic(monkeypatch)
         monkeypatch.setattr(
             agent_mod,
-            "send_to_anthropic",
+            "_send_to_server",
             AsyncMock(
                 return_value={
                     "success": False,
@@ -5641,7 +5639,7 @@ class TestAst855DispatchChainHopDebug:
         _patch_strict_batch_anthropic(monkeypatch)
         monkeypatch.setattr(
             agent_mod,
-            "send_to_anthropic",
+            "_send_to_server",
             AsyncMock(
                 return_value={
                     "success": True,
@@ -5926,7 +5924,7 @@ class TestAst897DoTaskBalanceDebug:
         monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda task_key: _agent_rows())
         monkeypatch.setattr(
             agent_mod,
-            "send_to_anthropic",
+            "_send_to_server",
             AsyncMock(
                 return_value={
                     "success": False,
@@ -5962,7 +5960,7 @@ class TestAst1190DoTaskEmptyProviderError:
         monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda task_key: _agent_rows())
         monkeypatch.setattr(
             agent_mod,
-            "send_to_anthropic",
+            "_send_to_server",
             AsyncMock(
                 return_value={
                     "success": False,
@@ -6002,7 +6000,7 @@ class TestAst1190DoTaskEmptyProviderError:
         monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda task_key: _agent_rows())
         monkeypatch.setattr(
             agent_mod,
-            "send_to_anthropic",
+            "_send_to_server",
             AsyncMock(
                 return_value={
                     "success": False,
@@ -6134,7 +6132,7 @@ class TestAst1191ArtifactHopFailureRelease:
         _patch_strict_batch_anthropic(monkeypatch)
         monkeypatch.setattr(
             agent_mod,
-            "send_to_anthropic",
+            "_send_to_server",
             AsyncMock(
                 return_value={
                     "success": False,
@@ -6180,7 +6178,7 @@ class TestAst1191ArtifactHopFailureRelease:
         _patch_strict_batch_anthropic(monkeypatch)
         monkeypatch.setattr(
             agent_mod,
-            "send_to_anthropic",
+            "_send_to_server",
             AsyncMock(
                 return_value={
                     "success": False,
@@ -6227,7 +6225,7 @@ class TestAst1191ArtifactHopFailureRelease:
         _patch_strict_batch_anthropic(monkeypatch)
         monkeypatch.setattr(
             agent_mod,
-            "send_to_anthropic",
+            "_send_to_server",
             AsyncMock(
                 return_value={
                     "success": False,
@@ -6304,10 +6302,9 @@ class TestAst1298OrphanedJobClaimRelease:
         monkeypatch.setattr(
             agent_mod, "_resolve_task_prompts", lambda key: _agent_rows(run_next="", model_id="deepseek-v4-flash")
         )
-        monkeypatch.setattr(agent_mod, "send_to_anthropic", AsyncMock())
         monkeypatch.setattr(
             agent_mod,
-            "send_to_llm_compat",
+            "_send_to_server",
             AsyncMock(
                 return_value={
                     "success": False,
@@ -6364,7 +6361,7 @@ class TestAst903CraftRubricMaxTokensFloor:
                 "timesheet": {},
             }
         )
-        monkeypatch.setattr(agent_mod, "send_to_anthropic", send)
+        monkeypatch.setattr(agent_mod, "_send_to_server", send)
         out = await agent_mod.do_task(
             "craft_get_rubric",
             index="karfo",
@@ -6391,7 +6388,7 @@ class TestAst903CraftRubricMaxTokensFloor:
                 "timesheet": {},
             }
         )
-        monkeypatch.setattr(agent_mod, "send_to_anthropic", send)
+        monkeypatch.setattr(agent_mod, "_send_to_server", send)
         out = await agent_mod.do_task(
             "craft_company_search_terms",
             index="somerset",
@@ -6419,7 +6416,6 @@ class TestAst1380CraftRubricThinkingOffAndFailureBanner:
         stub_agent_storage: Dict[str, MagicMock],
     ) -> None:
         # AST-1956: the row asks for effort "high"; do_task forces "none" (thinking off) for craft rubrics (Decision A).
-        monkeypatch.setattr(agent_mod, "send_to_anthropic", AsyncMock())
         monkeypatch.setattr(
             agent_mod,
             "_resolve_task_prompts",
@@ -6439,7 +6435,7 @@ class TestAst1380CraftRubricThinkingOffAndFailureBanner:
                 "timesheet": {},
             }
         )
-        monkeypatch.setattr(agent_mod, "send_to_llm_compat", send)
+        monkeypatch.setattr(agent_mod, "_send_to_server", send)
         out = await agent_mod.do_task(
             "craft_get_rubric",
             index="abrams",
@@ -6460,7 +6456,6 @@ class TestAst1380CraftRubricThinkingOffAndFailureBanner:
         stub_agent_storage: Dict[str, MagicMock],
     ) -> None:
         # Decision A must not blanket-disable thinking off craft rubric keys: the row's effort goes out as stored.
-        monkeypatch.setattr(agent_mod, "send_to_anthropic", AsyncMock())
         monkeypatch.setattr(
             agent_mod,
             "_resolve_task_prompts",
@@ -6474,7 +6469,7 @@ class TestAst1380CraftRubricThinkingOffAndFailureBanner:
                 "timesheet": {},
             }
         )
-        monkeypatch.setattr(agent_mod, "send_to_llm_compat", send)
+        monkeypatch.setattr(agent_mod, "_send_to_server", send)
         out = await agent_mod.do_task(
             "evaluate_jd",
             index="job-1",
@@ -6491,7 +6486,6 @@ class TestAst1380CraftRubricThinkingOffAndFailureBanner:
         stub_agent_storage: Dict[str, MagicMock],
     ) -> None:
         # Truncated success-shaped envelope must land under Provider failed banner, not bare.
-        monkeypatch.setattr(agent_mod, "send_to_anthropic", AsyncMock())
         monkeypatch.setattr(
             agent_mod,
             "_resolve_task_prompts",
@@ -6499,7 +6493,7 @@ class TestAst1380CraftRubricThinkingOffAndFailureBanner:
         )
         monkeypatch.setattr(
             agent_mod,
-            "send_to_llm_compat",
+            "_send_to_server",
             AsyncMock(
                 return_value={
                     "success": False,
@@ -6610,7 +6604,7 @@ class TestAst981StandaloneTableAuditRetired:
         monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda task_key: _agent_rows())
         monkeypatch.setattr(
             agent_mod,
-            "send_to_anthropic",
+            "_send_to_server",
             AsyncMock(
                 return_value={
                     "success": True,
@@ -6644,7 +6638,7 @@ class TestAst984EntityColumnRetired:
         monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda task_key: _agent_rows())
         monkeypatch.setattr(
             agent_mod,
-            "send_to_anthropic",
+            "_send_to_server",
             AsyncMock(
                 return_value={
                     "success": True,
@@ -6680,7 +6674,7 @@ class TestAst984EntityColumnRetired:
         monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda task_key: _agent_rows())
         monkeypatch.setattr(
             agent_mod,
-            "send_to_anthropic",
+            "_send_to_server",
             AsyncMock(
                 return_value={
                     "success": True,
@@ -6928,7 +6922,6 @@ class TestAst1072ConversationalEnvelope:
         # own model + settings, not a CONTACT_ESTELLE / default_brain_setting route.
         rows = _agent_rows(model_id="kimi-k2.6", reasoning_effort="none")
         monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda task_key: rows)
-        monkeypatch.setattr(agent_mod, "send_to_anthropic", AsyncMock())
         tier = cfg.resolve_agent_settings("kimi-k2.6", rows[0])["tier"]
         send_ds = AsyncMock(
             return_value={
@@ -6942,7 +6935,7 @@ class TestAst1072ConversationalEnvelope:
                 "timesheet": {},
             }
         )
-        monkeypatch.setattr(agent_mod, "send_to_llm_compat", send_ds)
+        monkeypatch.setattr(agent_mod, "_send_to_server", send_ds)
         monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
         out = await agent_mod.do_task(self._TASK, index="turn-1", ctx={ "astral_candidate_id": "somerset",}, debug=False)
         assert out["success"] is True
@@ -6971,7 +6964,7 @@ class TestAst1072ConversationalEnvelope:
         _patch_strict_batch_anthropic(monkeypatch)
         monkeypatch.setattr(
             agent_mod,
-            "send_to_anthropic",
+            "_send_to_server",
             AsyncMock(
                 return_value={
                     "success": True,
@@ -7005,7 +6998,7 @@ class TestAst1072ConversationalEnvelope:
         _patch_strict_batch_anthropic(monkeypatch)
         monkeypatch.setattr(
             agent_mod,
-            "send_to_anthropic",
+            "_send_to_server",
             AsyncMock(
                 return_value={
                     "success": True,
@@ -7126,7 +7119,7 @@ class TestAst1099DoTaskArtifactPin:
                 return self._ok_resume()
             return self._ok_cover()
 
-        monkeypatch.setattr(agent_mod, "send_to_anthropic", AsyncMock(side_effect=_send))
+        monkeypatch.setattr(agent_mod, "_send_to_server", AsyncMock(side_effect=_send))
         out = await agent_mod.do_task(
             "finalize_job_resume",
             index="job-1099",
@@ -7176,7 +7169,7 @@ class TestAst1099DoTaskArtifactPin:
                 return self._ok_cover()
             return self._ok_propose()
 
-        monkeypatch.setattr(agent_mod, "send_to_anthropic", AsyncMock(side_effect=_send))
+        monkeypatch.setattr(agent_mod, "_send_to_server", AsyncMock(side_effect=_send))
         out = await agent_mod.do_task(
             "finalize_cover_letter",
             index="job-1099",
@@ -7202,7 +7195,7 @@ class TestAst1099DoTaskArtifactPin:
         monkeypatch.setattr("src.core.tracker.pin_job_artifact_agent_data_id", pin)
         monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda key: _agent_rows(run_next=""))
         _patch_strict_batch_anthropic(monkeypatch)
-        monkeypatch.setattr(agent_mod, "send_to_anthropic", AsyncMock(return_value=self._ok_propose()))
+        monkeypatch.setattr(agent_mod, "_send_to_server", AsyncMock(return_value=self._ok_propose()))
         out = await agent_mod.do_task(
             "propose_application_responses",
             index="job-1099",
@@ -7232,7 +7225,7 @@ class TestAst1099DoTaskArtifactPin:
         _patch_strict_batch_anthropic(monkeypatch)
         monkeypatch.setattr(
             agent_mod,
-            "send_to_anthropic",
+            "_send_to_server",
             AsyncMock(
                 return_value={
                     "success": False,
@@ -7292,7 +7285,7 @@ class TestAst1600DoTaskBodyReplicaLand:
         )
         monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda key: _agent_rows(run_next=""))
         _patch_strict_batch_anthropic(monkeypatch)
-        monkeypatch.setattr(agent_mod, "send_to_anthropic", AsyncMock(return_value=self._ok_cover()))
+        monkeypatch.setattr(agent_mod, "_send_to_server", AsyncMock(return_value=self._ok_cover()))
         monkeypatch.setattr(
             agent_mod,
             "_store_response_block",
@@ -7370,7 +7363,7 @@ class TestAst1554DoTaskBodyReplica:
         )
         _patch_strict_batch_anthropic(monkeypatch)
         monkeypatch.setattr(
-            agent_mod, "send_to_anthropic", AsyncMock(return_value=self._ok_resume())
+            agent_mod, "_send_to_server", AsyncMock(return_value=self._ok_resume())
         )
         out = await agent_mod.do_task(
             "finalize_job_resume",
@@ -7407,7 +7400,7 @@ class TestAst1554DoTaskBodyReplica:
         )
         _patch_strict_batch_anthropic(monkeypatch)
         monkeypatch.setattr(
-            agent_mod, "send_to_anthropic", AsyncMock(return_value=self._ok_cover())
+            agent_mod, "_send_to_server", AsyncMock(return_value=self._ok_cover())
         )
         out = await agent_mod.do_task(
             "finalize_cover_letter",
@@ -7468,7 +7461,7 @@ class TestAst1603DoTaskCatalogLandViaArtifactKey:
         _patch_strict_batch_anthropic(monkeypatch)
         monkeypatch.setattr(
             agent_mod,
-            "send_to_anthropic",
+            "_send_to_server",
             AsyncMock(
                 return_value={
                     "success": True,
@@ -7529,7 +7522,7 @@ class TestAst1614DoTaskStringParsedCatalogLand:
         raw = json.dumps(self._envelope())
         monkeypatch.setattr(
             agent_mod,
-            "send_to_anthropic",
+            "_send_to_server",
             AsyncMock(
                 return_value={
                     "success": True,
@@ -7736,7 +7729,7 @@ class TestAst1192TokenViewForDoTask:
                 "timesheet": {},
             }
         )
-        monkeypatch.setattr(agent_mod, "send_to_anthropic", send)
+        monkeypatch.setattr(agent_mod, "_send_to_server", send)
         out = await agent_mod.do_task(
             "anticipate_scan",
             index="job-1192",
@@ -7790,7 +7783,7 @@ class TestAst1192TokenViewForDoTask:
         _patch_strict_batch_anthropic(monkeypatch)
         monkeypatch.setattr(
             agent_mod,
-            "send_to_anthropic",
+            "_send_to_server",
             AsyncMock(
                 return_value={
                     "success": True,
@@ -7885,7 +7878,7 @@ class TestAst1576CraftPersistOperative:
 
     def _stub_llm(self, monkeypatch: pytest.MonkeyPatch, send: AsyncMock) -> None:
         _patch_strict_batch_anthropic(monkeypatch)
-        monkeypatch.setattr(agent_mod, "send_to_anthropic", send)
+        monkeypatch.setattr(agent_mod, "_send_to_server", send)
         monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
         monkeypatch.setattr(agent_mod, "_task_references_caller_tokens", lambda *a, **k: False)
         monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda key: _agent_rows())
@@ -7995,7 +7988,7 @@ class TestAst1264CandidateCraftSuccession:
 
     def _stub_craft_llm(self, monkeypatch: pytest.MonkeyPatch, send: AsyncMock) -> None:
         _patch_strict_batch_anthropic(monkeypatch)
-        monkeypatch.setattr(agent_mod, "send_to_anthropic", send)
+        monkeypatch.setattr(agent_mod, "_send_to_server", send)
         monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
         from src.core import candidate as candidate_mod
         monkeypatch.setattr(candidate_mod, "_persist_craft_dispatch_success", MagicMock())
@@ -8176,7 +8169,7 @@ class TestAst1523DoTaskNotesPersist:
         monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda key: _agent_rows())
         monkeypatch.setattr(
             agent_mod,
-            "send_to_anthropic",
+            "_send_to_server",
             AsyncMock(
                 return_value={
                     "success": True,
@@ -8214,7 +8207,7 @@ class TestAst1523DoTaskNotesPersist:
         monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda key: _agent_rows())
         monkeypatch.setattr(
             agent_mod,
-            "send_to_anthropic",
+            "_send_to_server",
             AsyncMock(
                 return_value={
                     "success": True,
@@ -8259,7 +8252,7 @@ class TestAst1523AdviseFreeformSuccess:
         monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda key: _agent_rows())
         monkeypatch.setattr(
             agent_mod,
-            "send_to_anthropic",
+            "_send_to_server",
             AsyncMock(
                 return_value={
                     "success": True,
@@ -8314,7 +8307,7 @@ class TestAst1514DoTaskResumeBriefJsonPersist:
         monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda key: _agent_rows())
         monkeypatch.setattr(
             agent_mod,
-            "send_to_anthropic",
+            "_send_to_server",
             AsyncMock(
                 return_value={
                     "success": True,
@@ -8344,7 +8337,7 @@ class TestAst1514DoTaskResumeBriefJsonPersist:
         monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda key: _agent_rows())
         monkeypatch.setattr(
             agent_mod,
-            "send_to_anthropic",
+            "_send_to_server",
             AsyncMock(
                 return_value={
                     "success": True,
@@ -8840,8 +8833,13 @@ class TestAst1391DeepseekBigOutputFloor:
         )
         send_ds = self._ok_send()
         send_anth = self._ok_send()
-        monkeypatch.setattr(agent_mod, "send_to_llm_compat", send_ds)
-        monkeypatch.setattr(agent_mod, "send_to_anthropic", send_anth)
+
+        async def _route(*args: Any, **kwargs: Any) -> Any:
+            if kwargs.get("server_id") == "anthropic":
+                return await send_anth(*args, **kwargs)
+            return await send_ds(*args, **kwargs)
+
+        monkeypatch.setattr(agent_mod, "_send_to_server", _route)
         monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
         return send_ds, send_anth
 
@@ -8945,7 +8943,6 @@ class TestAst1391DeepseekBigOutputFloor:
         # AC6: AST-1380 thinking-off (effort "none") stays; a catalog floor above craft 32000 is what gets sent.
         assert _STUB_FLOOR > cfg.CRAFT_RUBRIC_MAX_TOKENS
         monkeypatch.setitem(cfg.LLM_MODEL_CONFIG["deepseek-v4-pro"], "max_tokens_floor", _STUB_FLOOR)
-        monkeypatch.setattr(agent_mod, "send_to_anthropic", AsyncMock())
         monkeypatch.setattr(
             agent_mod,
             "_resolve_task_prompts",
@@ -8966,7 +8963,7 @@ class TestAst1391DeepseekBigOutputFloor:
                 "timesheet": {},
             }
         )
-        monkeypatch.setattr(agent_mod, "send_to_llm_compat", send)
+        monkeypatch.setattr(agent_mod, "_send_to_server", send)
         out = await agent_mod.do_task(
             "craft_get_rubric",
             index="abrams",
@@ -9209,8 +9206,12 @@ class TestAst1639CandidateIdSystemPrefix:
             captured["deepseek"] = system_blocks
             return _grader_llm_ok()
 
-        monkeypatch.setattr(agent_mod, "send_to_anthropic", _capture_anth)
-        monkeypatch.setattr(agent_mod, "send_to_llm_compat", _capture_ds)
+        async def _capture(*_a, system_blocks=None, **_k):
+            if _k.get("server_id") == "anthropic":
+                return await _capture_anth(*_a, system_blocks=system_blocks, **_k)
+            return await _capture_ds(*_a, system_blocks=system_blocks, **_k)
+
+        monkeypatch.setattr(agent_mod, "_send_to_server", _capture)
 
         await agent_mod.do_task(
             "evaluate_jd",
@@ -9237,7 +9238,7 @@ class TestAst1639CandidateIdSystemPrefix:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         send = AsyncMock()
-        monkeypatch.setattr(agent_mod, "send_to_anthropic", send)
+        monkeypatch.setattr(agent_mod, "_send_to_server", send)
         route = _route("claude-haiku-4-5")
         with pytest.raises(ValueError, match="candidate id required"):
             await agent_mod.run_adhoc(
@@ -9350,7 +9351,7 @@ class TestAst1683ContactBaseResumeCurrentRead:
                 "timesheet": {},
             }
         )
-        monkeypatch.setattr(agent_mod, "send_to_anthropic", send)
+        monkeypatch.setattr(agent_mod, "_send_to_server", send)
         monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
 
         # Contact Estelle shape: library blob, no stamped cid, index=cid, ctx omitted.
@@ -9448,7 +9449,7 @@ class TestAst1698HarvestSourceArtifactIds:
                 "timesheet": {},
             }
         )
-        monkeypatch.setattr(agent_mod, "send_to_anthropic", send)
+        monkeypatch.setattr(agent_mod, "_send_to_server", send)
         monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
         monkeypatch.setattr(
             agent_mod,
@@ -9522,7 +9523,7 @@ class TestAst1700ThreadHarvestGenerativeLands:
             }
         )
         _patch_strict_batch_anthropic(monkeypatch)
-        monkeypatch.setattr(agent_mod, "send_to_anthropic", send)
+        monkeypatch.setattr(agent_mod, "_send_to_server", send)
         monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
         monkeypatch.setattr(
             agent_mod, "_task_references_caller_tokens", lambda *a, **k: False
@@ -9590,7 +9591,7 @@ class TestAst1700ThreadHarvestGenerativeLands:
         _patch_strict_batch_anthropic(monkeypatch)
         monkeypatch.setattr(
             agent_mod,
-            "send_to_anthropic",
+            "_send_to_server",
             AsyncMock(
                 return_value={
                     "success": True,
@@ -9641,7 +9642,7 @@ class TestAst1700ThreadHarvestGenerativeLands:
         _patch_strict_batch_anthropic(monkeypatch)
         monkeypatch.setattr(
             agent_mod,
-            "send_to_anthropic",
+            "_send_to_server",
             AsyncMock(
                 return_value={
                     "success": True,
@@ -9678,7 +9679,7 @@ class TestAst1842DoTaskStoreOffLoop:
 
             # real _store_prompt_blocks / _store_response_block stay in play (the call sites AST-1842 moved)
             monkeypatch.setattr(agent_mod, "save_agent_data", slow_save)
-            monkeypatch.setattr(agent_mod, "send_to_anthropic", AsyncMock(return_value={
+            monkeypatch.setattr(agent_mod, "_send_to_server", AsyncMock(return_value={
                 "success": True, "parsed_response": {"agent_payload": "0|CRA2"},
                 "api_response": _api_response("ok"), "timesheet": {},
             }))
@@ -9719,12 +9720,11 @@ class TestAst1846DoTaskAgentFailureFlag:
         )
         monkeypatch.setattr(
             agent_mod,
-            "send_to_llm_compat",
+            "_send_to_server",
             AsyncMock(return_value={
                 "success": True, "parsed_response": envelope, "api_response": _api_response("env"), "timesheet": {},
             }),
         )
-        monkeypatch.setattr(agent_mod, "send_to_anthropic", AsyncMock())
         monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
         return await agent_mod.do_task(
             "prefilter_company",
@@ -9810,12 +9810,11 @@ class TestAst2089DoTaskSalvagedResponse:
         envelope = {**rows, "agent_performance": {"status": "failure", "failure_note": self.NOTE}}
         monkeypatch.setattr(
             agent_mod,
-            "send_to_llm_compat",
+            "_send_to_server",
             AsyncMock(return_value={
                 "success": True, "parsed_response": envelope, "api_response": _api_response("env"), "timesheet": {},
             }),
         )
-        monkeypatch.setattr(agent_mod, "send_to_anthropic", AsyncMock())
         monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
         return await agent_mod.do_task("qualify_job_listings", index="qualify_job_listings_batch_b2089", ctx=ctx)
 
@@ -9886,7 +9885,7 @@ class TestAst2006DoTaskEmptyTokenGuard:
         monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda task_key: (agent_row, task_row))
         monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
         send = AsyncMock(return_value=_grader_llm_ok())
-        monkeypatch.setattr(agent_mod, "send_to_anthropic", send)
+        monkeypatch.setattr(agent_mod, "_send_to_server", send)
         # Sent prompts need a candidate id (system prefix); keep its two lookups off the DB.
         monkeypatch.setattr("src.core.candidate.get_candidate", lambda cid: None)
         monkeypatch.setattr("src.core.candidate.company_search_terms_joined_text", lambda cid: "")
@@ -9981,8 +9980,7 @@ class TestAst2180GraderStructuredPath:
         # Marker prefixes stand in for prompt_prefix / prompt_prefix_structured so the assertion is on the switch.
         monkeypatch.setattr(agent_mod, "getTimestampPrefix", lambda structured=False: self._STRUCT if structured else self._ENVELOPE)
         send = AsyncMock(return_value=reply)
-        monkeypatch.setattr(agent_mod, "send_to_anthropic", send)
-        monkeypatch.setattr(agent_mod, "send_to_llm_compat", AsyncMock())
+        monkeypatch.setattr(agent_mod, "_send_to_server", send)
         monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock(return_value="id"))
         return send
 
