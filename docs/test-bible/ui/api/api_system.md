@@ -255,6 +255,8 @@ Manifest: [`api_jobs.md`](api_jobs.md) § AST-1974 items 3 + 5.
 
 **Broken / obsolete:** `_progress_rank` / `_is_at_or_past` tests; Jobs/Companies/Artifacts payload asserts; string `enabled` gate test.
 
+**Integration (harness revise):** `tests/integration/conftest.py` resets `_artifact_schema_ensured` so tmp SQLite creates `artifact` when `nav_config` → `get_candidate` hydrates `base_resume`. Map: [`integration/README.md`](../../integration/README.md).
+
 ## QA test manifest — AST-2230
 
 ```bash

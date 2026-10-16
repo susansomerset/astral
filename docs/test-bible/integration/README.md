@@ -24,6 +24,7 @@ Default target: all of `tests/integration/`. Pass pytest paths or flags after th
 ## Fixtures
 
 - Temp SQLite per test (`integration_db` / `seeded_candidate`) — same real-DB pattern as `tests/component/data/conftest.py`.
+- `integration_db` resets schema-ensured flags including `_artifact_schema_ensured` (AST-2230: `nav_config` → `get_candidate` hydrates `base_resume` via `get_current_artifact`; stale True from another DB left the table missing on tmp SQLite).
 - Auth via mock token authenticator (`test-token` → admin Susan) — no API↔core mocks at blueprint boundaries.
 - `integration_app` registers `system_bp` + `candidate_bp` only (minimal v1 harness).
 
