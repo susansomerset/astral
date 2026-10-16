@@ -49,7 +49,17 @@ _SKIP_RECORD_KEYS = frozenset(
     }
 )
 
-_OWN_LOGGERS = frozenset({"app", "worker", "jobqueue", "executor"})
+_OWN_LOGGERS = frozenset({
+    "app",
+    "worker",
+    "jobqueue",
+    "executor",
+    "providers",
+    "providers.anthropic_provider",
+    "providers.llm_compat_provider",
+    "providers.openrouter_provider",
+    "providers.errors",
+})
 
 _worker_label: Optional[str] = None
 _context_fields: Callable[[], dict[str, Any]] = dict

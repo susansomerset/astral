@@ -137,25 +137,49 @@ class TestAst2237Settings:
         assert settings_mod.settings.port == 8080
 
 
+def _assembled_request(**overrides: Any) -> dict:
+    """Minimal AST-2239 assembled provider request (platform-owned wire shape)."""
+    req = {
+        "protocol": "anthropic",
+        "server_id": "anthropic",
+        "model": "claude-haiku-4-5",
+        "api_key": "sk-test",
+        "messages": [{"role": "user", "content": "hi"}],
+        "max_tokens": 64,
+    }
+    req.update(overrides)
+    return req
+
+
 class TestAst2237Executor:
-    @pytest.mark.asyncio
-    async def test_stub_echoes_request(self, astral_agent_modules: Path) -> None:
-        import executor
-
-        req = {"model": "stub", "messages": [{"role": "user", "content": "hi"}]}
-        out = await executor.execute(req)
-        assert out == {
-            "stub": True,
-            "echo": req,
-            "usage": {"input_tokens": 0, "output_tokens": 0},
-        }
+    """AST-2239: stub echo retired — validate + dispatch (providers mocked)."""
 
     @pytest.mark.asyncio
-    async def test_non_dict_raises(self, astral_agent_modules: Path) -> None:
+    async def test_dispatches_anthropic_provider(
+        self, astral_agent_modules: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         import executor
+        from providers import anthropic_provider
 
-        with pytest.raises(ValueError, match="request must be a dict"):
+        sent: dict[str, Any] = {}
+
+        async def _fake(req: dict) -> dict:
+            sent["req"] = req
+            return {"success": True, "api_response": "ok", "usage": {"input_tokens": 1}}
+
+        monkeypatch.setattr(anthropic_provider, "send", _fake)
+        out = await executor.execute(_assembled_request())
+        assert out["success"] is True
+        assert sent["req"]["protocol"] == "anthropic"
+
+    @pytest.mark.asyncio
+    async def test_non_dict_raises_bad_request(self, astral_agent_modules: Path) -> None:
+        import executor
+        from providers.errors import ProviderJobError
+
+        with pytest.raises(ProviderJobError) as ei:
             await executor.execute("not-a-dict")  # type: ignore[arg-type]
+        assert ei.value.error_class == "bad_request"
 
 
 class TestAst2237ResultCodec:
@@ -190,17 +214,28 @@ class TestAst2237ResultCodec:
 
 class TestAst2237ClaimLeaseTerminal:
     @pytest.mark.asyncio
-    async def test_insert_claim_complete_stub_terminal(
+    async def test_insert_claim_complete_provider_terminal(
         self, astral_agent_modules: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        import executor
         import jobqueue
         from worker import QueueWorker
 
         store = FakeAgentJobStore()
-        jid = store.insert({"prompt": "ping"})
+        req = _assembled_request()
+        jid = store.insert(req)
         monkeypatch.setattr(jobqueue, "claim", store.claim)
         monkeypatch.setattr(jobqueue, "complete", store.complete)
         monkeypatch.setattr(jobqueue, "fail", store.fail)
+
+        async def _ok(_req: dict) -> dict:
+            return {
+                "success": True,
+                "api_response": "pong",
+                "usage": {"input_tokens": 1, "output_tokens": 1},
+            }
+
+        monkeypatch.setattr(executor, "execute", _ok)
 
         w_a = QueueWorker(MagicMock(), worker_id="replica-a", concurrency=1)
         claimed = await jobqueue.claim(
@@ -208,17 +243,11 @@ class TestAst2237ClaimLeaseTerminal:
         )
         assert len(claimed) == 1
         assert claimed[0].id == jid
-        assert store.jobs[jid].status == "running"
-        assert store.jobs[jid].worker_id == "replica-a"
-
         await w_a._run_job(claimed[0])
         row = store.jobs[jid]
         assert row.status == "done"
-        assert row.result == {
-            "stub": True,
-            "echo": {"prompt": "ping"},
-            "usage": {"input_tokens": 0, "output_tokens": 0},
-        }
+        assert row.result["success"] is True
+        assert row.result["api_response"] == "pong"
 
     @pytest.mark.asyncio
     async def test_dual_replica_second_claim_empty_while_leased(
@@ -240,7 +269,7 @@ class TestAst2237ClaimLeaseTerminal:
         assert second == []
 
     @pytest.mark.asyncio
-    async def test_stub_crash_writes_failed_terminal(
+    async def test_executor_crash_writes_failed_terminal(
         self, astral_agent_modules: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         import executor
@@ -248,13 +277,13 @@ class TestAst2237ClaimLeaseTerminal:
         from worker import QueueWorker
 
         store = FakeAgentJobStore()
-        jid = store.insert({"boom": True})
+        jid = store.insert(_assembled_request())
         monkeypatch.setattr(jobqueue, "claim", store.claim)
         monkeypatch.setattr(jobqueue, "complete", store.complete)
         monkeypatch.setattr(jobqueue, "fail", store.fail)
 
         async def _raise(_req: dict) -> dict:
-            raise RuntimeError("stub exploded")
+            raise RuntimeError("provider exploded")
 
         monkeypatch.setattr(executor, "execute", _raise)
 
@@ -265,5 +294,69 @@ class TestAst2237ClaimLeaseTerminal:
         await w._run_job(claimed[0])
         row = store.jobs[jid]
         assert row.status == "failed"
-        assert row.error_class == "stub_error"
-        assert "stub exploded" in (row.error or "")
+        assert row.error_class == "executor_error"
+        assert "provider exploded" in (row.error or "")
+
+    @pytest.mark.asyncio
+    async def test_provider_job_error_fails_with_error_class(
+        self, astral_agent_modules: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import executor
+        import jobqueue
+        from providers.errors import ProviderJobError
+        from worker import QueueWorker
+
+        store = FakeAgentJobStore()
+        jid = store.insert({})
+        monkeypatch.setattr(jobqueue, "claim", store.claim)
+        monkeypatch.setattr(jobqueue, "complete", store.complete)
+        monkeypatch.setattr(jobqueue, "fail", store.fail)
+
+        async def _bad(_req: dict) -> dict:
+            raise ProviderJobError("bad_request", "missing protocol")
+
+        monkeypatch.setattr(executor, "execute", _bad)
+
+        w = QueueWorker(MagicMock(), worker_id="replica-a", concurrency=1)
+        claimed = await jobqueue.claim(
+            MagicMock(), limit=1, worker_id=w.worker_id, lease_seconds=300
+        )
+        await w._run_job(claimed[0])
+        row = store.jobs[jid]
+        assert row.status == "failed"
+        assert row.error_class == "bad_request"
+        assert "missing protocol" in (row.error or "")
+
+    @pytest.mark.asyncio
+    async def test_soft_fail_still_completes_job(
+        self, astral_agent_modules: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import executor
+        import jobqueue
+        from worker import QueueWorker
+
+        store = FakeAgentJobStore()
+        jid = store.insert(_assembled_request())
+        monkeypatch.setattr(jobqueue, "claim", store.claim)
+        monkeypatch.setattr(jobqueue, "complete", store.complete)
+        monkeypatch.setattr(jobqueue, "fail", store.fail)
+
+        async def _soft(_req: dict) -> dict:
+            return {
+                "success": False,
+                "error": "rate limited",
+                "failure_class": "provider_rate_limit",
+                "usage": {"input_tokens": 0, "output_tokens": 0},
+            }
+
+        monkeypatch.setattr(executor, "execute", _soft)
+
+        w = QueueWorker(MagicMock(), worker_id="replica-a", concurrency=1)
+        claimed = await jobqueue.claim(
+            MagicMock(), limit=1, worker_id=w.worker_id, lease_seconds=300
+        )
+        await w._run_job(claimed[0])
+        row = store.jobs[jid]
+        assert row.status == "done"
+        assert row.result["success"] is False
+        assert row.result["failure_class"] == "provider_rate_limit"
