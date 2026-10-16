@@ -4,41 +4,56 @@ import {
   artifactHasContent,
   buildPhaseListGradeRow,
   buildPhaseSectionGradeConfidenceRow,
+  extractAgentPayloadText,
   formatPhaseScore,
   formatPhaseSectionScoreTitle,
   gradesForHeader,
+  jobGradablePercent,
   jobScoreBreakdownForGradesField,
-  materialsPreviewVisible,
+  phaseThermometerModel,
   primaryActionsForState,
   anyReportArtifactContent,
   artifactsTabPrimaryActions,
   isArtifactsBuildInProgress,
   printCoverVisible,
   printResumeVisible,
+  totalScore,
 } from "../../../../src/ui/frontend/src/lib/recommendedJobReport"
 import { STATE_UI_MANIFEST_FIXTURE } from "../fixtures/stateUiManifestFixture"
 
-describe("recommendedJobReport — AST-581 materialsPreviewVisible", () => {
-  it("returns true on CANDIDATE_REVIEW even when artifacts empty", () => {
-    expect(materialsPreviewVisible("CANDIDATE_REVIEW", {})).toBe(true)
+describe("recommendedJobReport — AST-2234 helpers", () => {
+  it("totalScore sums phase scores; null if any phase missing", () => {
+    expect(totalScore({ jd_score: 1, do_score: 2, get_score: 3, like_score: 4 }, [
+      "jd_score", "do_score", "get_score", "like_score",
+    ])).toBe(10)
+    expect(totalScore({ jd_score: 1, do_score: 2 }, ["jd_score", "do_score", "get_score"])).toBeNull()
   })
 
-  it("returns false on RECOMMENDED without artifact content", () => {
-    expect(materialsPreviewVisible("RECOMMENDED", {})).toBe(false)
+  it("phaseThermometerModel fill = score/max; tooltip has score + gradable %", () => {
+    const m = phaseThermometerModel(42, { earned: 40, possible: 50, max: 100 })
+    expect(m).toEqual({
+      fillRatio: 0.42,
+      tooltip: "Score 42.0, 50% gradable",
+    })
+    expect(phaseThermometerModel(42, null)).toBeNull()
+    expect(phaseThermometerModel(42, { earned: 1, possible: 1, max: 0 })).toBeNull()
   })
 
-  it("returns true on BUILD_ARTIFACTS when hydrated job_resume has text", () => {
-    expect(
-      materialsPreviewVisible("BUILD_ARTIFACTS", {
-        job_resume: { professional_summary: "draft" },
-      }),
-    ).toBe(true)
-    // AST-1593: resume_content alone is not job-resume SoT
-    expect(
-      materialsPreviewVisible("BUILD_ARTIFACTS", {
-        resume_content: { professional_summary: "legacy" },
-      }),
-    ).toBe(false)
+  it("jobGradablePercent over four phase grade vectors (X = ungraded)", () => {
+    expect(jobGradablePercent({
+      jd_grades: [{ grade: "A" }, { grade: "X" }],
+      do_grades: [{ grade: "B" }],
+      get_grades: [{ grade: "X" }],
+      like_grades: [{ grade: "C" }],
+    })).toBe(60) // (5-2)/5
+    expect(jobGradablePercent({})).toBeNull()
+  })
+
+  it("extractAgentPayloadText unescapes string agent_payload; empty without it", () => {
+    expect(extractAgentPayloadText(JSON.stringify({ agent_payload: "a\nb" }))).toBe("a\nb")
+    expect(extractAgentPayloadText(JSON.stringify({ agent_payload: { nested: 1 } }))).toContain("nested")
+    expect(extractAgentPayloadText(JSON.stringify({ ok: true }))).toBe("")
+    expect(extractAgentPayloadText("not-json")).toBe("")
   })
 })
 
@@ -68,12 +83,6 @@ describe("recommendedJobReport — AST-1100 pin-slot visibility", () => {
     expect(printResumeVisible({ job_resume: "pin-id" })).toBe(true)
     expect(printResumeVisible({ resume_content: { professional_summary: "x" } })).toBe(false)
     expect(printResumeVisible({})).toBe(false)
-  })
-
-  it("materialsPreviewVisible uses remapped resume/cover checks", () => {
-    expect(materialsPreviewVisible("RECOMMENDED", { job_resume: "pin-id" })).toBe(true)
-    expect(materialsPreviewVisible("RECOMMENDED", { cover_letter: "pin-cover" })).toBe(true)
-    expect(materialsPreviewVisible("RECOMMENDED", {})).toBe(false)
   })
 })
 

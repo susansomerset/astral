@@ -1,3 +1,96 @@
+<!-- linear-archive: AST-2023 archived 2026-10-16 -->
+
+## Linear archive (AST-2023)
+
+**Archived:** 2026-10-16  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-2023/telescope-click-then-capture-new-fetch-task-for-relative-job-link  
+**Status at archive:** Archive  
+**Project:** Astral Tracker  
+**Assignee:** hedy  
+**Priority / estimate:** None / 3  
+**Parent:** AST-2022 — New Fetch task for RELATIVE_JOB_LINK  
+**Blocked by / blocks / related:** parent: AST-2022; blocks: AST-2025
+
+### Description
+
+## What this implements
+
+Telescope learns to click an anchor by `href` on the loaded page, follow it (same tab or new tab), and capture on the destination. The platform client exposes that as one call returning final URL + visible text. Requests without the option behave exactly as today. Does **not** touch job states, dispatch, or the runner (#2, #3). Telescope service needs a redeploy after merge.
+
+## Citations
+
+`stat.logging.debug`, `stat.logging.warning`, `stat.logging.error`.
+
+## Scope
+
+* `service/telescope/scrape.py`: modified request model, with a new optional field carrying the `href` to click (absent means behavior is unchanged). Modified scrape run, which calls the click step after load / cookies / expand and before capture, so `final_url` and captured fields describe the destination. A missing click target fails the job with a distinct, non-retried error class.
+* `service/telescope/interact.py`: new click function. It locates an anchor by exact `href` attribute, clicks it, follows either same-tab navigation or a new-tab popup, and waits for the destination to load. It reuses the existing navigation timeout settings; no new caps.
+* `src/external/telescope.py`: modified request builder, which forwards the click option. New public function: given a list-page URL and a relative `href`, return the destination final URL and visible text, raising on a click-target or service failure.
+* `service/telescope/worker.py`: modified `Worker._retry_delay`, which treats the new click-target error class as non-retried (alongside `bad_request`).
+
+## Acceptance criteria
+
+4. **Telescope click.** `POST` to the Telescope service with a list-page `url`, the click option set to an `href` present on that page, and `fields: ["text"]` returns a `final_url` that is not the list-page URL and `text` from the destination. With an `href` not on the page, it returns the distinct click-target error class and no retry. Fail: `final_url` equals the list page, text is the list page's, or a missing target times out or retries. Omitting the option gives a byte-identical response shape to today's (`test_*` for existing scrape requests unchanged and green).
+
+## Boundaries
+
+Does not own: Job states, dispatch registration, qualify routing, and the click-through runner (#2, #3). Telescope service redeploy is an ops step after merge.
+
+## Notes for planning
+
+Parent: AST-2022 (full definition, Pipeline flow, Architectural definition links). Canon Scope for this child = Citations above.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/<parent-segment>`, child `sub/<parent-id>/<child-segment>`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-10-08T02:34:17.802Z
+[code-rubric] PROCEED (Commit: 529d040) click-then-capture canon clean context_tokens≈28000
+
+#### betty — 2026-10-08T02:32:02.317Z
+`origin/sub/AST-2022/AST-2023-telescope-click-capture` @ `529d04027` · click-through gap tests landed
+
+#### hedy — 2026-10-08T02:28:02.739Z
+`origin/sub/AST-2022/AST-2023-telescope-click-capture` @ `de3d731`
+
+#### joan — 2026-10-08T02:25:27.745Z
+[plan-rubric] PROCEED (Commit: 3cf6c69) click-then-capture plan ready context_tokens≈42000
+
+#### hedy — 2026-10-08T02:23:33.649Z
+`origin/sub/AST-2022/AST-2023-telescope-click-capture` @ `3cf6c69` · plan ready, worker.py included
+
+#### chuckles — 2026-10-08T02:19:37.182Z
+[scope-gate] cleared. I amended the Scope on AST-2023 and on the parent AST-2022 (Component scope, Technical scope, and Proposed child #1) to add `service/telescope/worker.py`: `Worker._retry_delay` treats the new click-target error class as non-retried, alongside `bad_request`. AC4 is unchanged. Status is back to Todo, and I'm re-spawning plan-child.
+
+#### hedy — 2026-10-08T02:18:55.503Z
+[scope-gate] AST-2023 needs `service/telescope/worker.py` — retry policy for the new click-target error class
+
+**File / change kind:** `service/telescope/worker.py` → `Worker._retry_delay` — add the new click-target error class next to `bad_request` as a no-retry class (one-line change, same service).
+
+**Scope lines that don't cover it:**
+> `service/telescope/scrape.py`: … A missing click target fails the job with a distinct, non-retried error class.
+
+AC 4: "With an `href` not on the page, it returns the distinct click-target error class and **no retry**."
+
+**Why it can't be done inside current Scope:** `scrape.py` only raises `ScrapeError(error_class, …)`. Whether a failed attempt is re-queued is decided solely in `worker.py`:
+
+```
+def _retry_delay(self, job, error_class):
+    if error_class == "bad_request":
+        return None
+    ...
+```
+
+Any new class (e.g. `click_target_missing`) is retried up to `max_attempts` unless `_retry_delay` knows it. In-scope workarounds both break the AC or change behavior:
+- Reuse `bad_request` → no retry, but not a *distinct* class (platform can't tell click miss from malformed request).
+- Submit click jobs with `max_attempts=1` from `src/external/telescope.py` → also kills retry for transient timeouts / Firefox failures on every click job (new behavior nobody approved).
+
+**Ask:** add `service/telescope/worker.py` (`_retry_delay`: new click-target class is non-retried) to AST-2023 `## Scope`, then re-spawn plan-child.
+
+---
+
 # AST-2023 — Telescope click-then-capture
 
 - **Ticket:** [AST-2023](https://linear.app/astralcareermatch/issue/AST-2023)

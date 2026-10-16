@@ -6,13 +6,13 @@ import api from "../lib/api"
 interface NavItem { path: string; count?: number }
 interface NavGroup { label: string; items: NavItem[] }
 
-// NAV_CONFIG group label in src/utils/config.py — the Jobs items, in nav order.
-const JOBS_NAV_GROUP_LABEL = "Jobs"
+// NAV_CONFIG group label in src/utils/config.py — Job Opportunities items, in nav order.
+const JOBS_NAV_GROUP_LABEL = "Job Opportunities"
 
 /**
- * AST-1975: the only place the landing page is chosen. First Jobs nav item with
- * count > 0, else the first Jobs item. Serves `/`, the catch-all, and every place that
- * used to send the user to the old Recommended page (they navigate to `/`).
+ * AST-1975: the only place the landing page is chosen. First Job Opportunities nav item
+ * with count > 0, else the first Job Opportunities item. Serves `/`, the catch-all, and
+ * every place that used to send the user to the old Recommended page (they navigate to `/`).
  */
 export default function JobsHomeRedirect() {
   const { selectedId, candidatesHydrated } = useCandidate()

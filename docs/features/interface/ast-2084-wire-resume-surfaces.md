@@ -1,3 +1,77 @@
+<!-- linear-archive: AST-2084 archived 2026-10-16 -->
+
+## Linear archive (AST-2084)
+
+**Archived:** 2026-10-16  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-2084/wire-base-page-job-edit-modal-thumbnails-retire-resume-mode-in  
+**Status at archive:** Archive  
+**Project:** Astral Interface  
+**Assignee:** ada  
+**Priority / estimate:** None / 3  
+**Parent:** AST-2046 — Resume Edit Overhaul  
+**Blocked by / blocks / related:** parent: AST-2046
+
+### Description
+
+## What this implements
+
+After #2 and #3. Puts Base Resume Content on the split pane, adds the stacked job artifact edit modal (job resume and cover letter), puts thumbnails and the Edit button on the job's Artifacts tab, and removes the now-unused resume mode from `ArtifactEditor`. Does not own the editor internals (#3), the split pane/preview (#2), or the backend (#1).
+
+## Citations
+
+`patt.artifact.ui-consistency` (as amended — Decision 7).
+
+## Scope
+
+`src/ui/frontend/src/pages/ArtifactsBaseResumeContent.tsx` — **modified** — becomes a split-pane page: resume editor left, preview right. `src/ui/frontend/src/components/JobArtifactEditModal.tsx` — **new** — stacked full-screen split-pane modal that edits one job artifact: job resume (resume editor + preview) or cover letter (existing cover letter fields + preview). `src/ui/frontend/src/components/JobAnalysisReportModal.tsx` — **modified** — Artifacts tab shows thumbnails for generated job resume and cover letter that open the edit modal, plus an Edit button for the job resume; drops the inline resume/cover editors and its structure-authoring state; Print Resume uses the shared helper. `src/ui/frontend/src/components/ArtifactEditor.tsx` — **modified** — resume structure mode retired (structure-authoring props, `useCandidateResumeStructure`, `resume_content` branches, base-resume Generate escape); rubric/criteria and shapes modes unchanged.
+
+Technical:
+
+* `ArtifactsBaseResumeContent.tsx`: rewrite to render `SplitPanePage` (page mode) with `ResumeContentEditor` (base) on the left and `PrintPreview` (base) on the right. The preview refreshes on the editor's saved callback. The accent bar, `ArtifactEditor`, and Generate are removed from this page.
+* `JobArtifactEditModal.tsx`: new stacked, full-screen `Modal` for one job artifact.
+  * Job resume: `SplitPanePage` (modal mode) with `ResumeContentEditor` (job) and `PrintPreview` (job resume).
+  * Cover letter: `ArtifactEditor` (existing `cover_letter` shapes + job persistence, unchanged) and `PrintPreview` (cover), refreshing on its `onSaved`.
+  * Closing it notifies the parent so the report reloads.
+* `JobAnalysisReportModal.tsx`: on the populated Artifacts pane, render `PrintPreview` thumbnails for tabs flagged for thumbnails whose artifact has content, in place of their inline editors. A thumbnail click opens `JobArtifactEditModal` for that artifact. Add an Edit button on the job resume section that opens the same modal. Remove the candidate-structure state and handlers. Print Resume uses `printHtml.ts` with no structure persist. Reload on edit-modal close.
+* `ArtifactEditor.tsx`: remove the resume structure mode. That covers the structure-authoring props and branches, `useCandidateResumeStructure`, the `resume_content` structure fetches, and the base-resume unsupported-experience Generate escape. Rubric/criteria and shapes (cover letter, application responses) paths are unchanged.
+
+## Acceptance criteria
+
+1. **Split pane spans the content area.** On Base Resume Content, the left panel's left edge equals the nav menu's right edge (0 when the nav is hidden). The right panel's right edge equals `window.innerWidth`. In the job edit modal, both panels together span the viewport width. *Fail:* a gap or page padding on either side.
+2. **No Save buttons.** Neither resume editor shows a Save, Cancel, or "Save sections" button, and `git grep -n "Save sections" -- src/ui/frontend/src` returns nothing. *Fail:* any of them present.
+3. **Generate gone from Base Resume Content.** The page shows no Generate/Regenerate button, and `ArtifactsBaseResumeContent.tsx` has no `craft_resume_base` reference. *Fail:* either present.
+4. **Thumbnails open the edit modal.** On a job with a generated job resume and cover letter, the Artifacts tab shows two thumbnails and no inline resume/cover editors. Clicking either opens a stacked modal over the report with that artifact's split pane, and the job resume Edit button opens the resume modal. A job with neither generated shows no thumbnails. *Fail:* inline editors remain, thumbnails shown for empty artifacts, or the modal replaces the report rather than stacking.
+5. **Resume mode gone from ArtifactEditor.** `git grep -nE "useCandidateResumeStructure|structureCatalog|onStructureSave" -- src/ui/frontend/src` returns nothing. Both resume surfaces render `ResumeContentEditor`. *Fail:* any hit, or a resume surface still on `ArtifactEditor`.
+
+## Boundaries
+
+Does not own the editor internals (#3), the split pane/preview (#2), or the backend (#1). Sibling slices under [AST-2046](https://linear.app/astralcareermatch/issue/AST-2046): #1: job-structure-line-format; #2: split-pane-preview; #3: resume-editor.
+
+## Notes for planning
+
+Citations above; decisions 1–9 and the full architectural definition live on the parent [AST-2046](https://linear.app/astralcareermatch/issue/AST-2046). Estimate: 3.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/AST-2046-resume-edit-overhaul`,
+child `sub/AST-2046/AST-2084-wire-resume-surfaces`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-10-09T07:05:02.760Z
+[code-rubric] PROCEED (Commit: f04b6c656) One resume editor wired
+
+#### betty — 2026-10-09T06:58:58.841Z
+`origin/sub/AST-2046/AST-2084-wire-resume-surfaces` @ `f04b6c656` · 89 tests, drift retired
+
+#### joan — 2026-10-09T04:59:12.651Z
+[plan-rubric] PROCEED (Commit: 8778d5883) Wire-up plan; ui-consistency met.
+
+#### ada — 2026-10-09T04:58:03.867Z
+`origin/sub/AST-2046/AST-2084-wire-resume-surfaces` @ `8778d5883` · three stages, dry-run clean
+
+---
+
 # AST-2084 — Wire base page, job edit modal, thumbnails; retire resume mode in ArtifactEditor (Resume Edit Overhaul)
 
 - **Parent:** [AST-2046 Resume Edit Overhaul](https://linear.app/astralcareermatch/issue/AST-2046)

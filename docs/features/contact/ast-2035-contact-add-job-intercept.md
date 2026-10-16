@@ -1,3 +1,76 @@
+<!-- linear-archive: AST-2035 archived 2026-10-16 -->
+
+## Linear archive (AST-2035)
+
+**Archived:** 2026-10-16  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-2035/contact-command-registry-add-job-intercept-let-estelle-post-a  
+**Status at archive:** Archive  
+**Project:** Astral Contact  
+**Assignee:** hedy  
+**Priority / estimate:** None / 3  
+**Parent:** AST-2032 — Let Estelle post a meteorite from Slack  
+**Blocked by / blocks / related:** parent: AST-2032
+
+### Description
+
+## What this implements
+
+After #1. Owns the `CONTACT_CONFIG` commands registry (handler + `code`/`agent` mode), recognizing `@Estelle /<command> …` in Slack events ahead of paste recovery and the Estelle turn, and the mode-driven reply. Ships AC1–AC7, AC11, and AC12 end to end.
+
+## Citations
+
+`patt.contact.command-intercept` (proposed), `stat.logging.info.contact`, `stat.logging.debug`, `stat.logging.warning`, `stat.logging.error`.
+
+## Scope
+
+* `src/utils/config.py` (modified — `CONTACT_CONFIG` commands registry (command id → handler, mode `code`/`agent`, usage/ack reply texts) with import-time asserts). Technical: new `commands` block in `CONTACT_CONFIG` keyed by command id, with handler dotted path under `src.core.`, mode ∈ {`code`, `agent`}, description, usage text, and ack template with a meteorite-id placeholder. `add-job` ships in `code` mode. Asserts cover shape, mode vocabulary, and no collision with `CONTACT_TASK_CONFIG` / `CONTACT_CONFIG["skills"]`.
+* `src/core/contact.py` (modified — command parse (strip leading mentions, unwrap Slack `<url|label>` link markup), intercept in `handle_slack_event` ahead of paste recovery and the Estelle turn, mode-driven reply (`code` → fixed ack/usage post; `agent` → one Estelle turn with the command result), activity/info logging). Technical:
+  * Parse helper returns `(command_id, payload)` or nothing: strip leading `<@U…>`, match `/<command>` against the registry only, unwrap `<url|label>` / `<url>`.
+  * Intercept in `_handle_slack_event_body` after known/unknown recognition and before `try_meteorite_apply_paste_from_slack` / `run_contact_estelle_turn` calls the registry handler.
+  * `code` mode posts the ack (or usage on an empty payload) via `contact_post_message` in-thread and sets `estelle_turn` with `outcome` = command id and its `slack_post`.
+  * `agent` mode calls `run_contact_estelle_turn` once with the command result added via a new optional extra-context parameter.
+  * Paste recovery is skipped for command events.
+
+## Acceptance criteria
+
+1. **Link payload lands raw at NEW.** A bound candidate posts `@Estelle /add-job www.dice.com/jobs/13234abcd`, and the event text arrives as `<@UBOT> /add-job <http://www.dice.com/jobs/13234abcd|www.dice.com/jobs/13234abcd>`. Then `SELECT candidate_id, state, source_kind, classify_outcome, content FROM meteorite ORDER BY id DESC LIMIT 1` returns that candidate, `NEW`, `slack`, NULL, and `http://www.dice.com/jobs/13234abcd`. **Fail:** no new row, any other state, a non-NULL `classify_outcome`, or `<`, `>` or `|` left in `content`.
+2. **Text payload lands raw at NEW.** `@Estelle /add-job <multi-line pasted JD>` inserts exactly one row with `state = NEW`, `classify_outcome` NULL, and `content` equal to the pasted text with the mention and command token removed. **Fail:** `content` still holds `/add-job` or `<@U…>`, or more than one row is inserted.
+3. `code` **mode: no LLM turn, one ack.** In a component test with `do_task` patched and `add-job` at its shipped `code` mode, handling an `/add-job` event calls `do_task` **zero** times. The result has `estelle_turn.outcome == "add-job"`, and there is exactly one `contact_post_message` call whose text contains the new meteorite id. **Fail:** any `do_task` call, no ack, or a second (hear-ack) post.
+4. `agent` **mode is honored from config.** With the `add-job` registry entry patched to `agent`, the same event inserts the row and then calls `run_contact_estelle_turn` exactly once, with live content that contains the new meteorite id. The Slack reply is that turn's reply. **Fail:** zero or two turns, or the id is absent from the turn's live content.
+5. **Paste recovery is not triggered.** With a `BOT_BLOCKED` meteorite row already present for the candidate, `/add-job <text>` inserts a new `NEW` row, and the `BOT_BLOCKED` row's `content` and `state` are unchanged. **Fail:** `apply_paste` called, or the BOT_BLOCKED row is modified.
+6. **Unknown sender and empty payload.** An unbound sender's `/add-job …` posts the existing unknown-recognition text and inserts no meteorite row (row count unchanged). A bound sender's bare `@Estelle /add-job` posts the config usage text and inserts no row. **Fail:** any row inserted in either case.
+7. **Only the leading command is recognized.** `@Estelle can you /add-job this later` takes the normal Estelle turn path (`do_task` called once, no meteorite insert). **Fail:** an insert, or the turn is skipped.
+8. **Registry, not literals.** `rg -n "['\"]/?add-job['\"]" src/core/` returns no matches; the command id and its mode appear only in `src/utils/config.py`. **Fail:** a quoted command literal or a parallel command/mode map in `src/core/`.
+9. **Production record.** Each successful command emits, at INFO without debug, one contact info line naming the sender, event, command id, mode, and meteorite id, plus one meteorite entity info line for the row entering `NEW`. **Fail:** either line absent with debug off.
+
+## Boundaries
+
+Does **not** own the row insert or the stage hop (sibling #1 — raw NEW meteorite insert + stage-hop classify). Does not edit `src/core/meteorite.py`.
+
+## Notes for planning
+
+After #1 (registry `add-job` handler resolves to #1's public insert entry). Introduces proposed `patt.contact.command-intercept` — flag for Archie approval. Adjacent: AST-1637 (Discussion) reworks `run_contact_estelle_turn`; whichever lands second rebases.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/AST-2032-estelle-add-job`, child `sub/AST-2032/AST-2035-contact-add-job-intercept`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-10-08T05:58:10.705Z
+[code-rubric] ESCALATE (Commit: 0ea00db48) Proposed pattern id not in corpus
+
+#### betty — 2026-10-08T05:54:53.445Z
+`origin/sub/AST-2032/AST-2035-contact-add-job-intercept` @ `0ea00db48` · command intercept tests landed
+
+#### joan — 2026-10-08T05:45:49.179Z
+[plan-rubric] PROCEED (Commit: a61df0f23) Contact intercept plan ready
+
+#### hedy — 2026-10-08T05:44:00.545Z
+`origin/sub/AST-2032/AST-2035-contact-add-job-intercept` @ `a61df0f23` · plan ready, two stages
+
+---
+
 # AST-2035 — Contact command registry + /add-job intercept
 
 **Linear:** [AST-2035](https://linear.app/astralcareermatch/issue/AST-2035)

@@ -1,3 +1,69 @@
+<!-- linear-archive: AST-2131 archived 2026-10-16 -->
+
+## Linear archive (AST-2131)
+
+**Archived:** 2026-10-16  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-2131/telescope-data-table-and-config-create-a-new-table-telescope-data  
+**Status at archive:** Archive  
+**Project:** Astral Foundation  
+**Assignee:** ada  
+**Priority / estimate:** None / 2  
+**Parent:** AST-2130 — Create a new table telescope_data  
+**Blocked by / blocks / related:** parent: AST-2130; blocks: AST-2132
+
+### Description
+
+## What this implements
+
+Ships the `telescope_data` table, schema-ensure, save-returns-id and read-by-id(s) functions, and the config naming content types, id-holding company keys, and the scraped-JD reference key. Observable: AC 1 and 2 on fresh and existing `astral.db`. Does **not** add gazer ownership (#2), JD (#3), roster paths (#4), or move data (#5).
+
+## Citations
+
+`stat.logging.debug`, `stat.logging.warning`, `stat.logging.error`.
+
+## Scope
+
+`src/data/database.py` — new table `telescope_data` (uuid primary key, `candidate_id`, `url`, `data_type` free text, compressed content blob, `created_at`) with an index on `candidate_id` + `created_at`; new save function that inserts one row and returns its id, with no allow-list check on `data_type`; new read function by one id and by a list of ids returning plain content; new schema-ensure function wired into the existing schema-ensure registry; header inventory updated. `src/utils/config.py` — new config block naming the content-type keys (`VISIBLE_TEXT`, `PAGE_LINKS`, reserved `DOM_CONTENT`) and listing the `company_data` keys that now hold row ids (`homepage_text`, `nav_links`, `website_content`, `job_list_visible`, `pjl_scrape_pages`), with a module-level assert that each is still in `ROSTER_CONFIG["company_data_keys"]`; new `TRACKER_CONFIG["job_data_keys"]` entry for the scraped-JD reference.
+
+## Acceptance criteria
+
+1. **Table shape.** `sqlite3 astral.db ".schema telescope_data"` shows a uuid primary key plus `candidate_id`, `url`, `data_type`, a content blob, and `created_at`. Fail: table or any of those columns missing.
+2. **No type gate.** Saving a row with `data_type="JSON"` succeeds and selecting it returns `JSON`. Fail: save raises or rejects.
+
+## Boundaries
+
+No gazer ownership (#2), JD composition (#3), roster/admin paths (#4), or data move (#5).
+
+## Notes for planning
+
+Parent: AST-2130. Citations above are the frozen Canon Scope subset for this child.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/AST-2130-telescope-data`, child `sub/AST-2130/AST-2131-telescope-data-table`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-10-10T23:14:18.095Z
+[code-rubric] PROCEED (Commit: 973adace) telescope_data storage clean
+
+#### betty — 2026-10-10T23:12:07.568Z
+`origin/sub/AST-2130/AST-2131-telescope-data-table` @ `973adacec` · telescope_data tests + bible landed
+
+#### joan — 2026-10-10T23:06:30.279Z
+[plan-rubric] PROCEED (Commit: 1f7bae1) created_at mirrors agent_data
+
+#### ada — 2026-10-10T23:05:53.611Z
+`origin/sub/AST-2130/AST-2131-telescope-data-table` @ `1f7bae1` · created_at via _utc_now()
+
+#### joan — 2026-10-10T23:04:31.440Z
+[plan-rubric] PROCEED (Commit: 0f16fb0) table + config plan ready
+
+#### ada — 2026-10-10T23:02:47.480Z
+`origin/sub/AST-2130/AST-2131-telescope-data-table` @ `0f16fb0` · plan ready, drift-check stage
+
+---
+
 # AST-2131 — telescope_data table and config
 
 **Parent:** [AST-2130 — Create a new table telescope_data](https://linear.app/astralcareermatch/issue/AST-2130)

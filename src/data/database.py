@@ -11,7 +11,7 @@ Tables used (inventory):
 - job       — Tracker: astral_job_id, company_id (nullable real employer; AST-1701), candidate_id (required owning candidate; AST-1598 / AST-1594), company_job_id, job_title, job_link, job_data, state, state_history, batch_id, source (company|meteorite parent/track; AST-1701 repurpose of AST-1469) + source_entity_id (company short_name or meteorite id text), etc.
 - meteorite — Ingress staging spine (AST-1557): one row per prospective job after classify fan-out; `state` from `METEORITE_STATES`; claim via `batch_id` / `batch_created_at`; eligibility count via `count_meteorites_unclaimed_in_states`; reverse lookup via `get_meteorite_by_astral_job_id(astral_job_id)`; candidate-scoped listing via `list_meteorites_for_candidate(candidate_id)` (+ landed `job_state`, AST-1974); listing-href fallback reverse lookup via `get_meteorite_link_by_astral_job_id(astral_job_id)` (AST-1694 — link column only; not AST-1685 provenance); columns id, candidate_id, source_kind, source_id, source_ref, state, content, classify_outcome, link, electronic_contact (AST-1689; config literal from AST-1688), job_title, employer_name (AST-1713; Ruth stage_meteorite response keys), astral_job_id, estelle_thread_ts, estelle_notified_at, nag_count, error, batch_id, batch_created_at, created_at, updated_at, state_changed_at.
 - candidate — Candidate: state, state_history JSON array, candidate_data JSON (contact/context/artifacts + meta), first/last/full/pronouns TEXT columns, candidate_api_key TEXT (legacy — not read or written since AST-1878), api_keys TEXT JSON array [{"server": LLM_SERVER_CONFIG id, "key": Fernet ciphertext}] — at most one entry per server; hydrated as candidate_api_keys {server: plaintext} (AST-1901), batch_id, batch_created_at (null/empty = unclaimed; AST-1258).
-- agent    — Agent: agent_id TEXT PK, content TEXT, model_id TEXT (LLM_MODEL_CONFIG key), max_tokens INTEGER, plain call settings sent as stored — quantization TEXT, temperature REAL, reasoning_effort TEXT, provider_allow_fallbacks INTEGER (bool), provider_only / provider_ignore TEXT (JSON array of provider slugs), provider_sort TEXT (AST-1955), requires_structured_output INTEGER (bool; gates model choice, never sent — AST-2172) — updated_at TIMESTAMP.
+- agent    — Agent: agent_id TEXT PK, agent_name TEXT (display string; AST-2232), content TEXT, model_id TEXT (LLM_MODEL_CONFIG key), max_tokens INTEGER, plain call settings sent as stored — quantization TEXT, temperature REAL, reasoning_effort TEXT, provider_allow_fallbacks INTEGER (bool), provider_only / provider_ignore TEXT (JSON array of provider slugs), provider_sort TEXT (AST-1955), requires_structured_output INTEGER (bool; gates model choice, never sent — AST-2172) — updated_at TIMESTAMP.
 - agent_task — Task prompt config with versioning: task_key_uuid TEXT PK, task_key TEXT, current INTEGER (1=active), agent_id TEXT, seven prompt segments (`user_prompt`; `cache_prompt` = Anthropic cache block A; `cache_prompt_b|c|d` = blocks B–D; `nocache_prompt`; `system_prompt` per-task override, empty = use agent content at runtime), `run_next`, `task_group_order TEXT`, `task_group_name TEXT`, `task_seq REAL`, `task_name TEXT` (UI grouping metadata, global per task_key), `updated_at`. Any segment edit (all seven) retires prior row + inserts new `current=1`.
 - anthropic_timesheets — Anthropic-only token/cost ledger mirror: anthropic_req_id TEXT UNIQUE, same metric columns as the unified timesheet (batch_id, token counts, calc_cost_*, agent_performance, failure_note, created_at). Untouched by AST-2217 rename.
 - service_timesheet — Unified token/cost ledger for LLM + search/contact calls (renamed from agent_timesheets, AST-2217): agent_req_id TEXT UNIQUE (vendor / minted external id), same metric columns as anthropic_timesheets, attribution (provider/server id, request_type, entity_type, entity_id, call_start, call_stop, response_item_count, response_char_length, completion_status), plus nullable platform columns (AST-1965: platform_cost — NULL = not reconciled / stub, native_tokens_prompt/_completion/_cached/_reasoning, host, platform_reconciled_at) set by update_timesheet_platform; sum_cost_by_batch prefers platform_cost per row when present (stub null falls through to calc).
@@ -154,7 +154,7 @@ AGENT_SETTING_COLUMNS: Tuple[str, ...] = tuple(_AGENT_SETTING_TYPES)
 _AGENT_LIST_SETTINGS = frozenset({"provider_only", "provider_ignore"})
 # Bool settings live in SQLite as INTEGER and read back as bool.
 _AGENT_BOOL_SETTINGS = frozenset({"provider_allow_fallbacks", "requires_structured_output"})
-_AGENT_PUBLIC_COLUMNS = ("agent_id", "content", "model_id", "max_tokens", *AGENT_SETTING_COLUMNS, "updated_at")
+_AGENT_PUBLIC_COLUMNS = ("agent_id", "agent_name", "content", "model_id", "max_tokens", *AGENT_SETTING_COLUMNS, "updated_at")
 
 
 def _check_agent_setting(name: str, value: Any) -> None:
@@ -6582,6 +6582,7 @@ def _ensure_agent_schema(conn: sqlite3.Connection) -> None:
         conn.execute("""
             CREATE TABLE agent (
                 agent_id TEXT PRIMARY KEY,
+                agent_name TEXT,
                 content TEXT,
                 model_id TEXT,
                 max_tokens INTEGER,
@@ -6600,6 +6601,7 @@ def _ensure_agent_schema(conn: sqlite3.Connection) -> None:
     else:
         cols = {row[1] for row in conn.execute("PRAGMA table_info(agent)").fetchall()}
         for col_name, col_def in [
+            ("agent_name", "TEXT"),
             ("model_id", "TEXT"),
             ("max_tokens", "INTEGER"),
             ("quantization", "TEXT"),
@@ -6635,6 +6637,7 @@ def save_agent(
     agent_id: str,
     content: str,
     *,
+    agent_name: Optional[str] = None,
     model_id: Optional[str] = None,
     max_tokens: Optional[int] = None,
     quantization: Optional[str] = None,
@@ -6647,7 +6650,8 @@ def save_agent(
     requires_structured_output: bool | None = None,
 ) -> None:
     """Upsert an agent row (AST-1955). Settings are type-checked only; on an existing row None leaves a column as is.
-    New rows default provider_allow_fallbacks to True and requires_structured_output to False."""
+    New rows default provider_allow_fallbacks to True and requires_structured_output to False.
+    agent_name (AST-2232): display string; None on UPDATE leaves the column; INSERT stores "" when None."""
     settings: Dict[str, Any] = {
         "quantization": quantization,
         "temperature": temperature,
@@ -6663,6 +6667,7 @@ def save_agent(
     mid = model_id.strip() if model_id is not None else None
     if mid is not None:
         _check_agent_model_id(mid)
+    aname: Optional[str] = None if agent_name is None else str(agent_name)
     now = _utc_now()
 
     def _with_conn() -> None:
@@ -6678,8 +6683,8 @@ def save_agent(
                     settings["provider_allow_fallbacks"] = True
                 if settings["requires_structured_output"] is None:
                     settings["requires_structured_output"] = False
-                cols = ["agent_id", "content", "model_id", "max_tokens", *settings, "updated_at"]
-                vals = [agent_id, content, mid, max_tokens,
+                cols = ["agent_id", "agent_name", "content", "model_id", "max_tokens", *settings, "updated_at"]
+                vals = [agent_id, "" if aname is None else aname, content, mid, max_tokens,
                         *(_agent_setting_to_db(n, v) for n, v in settings.items()), now]
                 conn.execute(
                     f"INSERT INTO agent ({', '.join(cols)}) VALUES ({', '.join('?' * len(cols))})",
@@ -6688,6 +6693,9 @@ def save_agent(
             else:
                 sets = ["content = ?", "updated_at = ?"]
                 params: List[Any] = [content, now]
+                if aname is not None:
+                    sets.append("agent_name = ?")
+                    params.append(aname)
                 # None leaves the stored value (same rule max_tokens always followed).
                 for name, value in {"model_id": mid, "max_tokens": max_tokens, **settings}.items():
                     if value is not None:
@@ -6728,7 +6736,7 @@ def list_agents() -> List[Dict[str, Any]]:
             _ensure_agent_schema(conn)
             _ensure_agent_task_schema(conn)
             rows = conn.execute("""
-                SELECT agent_id, LENGTH(content) AS content_length,
+                SELECT agent_id, agent_name, LENGTH(content) AS content_length,
                        model_id, max_tokens, quantization, temperature, reasoning_effort,
                        provider_allow_fallbacks, provider_only, provider_ignore, provider_sort,
                        requires_structured_output, updated_at,
@@ -6742,7 +6750,7 @@ def list_agents() -> List[Dict[str, Any]]:
     return _run_with_retry(_with_conn)
 
 
-_UPDATE_AGENT_ALLOWED = frozenset({"content", "model_id", "max_tokens", *AGENT_SETTING_COLUMNS})
+_UPDATE_AGENT_ALLOWED = frozenset({"content", "agent_name", "model_id", "max_tokens", *AGENT_SETTING_COLUMNS})
 
 
 def update_agent(agent_id: str, **kwargs: Any) -> int:

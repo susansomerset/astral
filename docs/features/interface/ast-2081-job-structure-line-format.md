@@ -1,3 +1,84 @@
+<!-- linear-archive: AST-2081 archived 2026-10-16 -->
+
+## Linear archive (AST-2081)
+
+**Archived:** 2026-10-16  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-2081/job-scoped-structure-line-format-formatflow-catalog-resume-edit  
+**Status at archive:** Archive  
+**Project:** Astral Interface  
+**Assignee:** ada  
+**Priority / estimate:** None / 5  
+**Parent:** AST-2046 — Resume Edit Overhaul  
+**Blocked by / blocks / related:** parent: AST-2046; blocks: AST-2083
+
+### Description
+
+## What this implements
+
+Ships the whole backend: the job resume structure (catalog key, effective read, save, routes, builder use), the Line format in print HTML, and the catalog fields the UI needs for format labels/tooltips/fonts, the Hidden label, and thumbnail eligibility. Does not own any UI (#2–#4).
+
+## Citations
+
+`patt.artifact.manage-catalog`, `patt.artifact.read-current`, `patt.artifact.write-operative`, `stat.logging.info.api`, `stat.logging.error`, `stat.logging.debug`.
+
+## Scope
+
+`src/utils/config.py` — **modified** — `line` body format; format labels, tooltip descriptions, and preview fonts; Hidden flow label; new catalog key for the job resume structure; preview-thumbnail flag on the job resume and cover letter artifact tabs. `src/core/candidate.py` — **modified** — one shared builder for the structure-editor payload (`all_sections` + `catalog`), used by the candidate and job structure routes. `src/ui/api/api_candidate.py` — **modified** — `GET /api/candidates/<id>/resume_structure` builds its payload through the shared helper, so the catalog carries the new format and flow fields. `src/core/tracker.py` — **modified** — job-scoped structure: effective-structure read (job current, else the candidate's current structure), structure save through the job catalog write, and job resume content prep filtered to the job's effective structure. `src/ui/api/api_jobs.py` — **modified** — new `GET /api/jobs/<id>/resume_structure` and `PUT /api/jobs/<id>/artifacts/job_resume_structure` routes. `src/core/builder.py` — **modified** — renders `line`-format sections; job resume HTML uses the job's effective structure (sections, order, titles, accent).
+
+Technical:
+
+* `config.py`: add `line` to the resume structure body-format tuple. Add config mapping each body format to a display label and a tooltip description (settings and rules), and to the `BUILD_CONFIG["default_style"]["fonts"]` stack it previews in. Add a Hidden flow-state label alongside the existing page-break policy labels. Register a new `ARTIFACT_CONFIG` key for the job resume structure (`entity_type` job, `candidate_scoped`, `body_shape` `resume_structure`, `ingestion_owner` tracker). Add a preview-thumbnail field on the job resume and cover letter rows of the recommended-job artifact tabs config. Formats, labels, fonts, and thumbnail eligibility live here only; the frontend never hardcodes them.
+* `candidate.py`: new public helper that turns a resolved structure into the editor payload (`sections`, `all_sections`, `accent_color`, `catalog` with the new fields), lifted out of the candidate route so both routes share one builder.
+* `api_candidate.py`: modify the resume-structure GET handler to call the shared helper. Response shape stays a superset of today's.
+* `tracker.py`: new function returning a job's effective resume structure (the job structure's current read, else the owning candidate's current structure). `save_job_artifact` accepts the job resume structure key and validates the body like the candidate structure write. `_prepare_job_resume_content` filters to the job's effective structure instead of the candidate's, so job-only sections survive save.
+* `api_jobs.py`: new authenticated GET returning the shared editor payload for the job's effective structure. New authenticated PUT writing the job resume structure through `save_job_artifact`. Both return 404 for a missing job and 400 for an invalid body.
+* `builder.py`: add a `line` branch to the resume-section body emitter that emits the text as a single line (one paragraph, newlines collapsed); empty bodies skip like the other formats. Modify `build_resume_from_job` and the accent resolution it uses so job resume HTML takes sections, order, titles, and accent from the job's effective structure.
+
+## Acceptance criteria
+
+13. **Line format end to end.** `line` is in the catalog's `body_formats`, and every format there today is still present. A Line section edits in a single-line input, and the preview shows its text as one line. *Fail:* a format removed, a multi-line editor, or the section skipped as "missing format".
+14. **Format text is config-driven.** `git grep -nE "Word Cloud|Bullet List|Flow uninterrupted" -- src/ui/frontend/src` returns nothing; those strings come from the catalog payload. *Fail:* any hardcoded hit.
+15. **Job structure is isolated.** On job A's resume, rename a section, change its format, and reorder it. Afterwards, `GET /api/candidates/<id>/resume_structure` and `GET /api/jobs/<B>/resume_structure` (job B, never edited) are unchanged, `GET /api/jobs/<A>/resume_structure` shows the edits, and job A's print HTML reflects them. *Fail:* the candidate or job B changes, or job A's HTML does not.
+16. **Job inherits until edited.** For a job with no job resume structure row, `GET /api/jobs/<id>/resume_structure` → `all_sections` equals the candidate's, and no job structure artifact row exists for that job. *Fail:* the sections differ, or a row was written by the GET.
+17. **Job-only section survives save.** Add a section on a job resume, give it content, and leave the field. `GET /api/jobs/<id>` shows that section's content in `job_resume`, and the print HTML includes it. *Fail:* the content is dropped by the save filter.
+18. **Job accent.** Picking a swatch on job A's resume changes job A's print HTML accent and leaves the base resume HTML accent unchanged. *Fail:* either is wrong.
+
+## Boundaries
+
+Does not own any UI (#2–#4). Sibling slices under [AST-2046](https://linear.app/astralcareermatch/issue/AST-2046): #2: split-pane-preview; #3: resume-editor; #4: wire-resume-surfaces.
+
+## Notes for planning
+
+Citations above; decisions 1–9 and the full architectural definition live on the parent [AST-2046](https://linear.app/astralcareermatch/issue/AST-2046). Estimate: 5.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/AST-2046-resume-edit-overhaul`,
+child `sub/AST-2046/AST-2081-job-structure-line-format`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-10-09T01:55:54.774Z
+[code-rubric] PROCEED (Commit: ff46d7bd6) Canon-clean; rev1 logging
+
+#### ada — 2026-10-09T01:53:15.305Z
+`origin/sub/AST-2046/AST-2081-job-structure-line-format` @ `ff46d7bd6` · manifest 1: 42 passed · manifest 2: builder 197 passed; no new failures (paired by test name vs pre-AST-2081 product, same DB). The count drift vs the baseline (candidate 19 vs 18, api_candidate 1 vs 2) is the shared `data/astral.db`'s `agent_task` run_next chain: `TestAst1881…test_craft_prefilter_generate_merges_into_response_and_stash` gets 409 on both trees against the live DB. It is not caused by AST-2081.
+
+#### betty — 2026-10-09T01:49:22.521Z
+`origin/sub/AST-2046/AST-2081-job-structure-line-format` @ `ff46d7bd6` · 42 tests, 2 drifts revised
+
+#### ada — 2026-10-09T01:08:10.629Z
+[check-linear]
+- Plan rev 1 @ `5fa9c3c7a`: Joan discuss item resolved — job structure GET drops its INFO completion line (`stat.logging.info.api`: idempotent GET = no info); INFO stays on the PUT only.
+
+#### joan — 2026-10-09T01:07:22.086Z
+[plan-rubric] PROCEED (Commit: 28a73a6fd) Backend plan canon-clean; discuss GET info. context_tokens≈42000
+
+#### ada — 2026-10-09T01:05:16.801Z
+`origin/sub/AST-2046/AST-2081-job-structure-line-format` @ `28a73a6fd` · backend plan, five stages
+
+---
+
 # AST-2081 — Job-scoped structure, Line format, format/flow catalog (Resume Edit Overhaul)
 
 - **Parent:** [AST-2046 Resume Edit Overhaul](https://linear.app/astralcareermatch/issue/AST-2046)

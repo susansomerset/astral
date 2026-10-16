@@ -229,8 +229,9 @@ export const STATE_UI_MANIFEST_FIXTURE: StateUiManifest = {
         ],
       },
       report_top_tabs: [
-        // AST-1872: Analysis first (first entry = default tab)
+        // AST-1872 / AST-2232: Analysis first; Job Description between Analysis and Summary
         { tab_id: "analysis", nav_label: "Analysis" },
+        { tab_id: "job_description", nav_label: "Job Description" },
         { tab_id: "summary", nav_label: "Summary" },
         { tab_id: "artifacts", nav_label: "Artifacts" },
         // AST-1550 / AST-1551: Discussion after Artifacts
@@ -263,7 +264,7 @@ export const STATE_UI_MANIFEST_FIXTURE: StateUiManifest = {
         { section_id: "company_upshot", nav_label: "Company Upshot", default_expanded: true },
         { section_id: "caveats", nav_label: "Noteworthy Caveats", default_expanded: true },
         { section_id: "questions", nav_label: "Questions to Ask", default_expanded: true },
-        { section_id: "raw_jd", nav_label: "Raw Job Description", default_expanded: false },
+        // AST-2232: raw_jd moved to Job Description top tab
       ],
       report_phase_tabs: [
         { tab_id: "phase_jd", nav_label: "JD Analysis", grades_field: "jd_grades", take_key: "take_jd" },
