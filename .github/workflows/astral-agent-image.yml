@@ -67,7 +67,8 @@ jobs:
       # NOT watch the registry tag. Same project tokens/environments as Telescope.
       # Service IDs are picked in shell, not via `cond && 'a' || 'b'`: an empty
       # production ID would be falsy and silently fall through to staging's.
-      # Blank SERVICE_ID = Railway service not created yet; push only, no redeploy.
+      # Staging = agent-staging. Blank SERVICE_ID = Railway service not created yet;
+      # push only, no redeploy.
       - name: Trigger Railway redeploy
         if: github.event_name != 'pull_request'
         env:
@@ -79,7 +80,7 @@ jobs:
             SERVICE_ID=''
           else
             ENV_ID='2604ddad-4700-4341-b2a5-7af42d70e9f1'
-            SERVICE_ID=''
+            SERVICE_ID='fd497923-db15-4167-8672-7c40f313b313'
           fi
           if [ -z "$SERVICE_ID" ]; then
             echo "::notice::No astral-agent Railway service ID for $CHANNEL yet; image pushed, redeploy skipped."
