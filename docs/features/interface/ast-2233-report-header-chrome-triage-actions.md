@@ -236,3 +236,35 @@ The plan is binding. The agent:
 ## Estimate
 
 Confirm Chuckles estimate: 3 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-2233
+**Overall:** APPROVED
+**Corpus:** 65a2864973ecf09fd57732c2cfc9a4e1ff3e0b91 (tree `canon/` at publish tip; no `docs/canon-index.md` on ref)
+**Publish ref:** `origin/sub/AST-2226/AST-2233-report-header-chrome-triage-actions` @ `024831014356a99c9536ceff3da1ca43129cb80c`
+
+## Canon scores
+
+_(Frozen Citations: none — no directive ids to score; Radia column is intentionally vacuous for this child.)_
+
+## Traceability
+
+AC 1 → Stage 1 (Props/JSX purge Copy; AC greps); AC 2 → Stage 1 (Skip/Applied/Generate action row; no Print Resume/Cover in header file); AC 3 → Stage 2 (≤1023px stack/wrap on `.recommended-report-header-*`). Parent functional (1)(2) → Stages 1–2; (7)(8) company line + website line + date strip → Stage 1 markup + Stage 2 CSS; (9) phone-ready header → Stage 2. Parent (13) thermometer / Discussion chrome hooks → Stage 2 CSS only (#3 mounts DOM). Wiring / `can_*` gating N/A — AST-2234.
+
+## Findings
+
+**acceptable** — Explicit scope gate, UAT fitness, sibling prop contract (frozen for AST-2234), and AC grep done-when match child Scope and Boundaries; two-stage split (header then CSS) is executable against current `RecommendedJobReportHeader.tsx` Copy/Print surface.
+
+**acceptable** — Documented decision that full-package `tsc`/build may fail until AST-2234 updates `JobAnalysisReportModal` call site; Stage done-when does not require green modal compile — stop-and-comment if hooks block commit only on that mismatch.
+
+**discuss** — Frozen canon list is explicitly empty (`Citations: none`); `astral.ui.frontend-file-placement` plainly governs new report-scoped rules in `App.css` but is not on the list — Archie may amend at Discussion; not scored here.
+
+**discuss** — `formatReportDate` uses `Intl` without candidate `timeZone` (plan documents no candidate context in header); aligns with child AC 1–3 and parent AC7 `m/d/yy` on `created_at`/discovered prop — if Susan wants strip dates in candidate TZ, that is a product call for #2 or #3, not blocked by this plan text.
+
+**discuss** — Execution contract stop comment targets parent AST-2226 while sibling plans use the child id; minor inconsistency only.
+
+**Definition fidelity (R6):** Files Changed = two Scope files only; no modal/lib/backend. Estimate confirm present. Plan Discuss rounds on thread: 0.
+
+context_tokens≈52000
