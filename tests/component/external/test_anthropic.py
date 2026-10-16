@@ -683,3 +683,43 @@ class TestAst2179ForcedToolTransport:
         out = await self._send(debug=True)
         assert out["success"] is True and out["parsed_response"] == _TOOL_INPUT
         assert seen == [json.dumps(_TOOL_INPUT)]
+
+class TestAst2217ReceiptStubAndAttribution:
+    """AST-2217 AC5 stub half + AC8 call-time attribution on Anthropic recorded rows."""
+
+    def test_get_receipt_zero_stub_shape_and_null_cost(self) -> None:
+        from src.utils.config import TIMESHEET_RECEIPT_FIELDS
+        receipts = anthropic_mod.get_receipt(["id-a", "id-b"], api_key="ignored")
+        assert len(receipts) == 2
+        for row in receipts:
+            assert set(row) == set(TIMESHEET_RECEIPT_FIELDS)
+            assert row["platform_cost"] is None
+            assert row["completion_status"] == "stub"
+            assert row["native_tokens_prompt"] == 0
+            assert row["native_tokens_completion"] == 0
+
+    @pytest.mark.asyncio
+    async def test_recorded_call_carries_attribution(self, monkeypatch, fake_anthropic_client) -> None:
+        client = fake_anthropic_client(
+            response_text='{"agent_performance":{"status":"success"},"agent_payload":{}}'
+        )
+        monkeypatch.setattr(anthropic_mod, "_get_client", lambda: client)
+        recorded: list = []
+        out = await anthropic_mod.send_to_anthropic(
+            [{"type": "text", "text": "hi"}],
+            model_code="claude-sonnet-4-6",
+            response_format="json",
+            record_timesheet=lambda **kw: recorded.append(kw),
+            request_type="DISPATCH_AGENT",
+            entity_type="job",
+            entity_id="job-1",
+        )
+        assert out["success"] is True
+        assert recorded
+        row = recorded[0]
+        assert row["request_type"] == "DISPATCH_AGENT"
+        assert (row["entity_type"], row["entity_id"]) == ("job", "job-1")
+        assert row["call_start"] and row["call_stop"]
+        assert row["call_stop"] >= row["call_start"]
+        assert row["response_char_length"] > 0
+        assert row["response_item_count"] == 1

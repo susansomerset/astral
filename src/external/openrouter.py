@@ -5,24 +5,24 @@ and gather calls land on different hosts pays full input on every call. Servers 
 LLM_SERVER_CONFIG `probe` flag; send_to_llm_compat calls get_batch_host only when that flag is on and
 log_batch_id is set.
 
-get_generation_stats (AST-1963): one call's platform-billed cost, native token counts and serving host,
-by generation id (our agent_req_id) and the key that made the call. Never raises; retries are the caller's.
+get_receipt (AST-2218): billed cost / native tokens per generation id in TIMESHEET_RECEIPT_FIELDS shape.
+Never raises; no database access. Replaces get_generation_stats / get_generation_record.
 """
 
 import asyncio
 import json
 import threading
 from concurrent.futures import Future
-from typing import Any, Awaitable, Callable, Dict, Optional, Tuple
+from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
 
 import httpx
 
-from src.utils.config import LLM_PROBE_MESSAGE
+from src.utils.config import LLM_PROBE_MESSAGE, TIMESHEET_RECEIPT_FIELDS
 from src.utils.integration_io import require_controlled_external_io
 from src.utils.llm_external import normalize_provider_error, provider_call_http_timeout_seconds
 from src.utils.logging import get_logger
 
-__all__ = ["probe_host", "get_batch_host", "get_generation_stats"]
+__all__ = ["probe_host", "get_batch_host", "get_receipt"]
 
 logger = get_logger(__name__)
 
@@ -32,8 +32,7 @@ logger = get_logger(__name__)
 _hosts: Dict[Tuple[str, str], Future] = {}
 _hosts_lock = threading.Lock()
 
-# Generation-stats endpoint (bearer auth, ?id=<generation id>). The record 404s for about 30s after
-# the call; reconcile_timesheet_platform waits that out before the first try.
+# Generation endpoint (bearer auth, ?id=<generation id>). The record 404s for about 30s after the call.
 GENERATION_URL = "https://openrouter.ai/api/v1/generation"
 
 
@@ -112,7 +111,7 @@ def _fetch_generation_data(generation_id: str, api_key: str) -> Dict[str, Any]:
     """GET /generation → {"success": True, "data": {...}} or {"success": False, "error": str}. Never raises."""
     logger.debug("Calling GET generation: id=%s", generation_id)
     try:
-        require_controlled_external_io("openrouter.get_generation_stats")
+        require_controlled_external_io("openrouter.get_receipt")
         resp = httpx.get(
             GENERATION_URL,
             params={"id": generation_id},
@@ -123,45 +122,51 @@ def _fetch_generation_data(generation_id: str, api_key: str) -> Dict[str, Any]:
         if resp.status_code != 200:
             return {
                 "success": False,
-                "error": f"Generation stats HTTP {resp.status_code}: {normalize_provider_error(resp.text, fallback='empty body')}",
+                "error": f"Generation receipt HTTP {resp.status_code}: {normalize_provider_error(resp.text, fallback='empty body')}",
             }
         data = (resp.json() or {}).get("data") or {}
         if not data:
-            return {"success": False, "error": "Generation stats not ready: empty data"}
+            return {"success": False, "error": "Generation receipt not ready: empty data"}
         return {"success": True, "data": data}
     except Exception as e:
-        err = f"Generation stats lookup failed: {normalize_provider_error(e)}"
+        err = f"Generation receipt lookup failed: {normalize_provider_error(e)}"
         logger.debug("Response from GET generation: id=%s error=%s", generation_id, err)
         return {"success": False, "error": err}
 
 
-def get_generation_stats(generation_id: str, api_key: str) -> Dict[str, Any]:
-    """One call's billed stats by generation id and key: {"success": True, "total_cost", "native_tokens_prompt",
-    "native_tokens_completion", "native_tokens_cached", "native_tokens_reasoning", "provider_name"}, or
-    {"success": False, "error"} when the call fails or the record isn't ready (404 / no total_cost). Never raises."""
-    out = _fetch_generation_data(generation_id, api_key)
-    if not out["success"]:
-        return out
-    data = out["data"]
-    if data.get("total_cost") is None:
-        return {"success": False, "error": "Generation stats not ready: no total_cost"}
-    return {
-        "success": True,
-        "total_cost": float(data["total_cost"]),
-        "native_tokens_prompt": data.get("native_tokens_prompt"),
-        "native_tokens_completion": data.get("native_tokens_completion"),
-        "native_tokens_cached": data.get("native_tokens_cached"),
-        "native_tokens_reasoning": data.get("native_tokens_reasoning"),
-        "provider_name": data.get("provider_name"),
-    }
+def _empty_receipt(*, completion_status: str) -> Dict[str, Any]:
+    """Shared TIMESHEET_RECEIPT_FIELDS shape; Astral half empty, vendor cost null."""
+    row = {k: None for k in TIMESHEET_RECEIPT_FIELDS}
+    row["native_tokens_prompt"] = 0
+    row["native_tokens_completion"] = 0
+    row["native_tokens_cached"] = 0
+    row["cache_write_tokens"] = 0
+    row["response_item_count"] = 0
+    row["response_char_length"] = 0
+    row["platform_cost"] = None
+    row["completion_status"] = completion_status
+    return row
 
 
-def get_generation_record(generation_id: str, api_key: str) -> Dict[str, Any]:
-    """Full generation payload when billed stats are ready; same failure shape as get_generation_stats. Never raises."""
-    out = _fetch_generation_data(generation_id, api_key)
-    if not out["success"]:
-        return out
-    data = out["data"]
-    if data.get("total_cost") is None:
-        return {"success": False, "error": "Generation stats not ready: no total_cost"}
-    return {"success": True, "data": data}
+def get_receipt(external_ids: List[str], api_key: str) -> List[Dict[str, Any]]:
+    """One receipt per generation id in TIMESHEET_RECEIPT_FIELDS shape. Never raises. No DB."""
+    out: List[Dict[str, Any]] = []
+    for eid in external_ids:
+        fetched = _fetch_generation_data(str(eid), api_key)
+        if not fetched.get("success"):
+            # HTTP / transport failure — error (AC5: 404 carries no cost).
+            out.append(_empty_receipt(completion_status="error"))
+            continue
+        data = fetched["data"]
+        if data.get("total_cost") is None:
+            # Record present but not billed yet.
+            out.append(_empty_receipt(completion_status="not_ready"))
+            continue
+        row = _empty_receipt(completion_status="success")
+        row["platform_cost"] = float(data["total_cost"])
+        row["native_tokens_prompt"] = data.get("native_tokens_prompt") or 0
+        row["native_tokens_completion"] = data.get("native_tokens_completion") or 0
+        row["native_tokens_cached"] = data.get("native_tokens_cached") or 0
+        row["cache_write_tokens"] = data.get("cache_write_tokens") or 0
+        out.append(row)
+    return out

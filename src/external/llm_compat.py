@@ -7,7 +7,7 @@ import random
 import threading
 import time
 from contextlib import nullcontext
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Callable, Dict, List, Optional
 
 from anthropic import Anthropic, RateLimitError
@@ -19,6 +19,7 @@ from src.utils.config import PROVIDER_EMPTY_RESPONSE, PROVIDER_PROBE_FAILURE, PR
 from src.utils.cost_calculator import CALC_COST_KEYS, calculate_cost_components_from_counts, usage_to_token_counts
 from src.utils.integration_io import require_controlled_external_io
 from src.utils.llm_external import (
+    extract_api_response_text,
     await_provider_call_with_budget,
     classify_provider_balance_refusal,
     classify_provider_call_timeout,
@@ -33,7 +34,7 @@ from src.utils.llm_external import (
 )
 from src.utils.logging import get_logger, log_batch_id, log_llm_batch_summary
 
-__all__ = ["send_to_llm_compat"]
+__all__ = ["send_to_llm_compat", "get_receipt"]
 
 logger = get_logger(__name__)
 
@@ -101,6 +102,9 @@ async def send_to_llm_compat(
     batch_size: int = 1,
     record_timesheet: Optional[Callable[..., None]] = None,
     forced_tool: Optional[Dict[str, Any]] = None,
+    request_type: Optional[str] = None,
+    entity_type: Optional[str] = None,
+    entity_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Send blocks to the server's Anthropic-compatible API; timesheet via record_timesheet callback.
 
@@ -187,6 +191,8 @@ async def send_to_llm_compat(
                     cost_parts = dict.fromkeys(CALC_COST_KEYS, 0.0)
             else:
                 cost_parts = dict.fromkeys(CALC_COST_KEYS, 0.0)
+            _resp_text = extract_api_response_text(response) if getattr(response, "content", None) else ""
+            _call_start = start_time.astimezone(timezone.utc).isoformat() if start_time.tzinfo else start_time.replace(tzinfo=timezone.utc).isoformat()
             return dict(
                 agent_req_id=getattr(response, "id", None),
                 task_key_uuid=task_key_uuid,
@@ -205,6 +211,13 @@ async def send_to_llm_compat(
                 calc_cost_no_cache_input=cost_parts["calc_cost_no_cache_input"],
                 calc_cost_output=cost_parts["calc_cost_output"],
                 provider=server_id,
+                request_type=request_type,
+                entity_type=entity_type,
+                entity_id=entity_id,
+                call_start=_call_start,
+                call_stop=datetime.now(timezone.utc).isoformat(),
+                response_item_count=1 if _resp_text else 0,
+                response_char_length=len(_resp_text or ""),
             )
 
         def _record_probe(response: Any) -> None:
@@ -408,3 +421,22 @@ async def send_to_llm_compat(
             if fc:
                 out["failure_class"] = fc
         return out
+
+
+def get_receipt(external_ids: List[str], api_key: str) -> List[Dict[str, Any]]:
+    """Zero-stub receipts for direct servers (AST-2217). No network. platform_cost always None.
+    OpenRouter-routed generation ids are answered by openrouter.get_receipt (AST-2218)."""
+    from src.utils.config import TIMESHEET_RECEIPT_FIELDS
+    out: List[Dict[str, Any]] = []
+    for _eid in external_ids:
+        row = {k: None for k in TIMESHEET_RECEIPT_FIELDS}
+        row["native_tokens_prompt"] = 0
+        row["native_tokens_completion"] = 0
+        row["native_tokens_cached"] = 0
+        row["cache_write_tokens"] = 0
+        row["response_item_count"] = 0
+        row["response_char_length"] = 0
+        row["platform_cost"] = None
+        row["completion_status"] = "stub"
+        out.append(row)
+    return out

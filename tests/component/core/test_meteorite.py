@@ -3754,3 +3754,191 @@ class TestAst2034StageHopClassify:
         assert db.get_meteorite_batch(batch_id) == []
         for mid in (a, b):
             assert db.get_meteorite(mid).get("batch_id") is None
+
+
+# Branches: editable helper; save overwrite; refuse gates; no pipeline / agent_data (AST-2223).
+class TestAst2223SaveCandidateMeteoriteEdit:
+    """AST-2223: candidate overwrite edit — config-driven, not versioned, no ingress side-effects."""
+
+    def _seed(self, db, cid: str, **fields: object) -> int:
+        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "E"})
+        return _insert_meteorite_row(db, cid, **fields)
+
+    def _edit_body(self, **overrides) -> dict:
+        col = METEORITE_CONFIG["electronic_contact_column"]
+        base = {
+            "state": "CHECK_UNIQUE",
+            "content": "Edited JD body " + ("x" * 40),
+            "link": "https://jobs.example.com/edited",
+            "job_title": "Edited Title",
+            "employer_name": "Edited Co",
+            col: "edit@example.com",
+        }
+        base.update(overrides)
+        return base
+
+    def _pipeline_spies(self, monkeypatch: pytest.MonkeyPatch) -> dict:
+        spies = {
+            "stage_meteorite": MagicMock(name="stage_meteorite"),
+            "run_scrape_meteorite": MagicMock(name="run_scrape_meteorite"),
+            "get_visible_text": MagicMock(name="get_visible_text"),
+            "do_task": MagicMock(name="do_task"),
+            "save_agent_data": MagicMock(name="save_agent_data"),
+        }
+        monkeypatch.setattr(meteorite_mod, "stage_meteorite", spies["stage_meteorite"])
+        if hasattr(meteorite_mod, "run_scrape_meteorite"):
+            monkeypatch.setattr(meteorite_mod, "run_scrape_meteorite", spies["run_scrape_meteorite"])
+        monkeypatch.setattr(meteorite_mod, "get_visible_text", spies["get_visible_text"])
+        monkeypatch.setattr("src.core.agent.do_task", spies["do_task"])
+        monkeypatch.setattr("src.data.database.save_agent_data", spies["save_agent_data"])
+        return spies
+
+    def _assert_pipeline_untouched(self, spies: dict) -> None:
+        for name, spy in spies.items():
+            spy.assert_not_called()
+
+    def test_is_editable_keys_on_landed_only(self, sqlite_in_memory) -> None:
+        assert meteorite_mod.is_meteorite_editable(None) is False
+        assert meteorite_mod.is_meteorite_editable({"state": "LANDED"}) is False
+        assert meteorite_mod.is_meteorite_editable({"state": "READY"}) is True
+        # Claimed-but-non-LANDED stays editable on the flag; claim is a save-time 409.
+        assert meteorite_mod.is_meteorite_editable({"state": "READY", "batch_id": "b1"}) is True
+
+    def test_default_and_pick_list_state_persist_without_pipeline(
+        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        db = sqlite_in_memory
+        spies = self._pipeline_spies(monkeypatch)
+        mid = self._seed(db, "cand-2223-default", state="READY", content="old " + ("y" * 40))
+        out = meteorite_mod.save_candidate_meteorite_edit(mid, self._edit_body(state="CHECK_UNIQUE"))
+        assert out["ok"] is True
+        row = db.get_meteorite(mid)
+        assert row["state"] == "CHECK_UNIQUE"
+        assert row["content"].startswith("Edited JD body")
+        self._assert_pipeline_untouched(spies)
+
+        spies2 = self._pipeline_spies(monkeypatch)
+        out2 = meteorite_mod.save_candidate_meteorite_edit(
+            mid, self._edit_body(state="READY", content="Second edit " + ("z" * 40))
+        )
+        assert out2["ok"] is True
+        assert db.get_meteorite(mid)["state"] == "READY"
+        self._assert_pipeline_untouched(spies2)
+
+    def test_all_editable_fields_persist(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        col = METEORITE_CONFIG["electronic_contact_column"]
+        mid = self._seed(
+            db,
+            "cand-2223-fields",
+            state="NEW",
+            content="before",
+            link="https://old.example",
+            job_title="Old",
+            employer_name="OldCo",
+            **{col: "old@ex.com"},
+        )
+        body = self._edit_body(
+            content="  Full content " + ("a" * 40) + "  ",
+            link="  https://new.example/j  ",
+            job_title="  New Title  ",
+            employer_name="  New Co  ",
+            **{col: "  new@ex.com  "},
+        )
+        out = meteorite_mod.save_candidate_meteorite_edit(mid, body)
+        assert out["ok"] is True
+        row = db.get_meteorite(mid)
+        assert row["content"] == "Full content " + ("a" * 40)
+        assert row["link"] == "https://new.example/j"
+        assert row["job_title"] == "New Title"
+        assert row["employer_name"] == "New Co"
+        assert row[col] == "new@ex.com"
+
+    def test_state_change_clears_error_same_state_keeps_it(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        mid = self._seed(
+            db, "cand-2223-err", state="READY", content="body " + ("b" * 40), error="stale fail"
+        )
+        out = meteorite_mod.save_candidate_meteorite_edit(
+            mid, self._edit_body(state="CHECK_UNIQUE", content="body " + ("b" * 40))
+        )
+        assert out["ok"] is True
+        assert not db.get_meteorite(mid).get("error")
+
+        mid2 = self._seed(
+            db, "cand-2223-err2", state="READY", content="body " + ("c" * 40), error="keep me"
+        )
+        out2 = meteorite_mod.save_candidate_meteorite_edit(
+            mid2, self._edit_body(state="READY", content="body " + ("c" * 40))
+        )
+        assert out2["ok"] is True
+        assert db.get_meteorite(mid2)["error"] == "keep me"
+
+    def test_non_editable_field_refused(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        mid = self._seed(db, "cand-2223-badfield", state="READY", content="keep " + ("d" * 40))
+        before = dict(db.get_meteorite(mid))
+        body = self._edit_body()
+        body["astral_job_id"] = "should-not-write"
+        out = meteorite_mod.save_candidate_meteorite_edit(mid, body)
+        assert out == {"ok": False, "error": "bad_field"}
+        after = db.get_meteorite(mid)
+        assert after["content"] == before["content"]
+        assert after.get("astral_job_id") == before.get("astral_job_id")
+
+    def test_landed_row_and_landed_target_refused(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        landed = self._seed(db, "cand-2223-landed", state="LANDED", content="landed " + ("e" * 40))
+        before = dict(db.get_meteorite(landed))
+        out = meteorite_mod.save_candidate_meteorite_edit(landed, self._edit_body())
+        assert out == {"ok": False, "error": "locked"}
+        assert db.get_meteorite(landed)["content"] == before["content"]
+
+        mid = self._seed(db, "cand-2223-to-landed", state="READY", content="ok " + ("f" * 40))
+        before2 = dict(db.get_meteorite(mid))
+        out2 = meteorite_mod.save_candidate_meteorite_edit(mid, self._edit_body(state="LANDED"))
+        assert out2 == {"ok": False, "error": "bad_state"}
+        assert db.get_meteorite(mid)["state"] == before2["state"]
+
+    def test_claimed_row_refused(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        mid = self._seed(db, "cand-2223-claimed", state="READY", content="claimed " + ("g" * 40))
+        assert db.claim_meteorite_batch("claim-2223", "READY", 1, candidate_id="cand-2223-claimed") == 1
+        before = dict(db.get_meteorite(mid))
+        out = meteorite_mod.save_candidate_meteorite_edit(mid, self._edit_body())
+        assert out == {"ok": False, "error": "claimed"}
+        assert db.get_meteorite(mid)["content"] == before["content"]
+        assert db.get_meteorite(mid)["batch_id"] == "claim-2223"
+
+    def test_empty_content_refused(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        mid = self._seed(db, "cand-2223-empty", state="READY", content="keep " + ("h" * 40))
+        before = dict(db.get_meteorite(mid))
+        out = meteorite_mod.save_candidate_meteorite_edit(mid, self._edit_body(content="   "))
+        assert out == {"ok": False, "error": "empty_content"}
+        assert db.get_meteorite(mid)["content"] == before["content"]
+
+    def test_successful_save_creates_no_agent_data_row(
+        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        db = sqlite_in_memory
+        spies = self._pipeline_spies(monkeypatch)
+        mid = self._seed(db, "cand-2223-adata", state="NEW", content="seed " + ("i" * 40))
+
+        def _count() -> int:
+            conn = db._get_connection()
+            try:
+                db._ensure_agent_data_schema(conn)
+                return int(conn.execute("SELECT COUNT(*) FROM agent_data").fetchone()[0])
+            finally:
+                conn.close()
+
+        before = _count()
+        out = meteorite_mod.save_candidate_meteorite_edit(mid, self._edit_body())
+        assert out["ok"] is True
+        assert _count() == before
+        spies["save_agent_data"].assert_not_called()
+
+    def test_not_found(self, sqlite_in_memory) -> None:
+        out = meteorite_mod.save_candidate_meteorite_edit(999999, self._edit_body())
+        assert out == {"ok": False, "error": "not_found"}
