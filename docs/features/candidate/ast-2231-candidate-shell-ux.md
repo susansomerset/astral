@@ -210,3 +210,17 @@ AC8 → Stage 1 step 6 (stage-0 groups omitted by #3; no client stage math). AC9
 **R6 (summary):** Scope gate holds (NavigationShell + App.css). Picker hide, disabled-but-visible, Profile attention, stage-0 via empty candidate-facing groups, and #3 prerequisite remain faithful. Estimate 2 — agree.
 
 context_tokens≈102000
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-2225/AST-2231-candidate-shell-ux`
+**Plan path:** `docs/features/candidate/ast-2231-candidate-shell-ux.md`
+
+**Built tip:** `cc79c2c6b33e6a5aea9243fd0156e9c55688dcab` (`cc79c2c6b`)
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `87122ae4b` | Non-admin hide picker; null-key recent seed; Profile attention |
+| 2 | `cc79c2c6b` | `.nav-link-attention` yellow via `--warning` |
+
+**Betty note:** Frontend shell only. Consumes AST-2230 `recent` / `attention` / stage-0 omit. No test-tree edits.
