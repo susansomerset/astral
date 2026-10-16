@@ -1239,6 +1239,48 @@ class TestAst1773StageEmployerNameAndReviewDuplicateCatalog:
         ).read_bytes()
 
 
+class TestAst2263CheckUniqueMeteoriteAgentTask:
+    """AST-2263: check_unique_meteorite is a Land Meteorite grouping shell."""
+
+    _PROMPT_FIELDS = (
+        "cache_prompt",
+        "cache_prompt_b",
+        "cache_prompt_c",
+        "cache_prompt_d",
+        "nocache_prompt",
+        "system_prompt",
+        "user_prompt",
+    )
+
+    def test_land_meteorite_row_seq_3_2(self) -> None:
+        rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
+        hits = [r for r in rows if r.get("task_key") == "check_unique_meteorite"]
+        assert len(hits) == 1
+        row = hits[0]
+        assert row["current"] == 1
+        assert row["agent_id"] == "telescope"
+        assert row["task_name"] == "check_unique_meteorite"
+        assert row["task_group_name"] == "Land Meteorite"
+        assert row["task_group_order"] == "4200"
+        assert row["task_seq"] == 3.2
+        assert (row.get("run_next") or "") == ""
+        for field in self._PROMPT_FIELDS:
+            assert (row.get(field) or "") == "", field
+        # Between scrape (3) and duplicate review (3.5) in the Land Meteorite group.
+        land = sorted(
+            (
+                r["task_seq"]
+                for r in rows
+                if r.get("current") == 1 and r.get("task_group_name") == "Land Meteorite"
+            ),
+            key=float,
+        )
+        slot = land.index(3.2)
+        assert land[slot - 1] == 3
+        assert land[slot + 1] == 3.5
+        assert [r["task_key_uuid"] for r in rows].count(row["task_key_uuid"]) == 1
+
+
 @pytest.mark.skip(reason=_AST1269_SEED_WIPE_SKIP)
 class TestAst1106GazeEmailCatalogRow:
     """AST-1467: gaze_email catalog shell retired; meteorite_email remains Meteorite Review."""
