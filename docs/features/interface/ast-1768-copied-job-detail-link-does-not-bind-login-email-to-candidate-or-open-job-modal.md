@@ -161,3 +161,13 @@ AST-1768 bind, unchanged except the admin reload keep above:
 - `candidatesHydrated` flips only after that resolution, so `JobsJobDetail` company align still runs after the bind.
 - `alignSelectedCandidateForJobCompany` stays admin-only.
 - Theme (`data-theme`) and the tab title still follow whatever `selectedId` this load kept.
+
+### Radia review
+
+[code-rubric] Ticket AST-2258. Publish ref `87fec5803a1f5007cb89869d82b441cae1766563`. Corpus `b7ab2203048ce0beb2869a12200ab7fa696c8066`. Overall CLEAN.
+
+Canon scores: empty frozen Canon Scope. Joan `[board-joan] CANON: OK`.
+
+[bug-repro] not applicable — remount coverage is sibling AST-2259. ## What must still hold — OK. fix-now: none. discuss: none.
+
+Advisory: product diff is `CandidateContext.tsx` plus this plan; the remount test is AST-2259 (docs-acceptance for the product-vs-test split).
