@@ -1,3 +1,95 @@
+<!-- linear-archive: AST-2122 archived 2026-10-16 -->
+
+## Linear archive (AST-2122)
+
+**Archived:** 2026-10-16  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-2122/retire-theme-examples-and-the-light-alternates-light-theme-replace  
+**Status at archive:** Archive  
+**Project:** Astral Interface  
+**Assignee:** hedy  
+**Priority / estimate:** None / 2  
+**Parent:** AST-2100 — Light theme: replace grade colours with "Bright + ring" palette  
+**Blocked by / blocks / related:** parent: AST-2100; related: AST-2101; blocks: AST-2123
+
+### Description
+
+## What this implements
+
+Removes the Tools → Theme Examples screen end to end: its nav item, route, page, grade-colour candidate sets and the UI config type for them. Removes the Light (Parchment) and Light (Slate) registry entries, so Dark and Light are the only palettes. Does **not** touch `App.css`; [AST-2123](https://linear.app/astralcareermatch/issue/AST-2123) deletes the matching CSS blocks and §16. The unused CSS left on dev in between is harmless.
+
+## Citations
+
+none. No in-force pattern or statute governs config registry entries or an admin examples page (see parent Architectural definition).
+
+## Scope
+
+* `src/utils/config.py`: **modified**. The `light_parchment` and `light_slate` entries and the `theme_example_grade_sets` key leave `UI_CONFIG`, the Theme Examples item leaves the `Tools` nav group, and the registry comments drop their Theme Examples wording.
+* `src/ui/frontend/src/lib/uiConfig.ts`: **modified**. Drops the grade-set entry type and the `theme_example_grade_sets` field from the UI config type.
+* `src/ui/frontend/src/routes.tsx`: **modified**. Drops the `admin/theme_examples` route and its page import (nav ↔ routes SYNC).
+* `src/ui/frontend/src/pages/AdminThemeExamples.tsx`: **deleted**. This is the Theme Examples screen.
+* `tests/component/frontend/pages/test_AdminThemeExamples.test.tsx`: **deleted**. It covers the deleted page.
+* `tests/component/utils/test_config.py`: **modified**. The registry-id and Tools-nav assertions in `TestAst2047ThemeRegistry` change, and `TestAst2064ThemeExampleGradeSets` is retired.
+* `tests/component/ui/api/test_api_system.py`, `tests/component/core/test_candidate.py`, `tests/component/ui/api/test_api_candidate.py`, `tests/component/frontend/components/test_NavigationShell.test.tsx`: **modified** (Betty, `qa-child`). Drop or repoint their `light_parchment` / `light_slate` references so the AC 9 grep over `tests` is clean; `test_api_system.py` asserts the two-theme registry. Added after Joan validate round 1.
+* `docs/test-bible/frontend/pages.md`, `docs/test-bible/frontend/components.md`, `docs/test-bible/utils/config.md`: **modified**, as in parent Component scope.
+
+Technical scope (from parent):
+
+* `config.py` `UI_CONFIG["themes"]`: modified data. Remove the `light_parchment` and `light_slate` entries, leaving `dark` and `light`. `default_theme` stays `dark`. Neither alternate was profile-selectable, so no candidate can have one stored. The `profile_selectable` flag stays.
+* `config.py` `UI_CONFIG["theme_example_grade_sets"]`: deleted key, with its comment.
+* `config.py` `NAV_CONFIG` **Tools group**: modified data. Remove the Theme Examples item; the other six Tools items are unchanged.
+* `uiConfig.ts`: modified type. Remove the grade-set entry interface and the optional `theme_example_grade_sets` field from `UiConfig`.
+* `routes.tsx`: modified routes. Remove the `admin/theme_examples` route and the `AdminThemeExamples` import.
+* `AdminThemeExamples.tsx`: deleted page.
+* **Tests and bible (Betty,** `qa-child`**)**: the deleted page's test file is deleted. `test_config.py` asserts the two-id registry and no Theme Examples nav item, and drops the grade-set class. The three bible pages above are retired or repointed to match.
+
+## Acceptance criteria
+
+ 8. **Theme Examples gone.** `git grep -n -i -e theme_examples -e ThemeExamples -e theme-examples -e 'Theme Examples' -e theme_example_grade_sets -- src tests` returns nothing. `GET /api/nav_config` as admin lists the Tools group with exactly Data Management, Agent Ad Hoc, Telescope, Cost Reconciliation, Resume Paste and Cover Letter Paste. Browsing to `/admin/theme_examples` no longer renders the page. **Fail:** any hit, a seventh Tools item, or the page still rendering.
+ 9. **Alternates gone.** `git grep -n -e light_parchment -e light_slate -- src tests` returns nothing. `GET /api/ui_config` lists exactly `dark` and `light` under `themes` and has no `theme_example_grade_sets` key. **Fail:** any leftover reference or key.
+10. **Builds clean.** `npx tsc --noEmit` in `src/ui/frontend` exits 0 and `python -c "import src.utils.config"` exits 0. **Fail:** a type error from a dangling `theme_example_grade_sets` / page import, or an import error.
+
+For this ticket, the AC 8 and AC 9 greps may still hit `src/ui/frontend/src/App.css` (the alternate theme blocks, §16 `.theme-examples*` rules and comments). Those are [AST-2123](https://linear.app/astralcareermatch/issue/AST-2123)'s. Every other path must be clean.
+
+## Boundaries
+
+* No `App.css` edits of any kind. Token blocks, the alternate theme blocks and §16 all belong to [AST-2123](https://linear.app/astralcareermatch/issue/AST-2123).
+* No grade colour, ring, ink or confidence changes ([AST-2123](https://linear.app/astralcareermatch/issue/AST-2123)).
+* No shapes ([AST-2101](https://linear.app/astralcareermatch/issue/AST-2101)).
+
+## Notes for planning
+
+Citations: none. `NAV_CONFIG` ↔ `routes.tsx` SYNC comment applies. `test_every_registry_id_has_an_app_css_block` stays green because the CSS blocks outlive the registry entries until [AST-2123](https://linear.app/astralcareermatch/issue/AST-2123).
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/AST-2100-bright-ring-grade-palette`, child `sub/AST-2100/AST-2122-retire-theme-examples`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-10-10T04:51:22.990Z
+[code-rubric] PROCEED (Commit: ae5150f83) Two-theme registry; tests rehomed
+
+#### betty — 2026-10-10T04:48:43.730Z
+`origin/sub/AST-2100/AST-2122-retire-theme-examples` @ `ae5150f83` · tests retired, token gates rehomed
+
+#### joan — 2026-10-10T04:38:22.738Z
+[plan-rubric] PROCEED (Commit: dcd2c21c8) Scope and Betty closed
+
+#### hedy — 2026-10-10T04:37:28.952Z
+[plan-discuss] round=1 reply
+`origin/sub/AST-2100/AST-2122-retire-theme-examples` @ `dcd2c21c8`. Files Changed now has a Betty table covering every in-scope test and bible file, including `test_api_system.py`, `test_candidate.py`, `test_api_candidate.py` and `test_NavigationShell.test.tsx`. The open qa-child note is replaced by explicit steps with exact replacement values: the API test asserts a two-theme registry and no grade-set key, the rejected-theme cases use `"Light"`, and NavigationShell uses `dark`. With those steps, the AC 8 / AC 9 greps over `src tests` hit only `App.css` (AST-2123's carve-out). Engineer Stage 1 is unchanged.
+
+#### joan — 2026-10-10T04:36:38.754Z
+[plan-discuss] round=1 concern — AC 9 grep over `tests` needs the four extra test files in Scope + explicit qa-child steps in the plan.
+
+#### joan — 2026-10-10T04:36:10.281Z
+[plan-rubric] REVIEW (Commit: 033044a70) AC9 test scope gap
+
+#### hedy — 2026-10-10T04:34:29.916Z
+`origin/sub/AST-2100/AST-2122-retire-theme-examples` @ `033044a70` · plan ready; test gap flagged
+
+---
+
 # AST-2122 — Retire Theme Examples and the Light alternates
 
 - **Parent:** [AST-2100](https://linear.app/astralcareermatch/issue/AST-2100) — Light theme: replace grade colours with "Bright + ring" palette
