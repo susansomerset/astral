@@ -41,7 +41,7 @@ All other ids: id-only.
 
 ## Stage 1: Picker hide + expand-from-recent + Profile attention (`NavigationShell.tsx`)
 
-**Done when:** Non-admin never sees the candidate `<select>` or mobile candidate menu; admin still does. Fresh session (empty `nav:expanded` storage) expands only groups with `recent === true`. Profile shows a yellow attention mark iff the Profile item has `attention === true`. Disabled items remain visible as non-links. Empty nav (stage 0) is not a usable candidate-facing menu.
+**Done when:** Non-admin never sees the candidate `<select>` or mobile candidate menu; admin still does. First visit (`NAV_STORAGE_KEY` absent) expands only groups with `recent === true`; persisted `[]` stays collapsed. Profile shows a yellow attention mark iff the Profile item has `attention === true`. Disabled items remain visible as non-links. Empty nav (stage 0) is not a usable candidate-facing menu.
 
 1. Extend local TS types to match #3’s additive payload (keep array root):
 
