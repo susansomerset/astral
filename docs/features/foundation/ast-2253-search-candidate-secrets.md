@@ -202,3 +202,9 @@ Confirm Chuckles estimate: 3 — agree
 context_tokens≈52000
 
 [plan-rubric] PROCEED (Commit: f599dc3) Candidate CSE credentials plan
+
+## Review stub (build-child)
+
+**Built:** `ae8d354d6c0ccdbfbab3c2836328f91aa0446c7a` on `sub/AST-2246/AST-2253-search-candidate-secrets`
+
+CSE client `1f1760f87`. Timesheet lookup `75be4ede9`. Roster call sites `387447915`. Spike flags `ae8d354d6`. No test-tree edits. Missing search secrets warn with candidate id and secret id and do not include the value.
