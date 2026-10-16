@@ -1003,4 +1003,11 @@ Public helpers `job_discovered_at` / `job_first_state_history_at` / `job_recomme
 
 **Pass criterion:** item 1 green + item 2 holds — narrowed run, not zero-arg harness / branch-lock gate.
 
-**Bible shasum (publish tip):** fill after push — one line per touched bible path under `docs/test-bible/`.
+**Bible shasum (publish tip):**
+- `docs/test-bible/core/tracker.md` — `1a52d3f559bd7b21eb4a66ce3f2f4b7436b7b0fb`
+- `docs/test-bible/ui/api/api_jobs.md` — `e8b81aced6c1c20302f1ac60dd0f23ed9af721ad`
+- `docs/test-bible/core/agent.md` — `7269dd6ac08e8f38ac481a0281cdcc24b304cbb9`
+- `docs/test-bible/utils/config.md` — `39af4d0489823569da21764313412e54b93bf013`
+- `docs/test-bible/data/database/agents.md` — `9c005e15660ccb85f17ea9bd7fa27d147c89d856`
+
+*(shasums of tip `9d7a509f8` before this docs-only shasum record commit)*
