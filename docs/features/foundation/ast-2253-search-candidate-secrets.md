@@ -1,0 +1,137 @@
+# AST-2253 — Search credentials from the candidate
+
+Linear: [AST-2253](https://linear.app/astralcareermatch/issue/AST-2253/search-credentials-from-the-candidate-manage-candidate-secrets-in-railway)
+Parent: [AST-2246](https://linear.app/astralcareermatch/issue/AST-2246/manage-candidate-secrets-in-railway)
+Publish ref: `sub/AST-2246/AST-2253-search-candidate-secrets`
+
+CSE search and timesheet receipt fetch use the candidate's search secrets. `search_google_cse` takes the key and engine id from the caller. Hydrate already puts those values on `candidate_api_keys` under catalog ids `google_cse_api_key` and `google_cse_id`. This ticket does not write Railway variables, status rows, or the Admin page, and it does not change the CSE vendor.
+
+## Scope check
+
+This ticket's Scope names:
+
+- `src/external/google_cse.py` — credentials come from the caller, not `GOOGLE_CSE_*`
+- `src/core/timesheets.py` — stop the empty-key stub; resolve the search secret the same way as an LLM key
+- `src/core/roster.py` — `resolve_company_website` and `run_inflow_discovery_batch` pass the candidate's key and engine id; warn with candidate id and secret id, not the value, when one is missing
+- `scripts/spikes/ast489_google_cse_company_search_spike.py` — call the client with an explicit key and engine id, not process-wide `GOOGLE_CSE_*`
+
+## Files Changed (planned)
+
+| File | Change | Layer |
+|------|--------|-------|
+| `src/external/google_cse.py` | `search_google_cse` takes `api_key` and `cx`. Delete the `os.environ` reads and the unused `os` import. | external |
+| `src/core/timesheets.py` | Timesheet fetch looks up `google_cse_api_key` and skips with the existing missing-key warning when it is absent. | core |
+| `src/core/roster.py` | Both CSE call sites pass the hydrated secrets or warn and do not call. | core |
+| `scripts/spikes/ast489_google_cse_company_search_spike.py` | Required `--api-key` and `--cx`, passed into the client. Unpack `result["hits"]`. | scripts |
+
+## Stage 1: CSE client takes caller credentials
+
+**Done when:** `search_google_cse` has no `os.environ` read, and a call with `api_key` and `cx` is what reaches the HTTP `key` and `cx` params. A blank `api_key` or `cx` raises `ValueError` before any HTTP call.
+
+1. In `src/external/google_cse.py`, delete `import os`.
+2. Change `search_google_cse` to:
+
+```python
+def search_google_cse(
+    query: str,
+    *,
+    api_key: str,
+    cx: str,
+    max_results: int = 10,
+    site_filters: Sequence[str] | None = None,
+    days: int | None = None,
+    pace_detail: Callable[[str], None] | None = None,
+) -> GoogleCseSearchResult:
+```
+
+3. Replace the docstring sentence `Credentials: GOOGLE_CSE_API_KEY and GOOGLE_CSE_ID via os.environ (no fallbacks).` with `Credentials: caller passes api_key and cx. This function does not read the environment.`
+4. Delete the `try` / `os.environ["GOOGLE_CSE_API_KEY"]` / `os.environ["GOOGLE_CSE_ID"]` / `KeyError` block. After `require_controlled_external_io("google_cse.search_google_cse")`, if `not (api_key or "").strip()` or `not (cx or "").strip()`, raise `ValueError("api_key and cx are required")`. Do not log. The existing `params["key"]` and `params["cx"]` keep using those arguments.
+5. Do not change `get_receipt`. It still ignores its `api_key` argument.
+
+## Stage 2: Timesheet fetch uses the catalog key
+
+**Done when:** A `google_cse` timesheet group with no `candidate_api_keys["google_cse_api_key"]` logs the missing-key warning and does not call `get_receipt`. A present key is passed as the second argument. The code does not pass `""`.
+
+1. In `run_fetch_timesheet` in `src/core/timesheets.py`, delete the branch that sets `key = _api_key_for_server(cid, provider) or ""` when `provider == TIMESHEET_SEARCH_SERVER_ID`.
+2. For every provider, including `TIMESHEET_SEARCH_SERVER_ID`, resolve the key then warn and skip when it is missing. The lookup id for `TIMESHEET_SEARCH_SERVER_ID` is the catalog id `"google_cse_api_key"`. Every other provider keeps `_api_key_for_server(cid, provider)`.
+
+```python
+secret_id = "google_cse_api_key" if provider == TIMESHEET_SEARCH_SERVER_ID else provider
+key = _api_key_for_server(cid, secret_id)
+if not key:
+    logger.warning(
+        "fetch_timesheet | candidate %s has no API key for server %s — skipping %s id(s)",
+        cid, secret_id, len(ids),
+    )
+    summary["total_failed"] += len(ids)
+    continue
+```
+
+3. Do not log `key`. Do not read `GOOGLE_CSE_API_KEY` or `GOOGLE_CSE_ID`.
+
+⚠️ **Decision:** The timesheet receipt path has one key argument. That key is catalog id `google_cse_api_key`. The engine id is not a `get_receipt` input. `get_receipt` stays a stub that ignores the key.
+
+## Stage 3: Roster passes both secrets
+
+**Done when:** `resolve_company_website` and `run_inflow_discovery_batch` call `search_google_cse` with `api_key` and `cx` from that candidate's hydrated `candidate_api_keys`. If either secret is missing, each missing id is one `logger.warning` with the candidate id and the secret id, the value is not logged, and `search_google_cse` is not called.
+
+1. In `src/core/roster.py`, add this helper above `resolve_company_website`. Use `database.get_candidate` (that parse path already runs `hydrate_candidate_secrets`). Import `get_candidate` on the existing `src.data.database` import.
+
+```python
+def _search_credentials(candidate_id: str) -> tuple[str, str] | None:
+    """(api_key, cx) from hydrated candidate_api_keys, or None after a warning per missing id."""
+    cid = (candidate_id or "").strip()
+    row = get_candidate(cid) if cid else None
+    keys = (row or {}).get("candidate_api_keys") or {}
+    found = {
+        "google_cse_api_key": keys.get("google_cse_api_key") or "",
+        "google_cse_id": keys.get("google_cse_id") or "",
+    }
+    missing = [secret_id for secret_id, value in found.items() if not value]
+    if not missing:
+        return found["google_cse_api_key"], found["google_cse_id"]
+    for secret_id in missing:
+        logger.warning(
+            "%s secret %s is missing — this search is not running",
+            cid or "-",
+            secret_id,
+        )
+    return None
+```
+
+2. In `resolve_company_website`, immediately before the `logger.debug("Calling search_google_cse: query=%r", query)` line, set `cid = (entity.get("candidate_id") or "").strip()` and `creds = _search_credentials(cid)`. If `creds` is `None`, return `{"success": False, "state": None, "error": None}` and do not call `search_google_cse`. Otherwise unpack `api_key, cx = creds` and pass `api_key=api_key, cx=cx` into the existing `search_google_cse` call. Leave the `except (RuntimeError, ValueError)` handler as it is.
+3. In `run_inflow_discovery_batch`, at the start of the `for term in terms` loop, before `logger.debug("Calling search_google_cse: query=%r", term)`, call `creds = _search_credentials(candidate_id)`. If `creds` is `None`, add `1` to `errors` and `continue`. Otherwise unpack and pass `api_key` and `cx` into that loop's `search_google_cse` call. Leave the existing `except` handler as it is.
+
+⚠️ **Decision:** Both call sites re-read through `database.get_candidate` so the map is the hydrated one (`google_cse_api_key` / `google_cse_id`), including when the company row only has `candidate_id`.
+
+## Stage 4: Spike passes explicit arguments
+
+**Done when:** `scripts/spikes/ast489_google_cse_company_search_spike.py` has no read of `GOOGLE_CSE_API_KEY` or `GOOGLE_CSE_ID`. Running it without `--api-key` and `--cx` exits from argparse. A run with both flags passes those strings into `search_google_cse` and prints `result["hits"]`.
+
+1. Add required arguments to `parse_args`:
+
+```python
+parser.add_argument("--api-key", required=True, help="CSE API key passed to search_google_cse.")
+parser.add_argument("--cx", required=True, help="CSE engine id passed to search_google_cse.")
+```
+
+2. Change `run_search` to take `api_key: str` and `cx: str`, and call:
+
+```python
+result = search_google_cse(
+    query,
+    api_key=api_key,
+    cx=cx,
+    max_results=max_results,
+    site_filters=site_filters or None,
+    days=days,
+)
+hits = result["hits"]
+```
+
+3. Pass `args.api_key` and `args.cx` from `main` into every `run_search` call, including the built-in exemplar runs.
+4. Replace the module docstring usage block so the examples include `--api-key` and `--cx`, and delete the sentence that says to set `GOOGLE_CSE_API_KEY` and `GOOGLE_CSE_ID` in the environment. Leave `load_dotenv` as it is. Do not read those two env names in this file.
+
+## Estimate
+
+Confirm Chuckles estimate: 3 — agree
