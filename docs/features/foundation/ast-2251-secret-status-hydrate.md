@@ -123,6 +123,12 @@ Required candidate metadata columns stay as they are (`stat.entity.required-meta
 
 Confirm Chuckles estimate: 5 — agree
 
+## Review stub (build-child)
+
+**Built:** `425e4c8f97bfd76742ff24d016e9f75bc6e56ae9` on `sub/AST-2246/AST-2251-secret-status-hydrate`
+
+Status column JSON: `550491218`. Hydrate: `42336fedf`. Migration: `8a5d9baa9`. Data model: `425e4c8f9`. No test-tree edits. Required candidate metadata columns were not added, renamed, or dropped. Missing-env and bad-expiry warnings name the candidate and the secret id and do not include the secret value.
+
 
 ## Joan validate
 
