@@ -4117,9 +4117,10 @@ assert all(
     for state in JOBS_RECOMMENDED_PRIMARY_ACTIONS
 )
 
-# AST-948 / AST-1550 / AST-1691 / AST-1872: top-level Recommended report tabs — first entry is the default tab (Meteorite after Discussion).
+# AST-948 / AST-1550 / AST-1691 / AST-1872 / AST-2232: top-level Recommended report tabs — first entry is the default tab (Job Description between Analysis and Summary; Meteorite after Discussion).
 JOBS_RECOMMENDED_REPORT_TOP_TABS = [
     {"tab_id": "analysis", "nav_label": "Analysis"},
+    {"tab_id": "job_description", "nav_label": "Job Description"},
     {"tab_id": "summary", "nav_label": "Summary"},
     {"tab_id": "artifacts", "nav_label": "Artifacts"},
     {"tab_id": "discussion", "nav_label": "Discussion"},
@@ -4131,7 +4132,6 @@ JOBS_RECOMMENDED_REPORT_SUMMARY_SECTIONS = [
     {"section_id": "company_upshot", "nav_label": "Company Upshot", "default_expanded": True},
     {"section_id": "caveats", "nav_label": "Noteworthy Caveats", "default_expanded": True},
     {"section_id": "questions", "nav_label": "Questions to Ask", "default_expanded": True},
-    {"section_id": "raw_jd", "nav_label": "Raw Job Description", "default_expanded": False},
 ]
 
 # AST-1691: Recommended report Meteorite pane sections (config → manifest; React must not invent order).
@@ -5265,6 +5265,7 @@ REPO_ADMIN_JSON_CONFIG = {
             "repo_relative_path": "data/admin/agent.json",
             "columns": (
                 "agent_id",
+                "agent_name",  # AST-2232: display name for Discussion headers
                 "content",
                 "model_id",
                 "max_tokens",
