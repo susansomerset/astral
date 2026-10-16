@@ -1,3 +1,66 @@
+<!-- linear-archive: AST-2048 archived 2026-10-16 -->
+
+## Linear archive (AST-2048)
+
+**Archived:** 2026-10-16  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-2048/save-and-apply-the-candidates-theme-user-theme  
+**Status at archive:** Archive  
+**Project:** Astral Interface  
+**Assignee:** hedy  
+**Priority / estimate:** None / 2  
+**Parent:** AST-2042 — User Theme  
+**Blocked by / blocks / related:** parent: AST-2042
+
+### Description
+
+## What this implements
+
+After #1. Validates and persists `candidate_data.theme` through the existing profile save, and repaints the SPA to the selected candidate's theme (picker-follow like timezone). Does not touch config, `App.css`, or the examples page (#1), or other components' colors (#3).
+
+## Citations
+
+none — one allowlist check in `candidate.py` on an existing route; no logging/entity/dispatch surface.
+
+## Scope
+
+`src/core/candidate.py` (candidate-data update rejects a `theme` that is not a profile-selectable registry id with `ValueError`, same shape as pronouns); `src/ui/frontend/src/pages/CandidateProfile.tsx` (`editValuesFromCandidate` gains `theme` from `candidate_data.theme`, defaulting to the served default id; inline literal colors onto tokens); `src/ui/frontend/src/contexts/CandidateContext.tsx` (new effect sets or removes the document root theme attribute from the selected candidate).
+
+## Acceptance criteria
+
+3. **Profile saves the theme.** On Candidate Profile, choose Light and Save. `GET /api/candidates/<id>` then returns `candidate_data.theme == "light"`, and reloading the page shows Light selected. **Fail:** the value is not persisted or the select resets.
+4. **Bad values rejected.** `PUT /api/candidates/<id>/data` with `{"theme": "neon"}`, or with an examples-only alternate id, returns 400, and the stored theme is unchanged. **Fail:** 2xx, or the value stored.
+5. **App repaints.** With the selected candidate on Light, `document.documentElement` carries the light theme attribute, and `getComputedStyle(document.body).backgroundColor` differs from the Dark value `rgb(15, 11, 24)`. A candidate with no stored theme gets no theme attribute or the dark one, and the body background is `rgb(15, 11, 24)`. **Fail:** no attribute change, or an unchanged background on Light.
+6. **Picker follows the candidate.** As admin, switching from a Light candidate to a Dark candidate in the picker flips the root attribute and body background without a reload. **Fail:** the theme sticks to the previous candidate.
+7. **Builds clean; no new lint.** In `src/ui/frontend`, `npm run build` exits 0, and `npm run lint` reports no problem that is absent on `origin/dev` (diff the problem lists). **Fail:** a non-zero exit or a new lint problem.
+
+## Boundaries
+
+After #1 (registry, profile select field, Light tokens). Does not touch [config.py](<http://config.py>), App.css, uiConfig.ts, routes, or the Theme Examples page (#1), nor the 18 component/page files in #3. CandidateProfile.tsx inline hex removal here counts toward AC 9's .tsx grep.
+
+## Notes for planning
+
+Canon Scope: none (locked at Discussion). Parent [AST-2042](https://linear.app/astralcareermatch/issue/AST-2042) Description carries the full Functional / Component / Technical scope.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/AST-2042-user-theme`, child `sub/AST-2042/AST-2048-theme-save-apply`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-10-08T21:20:41.170Z
+[code-rubric] PROCEED (Commit: a2610b523) Candidate theme save and apply
+
+#### betty — 2026-10-08T21:14:06.850Z
+`origin/sub/AST-2042/AST-2048-theme-save-apply` @ `a2610b523` · 12 new, 17 mocks revised
+
+#### joan — 2026-10-08T21:00:43.592Z
+[plan-rubric] PROCEED (Commit: 16e114d01) Save, validate, repaint theme
+
+#### hedy — 2026-10-08T20:58:25.993Z
+`origin/sub/AST-2042/AST-2048-theme-save-apply` @ `16e114d01` · plan ready, three stages
+
+---
+
 # AST-2048 — Save and apply the candidate's theme (User Theme)
 
 - **Parent:** [AST-2042 User Theme](https://linear.app/astralcareermatch/issue/AST-2042)

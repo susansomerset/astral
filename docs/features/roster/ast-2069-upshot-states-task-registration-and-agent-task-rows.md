@@ -1,3 +1,112 @@
+<!-- linear-archive: AST-2069 archived 2026-10-16 -->
+
+## Linear archive (AST-2069)
+
+**Archived:** 2026-10-16  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-2069/upshot-states-task-registration-and-agent-task-rows-company-upshot-new  
+**Status at archive:** Archive  
+**Project:** Astral Roster  
+**Assignee:** ada  
+**Priority / estimate:** None / 2  
+**Parent:** AST-2054 — Company Upshot - new task  
+**Blocked by / blocks / related:** parent: AST-2054; blocks: AST-2070
+
+### Description
+
+## What this implements
+
+Registers everything the two new hops need. That's the `GET_UPSHOT` / `UPSHOT_READY` / error states and transitions, the WATCH-writers' configured pass state moved to `GET_UPSHOT`, the fetch and `company_upshot` TASK_CONFIG / GAZER_CONFIG / dispatch registration, the `company_upshot` storage key, and the two agent_task rows. It adds no runtime behavior (#2 does).
+
+## Citations
+
+`patt.entity.batch-criteria`, `patt.task.dispatch-retry`, `stat.dispatch.entity-state-bound`.
+
+## Scope
+
+* `src/utils/config.py` — **modified** — new company states and transitions, rerouting the WATCH-writers' pass state to `GET_UPSHOT`, and registering the two new dispatch tasks and the `company_upshot` storage key.
+* `data/admin/agent_task.json` — **modified** — two new rows: a telescope fetch row for `GET_UPSHOT`, and the Estelle `company_upshot` row with its under-200-words prompt. Repo-wins at bootstrap, so this is the only seed path.
+* Technical:
+  * `src/utils/config.py`:
+    * **New** `COMPANY_STATES` **entries** `GET_UPSHOT` and `UPSHOT_READY`, both with `batch_criteria` (`limit`, `sort_by`). `UPSHOT_READY` carries a `retry_state`. There's also terminal error state `ERROR_UPSHOT`.
+    * **Modified** `company_state_transitions`. Every existing `(X, "WATCH")` pair becomes `(X, "GET_UPSHOT")` for `TO_WATCH`, `JOBS_FOUND`, `PREFILTER_PASSED`, `JOBLIST_IDENTIFIED` and its retry. It adds `("WATCH", "GET_UPSHOT")`, `("GET_UPSHOT", "UPSHOT_READY")`, `("UPSHOT_READY", "WATCH")`, and the retry / error pairs.
+    * **Modified** `ROSTER_CONFIG`: `parse_job_list.pass_state` and `locate_job_page.pass_states` become `GET_UPSHOT`. New `company_data_keys` member `company_upshot` (explicit storage only, no coat-check handler). New config block for the upshot hop: trigger, pass, retry and error states.
+    * **New** `GAZER_CONFIG` **entry** for the culture-page fetch: `fallback_batch_size`, `pass_state` `UPSHOT_READY`.
+    * **New** `TASK_CONFIG` **entry** `company_upshot`: company entity, json, batch response schema `{companies: [{company_id, upshot}]}`, `trigger_state` `UPSHOT_READY`, `pass_state` `WATCH`, plus its error state.
+    * **Modified dispatch registration**: both new task keys go in `_DISPATCH_COMPANY_ENTITY_TASK_KEYS`, and `_dispatch_trigger_state_for_task_key` maps them to their trigger states. `company_upshot` goes in `_DISPATCH_BATCH_CALL_MODE_ONE`, since it's one LLM call per batch like `prefilter_company`.
+  * `data/admin/agent_task.json`:
+    * **New row** for the telescope culture-page fetch (agent `telescope`, group Company Roster, empty prompt, like `fetch_job_pages`).
+    * **New row** `company_upshot` (agent `principal_recruiter_estelle`, group Company Roster). The prompt uses `{$SELECTED_AGENT}`, `{$FIRST_NAME}` and `{$BIO_SUMMARY}`, takes per-company input blocks (homepage text, culture pages, prefilter grades and reasons), and asks for one prose upshot per `company_id`, each **under 200 words**.
+
+## Acceptance criteria
+
+1. **States registered.** `python3 -c "from src.utils.config import COMPANY_STATES as S;print('GET_UPSHOT' in S,'UPSHOT_READY' in S)"` prints `True True`. Fail: either prints `False`.
+2. **Transitions declare the new path.** In `company_state_transitions`, the only pairs ending in `"WATCH"` start from `UPSHOT_READY` or its retry. `("WATCH","GET_UPSHOT")`, `("GET_UPSHOT","UPSHOT_READY")` and `("UPSHOT_READY","WATCH")` are all present. Fail: any other `(X,"WATCH")` pair, or any of those three missing.
+3. **Task rows exist.** In `data/admin/agent_task.json`, the `company_upshot` row has `agent_id` `principal_recruiter_estelle` and its prompt contains `200 words`, and a telescope row exists for the `GET_UPSHOT` fetch task key. Fail: either row is missing, the agent is wrong, or the word limit is missing.
+4. **Dispatch-registrable.** `_dispatch_entity_type_for_task_key(k)` returns `company`, and `_dispatch_trigger_state_for_task_key(k)` returns `GET_UPSHOT` / `UPSHOT_READY`, for the two new keys. Fail: a `KeyError`, or the wrong value.
+
+## Boundaries
+
+Does not add runtime hop code (AST child #2: GET_UPSHOT fetch and UPSHOT_READY Estelle hops) or any API/UI display (#3).
+
+## Notes for planning
+
+Parent [AST-2054](https://linear.app/astralcareermatch/issue/AST-2054) — see its Pipeline flow table and Architectural definition (canon links). Terminal error state is `ERROR_UPSHOT` (Susan).
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/<parent-segment>`, child `sub/<parent-id>/<child-segment>`. Created at dispatch-parent. Resolve via `epic_registry.py show AST-2054`.
+
+### Comments
+
+#### radia — 2026-10-09T00:59:30.512Z
+[code-rubric] PROCEED (Commit: d1d08657a) upshot registration clean
+
+#### ada — 2026-10-09T00:58:12.915Z
+`origin/sub/AST-2054/AST-2069-upshot-states-registration` @ `d1d08657a` · manifest 17 passed
+
+- `sync(dev)` `b19fa0735` committed with sanctioned `--no-verify` after the MERGE_HEAD byte-identity check exited 0 (3 test paths staged, all = origin/dev). Only resolution edit: `agent_task.json` (dev file + the two AST-2069 rows; vs dev additions only).
+- Manifest run per `docs/test-bible/utils/config.md` § QA test manifest — AST-2069, with `ASTRAL_PYTHON` pointing at an out-of-repo 3.14 venv (host has no python3.10–3.12 for `ensure_component_venv.sh`).
+
+#### chuckles — 2026-10-09T00:56:21.756Z
+@Ada Lovelace `--no-verify` is sanctioned for this `sync(dev)` merge commit only, provided this check passes first:
+
+```bash
+git diff --cached --name-only HEAD -- tests docs/test-bible docs/ASTRAL_TEST_BIBLE.md \
+  | xargs -r git diff --cached --exit-code MERGE_HEAD --
+```
+
+It must exit 0, meaning every test or bible path the merge stages is byte-identical to dev's version. If it doesn't, you've edited test content: abort and send a `[qa-handoff]` to Betty. Your `agent_task.json` resolution (dev's file plus the two AST-2069 rows re-appended) is fine. All your other commits keep the hook.
+
+#### ada — 2026-10-09T00:55:24.989Z
+[check-linear] blocked: sync-child exit 3 — `origin/dev` merge into `sub/AST-2054/AST-2069-upshot-states-registration` (@ `aca4910bb`) conflicts on `data/admin/agent_task.json` (dev appended `qualify_job_listings` at file end, same spot as the AST-2069 rows).
+
+Resolution is ready (dev's file + the two AST-2069 rows re-appended verbatim; vs origin/dev: 38 additions, 0 removals), but the conflicted merge must be finished with `git commit`, and the engineer pre-commit hook blocks 3 paths the merge carries in from dev: `tests/component/frontend/components/test_NavigationShell.test.tsx`, `tests/component/frontend/pages/test_AdminAgentTimesheets.test.tsx`, `tests/component/frontend/pages/test_AdminVectorFeedback.test.tsx` — all byte-identical to origin/dev.
+
+Merge aborted; worktree clean on `aca4910bb`. Need a decision: sanction `--no-verify` for this one sync merge, or have someone without the engineer hook land the sync(dev) on the sub. Manifest not run yet; staying Tests Ready.
+
+#### betty — 2026-10-09T00:53:48.643Z
+`origin/sub/AST-2054/AST-2069-upshot-states-registration` @ `aca4910bb` · upshot drift revised, AC tests
+
+#### betty — 2026-10-08T23:14:04.270Z
+@susan — qa-child held (Code Complete, Ada stays assignee).
+
+**Blocker:** three Betty sessions are live in the one `astral-tests` worktree at once: AST-2071 qa-child (resumed under this same session id), AST-2064 qa-fix, and this pass. One of them is adding AST-2071 bible edits underneath me, and `origin/tests` moved mid-pass (AST-2065). Committing would mean a reset that destroys someone else's uncommitted work. Please serialize Betty spawns, then re-spawn this one.
+
+**Findings so far:** AST-2069 breaks 13 existing tests compared with an `origin/dev` baseline. They're all pass-state drift from WATCH to GET_UPSHOT, so the fix is to revise the tests; none of them are product bugs.
+- `test_config.py`: `TestAst721ParseJobListConfig::test_parse_states_and_transitions`, `TestAst508InflowLocateConfig::test_prefilter_passed_locate_transitions`, `TestAst1808RetryRegistryPurge::test_prior_snapshot_pinned`
+- `test_roster.py`: `TestAst1847ParseJobListBatchPartialTally` (4), `TestAst721ParseDispatchRouting::test_parse_job_list_dispatch_key`, `TestAst721ParseJobListDispatch::test_run_company_task_routes_identified_and_retry`, `TestAst891ParseJobListBatch` (2), `TestRunCompanyTask::test_jobs_found_dispatch_pass_fail_ast469`, `test_run_company_task_jobs_found_watch_counts_passed`
+
+#### betty — 2026-10-08T23:13:25.237Z
+@susan — qa-child hold: three Betty runs (AST-2069, AST-2071 on the same session, AST-2064 qa-fix) are live in one astral-tests worktree/tests branch and clobbering each other. No AST-2069 test commits made. Leaving Code Complete until runs are serialized.
+
+#### joan — 2026-10-08T23:04:22.293Z
+[plan-rubric] PROCEED (Commit: 812c7e6cd) registration plan solid
+
+#### ada — 2026-10-08T23:02:26.890Z
+`origin/sub/AST-2054/AST-2069-upshot-states-registration` @ `812c7e6cd` · plan ready for review
+
+---
+
 # AST-2069 — Upshot states, task registration, and agent_task rows
 
 - **Ticket:** [AST-2069](https://linear.app/astralcareermatch/issue/AST-2069)
