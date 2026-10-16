@@ -199,3 +199,57 @@ logger.exception(
 ## Estimate
 
 Confirm Chuckles estimate: 5 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-2250
+**Overall:** APPROVED
+**Corpus:** 65a2864973ecf09fd57732c2cfc9a4e1ff3e0b91
+**Publish ref:** `sub/AST-2246/AST-2250-railway-variable-client` @ `55beb00ed9f74a472315e7c9978881d35923f2cd`
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| stat.logging.error | A | | |
+| stat.logging.warning | A | | |
+| new candidate-secret pattern (pending Archie) | B | | |
+
+## Traceability
+
+`2 → Stage 2 (upsert/delete/deploy, no read-back, skipDeploys + explicit deploy); Scope check — full Admin component test + DB status-only write land on later siblings; this child supplies the Railway client Betty can exercise`
+
+## Findings
+
+### discuss — Canon Scope gap
+
+- **Severity:** discuss
+- **Location:** Linear Citations vs plan footprint (`config.py`, `railway.py`, `env.example`)
+- **Finding:** `astral.config.config-source-of-truth`, `astral.config.secrets-and-env-specific-from-environ`, and `astral.layers.import-direction` plainly govern catalog placement, hard `os.environ[…]` reads, and `external → utils` imports; they are not on this child’s frozen Citations list.
+- **Recommendation:** Archie may widen parent Canon Scope at Discussion for Radia comparability; do not insert ids on this pass. Plan behavior already matches those statutes (catalog literals in `config.py`, secrets read at call time in `railway.py`, no forbidden layer imports).
+
+### discuss — Pattern not in corpus
+
+- **Severity:** discuss
+- **Location:** Parent Architectural definition / Citations
+- **Finding:** The candidate-secret Railway + status/hydrate pattern is cited as “pending Archie” and has no `canon/patterns/**` file yet; epic children already depend on the parent’s proposed text.
+- **Recommendation:** Track Archie approval before treating the pattern as in-force law; the plan text matches the parent proposal (no read-back, deploy after write, local stub names distinct from process-wide `GOOGLE_CSE_*` / provider keys).
+
+### acceptable — Parent AC 2 is cross-child
+
+- **Severity:** acceptable
+- **Location:** Plan `## Scope check`
+- **Finding:** Child AC quotes parent AC 2 (Admin component test + DB write); this ticket correctly does not add Admin, database, or test files.
+- **Recommendation:** None — boundary is explicit and faithful to dispatch partition.
+
+### acceptable — No formal conf/self-assessment block
+
+- **Severity:** acceptable
+- **Location:** Plan `## Estimate`
+- **Finding:** Plan confirms estimate 5 only; no `conf:` axes.
+- **Recommendation:** Optional polish for larger plans; not blocking here.
+
+context_tokens≈32000
+
+[plan-rubric] PROCEED (Commit: 55beb00) Railway client plan ready
