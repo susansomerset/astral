@@ -144,7 +144,7 @@ export default function ManageCandidates() {
   const [dispatchTaskCounts, setDispatchTaskCounts] = useState<Record<string, number>>({})
   const [settingCandidateId, setSettingCandidateId] = useState<string | null>(null)
   const [snapshottingId, setSnapshottingId] = useState<string | null>(null)
-  const [validStates, setValidStates] = useState<string[]>([])
+  const [validStates, setValidStates] = useState<{ state: string; label: string }[]>([])
   const [viewing, setViewing] = useState<Candidate | null>(null)
   const [addOpen, setAddOpen] = useState(false)
   const [addForm, setAddForm] = useState(EMPTY_ADD_FORM)
@@ -306,7 +306,16 @@ export default function ManageCandidates() {
 
   useEffect(() => {
     api("/api/shapes/candidates").then(r => r.json()).then(s => setShapes(s))
-    api("/api/candidates/states").then(r => r.json()).then(s => setValidStates(Array.isArray(s) ? s : []))
+    api("/api/candidates/states").then(r => r.json()).then(s => {
+      // AST-2267: only accept {state, label} objects from the picker endpoint.
+      const ok = Array.isArray(s) && s.every(
+        (row: unknown) =>
+          !!row && typeof row === "object"
+          && typeof (row as { state?: unknown }).state === "string"
+          && typeof (row as { label?: unknown }).label === "string",
+      )
+      setValidStates(ok ? s : [])
+    })
     // One picker option per server, catalog order (several models can share a server).
     api("/api/admin/agents/models").then(r => r.json()).then((m: Record<string, { order: number; server_id: string; server_label: string }>) => {
       const seen = new Set<string>()
@@ -887,7 +896,12 @@ export default function ManageCandidates() {
         <div className="dep-field">
           <label className="dep-field-label">State (admin override)</label>
           <select className="dep-input" value={editForm.state} onChange={e => setEditForm(p => ({ ...p, state: e.target.value }))}>
-            {validStates.map(s => <option key={s} value={s}>{s}</option>)}
+            {editForm.state && !validStates.some(s => s.state === editForm.state) && (
+              <option value={editForm.state}>{editForm.state}</option>
+            )}
+            {validStates.map(s => (
+              <option key={s.state} value={s.state}>{s.label}</option>
+            ))}
           </select>
         </div>
         {/* One key field per catalog server (AST-1920); labels come from the server, not literals. */}

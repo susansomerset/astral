@@ -168,7 +168,15 @@ def list_candidates():
 @candidate_bp.route("/states")
 @require_auth
 def get_candidate_states():
-    return jsonify(list(CANDIDATE_STATES.keys()))
+    # AST-2267: Manage Candidates picker — stage-labeled objects; omit ERROR_*/INTAKE_INITIATED/*_STALE.
+    rows = []
+    for name, cfg in CANDIDATE_STATES.items():
+        if name.startswith("ERROR_") or name == "INTAKE_INITIATED" or name.endswith("_STALE"):
+            continue
+        label = f"{int(cfg['stage'])}:{name}"
+        rows.append({"state": name, "label": label})
+    rows.sort(key=lambda r: r["label"])
+    return jsonify(rows)
 
 
 # Must be registered before the /<candidate_id> catch-all
