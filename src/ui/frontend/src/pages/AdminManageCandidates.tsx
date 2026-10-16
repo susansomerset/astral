@@ -384,7 +384,12 @@ export default function ManageCandidates() {
       slack_channel_id: channelId,
     })
     setKeyInputs({})
-    setKeyExpires({})
+    const expires: Record<string, string> = {}
+    for (const k of c.api_keys ?? []) {
+      const raw = k.expires_at ?? ""
+      if (/^\d{4}-\d{2}-\d{2}/.test(raw)) expires[k.server] = raw.slice(0, 10)
+    }
+    setKeyExpires(expires)
     setShowKeys({})
     setClearKeys({})
     setChannelMembershipWarn(null)
@@ -440,12 +445,12 @@ export default function ManageCandidates() {
     for (const sid of keyRows.map(r => r.server)) {
       if (clearKeys[sid]) apiKeys.push({ server: sid, key: "" })
       else if ((keyInputs[sid] ?? "").trim()) {
-        const expiresAt = (keyExpires[sid] ?? "").trim()
-        if (!/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(expiresAt)) {
-          setToast({ text: "Expiry must be YYYY-MM-DD HH:MM:SS UTC", variant: "error" })
+        const date = (keyExpires[sid] ?? "").trim()
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+          setToast({ text: "Expiry date is required", variant: "error" })
           return
         }
-        apiKeys.push({ server: sid, key: keyInputs[sid].trim(), expires_at: expiresAt })
+        apiKeys.push({ server: sid, key: keyInputs[sid].trim(), expires_at: `${date} 00:00:00` })
       }
     }
     if (apiKeys.length) payload.api_keys = apiKeys
@@ -929,9 +934,8 @@ export default function ManageCandidates() {
             </div>
             <input
               className="dep-input"
-              type="text"
+              type="date"
               autoComplete="off"
-              placeholder="YYYY-MM-DD HH:MM:SS UTC"
               value={keyExpires[sid] ?? ""}
               onChange={e => setKeyExpires(p => ({ ...p, [sid]: e.target.value }))}
             />

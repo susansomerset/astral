@@ -524,6 +524,8 @@ Production PUT upserts or deletes, then one deploy, then stores status and expir
 | One upsert + one deploy; clear + one deploy; local skip; 502 leaves the row | **`TestAst2252AdminSecretExpiry`** |
 | Page render, status column, typed expiry, clear, bad expiry toast | `test_AdminManageCandidates.test.tsx` |
 
+**AST-2265:** the expiry control is a date select. A stored `expires_at` prefills `YYYY-MM-DD`. A typed secret saves that date plus ` 00:00:00`. An empty date toasts `Expiry date is required` and does not PUT. Repro (red on the pre-fix page): `test_AdminManageCandidates.test.tsx` — `AST-2265: a typed secret without a calendar date does not save`, and the edit flow's date value `2999-01-02` → `expires_at: 2999-01-02 00:00:00`.
+
 **Broken / obsolete:** outbound `{server, label}` only, and the Manage Candidates “(set)” / “(not set)” labels. Revised in place. **Integration:** none.
 
 ## QA test manifest — AST-2252

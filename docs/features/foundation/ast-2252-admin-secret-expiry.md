@@ -219,3 +219,73 @@ Radia overall CLEAN. No fix-now items. No product change.
 - **Advisory — sibling carry.** The three-dot diff against `origin/dev` includes AST-2250 and AST-2251. This ticket’s product edits stay `src/ui/api/api_candidate.py` and `src/ui/frontend/src/pages/AdminManageCandidates.tsx`.
 - **Advisory — import direction.** Off-list. No canon id added.
 - **Frame diff AC 2 and AC 3.** Ticked. `TestAst2252AdminSecretExpiry` and `TestSanitizeCandidate` passed on `8da4c3724` during test-child.
+
+## Bug: AST-2265 — expiry date select at midnight
+
+### As-is
+
+On `/admin/manage_candidates`, the expiry control is a free-text field. Save runs `/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/` on it. Anything else toasts `Expiry must be YYYY-MM-DD HH:MM:SS UTC` and does not PUT. That is the toast for candidate `somerset`.
+
+### To-be
+
+The expiry control is a date select. A typed secret saves `expires_at` as that date plus ` 00:00:00`.
+
+### Repro
+
+1. Open Manage Candidates, Edit `somerset`.
+2. Type a secret into a catalog row.
+3. Type a date without a time, or any text that is not `YYYY-MM-DD HH:MM:SS`, into the expiry field.
+4. Save.
+5. Toast: `Expiry must be YYYY-MM-DD HH:MM:SS UTC`. No PUT.
+
+### Root cause
+
+Stage 2 step 8 of this plan requires the operator to type the full UTC timestamp. The input is `type="text"` with placeholder `YYYY-MM-DD HH:MM:SS UTC` (`AdminManageCandidates.tsx`, the expiry `<input>` under the password row, and the regex in `handleEditSave`).
+
+### Proposed change
+
+Only `src/ui/frontend/src/pages/AdminManageCandidates.tsx`. Do not change `src/ui/api/api_candidate.py`. The PUT value stays `YYYY-MM-DD HH:MM:SS`.
+
+1. In `openEdit`, replace `setKeyExpires({})` with a map built from `c.api_keys`. For each entry whose `expires_at` matches `/^\d{4}-\d{2}-\d{2}/`, set that `server` to `expires_at.slice(0, 10)`. Other servers are absent.
+
+2. Replace the expiry `<input>` (`type="text"`, placeholder `YYYY-MM-DD HH:MM:SS UTC`) with `type="date"`, `className="dep-input"`, `autoComplete="off"`, no placeholder. `value` is `keyExpires[sid] ?? ""`. `onChange` still writes `keyExpires[sid]`.
+
+3. In `handleEditSave`, when `(keyInputs[sid] ?? "").trim()` is non-empty, read `date = (keyExpires[sid] ?? "").trim()`. If it does not match `/^\d{4}-\d{2}-\d{2}$/`, `setToast({ text: "Expiry date is required", variant: "error" })` and return before `api()`. Otherwise push `{ server: sid, key: trimmed key, expires_at: date + " 00:00:00" }`. Delete the `HH:MM:SS` regex and the toast `Expiry must be YYYY-MM-DD HH:MM:SS UTC`.
+
+Clear still pushes `{ server: sid, key: "" }` with no `expires_at`. A blank secret still omits that server.
+
+⚠️ **Decision:** Midnight is the literal suffix ` 00:00:00` on the calendar date. No timezone conversion. `type="date"` is the date select.
+
+### Blast radius
+
+`tests/component/frontend/pages/test_AdminManageCandidates.test.tsx` assumes the text control: the main edit test types `2999-01-02 03:04:05` into `querySelectorAll("input")[1]` and expects `expires_at: "2999-01-02 03:04:05"`; `AST-2252: a secret without a valid expiry does not save` types `tomorrow` and expects the old toast. Those assertions are Betty's. API tests that POST a non-midnight `expires_at` stay valid because `api_candidate.py` is unchanged. The list column and the field label still show the stored `expires_at` string from GET, including ` 00:00:00`.
+
+### What must still hold
+
+- A blank secret does not change expiry (no expiry-only save).
+- Clear sends `{server, key: ""}`.
+- GET `api_keys` is status and expiry, never the secret.
+- Production set still upserts, deploys once, then stores status and `expires_at`.
+- A hand-built PUT with a bad `expires_at` is still 400 `expires_at must be YYYY-MM-DD HH:MM:SS`.
+
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-2265
+**Publish ref:** `a2d050c168b9f4690598ad9cc6645fdec3e3da25` (`origin/sub/AST-2246/AST-2265-expiry-date-select`)
+**Overall:** CLEAN
+
+## Fix-specific checks
+
+**[bug-repro]** — OK. Date control, required-date toast, PUT `expires_at` at midnight.
+
+**## What must still hold** — OK. Blank secret, clear, GET presence, production upsert, and bad `expires_at` → 400 are unchanged.
+
+## Findings
+
+Advisory only. The prescribed ftr three-dot is bloated because ftr lags the sub; this review scored `95c333dd1^..a2d050c16`. List/label may still show the full `expires_at` string; the date control only changes the save path.
+
+```
+[code-rubric] PROCEED (Commit: a2d050c) Date select saves midnight
+```
