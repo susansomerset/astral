@@ -271,3 +271,16 @@ Child AC **1→S1**; **2→S2** (`submit`, `AstralAgentError`, `close_loop_resou
 Matches AST-2235 child #2 scope; two-file gate; Telescope queue-half mirror; no cutover/provider/service edits. Self-assessment and stage **Done when** clauses are specific. No **D**/**F**; no `fix-now` / blocking `discuss`.
 
 context_tokens≈56000
+
+## Review stub (Ada / build)
+
+**Publish ref:** `origin/sub/AST-2235/AST-2238-platform-astral-agent-client-enqueue-await`
+**Product commits:** `04ae0ce79` (Stage 1 — `ASTRAL_AGENT_CONFIG`), `39e000a14` (Stage 2 — enqueue/await client)
+
+**Implemented:**
+- `src/utils/config.py` — `ASTRAL_AGENT_CONFIG` after `TELESCOPE_CONFIG` (deadline 900, stale 90, wake timeout 30). Env key name only; no DSN literal.
+- `src/external/astral_agent.py` — `_AstralAgentQueue` (insert `agent_job`, LISTEN `agent_job_done`, poll, throttled `/wake`), public `submit` / `close_loop_resources` / `run_one_shot`, `AstralAgentError`. DSN via `os.environ[ASTRAL_DATABASE_URL]`. No `service.*` or `src.core` imports.
+
+**Canon (self-check):** External owns queue I/O (`astral.layers.core-vs-external-bright-line`). Secrets stay in environ (`astral.config.secrets-and-env-specific-from-environ`); wake base URL `.get` is the documented optional exception. Soft fails use `warning`/`debug`; terminal `done` is one `info` line without the request body. `patt.agent.provider-io-via-queue` still pending — id-only.
+
+**Tests:** Betty at Code Complete (`qa-child`). No test-tree edits in this build.
