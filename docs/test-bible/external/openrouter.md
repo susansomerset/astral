@@ -39,7 +39,7 @@ Branch coverage: `--cov-branch` over this module alone reports 100% (46 stmts, 8
 
 **Integration:** none.
 
-### AST-1964 · AST-1963 (generation-stats lookup)
+### AST-1964 (retired by AST-2218 — `get_generation_stats` → `get_receipt`) · AST-1963 (generation-stats lookup)
 
 **Primary manifest:** [`../utils/config.md`](../utils/config.md) § AST-1964. `get_generation_stats(generation_id, api_key)` → `GET https://openrouter.ai/api/v1/generation?id=…` with bearer key and `provider_call_http_timeout_seconds()`. Success: `{"success": True, "total_cost", "native_tokens_prompt", "native_tokens_completion", "native_tokens_cached", "native_tokens_reasoning", "provider_name"}` (OpenRouter field names verbatim; only `total_cost` required, the rest pass through as sent). Failure: `{"success": False, "error"}` — no cost key, never raises. Retries are the caller's (AST-1966).
 
@@ -56,3 +56,17 @@ Branch coverage: `--cov-branch` over this module alone reports 100% (46 stmts, 8
 Branch coverage: `--cov-branch` over this module alone reports 100% (65 stmts, 12 branches). Not added to `LOCKED_AT_100` (not requested by the ticket).
 
 **Integration:** none.
+
+### AST-2218 · AST-2215 (billed `get_receipt`)
+
+Parent AC **5** OpenRouter half. `get_receipt(ids, key)` returns one dict per id with exactly `TIMESHEET_RECEIPT_FIELDS`; 200 + `total_cost` fills `platform_cost`; 404 / transport → `completion_status="error"` + null cost; null `total_cost` → `not_ready`. Never raises. `get_generation_stats` / `get_generation_record` removed.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| New — two ids (200 + 404), shared key set, billed vs error | `get_receipt` | `TestAst2218GetReceipt::test_two_ids_200_and_404_shared_shape` |
+| New — null total_cost → not_ready | `get_receipt` | `…::test_not_ready_null_cost` |
+| New — integration guard → error, no HTTP | `get_receipt` | `…::test_integration_guard_no_http` |
+| New — timeout never raises | `get_receipt` | `…::test_never_raises_on_timeout` |
+| Broken / obsolete | `TestAst1964GenerationStats` | retired with `get_generation_stats` |
+
+**Primary manifest:** [`../core/timesheets.md`](../core/timesheets.md) § AST-2218. Probe map coverage unchanged (`TestAst1959*` / `TestAst2098*`).

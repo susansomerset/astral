@@ -407,3 +407,100 @@ describe("JobsMeteorites — AST-1982 Job Title cut", () => {
     expect(screen.getByText(CUT_TITLE)).toBeInTheDocument()
   })
 })
+
+
+describe("JobsMeteorites — AST-2224 onSaved list refresh", () => {
+  beforeEach(() => {
+    localStorage.clear()
+    mockedApi.mockReset()
+  })
+
+  it("§6c page: successful modal Save reloads the meteorites list via onSaved={load}", async () => {
+    const user = userEvent.setup()
+    let listCalls = 0
+    installBaseApiMocks(mockedApi, (url, init) => {
+      if (url === listUrl(candidateId) && (!init || !init.method || init.method === "GET")) {
+        listCalls += 1
+        return jsonResponse({ columns: LIST_COLUMNS, meteorites: [ROW_A] })
+      }
+      if (url === "/api/meteorites/11" && (!init || !init.method || init.method === "GET")) {
+        return jsonResponse({
+          sections: DETAIL_SECTIONS,
+          meteorite: {
+            id: 11,
+            candidate_id: "c1",
+            state: "READY",
+            content: "stored",
+            classify_outcome: "link",
+            link: "https://a.example/j",
+            astral_job_id: "job-a",
+            job_title: "Title A",
+            employer_name: "Employer A",
+            electronic_contact: "e@ex.com",
+            created_at: "2026-01-01T00:00:00Z",
+            updated_at: "2026-01-02T00:00:00Z",
+            state_changed_at: "2026-01-03T00:00:00Z",
+            source_kind: "email",
+            source_id: "mid-1",
+            error: null,
+            estelle_notified_at: null,
+          },
+          editable: true,
+          editable_fields: [
+            "state",
+            "content",
+            "link",
+            "job_title",
+            "employer_name",
+            "electronic_contact",
+          ],
+          state_options: ["READY", "CHECK_UNIQUE", "DUPLICATE"],
+          default_save_state: "CHECK_UNIQUE",
+        })
+      }
+      if (url === "/api/meteorites/11" && init && init.method === "PUT") {
+        return jsonResponse({
+          sections: DETAIL_SECTIONS,
+          meteorite: {
+            id: 11,
+            candidate_id: "c1",
+            state: "CHECK_UNIQUE",
+            content: "stored",
+            classify_outcome: "link",
+            link: "https://a.example/j",
+            astral_job_id: "job-a",
+            job_title: "Title A",
+            employer_name: "Employer A",
+            electronic_contact: "e@ex.com",
+            created_at: "2026-01-01T00:00:00Z",
+            updated_at: "2026-01-02T00:00:00Z",
+            state_changed_at: "2026-01-03T00:00:00Z",
+            source_kind: "email",
+            source_id: "mid-1",
+            error: null,
+            estelle_notified_at: null,
+          },
+          editable: true,
+          editable_fields: [
+            "state",
+            "content",
+            "link",
+            "job_title",
+            "employer_name",
+            "electronic_contact",
+          ],
+          state_options: ["READY", "CHECK_UNIQUE", "DUPLICATE"],
+          default_save_state: "CHECK_UNIQUE",
+        })
+      }
+      return undefined
+    })
+    renderWithProviders(<JobsMeteorites />)
+    await waitFor(() => expect(screen.getByText("Title A")).toBeInTheDocument())
+    expect(listCalls).toBe(1)
+    await user.click(screen.getByText("Title A"))
+    await waitFor(() => expect(screen.getByRole("button", { name: /^save$/i })).toBeInTheDocument())
+    await user.click(screen.getByRole("button", { name: /^save$/i }))
+    await waitFor(() => expect(listCalls).toBe(2))
+  })
+})
