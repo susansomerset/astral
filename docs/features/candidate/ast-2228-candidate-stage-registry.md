@@ -195,3 +195,43 @@ Confirm Chuckles estimate: 5 — agree
 - Follow stages in order; one commit per stage on the epic worktree; push each to `origin/sub/AST-2225/AST-2228-candidate-stage-registry`.
 - Do not add files outside **Files Changed**.
 - On ambiguity or codebase drift → stop and comment on parent AST-2225 with the Stage N blocked template; do not improvise.
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-2228
+**Overall:** APPROVED
+**Corpus:** b7ab2203048ce0beb2869a12200ab7fa696c8066
+**Publish ref tip:** `51e9b203f87a78b8a49a4a1152c8ebb0581bc562` (`origin/sub/AST-2225/AST-2228-candidate-stage-registry`)
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| astral.entity.required-metadata | A | | |
+| astral.dispatch.entity-state-bound | A | | |
+
+## Traceability
+
+AC1 → Stage 1 (every `CANDIDATE_STATES` entry gets `stage` + import asserts). AC2 → Stage 1 (delete four topic keys; insert `PROFILE_READY` / `CONTEXT_READY`). AC3 → Stage 1 step 5 + asserts (`PAUSE_SEARCH` 5, `RESUME_READY` 4, `PROFILE_READY` 2, `DELETED` 0). AC4 → Stage 2 step 5 + Stage 3 (registry-only stage; no `candidate.stage` column). Parent AC 5–13 → N/A — nav/shell/advancement owned by siblings #2–#4 per child `## Scope`.
+
+## Findings
+
+### acceptable
+- **Location:** Linear assignee at fetch
+- **Finding:** Status `Plan Ready` but assignee was Ada Lovelace, not Joan (validate-plan §1 expects Joan during the pass).
+- **Recommendation:** Chuckles should assign Joan before spawn when following the strict gate; this pass proceeded per spawn instruction with recommend-only stdout.
+
+### discuss
+- **Location:** Stage 2 step 3 — `migrate_retired_topic_candidate_states()` at start of `age_stale_candidate_states`
+- **Finding:** Live rows still labeled with retired topic strings are healed on the existing dispatcher stale tick, not synchronously at import. Any code path that reads `CANDIDATE_STATES[state]` for such a row before the first tick could see empty config until migration runs (dispatcher already calls `age_stale_candidate_states()` today).
+- **Recommendation:** Acceptable for this child’s boundaries (no `dispatcher.py` edits). Engineer should avoid assuming instant heal on deploy; optional one-line in Stage 2 “done when” noting first-tick heal is enough unless product wants a one-shot at import (out of scope).
+
+### acceptable
+- **Location:** `## UAT fitness` block
+- **Finding:** UAT-thin-shaped section on a normal feature child — redundant but correctly cites AC 1–4, sibling partition, and rejects `candidate.stage` column / topic-key compatibility sham.
+- **Recommendation:** No plan change required.
+
+**R6 (summary):** Definition fidelity holds — plan matches child partition (registry + resolver + migration + data model only; explicit exclusion of `NAV_CONFIG`, dispatcher, API, shell). Scope gate aligns with ticket `## Scope`. No sibling scope creep. Self-assessment / estimate confirm is specific. DRY: reuses `registered_base`, `remap_legacy_candidate_state`, `transition_candidate_state`, existing stale entrypoint. Craft `ERROR_*` → stage 4 matches parent banding (artifact-craft chain only; resume failures stay on `{base}_RETRY` at stage 3 via `registered_base`).
+
+context_tokens≈42000
