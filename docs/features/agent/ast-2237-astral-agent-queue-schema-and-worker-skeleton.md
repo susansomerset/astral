@@ -194,6 +194,19 @@ Every row in **Files Changed** is under those paths. Technical kinds covered: `a
 
 Confirm Chuckles estimate: 5 — agree
 
+## Review stub (Katherine / build)
+
+**Publish ref:** `origin/sub/AST-2235/AST-2237-astral-agent-queue-schema-and-worker-skeleton`  
+**Product commits:** `2e5e8a7a1` (Stage 1 — jobqueue/settings/logging), `7b76e4c95` (Stage 2 — stub executor + worker), `67bae9e6b` (Stage 3 — app/Dockerfile/requirements), `2b187cadb` (AC5 docstring grep clean)
+
+**Implemented:**
+- `service/astral_agent/jobqueue.py` — `agent_job` / `agent_worker` DDL, claim/complete/fail/heartbeat/maintain/NOTIFY
+- `service/astral_agent/worker.py` + `executor.py` — stub execute → terminal `done` / `failed` (`stub_error`)
+- `service/astral_agent/app.py` — `/healthz`, `/wake`, idle sleep/wake Runtime
+- `Dockerfile` + `requirements.txt` — slim Python, fastapi/uvicorn/asyncpg only
+
+**Tests:** Betty at Code Complete (`qa-child`) — engineers do not land test-tree changes. Component harness for AC2 is hers.
+
 ## Joan validate
 
 [plan-rubric]
