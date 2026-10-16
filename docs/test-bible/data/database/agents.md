@@ -114,3 +114,17 @@ The new bool agent setting lives in `_AGENT_SETTING_TYPES` and `_AGENT_BOOL_SETT
 - `resolve_agent_settings` output is identical with or without the flag, so it is never sent.
 
 **Revised:** `_agent_repo_row` carries `requires_structured_output: False` (fixes `TestAst782…::test_apply_upserts_updates_and_deletes_absent_agents` and `TestAst1878…::test_repo_json_requires_known_model`). Manifest: [`../../ui/api/api_admin.md`](../../ui/api/api_admin.md) § AST-2181.
+
+### AST-2232 · AST-2226 (agent_name column)
+
+**Parent:** [AST-2226](https://linear.app/astralcareermatch/issue/AST-2226). **Publish:** `origin/sub/AST-2226/AST-2232-agent-name-detail-enrichment-tab-config`.
+
+`agent.agent_name TEXT` — display metadata (not an `AGENT_SETTING`); `_AGENT_PUBLIC_COLUMNS` / `save_agent` / `update_agent` / `list_agents` / schema ensure. Primary manifest: **`docs/test-bible/core/tracker.md`** § AST-2232.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Round-trip + schema ensure | `src/data/database.py` | **`TestAst2232AgentName`** |
+
+**Broken / obsolete:** none.
+
+**Integration:** none.

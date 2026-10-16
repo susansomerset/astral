@@ -2248,3 +2248,18 @@ git checkout -- data/
 **Regression (no new reds):** `tests/component --continue-on-collection-errors`. The failing-id set on the tip is a subset of the 351 failures that were red before this build (337 on the tip). The five collection errors (`test_meteorite_email`, `test_page_intake`, `test_surfer`, `test_meteorites`, `test_surfer_batches`) are pre-existing. `test_intake::test_background_initiate_failure_writes_assistant_error` is order-dependent: it passes alone and in its own file.
 
 **Pass criterion:** pytest green on the manifest lines, not the zero-arg harness or branch-lock gate.
+
+### AST-2232 · AST-2226 (story agent_name)
+
+**Parent:** [AST-2226](https://linear.app/astralcareermatch/issue/AST-2226). **Publish:** `origin/sub/AST-2226/AST-2232-agent-name-detail-enrichment-tab-config`.
+
+`get_entity_agent_story` attaches `agent_name` from the task's agent row when non-empty (parallel to `task_name`); omits when blank / missing `agent_id`. Primary manifest: **`docs/test-bible/core/tracker.md`** § AST-2232.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Attach / omit `agent_name` | `src/core/agent.py` | **`TestAst2232AgentStoryAgentName`** |
+| Regression `task_name` | same | **`TestAst1550AgentStoryTaskName`** |
+
+**Broken / obsolete:** none — additive field.
+
+**Integration:** none.

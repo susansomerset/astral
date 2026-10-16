@@ -564,11 +564,13 @@ class TestBuildStateUiManifest:
     def test_ast565_recommended_report_manifest_tabs(self) -> None:
         # AST-948 / AST-1550: report_top_tabs + report_summary_sections;
         # Discussion follows Artifacts (AST-1550). AST-1872: Analysis first (default tab).
+        # AST-2232: Job Description tab between Analysis and Summary; raw_jd dropped from Summary.
         manifest = cfg.build_state_ui_manifest()
         rec = manifest["jobs"]["recommended"]
         assert "report_fixed_tabs" not in rec
         assert [t["tab_id"] for t in rec["report_top_tabs"]] == [
             "analysis",
+            "job_description",
             "summary",
             "artifacts",
             "discussion",
@@ -576,6 +578,7 @@ class TestBuildStateUiManifest:
         ]
         assert [t["nav_label"] for t in rec["report_top_tabs"]] == [
             "Analysis",
+            "Job Description",
             "Summary",
             "Artifacts",
             "Discussion",
@@ -586,9 +589,8 @@ class TestBuildStateUiManifest:
             "company_upshot",
             "caveats",
             "questions",
-            "raw_jd",
         ]
-        assert rec["report_summary_sections"][-1]["default_expanded"] is False
+        assert "raw_jd" not in [s["section_id"] for s in rec["report_summary_sections"]]
         assert len(rec["report_phase_tabs"]) == 4
         assert rec["report_phase_tabs"][0]["take_key"] == "take_jd"
         assert [p["nav_label"] for p in rec["report_phase_tabs"]] == [
@@ -5606,14 +5608,17 @@ class TestAst1550DiscussionHopKeys:
 
     def test_top_tabs_discussion_after_artifacts(self) -> None:
         # AST-1872: Analysis leads; Discussion still follows Artifacts.
+        # AST-2232: job_description sits between analysis and summary.
         tabs = cfg.JOBS_RECOMMENDED_REPORT_TOP_TABS
         assert [t["tab_id"] for t in tabs] == [
             "analysis",
+            "job_description",
             "summary",
             "artifacts",
             "discussion",
             "meteorite",
         ]
+        assert tabs[1]["nav_label"] == "Job Description"
         assert tabs[-2]["nav_label"] == "Discussion"
         assert tabs[-1]["nav_label"] == "Meteorite"
 
@@ -7722,18 +7727,27 @@ class TestAst1947CatalogByQuantization:
 
 # AST-1955 seed starting values (parent Functional scope 8, plan Stage 3 table), kept literal:
 # agent_id → (model_id, max_tokens, temperature, reasoning_effort).
-_AST1955_SEED = {
-    "ats_expert_atlas": ("deepseek-v4-pro", 384000, 0.6, None),
-    "college_intern_ruth": ("deepseek-v4-flash", 8192, 0.2, None),
-    "contact_recruiter_estelle": ("kimi-k2.6", None, 0.2, "none"),
-    "content_writer_judith": ("kimi-k2.6", 16000, None, None),
-    "job_analyst_grace": ("deepseek-v4-pro", 16000, 0.2, None),
-    "principal_recruiter_estelle": ("kimi-k2.6", 384000, None, None),
-    "web_scraper_laslo": ("deepseek-v4-pro", 16000, 0.2, None),
+# AST-2232: display names for Discussion headers (both Estelle ids share Estelle).
+_AST2232_AGENT_NAMES = {
+    "job_analyst_grace": "Grace",
+    "ats_expert_atlas": "Atlas",
+    "content_writer_judith": "Judith",
+    "web_scraper_laslo": "Laslo",
+    "principal_recruiter_estelle": "Estelle",
+    "college_intern_ruth": "Ruth",
+    "contact_recruiter_estelle": "Estelle",
+    "antagonist_kent": "Kent",
+    "fact_checker_marta": "Marta",
+    "job_filter_lucy": "Lucy",
 }
 _AST1955_SETTINGS = (
     "quantization", "temperature", "reasoning_effort", "provider_allow_fallbacks",
     "provider_only", "provider_ignore", "provider_sort",
+)
+# AST-2181 adds requires_structured_output; AST-2232 inserts agent_name after agent_id.
+_AST2232_AGENT_REPO_COLUMNS = (
+    "agent_id", "agent_name", "content", "model_id", "max_tokens",
+    *_AST1955_SETTINGS, "requires_structured_output", "updated_at",
 )
 
 
@@ -7861,19 +7875,18 @@ class TestAst1955PlainAgentSettings:
 
     def test_agent_repo_json_columns_and_seed(self) -> None:
         # AC 8 (config + seed + fixture). Revert-from-seed runs in tests/component/data/database/test_agents.py.
+        # AST-2232: agent_name column + non-empty seed names; AST-2181: requires_structured_output in columns.
         import json
         from pathlib import Path
 
         cols = cfg.REPO_ADMIN_JSON_CONFIG["tables"]["agent"]["columns"]
-        assert cols == ("agent_id", "content", "model_id", "max_tokens", *_AST1955_SETTINGS, "updated_at")
+        assert cols == _AST2232_AGENT_REPO_COLUMNS
         root = Path(__file__).resolve().parents[3]
         seed = json.loads((root / "data/admin/agent.json").read_text())
         assert [tuple(r) for r in seed] == [cols] * len(seed)
-        assert {r["agent_id"]: (r["model_id"], r["max_tokens"], r["temperature"], r["reasoning_effort"])
-                for r in seed} == _AST1955_SEED
-        # Every row starts fallbacks true and the rest empty (Susan: no derived quantization).
-        assert {(r["quantization"], r["provider_allow_fallbacks"], r["provider_only"], r["provider_ignore"],
-                 r["provider_sort"]) for r in seed} == {(None, True, None, None, None)}
+        assert {r["agent_id"]: r["agent_name"] for r in seed} == _AST2232_AGENT_NAMES
+        assert all((r["agent_name"] or "").strip() for r in seed)
+        assert not any("brain_setting" in r or "mode" in r for r in seed)
         # Fixture: same settings fields, same Functional scope 8 rule (Claude SKUs couldn't think) — plan Stage 3
         # step 2 meaning of "field-for-field"; it keeps its 6 rows, model_code and stale content (AST-1947 precedent).
         fixture = json.loads((root / "docs/uat-fixtures/AST-756/expected-agent.json").read_text())

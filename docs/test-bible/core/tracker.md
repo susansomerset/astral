@@ -958,3 +958,49 @@ ASTRAL_DB_DIR=$(mktemp -d) ./scripts/testing/run_component_tests.sh \
 3. No-regression: `pytest tests/component/core/test_tracker.py tests/component/core/test_contact.py -q` → **24 failed, 389 passed**, the pre-existing set (AST-733, 551, 552, 562, 997, 1523, 1693 in `test_tracker.py`; AST-1073, 1101, 1207, 1515 in `test_contact.py`). None are in these two classes.
 
 Restore `data/contact_estelle_activity.json` (`git checkout --`) after running the suites. Do not commit it.
+
+### AST-2232 · AST-2226 (lifecycle helpers + Applied admission for detail)
+
+**Parent:** [AST-2226](https://linear.app/astralcareermatch/issue/AST-2226). **Publish:** `origin/sub/AST-2226/AST-2232-agent-name-detail-enrichment-tab-config`.
+
+Public helpers `job_discovered_at` / `job_first_state_history_at` / `job_recommended_at` / `job_applied_at` — discovered = `created_at`; recommended/applied = first matching `state_history.to_state` (list order; no reverse). Applied legality for detail is `job_state_admits_transition(state, "CANDIDATE_APPLIED")` (same prior-state query as Skip; `CANDIDATE_APPLIED` stays in its own priors). Route enrichment: **`docs/test-bible/ui/api/api_jobs.md`** § AST-2232. Config tabs / `agent_name` seed: **`docs/test-bible/utils/config.md`** § AST-2232. Story attach: **`docs/test-bible/core/agent.md`** § AST-2232. DB column: **`docs/test-bible/data/database/agents.md`** § AST-2232.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Lifecycle helpers | `src/core/tracker.py` | **`TestAst2232JobLifecycleDates`** |
+| Detail `can_apply` + company + dates | `src/ui/api/api_jobs.py` `detail` | **`test_api_jobs.py::TestAst2232DetailEnrichment`** |
+| AC1 tabs + Summary drop `raw_jd` + agent columns/seed names | `src/utils/config.py` + `data/admin/agent.json` | **`test_config.py`** — revised `test_ast565_recommended_report_manifest_tabs`, `TestAst1550DiscussionHopKeys::test_top_tabs_discussion_after_artifacts`, `TestAst1955PlainAgentSettings::test_agent_repo_json_columns_and_seed` |
+| Story `agent_name` | `src/core/agent.py` | **`TestAst2232AgentStoryAgentName`** |
+| DB `agent_name` | `src/data/database.py` | **`test_agents.py::TestAst2232AgentName`** |
+
+**Broken / obsolete (revised this pass):** config tab-order asserts that pinned Analysis→Summary (no `job_description`) and Summary `raw_jd`; agent repo-column tuple that omitted `agent_name` / `requires_structured_output`.
+
+**Out of scope (siblings):** `stateUiManifestFixture.ts` / `JobAnalysisReportModal` / header chrome — still carry pre-AST-2232 fixture tab order + Summary `raw_jd` until #2 / #3 land (same deferral pattern as AST-1872 → AST-1874).
+
+**Integration:** none — do not invent new scenarios.
+
+## QA test manifest
+
+1. **Component (narrowed — must be all green):**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_tracker.py::TestAst2232JobLifecycleDates \
+  tests/component/core/test_tracker.py::TestAst1872JobStateAdmitsTransition \
+  tests/component/ui/api/test_api_jobs.py::TestAst2232DetailEnrichment \
+  tests/component/ui/api/test_api_jobs.py::TestAst1872DetailCanSkip \
+  tests/component/core/test_agent.py::TestAst2232AgentStoryAgentName \
+  tests/component/core/test_agent.py::TestAst1550AgentStoryTaskName \
+  tests/component/utils/test_config.py::TestBuildStateUiManifest::test_ast565_recommended_report_manifest_tabs \
+  tests/component/utils/test_config.py::TestAst1550DiscussionHopKeys \
+  tests/component/utils/test_config.py::TestAst1691MeteoriteReportConfig \
+  tests/component/utils/test_config.py::TestAst1955PlainAgentSettings::test_agent_repo_json_columns_and_seed \
+  tests/component/data/database/test_agents.py::TestAst2232AgentName \
+  -q
+```
+
+2. **Scope gate:** `git diff origin/dev...origin/sub/AST-2226/AST-2232-agent-name-detail-enrichment-tab-config -- src/ui/frontend/` empty.
+
+**Pass criterion:** item 1 green + item 2 holds — narrowed run, not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):** fill after push — one line per touched bible path under `docs/test-bible/`.
