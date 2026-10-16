@@ -268,3 +268,10 @@ AC 1 → Stage 1 (Props/JSX purge Copy; AC greps); AC 2 → Stage 1 (Skip/Applie
 **Definition fidelity (R6):** Files Changed = two Scope files only; no modal/lib/backend. Estimate confirm present. Plan Discuss rounds on thread: 0.
 
 context_tokens≈52000
+
+## Review
+
+- **Publish ref:** `origin/sub/AST-2226/AST-2233-report-header-chrome-triage-actions`
+- **Code tip:** `b4dba8d4a3a42bc92ef441ce7aabe65aefc44fd9`
+- **Stages:** `code(AST-2233): header triage actions, no Copy/Print` · `code(AST-2233): report header responsive + thermometer CSS`
+- **Notes:** Header Props drop Copy/Print; Skip/Applied/Generate in `.recommended-report-header-actions`; company + website line + date strip. CSS: ≤1023px stack, thermometer/total-gradable/Discussion hooks. Full-package `tsc` fails only on `JobAnalysisReportModal` excess props until AST-2234 (plan Decision).
