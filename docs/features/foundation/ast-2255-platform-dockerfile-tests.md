@@ -115,3 +115,29 @@ Nodes:
 - `ARG VITE_STYTCH_PUBLIC_TOKEN` and `ARG VITE_STYTCH_REDIRECT_URL` remain legal. The absence check is the ten secret names, not every `ARG`.
 - `[deploy] startCommand = "python scripts/start_server.py"` stays. This test does not assert it and must not require it to move into a `CMD`.
 - Telescope deploy tests and `docs/test-bible/service/telescope.md` stay unchanged.
+
+
+## Radia review
+
+```
+[code-rubric]
+**Ticket:** AST-2255
+**Publish ref:** bbc0119ed76ed30d64e2cf614afdcf58fb74c8df (`origin/sub/AST-2249/AST-2255-platform-dockerfile-tests`)
+**Corpus:** 65a2864973ecf09fd57732c2cfc9a4e1ff3e0b91
+**Overall:** CLEAN
+
+## Canon scores
+
+(empty frozen Canon Scope — Joan `[board-joan] CANON: OK`)
+
+## Fix-specific checks
+
+**[bug-repro]:** OK (`tests/component/service/test_platform_deploy.py`)
+**## What must still hold:** OK
+
+## Findings
+
+advisory only: at 1fe4515c2 the secret-name test is red because the root Dockerfile is absent, not because a secret line is present. A later secret ARG/ENV line would still fail the parser.
+
+context_tokens≈16000
+```
