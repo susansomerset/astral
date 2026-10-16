@@ -10,6 +10,10 @@ import pytest
 
 from src.external import anthropic as anthropic_mod
 
+_SEND_RETIRED = pytest.mark.skip(
+    reason="AST-2239: send_to_anthropic retired (thin stub); wire coverage moved to service/astral_agent/providers"
+)
+
 
 # Branches: timestamp prefix shape; hour rollover at noon/midnight.
 class TestGetTimestampPrefix:
@@ -166,6 +170,7 @@ class TestParsePythonCodeResponse:
 
 
 # Branches: model required; text/json/python formats; failures; timesheet hooks.
+@_SEND_RETIRED
 class TestSendToAnthropic:
     @pytest.mark.asyncio
     async def test_requires_model_code(self) -> None:
@@ -280,6 +285,7 @@ class TestSendToAnthropic:
         assert out["success"] is True
 
 
+@_SEND_RETIRED
 class TestAst897BalanceRefusalTagging:
     """AST-897: anthropic API exceptions tag failure_class for balance/credit refusals."""
 
@@ -323,6 +329,7 @@ class TestAst897BalanceRefusalTagging:
         assert "failure_class" not in out
 
 
+@_SEND_RETIRED
 class TestAst903JsonMaxTokensHardFail:
     """AST-903: JSON + stop_reason=max_tokens fails closed (no heal/parse success)."""
 
@@ -359,6 +366,7 @@ class TestAst903JsonMaxTokensHardFail:
         assert "failure_class" not in out
 
 
+@_SEND_RETIRED
 class TestAst1190EmptyUnusableProviderResponse:
     """AST-1190: hollow response fail-closed + blank exception error normalize."""
 
@@ -436,6 +444,7 @@ class TestAst1190EmptyUnusableProviderResponse:
         assert "failure_class" not in out
 
 
+@_SEND_RETIRED
 class TestAst1189ProviderCallBudgetTimeout:
     """AST-1189: TimeoutError → provider_call_timeout + non-empty budget error."""
 
@@ -489,6 +498,7 @@ class TestAst1189ProviderCallBudgetTimeout:
 # AST-1956: send_to_anthropic sends temperature / reasoning_effort only when set, exactly as given.
 # Branches: temperature None vs set (0.0 included); effort empty / "none" / other (via extra_body, no vocabulary);
 # a rejected setting is the ordinary failure envelope (no failure_class).
+@_SEND_RETIRED
 class TestAst1956SettingsOnTheWire:
     @staticmethod
     def _recording(monkeypatch, fake_anthropic_client, **client_kwargs):
@@ -574,6 +584,7 @@ class _BlocksClient:
         return SimpleNamespace(content=self._content, stop_reason=self._stop_reason, id="msg_tool", usage=usage)
 
 
+@_SEND_RETIRED
 class TestAst2179ForcedToolTransport:
     @staticmethod
     def _client(monkeypatch, content=None, **kw) -> _BlocksClient:
@@ -698,6 +709,7 @@ class TestAst2217ReceiptStubAndAttribution:
             assert row["native_tokens_prompt"] == 0
             assert row["native_tokens_completion"] == 0
 
+    @_SEND_RETIRED
     @pytest.mark.asyncio
     async def test_recorded_call_carries_attribution(self, monkeypatch, fake_anthropic_client) -> None:
         client = fake_anthropic_client(
@@ -723,3 +735,10 @@ class TestAst2217ReceiptStubAndAttribution:
         assert row["call_stop"] >= row["call_start"]
         assert row["response_char_length"] > 0
         assert row["response_item_count"] == 1
+
+
+class TestAst2239SendToAnthropicRetired:
+    @pytest.mark.asyncio
+    async def test_send_to_anthropic_raises_retired(self) -> None:
+        with pytest.raises(RuntimeError, match="send_to_anthropic retired \(AST-2239\)"):
+            await anthropic_mod.send_to_anthropic([{"type": "text", "text": "hi"}])
