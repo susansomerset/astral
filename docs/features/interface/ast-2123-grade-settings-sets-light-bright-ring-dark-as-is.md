@@ -1,3 +1,92 @@
+<!-- linear-archive: AST-2123 archived 2026-10-16 -->
+
+## Linear archive (AST-2123)
+
+**Archived:** 2026-10-16  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-2123/grade-settings-sets-light-bright-ring-dark-as-is-light-theme-replace  
+**Status at archive:** Archive  
+**Project:** Astral Interface  
+**Assignee:** ada  
+**Priority / estimate:** None / 3  
+**Parent:** AST-2100 — Light theme: replace grade colours with "Bright + ring" palette  
+**Blocked by / blocks / related:** parent: AST-2100; related: AST-2101
+
+### Description
+
+## What this implements
+
+Declares the full grade base, lettered and confidence settings in both theme blocks, with Light on Bright + ring and Dark visually unchanged. Points the grade-dot and confidence-bullet rules at those settings. Deletes the now-unregistered alternate theme blocks and the §16 Theme Examples CSS. Runs after [AST-2122](https://linear.app/astralcareermatch/issue/AST-2122), because deleting the alternate blocks first would fail `test_every_registry_id_has_an_app_css_block`. Does **not** add shapes; that is [AST-2101](https://linear.app/astralcareermatch/issue/AST-2101).
+
+The exact setting labels and Light / Dark values are in the parent's **Grade settings model** tables ([AST-2100](https://linear.app/astralcareermatch/issue/AST-2100)). Those tables are the value contract for this ticket.
+
+## Citations
+
+none. No in-force pattern or statute governs stylesheet tokens (see parent Architectural definition).
+
+## Scope
+
+`src/ui/frontend/src/App.css`: **modified**. The Dark and Light Design Tokens blocks declare the full grade base, lettered and confidence settings sets. The `[data-theme="light_parchment"]` and `[data-theme="light_slate"]` blocks and the §16 Theme Examples section (plus its table-of-contents line) are removed. The §9b Grade Dots and confidence-bullet rules read every value from those settings.
+
+Technical scope (from parent):
+
+* `App.css` **Light block (**`[data-theme="light"]`**)**: modified and new tokens. The six fills take the Light values. Add every per-grade ring colour, ring width, lettered ring width, letter colour, letter size and letter weight label, plus the three new confidence labels, all with the Light values from the settings tables. Its header comment drops the alternates wording.
+* `App.css` **Dark block (**`:root, [data-theme="dark"]`**)**: new tokens. Declare the same labels with the Dark values from the settings tables, because the stylesheet header requires every `[data-theme]` block to declare the same custom-property names. The fills stay as they are.
+* `App.css` `[data-theme="light_parchment"]` **/** `[data-theme="light_slate"]`: deleted blocks.
+* `App.css` **§16 Theme Examples**: deleted section (every `.theme-examples*` rule) and its table-of-contents line.
+* `App.css` `--text-on-grade` **/** `--text-on-grade-f`: retired tokens. Their only consumers are `.grade-dot` and `.dot-f`, so remove them once those rules read the per-grade letter colour.
+* `App.css` **§9b Grade Dots**: modified rules. Each `.dot-<g>` rule draws its fill and an inset ring (`box-shadow: inset 0 0 0 <ring width> <ring colour>`) from its grade base settings. Lettered dots (not `.grade-dot-letterless`) add the grade's letter colour, size and weight, and use the lettered ring width. Because Dark ring widths are 0, no theme-scoped selector is needed. The two report-context rules keep their 11px letter size.
+* `App.css` **confidence bullets (**`.confidence-bullets`**,** `.confidence-bullet`**,** `.confidence-bullet--on`**)**: modified rules. Gap, size and off opacity read the new confidence settings instead of literals.
+
+## Acceptance criteria
+
+ 1. **Two complete sets.** Every label in the three settings tables (with `<g>` expanded to a, b, c, d, f and x) appears exactly once in `:root, [data-theme="dark"]` and exactly once in `[data-theme="light"]`, checked with `git grep -c -- '<label>:' src/ui/frontend/src/App.css` = 2 per label. **Fail:** any label missing from either block, or declared twice in one block.
+ 2. **Light values.** The Light block's values match the Light columns of the settings tables exactly. With the profile on Light, `getComputedStyle` on a `.dot-c` dot gives `background-color: rgb(247, 103, 7)`. **Fail:** any value differs, or the block still carries `#a06500` / `#c05621` / `#c53030`.
+ 3. **Separation.** The OKLab distance between every pair of the six Light fills, computed by the standard sRGB→OKLab formula, is ≥ 15 (the closest is C–D at 15.7). **Fail:** any pair below 15.
+ 4. **Compact ring.** On Light, a `.grade-dot.dot-<g>.grade-dot-letterless` dot on the Recommended Job List gives computed `box-shadow` = `inset 0 0 0 1.5px <that grade's ring colour>`, for each of A, B, C, D, F and X. **Fail:** no shadow, a different width, or another grade's ring colour.
+ 5. **Lettered builds on base, all three variants.** On Light, a plain lettered dot, a report tab dot and a report header cell dot each give:
+    * computed `background-color` = the grade's base fill;
+    * `color` = the grade's letter colour (B is `rgb(43, 32, 0)` and C is `rgb(31, 13, 0)`; the rest are white);
+    * `font-weight` 700;
+    * `box-shadow` = `inset 0 0 0 2px <ring colour>`.
+
+    The plain dot's `font-size` is 12px, and the two report variants are 11px. **Fail:** a fill that differs from the compact dot of the same grade, shared ink across grades, or a 1.5px ring on any lettered variant.
+ 6. **Dark unchanged, no ring.** On Dark, every widget in the widgets table keeps the Dark fills and letter colours in the settings tables, and the computed `box-shadow` spread is 0px, so no ring is drawn. **Fail:** any colour change or a visible ring.
+ 7. **Confidence unchanged, sourced from settings.** In both themes, `.confidence-bullet` computes `width` and `height` 4px and `opacity` 0.55 (1 when `--on`), the gap is 3px, and the colours match the confidence table. `git grep -n -A6 '^\.confidence-bullet' -- src/ui/frontend/src/App.css` shows `var(--confidence-bullet-` for gap, size and opacity, and no `4px`, `3px` or `0.55` literals. **Fail:** any visual change, or a literal left in those rules.
+ 8. **Theme Examples gone** (the `App.css` part: no `theme-examples` / `Theme Examples` hits left in `App.css`).
+ 9. **Alternates gone** (the `App.css` part: no `light_parchment` / `light_slate` hits left in `App.css`).
+10. **Old ink tokens gone.** `git grep -n 'text-on-grade' -- src/ui/frontend/src src/utils` returns nothing. **Fail:** any hit.
+11. **Backgrounds untouched.** With the profile on Light, `getComputedStyle(document.querySelector('.modal-card')).backgroundColor` is `rgb(255, 255, 255)`. **Fail:** any other value.
+
+## Boundaries
+
+* No `config.py`, `uiConfig.ts`, `routes.tsx` or page changes. Registry, nav, route and page retirement belong to [AST-2122](https://linear.app/astralcareermatch/issue/AST-2122).
+* No markup or class-label changes: lettered stays plain `.grade-dot`, and compact stays `.grade-dot-letterless`.
+* No shapes ([AST-2101](https://linear.app/astralcareermatch/issue/AST-2101)), and no background token changes.
+
+## Notes for planning
+
+Citations: none. The stylesheet header rule applies: every `[data-theme]` block declares the same custom-property names. Blocked by [AST-2122](https://linear.app/astralcareermatch/issue/AST-2122).
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/AST-2100-bright-ring-grade-palette`, child `sub/AST-2100/AST-2123-grade-settings-sets`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-10-10T05:03:20.855Z
+[code-rubric] PROCEED (Commit: 067c9ee36) Bright+ring tokens; CSS cleanup
+
+#### betty — 2026-10-10T05:01:11.348Z
+`origin/sub/AST-2100/AST-2123-grade-settings-sets` @ `067c9ee36` · exact block check restored
+
+#### joan — 2026-10-10T04:55:46.854Z
+[plan-rubric] PROCEED (Commit: d648e8416) Two-stage App.css plan
+
+#### ada — 2026-10-10T04:54:41.391Z
+`origin/sub/AST-2100/AST-2123-grade-settings-sets` @ `d648e8416` · plan ready, two stages
+
+---
+
 # AST-2123 — Grade settings sets (Light Bright + ring, Dark as-is)
 
 - **Parent:** [AST-2100](https://linear.app/astralcareermatch/issue/AST-2100) — Light theme: replace grade colours with "Bright + ring" palette
