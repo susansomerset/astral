@@ -1371,3 +1371,5 @@ docs/test-bible/external/google_cse.md 86a58edf4b2f75c1c4ce8dc511237fbb88c6c2c3
 docs/test-bible/core/timesheets.md     0d673050c050303311b3d5dbf5b51506f424f9af
 # roster.md: git show origin/sub/AST-2215/AST-2219-google-search-receipt-stub:docs/test-bible/core/roster.md | shasum
 ```
+
+**AST-2253 search credentials:** [`../external/google_cse.md`](../external/google_cse.md) § QA test manifest — AST-2253.
