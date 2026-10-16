@@ -209,3 +209,42 @@ Soft failure: same keys with `"success": False`, `"error": "<non-empty str>"`, `
 ## Estimate
 
 Confirm Chuckles estimate: 5 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-2239
+**Overall:** APPROVED
+**Corpus:** b7ab2203048ce0beb2869a12200ab7fa696c8066
+**Publish ref:** `53e6d8da893faa6a7379e95cdb08a03dc347abff` (`origin/sub/AST-2235/AST-2239-provider-wrappers-inside-the-worker`)
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| astral.layers.core-vs-external-bright-line | A | | |
+| astral.config.secrets-and-env-specific-from-environ | B | | DSN via AST-2237; provider credential on assembled `request["api_key"]`, not service `os.environ` |
+| stat.logging.error | B | | Console/Railway JSON: `exception` on crash; `error` on `ProviderJobError`; warning on soft `success: False` |
+| patt.agent.provider-io-via-queue | X | | pending Archie / not in `canon_clerk` active corpus; plan id-only |
+
+(Worst grade **B** → roll-up PROCEED.)
+
+## Traceability
+
+Child AC: **5→S2–S3** (entity-ban greps + executor/worker); **6→S1–S2** (no hardcoded keys; `ASTRAL_DATABASE_URL` on service via AST-2237; provider secret via `request["api_key"]` — ticket wording caveat below); **7→S1 `logging_util` + S3 greps**. Stages cover child **## Scope** and parent dumb-I/O slice; no orphan stages. Parent AC **1–4, 8–12** N/A (siblings/boundaries).
+
+## Findings
+
+**discuss** — **AC 6 vs assembled wire.** Linear still says service reads provider keys from **environ only**; plan follows parent locked “assembled wire in” with **`api_key` in jsonb** (Canon notes + Stage 2). Align ticket AC or add a one-line plan **## Traceability** note so Radia is not torn between grep-AC and plan.
+
+**acceptable** — `send_to_*` stubs before AST-2240; merge-order warning in Stage 3.
+
+**acceptable** — Scope gate (service providers + three `src/external` modules only); soft-fail → `complete` matches today’s provider clients.
+
+## R6 (summary)
+
+Faithful to child #3 definition; no scope creep into cutover/client/railway/tests. DRY: fenced ports from `src/external/*` + `llm_external` literals. No **D**/**F**; no `fix-now`.
+
+context_tokens≈54000
+
+[plan-rubric] PROCEED (Commit: 53e6d8da) Service provider wrappers plan
