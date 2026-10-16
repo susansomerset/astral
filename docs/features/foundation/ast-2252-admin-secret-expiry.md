@@ -81,3 +81,61 @@ Call `upsert_service_variable`, `delete_service_variable`, and `trigger_service_
 ## Estimate
 
 Confirm Chuckles estimate: 3 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-2252
+**Overall:** APPROVED
+**Corpus:** 65a2864973ecf09fd57732c2cfc9a4e1ff3e0b91
+**Publish ref:** `sub/AST-2246/AST-2252-admin-secret-expiry` @ `7eb04bc6a9f9dfa8cedb54b1e434c17980e413fc`
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| stat.logging.info.api | A | | |
+| new candidate-secret pattern (pending Archie) | B | | |
+
+## Traceability
+
+`2 → Stage 1 (production PUT: upsert/delete then one trigger_service_deploy, then update_candidate_api_keys status-only); 3 → Stage 1 _sanitize_candidate (api_keys = label/status/expires_at, pops candidate_api_keys and plaintext)`
+
+## Findings
+
+### discuss — Canon Scope gap (layers)
+
+- **Severity:** discuss
+- **Location:** Stage 1 step 1 — `api_candidate.py` imports `src.external.railway`
+- **Finding:** `astral.layers.import-direction` restricts ui → core + utils; direct ui → external calls exist elsewhere (e.g. telescope routes) but the statute is not on this child’s Citations list.
+- **Recommendation:** Archie may add import-direction for Radia parity; not a reason to widen or score off-list here. Pattern matches established admin API → external I/O in this codebase.
+
+### discuss — Pattern not in corpus
+
+- **Severity:** discuss
+- **Location:** Citations / Stage 1 decisions
+- **Finding:** Candidate-secret pattern remains pending Archie approval with no canon file.
+- **Recommendation:** Plan matches epic intent (Railway before row write, GET never returns secret, production vs local gate on `ASTRAL_RAILWAY_TOKEN`).
+
+### discuss — Railway-before-row ordering
+
+- **Severity:** discuss
+- **Location:** Stage 1 decision (Railway then DB; 502 leaves row unchanged)
+- **Finding:** A DB failure after a successful Railway write + deploy can leave the variable updated while status lags until retry.
+- **Recommendation:** Acceptable trade documented in plan; operator retry is the recovery path—not a plan blocker.
+
+### acceptable — AC 2 component test not in this diff
+
+- **Severity:** acceptable
+- **Location:** Child AC 2 / Scope check
+- **Finding:** Full “Admin set” component test is Betty’s lane; this ticket wires the PUT path the test will assert against.
+- **Recommendation:** None.
+
+### acceptable — Depends on AST-2250 / AST-2251
+
+- **Severity:** acceptable
+- **Location:** Scope check
+- **Finding:** Railway helpers and `update_candidate_api_keys` + `candidate_secret_status` behavior are assumed from prior siblings.
+- **Recommendation:** Land #1 and #2 on ftr before build.
+
+context_tokens≈48000
