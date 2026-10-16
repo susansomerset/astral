@@ -188,3 +188,78 @@ Status column JSON: `550491218`. Hydrate: `42336fedf`. Migration: `8a5d9baa9`. D
 - **Recommendation:** Matches dispatch partition; AC 2–3 testable via core/database paths and stubs.
 
 context_tokens≈42000
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-2251
+**Publish ref:** `cac5838cfe1e040cb155f38a72fa38eead53e27a` (`origin/sub/AST-2246/AST-2251-secret-status-hydrate`)
+**Corpus:** `65a2864973ecf09fd57732c2cfc9a4e1ff3e0b91`
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| stat.entity.required-metadata | A | | |
+| stat.logging.warning | A | | |
+| new candidate-secret pattern (pending Archie) | A | | |
+
+## Column diff vs plan stage
+
+| slug | Joan | Radia | note |
+|------|------|-------|------|
+| new candidate-secret pattern (pending Archie) | B | A | Plan-stage B reflected pending corpus; diff delivers parent AST-2246 slice (status JSON, no ciphertext write, environ hydrate, migration upsert+clear, no deploy in script). |
+
+(stat.entity.required-metadata, stat.logging.warning: aligned at A)
+
+## Frame diff
+
+- [ ] **Acceptance criteria — AC 2:** Confirm dispatch missing-key behavior is unchanged and `EXPIRED` is satisfied by omitting the server from `candidate_api_keys` (no `dispatcher.py` edit on this sub).
+- [ ] **Acceptance criteria — AC 1:** After `--execute`, operators run a deploy (or accept stale env until deploy) so hydrated values match Railway upserts — Joan’s migration note.
+
+## Findings
+
+### advisory — Sibling product carry in three-dot diff
+
+- **Location:** `src/external/railway.py`, `src/utils/config.py`, `env.example`, `docs/features/foundation/ast-2250-railway-variable-client.md`, `tests/component/external/test_railway.py`, `tests/component/utils/test_config.py` (AST-2250 paths)
+- **Finding:** `origin/dev...origin/sub/AST-2246/AST-2251-secret-status-hydrate` includes AST-2250’s Railway client stack; expected when the sub branch rolls up the prior sibling for AST-2251’s migration import and catalog helpers.
+- **Recommendation:** Note once in the issue doc; not a cross-ticket product scope violation for AST-2251.
+
+### advisory — Off-list statutes (do not score)
+
+- **Location:** `_parse_candidate_row` → lazy `hydrate_candidate_secrets`; `src/core/candidate.py` catalog/env reads
+- **Finding:** `astral.layers.import-direction`, `astral.config.config-source-of-truth`, and `astral.config.secrets-and-env-specific-from-environ` govern the footprint but are not on the frozen Citations list; behavior matches Joan’s plan-stage discussion (lazy data→core hydrate, catalog in config, hard `os.environ` reads in hydrate only).
+- **Recommendation:** Archie may widen parent Canon Scope at Discussion; do not insert ids on this pass.
+
+### discuss — Migration upsert without deploy
+
+- **Severity:** discuss
+- **Location:** `scripts/migrations/migrate_candidate_api_keys_to_railway.py` (no `trigger_service_deploy`)
+- **Finding:** `--execute` upserts with `skipDeploys`; running processes do not see new values until a later deploy. AC 1 is about clearing ciphertext in SQLite, not live env parity.
+- **Question (@susan):** Should migration runbook require an explicit deploy step after `--execute`?
+- **Default:** Document “deploy after `--execute`” in operator notes when Chuckles/UAT runs the script; no code change on this sub unless Susan wants deploy wired into the script.
+
+### advisory — AC 2 vs dispatcher tests
+
+- **Location:** `TestAst2251SecretStatusHydrate::test_expired_and_exact_now_omit_the_server`; manifest has no `test_dispatcher` row
+- **Finding:** EXPIRED is asserted via absent `candidate_api_keys` entry and reported `candidate_secret_status`; plan states the existing dispatch gate already treats a missing map entry as unset.
+- **Recommendation:** Tick frame-diff AC 2 row at `resolve-child` §10; optional future dispatcher pin test is Betty scope, not fix-now here.
+
+## What's solid
+
+- **Data:** `api_keys` persists `{server, status, expires_at}` only; `encrypt_value` is not called anywhere in `database.py` on tip; legacy `{server, key}` rows preserved until edit or migration; `candidate_secret_rows_from_column` / `list_candidate_api_key_columns` / `replace_candidate_secret_rows` match Stage 3.
+- **Core:** `update_candidate_api_keys` validates catalog ids, requires `expires_at` on set, does not call Railway; `hydrate_candidate_secrets` implements production vs local token probe, EXPIRED at/after timestamp, shared stub, and the three warning shapes without secret material.
+- **Migration:** Dry-run prints candidate/server/name only; execute path decrypts, upserts, rewrites rows; undecryptable → `NOT SET` with one warning; does not re-log `RailwayCallFailed`.
+- **Docs/tests:** `CANDIDATE_DATA_MODEL.md` matches Stage 4; bible manifest lists five focused classes including migration and revised AST-1901 ciphertext tests.
+
+## Recommended actions (downstream only — not in Radia lane)
+
+- Chuckles: append this artifact to `docs/features/foundation/ast-2251-secret-status-hydrate.md`, commit `docs(AST-2251): Radia review — clean`, post slim upshot `--as radia`, move to **Review Posted**.
+- If Susan affirms the migration **Default**, add a one-line operator note near the script docstring or epic runbook (engineer/`resolve-child` or UAT prep — not Radia).
+
+```
+[code-rubric] PROCEED (Commit: cac5838) Status hydrate migration clean
+```
+
+context_tokens≈38000
