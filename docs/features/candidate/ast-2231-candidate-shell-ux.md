@@ -224,3 +224,65 @@ context_tokens≈102000
 | 2 | `cc79c2c6b` | `.nav-link-attention` yellow via `--warning` |
 
 **Betty note:** Frontend shell only. Consumes AST-2230 `recent` / `attention` / stage-0 omit. No test-tree edits.
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-2231
+**Publish ref:** `17c70be288565db80be994a3eccb9d54eee123f5` (`origin/sub/AST-2225/AST-2231-candidate-shell-ux`)
+**Corpus:** b7ab2203048ce0beb2869a12200ab7fa696c8066
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| stat.logging.info.api | X | | |
+
+## Column diff vs plan stage
+
+(aligned)
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **Location:** `NavigationShell.tsx` — `fetchNav` success handler (lines ~80–84)
+- **Finding:** Joan round-2 noted optional `useRef` one-shot: while `localStorage.getItem(NAV_STORAGE_KEY) === null`, every successful fetch (including the 30s silent poll and `selectedId` refetch) re-runs `setExpanded` from API `recent`. After the user’s first `toggleGroup`, storage is written and re-seed stops — matches the null-key plan. Remaining edge: first visit with no toggle yet could re-apply `recent` if API flags change between polls.
+- **Note:** Optional hardening in `resolve-child` (one-shot ref); not required for PROCEED.
+
+- **Location:** `git diff origin/dev...origin/sub/AST-2225/AST-2231-candidate-shell-ux`
+- **Finding:** Three-dot diff stacks epic siblings (#1, #2, #3, gap, …). AST-2231 **product commits** (`87122ae4b`, `cc79c2c6b`) touch only `NavigationShell.tsx` and `App.css`; Betty `test(AST-2231)` covers AC8–AC10.
+
+## Plan fidelity (non-canon)
+
+Matches Stages 1–2: extended `NavItem`/`NavGroup` types; picker/menu only when `isAdmin`; null-key-only expand seed from `group.recent` (no `saveExpanded` on seed); Profile `attention` affordance with `nav-link-attention`; disabled items stay as non-link spans; no client stage math (stage 0 via empty API groups); `.nav-link-attention` uses `var(--warning)`. No `api_system.py` / config edits in 2231 commits. Joan revision-1 null-key vs persisted `[]` addressed in implementation and tests.
+
+## Estimate footprint (non-canon)
+
+Confirm estimate **2**: two frontend files + component tests — fits 2 points.
+
+## What's solid
+
+- AC9: non-admin tests omit select and narrow candidate menu; admin keeps picker.
+- AC10: `Profile needs attention` + `nav-link-attention` when API sets `attention: true`.
+- Recent-expand: test covers null-key seed vs persisted `[]` collapsed behavior.
+
+## Recommended actions (downstream — not for Radia)
+
+- Chuckles: append artifact, `docs(AST-2231): Radia review — clean`, push, post slim upshot `--as radia`, **Review Posted** → datt **§3h** PROCEED.
+- Optional: one-shot `expandedSeededFromApi` ref if Susan wants zero poll re-seed before first toggle (advisory above).
+
+context_tokens≈36000
