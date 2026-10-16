@@ -304,5 +304,5 @@ context_tokens≈38000
 ## Review
 
 - **Publish ref:** `origin/sub/AST-2226/AST-2232-agent-name-detail-enrichment-tab-config`
-- **Tip:** `c54e581bbb8665548e94045354baade04c7e0ea0`
+- **Tip:** `98cab23162b2477fefd11ad18bbda6653b154de9` (product @ `c54e581bbb8665548e94045354baade04c7e0ea0`)
 - **Stages landed:** 1 config · 2 seed · 3 database · 4 story + lifecycle helpers · 5 detail enrichment
