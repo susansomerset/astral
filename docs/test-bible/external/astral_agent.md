@@ -46,4 +46,6 @@ Platform half of the astral-agent Postgres job queue (`src/external/astral_agent
 
 **Out of scope:** live Postgres dual-replica, provider wrappers (**AST-2239**), `agent.py` cutover (**AST-2240**), service worker (**AST-2237**).
 
-**Bible shasum (after publish):** fill after tip push.
+**Bible shasums (publish tip `8e326a1d6`):**
+- `docs/test-bible/external/astral_agent.md` — `4eab90502fea9638202314445a477b91c45a9257  -`
+- `docs/test-bible/utils/config.md` — `1d51d22ef7a76088314d11ff11a50c33742dbbab  -`
