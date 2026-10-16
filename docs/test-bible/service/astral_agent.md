@@ -54,4 +54,4 @@ Isolated FastAPI Postgres queue consumer — **not** under `src/`. Flat imports 
 
 **Out of scope:** live Postgres dual-replica race, Railway/CI (**AST-2241**), platform client (**AST-2238**), provider wrappers (**AST-2239**).
 
-**Bible shasum (after publish):** fill per qa-child §9 — `git show origin/sub/AST-2235/AST-2237-astral-agent-queue-schema-and-worker-skeleton:docs/test-bible/service/astral_agent.md | shasum`
+**Bible shasum (publish tip `8f385ce71`):** `931ca561cc9499a6fe0a896b6f7d568b13b71df7  -`
