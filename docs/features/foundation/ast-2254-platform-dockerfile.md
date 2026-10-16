@@ -88,3 +88,46 @@ Do not edit `scripts/build_railway.sh`, `scripts/start_server.py`, `nixpacks.tom
 - Railway runtime injection of the same service variables is unchanged. The Dockerfile does not need to declare them for the running container.
 - `VITE_STYTCH_PUBLIC_TOKEN` and `VITE_STYTCH_REDIRECT_URL` are still visible to `npm run build`, because Vite inlines `import.meta.env.VITE_STYTCH_PUBLIC_TOKEN` (`src/ui/frontend/src/lib/stytchClient.ts`) and `VITE_STYTCH_REDIRECT_URL` (`src/ui/frontend/src/lib/stytchRedirect.ts`).
 - Telescope image files and `railway-cron.toml` are unchanged.
+
+
+## Radia review
+
+```
+[code-rubric]
+**Ticket:** AST-2254
+**Publish ref:** 4c3f9df155d2722ce6e781e86988b9e607c3f02f (`origin/sub/AST-2249/AST-2254-platform-dockerfile`)
+**Corpus:** 65a2864973ecf09fd57732c2cfc9a4e1ff3e0b91 (`canon/` tree at review tip)
+**Overall:** CLEAN
+
+## Canon scores
+
+(empty frozen Canon Scope list on AST-2254 / AST-2249 — no directive rows to grade; Joan fix-board `[board-joan] CANON: OK`)
+
+## Column diff vs plan stage
+
+no plan-stage scores attached (fix-board only; no `validate-plan` plan-rubric table in issue doc)
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+**[bug-repro]:** not applicable — Betty `[board-betty] TESTS: REVISE` routed to sibling AST-2255; no qa-fix / `[bug-repro]` on this ticket.
+
+**## What must still hold:** OK
+- Ten secret names absent from root `Dockerfile` `ARG`/`ENV` (only `VITE_STYTCH_PUBLIC_TOKEN`, `VITE_STYTCH_REDIRECT_URL` as `ARG`; no `ENV`).
+- `scripts/build_railway.sh` unchanged on three-dot diff; Dockerfile invokes it via `RUN bash scripts/build_railway.sh`.
+- `[deploy] startCommand` still `python scripts/start_server.py`; Dockerfile has no `CMD`.
+- Runtime injection unchanged (no Dockerfile declaration of the ten secrets).
+- Vite build-args declared per plan for Stytch public/redirect URLs.
+- `service/telescope/**`, `railway-cron.toml`, `nixpacks.toml`, `build_railway.sh`, `start_server.py` not in diff.
+
+## Findings
+
+(none — fix-now / discuss / advisory)
+
+context_tokens≈14000
+```
+
+Docs-acceptance: no test-tree delivery on this ref. Betty's `[board-betty] TESTS: REVISE` is sibling [AST-2255](https://linear.app/astralcareermatch/issue/AST-2255), which lands the coverage.
