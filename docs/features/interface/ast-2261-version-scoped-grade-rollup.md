@@ -186,3 +186,9 @@ Confirm Chuckles estimate: 5 — agree
 - Self-assessment: **Estimate** confirm `5 — agree` matches stage depth (detailed rollup + API + nav).
 
 context_tokens≈24000
+
+## Review
+
+- **Publish ref:** `origin/sub/AST-2257/AST-2261-version-scoped-grade-rollup`
+- **Tip:** `a7483a11d93c25c908ed69b8ffeee0dbdf4fc86e`
+- **Stages landed:** 1 rollup · 2 grade_rollup GET · 3 criteria nav counts
