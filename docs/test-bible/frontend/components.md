@@ -2399,3 +2399,42 @@ JD is display-only: no JD textarea, not in the draft / dirty check / Save payloa
 ## QA test manifest
 
 See **`docs/test-bible/frontend/pages.md`** § AST-2224 (shared numbered list).
+
+### AST-2234 · AST-2226 (modal panes and wiring)
+
+**Parent:** [AST-2226 — Updates to Recommended Job Modal](https://linear.app/astralcareermatch/issue/AST-2226). **Publish:** `origin/sub/AST-2226/AST-2234-modal-panes-and-wiring`.
+
+Wires detail enrichment (#1) into the report modal: Job Description top tab; empty Artifacts tab filtered (Generate moves to header — **AST-2233**); Discussion `agent_payload` + named headers; Analysis thermometers + total/gradable row; Print on Artifacts; no Copy props from modal; mobile ≤1023px hides Edit. Tip still casts pre-2233 `RecommendedJobReportHeader` — Generate-in-header / Applied / website-as-line remain untestable until #2 merges (`it.skip` placeholder for AST-645 Generate in-flight).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Tabs / empty Artifacts / sticky no Copy / Print on Artifacts / JD tab / Summary without raw_jd / thermometers / mobile Edit | `JobAnalysisReportModal.tsx` | **`test_JobAnalysisReportModal.test.tsx`** — revised AST-948 / 949 / 951 / 1551 / 1599 / 1874; new AC9 JD, AC10 empty Artifacts, thermometer asserts, mobile Edit hide |
+| Discussion agent_payload + named headers | `JobDiscussionPane.tsx` | **`test_JobDiscussionPane.test.tsx`** — **`JobDiscussionPane — AST-1551 / AST-2234`** |
+| Mobile edit = Print + preview only | `JobArtifactEditModal.tsx` | **`test_JobArtifactEditModal.test.tsx`** — **`AST-2234: mobile ≤1023px…`** (+ `stubNavViewport` / `renderWithProviders`) |
+| `totalScore` / thermometer / payload helpers | `recommendedJobReport.tsx` | **`test_recommendedJobReport.test.tsx`** — **`recommendedJobReport — AST-2234 helpers`** (see [`lib.md`](lib.md)) |
+| §6c page: shared `totalScore` import | `JobsRecommended.tsx` | Existing **`test_JobsRecommended.test.tsx`** (no new asserts — extract-only) |
+
+**Broken / obsolete this pass (revised):**
+- Empty Artifacts always-on tab + Generate-in-tab / AST-645 in-flight (Generate now header-bound after 2233).
+- Summary Raw JD expand / body asserts; Copy Application Email / LinkedIn / Job JSON / Job Link modal wiring.
+- Discussion pretty-JSON RESPONSE bodies → `agent_payload` prose; hop titles → `Agent's <task>`.
+- Cover Print `noopener` URL open → shared blob HTML path.
+- `materialsPreviewVisible` retired (lib suite).
+- `stubNavViewport` now distinguishes min- vs max-width queries.
+
+**Integration:** none — do not invent.
+
+## QA test manifest — AST-2234
+
+1. Modal + Discussion + edit modal + helpers + §6c page:
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx \
+  ../../../tests/component/frontend/components/test_JobDiscussionPane.test.tsx \
+  ../../../tests/component/frontend/components/test_JobArtifactEditModal.test.tsx \
+  ../../../tests/component/frontend/lib/test_recommendedJobReport.test.tsx \
+  ../../../tests/component/frontend/pages/test_JobsRecommended.test.tsx
+```
+
+**Pass criterion:** Vitest green on the five files (narrowed run) — not zero-arg harness / branch-lock gate. Generate-in-header coverage remounts after AST-2233 merges.
