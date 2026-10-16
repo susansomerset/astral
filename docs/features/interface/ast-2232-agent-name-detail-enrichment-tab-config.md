@@ -264,3 +264,39 @@ Each stage is one commit on the epic worktree, published to
 ## Estimate
 
 Confirm Chuckles estimate: 5 — agree
+
+## Joan validate
+
+```text
+[plan-rubric]
+**Ticket:** AST-2232
+**Overall:** APPROVED
+**Corpus:** 65a2864973ecf09fd57732c2cfc9a4e1ff3e0b91 (tree `canon/` at publish tip; no `docs/canon-index.md` on ref)
+**Publish ref:** `origin/sub/AST-2226/AST-2232-agent-name-detail-enrichment-tab-config` @ `ea17ea6c516b8682c71d7d8eec47678f6c51e4a0`
+
+## Canon scores
+
+stat.logging.debug | A | |
+stat.logging.error | A | |
+stat.logging.info.api | A | |
+
+## Traceability
+
+AC 8 → Stages 1–4; AC 9 → Stage 5 (`company_name`, `company_website`, `created_at` on payload — header `m/d/yy` / `<a target="_blank">` N/A sibling #2); AC 10 → Stages 4–5 (`discovered_at` / `recommended_at` / `applied_at` — header strip N/A #2); AC 11 → Stage 1 (tab order + drop `raw_jd` — modal default tab / JD pane expanded N/A #3); AC 12 → Stage 5 (`can_apply` + existing `can_skip`). Parent functional items 6–8, 11 (server/config slice) and child Boundaries satisfied; parent AC 9–16 UI chrome/panes explicitly out of scope.
+
+## Findings
+
+**acceptable** — Explicit scope gate, UAT fitness (correct outcome vs symptom-only), sibling contract table, and execution stop comment match parent AST-2226 partition; five ordered stages with one commit each are executable against current `config.py` tab list (no `job_description` yet) and `detail()` already setting `can_skip` via `job_state_admits_transition`.
+
+**acceptable** — Stage 5 `get_company` Calling/Response joints align with existing `detail()` meteorite debug pattern; `get_entity_agent_story` try/except unchanged (warning, not new error handler); GET detail still correctly omits `stat.logging.info.api` progress lines.
+
+**discuss** — Canon Scope carries only the three logging statutes; this plan also edits `REPO_ADMIN_JSON_CONFIG`, `database.py`, and `api_jobs` imports — `astral.config.config-source-of-truth`, `astral.layers.import-direction`, and `astral.standards.in-scope-only` plainly govern but are not on the frozen list (Archie may amend at Discussion; not scored here).
+
+**discuss** — Stage 2 drops `brain_setting` / `mode` from seed rows outside REPO_ADMIN columns; plan documents the revert-validation rationale and stop gate — worth Susan awareness if anything still read those keys from file-only seed.
+
+**discuss** — Stage 5 import list names `get_company` from `tracker` while `api_jobs.py` today imports `get_company` from `src.core.roster`; either delegate is valid — builder should avoid duplicate/conflicting imports.
+
+**Definition fidelity (R6):** Files Changed and stages stay inside ticket `## Scope`; no React/App.css/modal files. Estimate confirm present. Plan Discuss rounds on thread: 0.
+
+context_tokens≈38000
+```
