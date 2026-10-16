@@ -1505,6 +1505,43 @@ def job_state_admits_transition(current_state: str, to_state: str) -> bool:
     return _job_state_matches_prior(current_state, state_prior_states(JOB_STATES, to_state))
 
 
+def job_discovered_at(job: Dict[str, Any]) -> Optional[str]:
+    """Date discovered = job.created_at (AST-2232)."""
+    value = job.get("created_at")
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+def job_first_state_history_at(job: Dict[str, Any], to_state: str) -> Optional[str]:
+    """Timestamp of the first state_history entry whose to_state equals to_state (AST-2232)."""
+    target = (to_state or "").strip()
+    if not target:
+        return None
+    for entry in job.get("state_history") or []:
+        if not isinstance(entry, dict):
+            continue
+        if (entry.get("to_state") or "").strip() != target:
+            continue
+        ts = entry.get("timestamp")
+        if ts is None:
+            return None
+        text = str(ts).strip()
+        return text or None
+    return None
+
+
+def job_recommended_at(job: Dict[str, Any]) -> Optional[str]:
+    """First RECOMMENDED timestamp in state_history (AST-2232)."""
+    return job_first_state_history_at(job, "RECOMMENDED")
+
+
+def job_applied_at(job: Dict[str, Any]) -> Optional[str]:
+    """First CANDIDATE_APPLIED timestamp in state_history, or None (AST-2232)."""
+    return job_first_state_history_at(job, "CANDIDATE_APPLIED")
+
+
 def legal_job_successor_states(from_state: str) -> List[str]:
     """Skipped-edit targets: every JOB_STATES key except from_state (operator override; no prior_states filter)."""
     current = (from_state or "").strip()

@@ -8,8 +8,18 @@ import AdminDeployFooter from "./AdminDeployFooter"
 import astralLogo from "../assets/astral_logo.png"
 import astralLogoLight from "../assets/astral_logo_light.png"
 
-interface NavItem { label: string; path: string; enabled: boolean; count?: number }
-interface NavGroup { label: string; items: NavItem[] }
+interface NavItem {
+  label: string
+  path: string
+  enabled: boolean
+  count?: number
+  attention?: boolean
+}
+interface NavGroup {
+  label: string
+  items: NavItem[]
+  recent?: boolean
+}
 
 const NAV_STORAGE_KEY = "nav:expanded"
 
@@ -63,10 +73,15 @@ export default function NavigationShell() {
           if (!r.ok) throw new Error(`${r.status}`)
           return r.json()
         })
-        .then(data => {
+        .then((data: NavGroup[]) => {
           setNavGroups(data)
           setLoading(false)
           setError(false)
+          // AST-2231: seed expand from API recent only on true first visit (key absent).
+          // Persisted [] stays all-collapsed; poll must not re-seed.
+          if (localStorage.getItem(NAV_STORAGE_KEY) === null) {
+            setExpanded(new Set(data.filter(g => g.recent === true).map(g => g.label)))
+          }
         })
         .catch(() => {
           setLoading(false)
@@ -175,13 +190,13 @@ export default function NavigationShell() {
           >
             <img src={logoSrc} alt="Astral" />
           </div>
-          {candidates.length > 0 && (
+          {/* AST-2231: picker chrome for admins only — non-admins never see select/menu. */}
+          {isAdmin && candidates.length > 0 && (
             isWide ? (
               <div className="sidebar-candidate-select">
                 <select
                   value={selectedId ?? ""}
-                  disabled={!isAdmin}
-                  onChange={e => isAdmin && setSelectedId(e.target.value)}
+                  onChange={e => setSelectedId(e.target.value)}
                 >
                   {candidates.map(c => (
                     <option key={c.astral_candidate_id} value={c.astral_candidate_id}>
@@ -211,9 +226,7 @@ export default function NavigationShell() {
                           <button
                             type="button"
                             className={"sidebar-candidate-menu-item" + (selected ? " is-selected" : "")}
-                            disabled={!isAdmin}
                             onClick={() => {
-                              if (!isAdmin) return
                               setSelectedId(c.astral_candidate_id)
                               setCandidateMenuOpen(false)
                             }}
@@ -260,17 +273,30 @@ export default function NavigationShell() {
                     const badge = item.count != null
                       ? <span style={{ marginLeft: 6, fontSize: 11, color: "var(--text-muted)", fontWeight: 400 }}>[{item.count}]</span>
                       : null
+                    // AST-2231: yellow Profile attention when API marks incomplete_profile.
+                    const attention =
+                      item.path === "/candidate/profile" && item.attention === true
+                        ? (
+                          <span
+                            className="nav-link-attention"
+                            aria-label="Profile needs attention"
+                            title="Profile needs attention"
+                          >
+                            !
+                          </span>
+                        )
+                        : null
                     return item.enabled ? (
                       <NavLink
                         key={item.path}
                         to={item.path}
                         className={({ isActive }) => "nav-link" + (isActive ? " active" : "")}
                       >
-                        {item.label}{badge}
+                        {item.label}{attention}{badge}
                       </NavLink>
                     ) : (
                       <span key={item.path} className="nav-link disabled">
-                        {item.label}{badge}
+                        {item.label}{attention}{badge}
                       </span>
                     )
                   })}

@@ -33,21 +33,29 @@ export function stubAuthPublicFetches(passthrough = false) {
   )
 }
 
-/** jsdom has no matchMedia — NavigationShell (AST-1286) needs it. Default = wide (≥1024). */
+/** jsdom has no matchMedia — NavigationShell (AST-1286) + AST-2234 mobile band need it.
+ *  isWide = viewport ≥1024: min-width queries match; max-width:1023 does not (and vice versa). */
 export function stubNavViewport(isWide: boolean) {
   Object.defineProperty(window, 'matchMedia', {
     writable: true,
     configurable: true,
-    value: vi.fn().mockImplementation((query: string) => ({
-      matches: isWide,
-      media: query,
-      onchange: null,
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn(),
-      addListener: vi.fn(),
-      removeListener: vi.fn(),
-      dispatchEvent: vi.fn(),
-    })),
+    value: vi.fn().mockImplementation((query: string) => {
+      const max = /max-width:\s*(\d+)px/.exec(query)
+      const min = /min-width:\s*(\d+)px/.exec(query)
+      let matches = isWide
+      if (max) matches = !isWide
+      else if (min) matches = isWide
+      return {
+        matches,
+        media: query,
+        onchange: null,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      }
+    }),
   })
 }
 
