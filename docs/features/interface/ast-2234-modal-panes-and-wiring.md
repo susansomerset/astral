@@ -225,3 +225,58 @@ context_tokens≈52000
 - **Tip:** `95bf9db39d1b28c844afea3a4a975311b7e039d9`
 - **Stages landed:** 1 helpers · 2 Discussion · 3 modal panes · 4 mobile JobArtifactEditModal
 - **Note:** Header props cast to AST-2233 contract (`TriageHeader`); #2 not yet on ftr at build time — runtime chrome lands when AST-2233 merges.
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-2234
+**Publish ref:** `origin/sub/AST-2226/AST-2234-modal-panes-and-wiring` @ `0f52cd7cc63bf0296da850210de4e0da89aaf27a`
+**Corpus:** `b7ab2203048ce0beb2869a12200ab7fa696c8066`
+**Overall:** CLEAN
+
+## Canon scores
+
+patt.artifact.ui-consistency | A | |
+patt.artifact.read-current | A | |
+
+## Column diff vs plan stage
+
+(aligned) — Joan: both patterns **A** at plan; code review matches.
+
+## Frame diff
+
+- [ ] **Integration:** Parent / epic UAT assumes AST-2233 header + `App.css` hooks on the same integration line as this tip (`RecommendedJobReportHeader` still legacy Copy/Print on this ref; modal uses `TriageHeader` cast).
+
+## Findings
+
+**fix-now**
+
+(none)
+
+**discuss**
+
+- **Sibling #2 not on this ref:** `RecommendedJobReportHeader.tsx` / `App.css` on the tip are still pre–AST-2233; modal passes `discoveredAt` / `onApplied` / `onGenerateArtifacts` via `TriageHeader = RecommendedJobReportHeader as unknown as ComponentType<TriageHeaderProps>`, so triage chrome and thermometer/date/website CSS do not render until AST-2233 merges into `ftr`. @susan — treat epic UT as blocked on merge order, not as a defect in AST-2234 scope files? **Default:** `merge-child` AST-2233 into `ftr` before parent User Testing; keep AST-2234 as-is (no header/CSS edits here).
+
+**advisory**
+
+- **sibling product carry:** AST-2232 backend/seed/config (`src/core/*`, `database.py`, `api_jobs.py`, `config.py`, `agent.json`) appears in the three-dot diff via `ftr` lineage — expected on a stacked sub; not AST-2234 scope.
+- **sibling test carry:** `tests/**` + `docs/test-bible/**` include Betty manifests for 2232/2233/2234 siblings.
+- **Company row fetch retained:** `load()` still calls `/api/companies/...` for **company_upshot** only; `company_website` comes from detail (AST-2232) — matches sibling contract intent.
+- **Issue doc note:** Engineer already documents `#2 not yet on ftr at build time` under **Review**.
+
+## Plan fidelity (§5.4)
+
+- Scope files only in AST-2234 commits: `JobAnalysisReportModal`, `JobDiscussionPane`, `recommendedJobReport.tsx`, `JobsRecommended.tsx`, `JobArtifactEditModal` — no `RecommendedJobReportHeader`, `App.css`, backend, or `candidateJobActions` / `useCandidateJobActions` (0-line diff).
+- Wiring: `can_skip` / `can_apply` gate Skip/Applied; Applied uses notes modal + `postCandidateAction`; Artifacts tab hidden when empty + not build-in-progress with header Generate; JD tab + Summary without `raw_jd`; Discussion uses `agent_name` / `task_name` + candidate-TZ stamp and `extractAgentPayloadText`; Analysis thermometers + `recommended-report-total-gradable`; Artifacts Print in pane; mobile `JobArtifactEditModal` read-only + Print (≤1023px).
+- Estimate **3** still fits (five frontend files + tests).
+
+## What's solid
+
+- Pattern exception for Job Analysis Report Modal (no forced `bodyShape` migration); Print/read-only paths reuse `fetchPrintHtml` / existing editors.
+- `extractAgentPayloadText` targets RESPONSE `agent_payload` only — not whole-envelope pretty-print.
+- Server-gated triage legality — no hard-coded prior-state sets in React.
+
+## Recommended actions (downstream — not taken here)
+
+- Chuckles: append artifact, `docs(AST-2234): Radia review — clean`, push, post slim upshot `--as radia`, **Review Posted**.
+- Before parent UT: ensure `ftr` includes AST-2233 so header/CSS match modal props (no `resolve-child` header edits on 2234).
