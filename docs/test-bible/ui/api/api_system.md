@@ -239,3 +239,47 @@ Manifest: [`api_jobs.md`](api_jobs.md) § AST-1974 items 3 + 5.
 **AST-2047 (pointer):** `TestSystemAuthRoutes::test_ui_config_serves_theme_registry` — `ui_config` serves `themes` + `default_theme` via the `UI_CONFIG` spread (keys compared as a set: Flask sorts JSON keys). Manifest: [`../../frontend/pages.md`](../../frontend/pages.md) § AST-2047.
 
 **AST-2129 (pointer):** `test_ui_config_serves_theme_registry` revised to pin the exact four-entry `themes` dict (Dark, Light, Shapes - Light, Shapes - Dark, all selectable). Manifest: [`../../frontend/root.md`](../../frontend/root.md) § AST-2129.
+
+### AST-2230 · AST-2225 (nav stage gates + recent/attention)
+
+**Parent:** [AST-2225](https://linear.app/astralcareermatch/issue/AST-2225). **Publish:** `origin/sub/AST-2225/AST-2230-stage-gated-nav`. Config map: [`../../utils/config.md`](../../utils/config.md) § AST-2230.
+
+`_nav_stage` via `candidate_stage`; int min-stage item gates; stage 0 omits facing groups; group `recent` from `NAV_GROUP_RECENT_DEFAULTS`; Profile `attention` from `incomplete_profile`. No progress `logger.info` on GET.
+
+| Area | Component tests |
+| --- | --- |
+| Criteria disabled below stage 4; stage-0 omit; recent/attention; dropped labels | new **`TestAst2230StageGatedNavApi`** |
+| HTTP facing order / Job Opportunities counts; admin segments with live candidate | revised **`TestSystemAuthRoutes`** nav cases |
+| `_nav_stage` terminals→0; facing resolve + int gate | revised **`TestSystemNavHelpers`** (retired `_is_at_or_past` / string gate) |
+| RETRY inherits base stage | revised **`TestAst1808ProgressRankRetry`** |
+
+**Broken / obsolete:** `_progress_rank` / `_is_at_or_past` tests; Jobs/Companies/Artifacts payload asserts; string `enabled` gate test.
+
+## QA test manifest — AST-2230
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst2230StageGatedNavConfig \
+  tests/component/utils/test_config.py::TestAst970CandidateStateRegistry::test_nav_and_gen_states_use_new_vocab \
+  tests/component/utils/test_config.py::TestAst1386ThreeSegmentAdminNav \
+  tests/component/utils/test_config.py::TestAst1479AppliedJobStatesAndNav \
+  tests/component/utils/test_config.py::TestAst1495MeteoriteCompaniesNav \
+  tests/component/utils/test_config.py::TestAst1749JobsMeteoritesNav \
+  tests/component/utils/test_config.py::TestAst1974JobsListPartition::test_nav_jobs_items_exact \
+  tests/component/ui/api/test_api_system.py::TestAst2230StageGatedNavApi \
+  tests/component/ui/api/test_api_system.py::TestSystemAuthRoutes \
+  tests/component/ui/api/test_api_system.py::TestSystemNavHelpers::test_nav_stage_compares_registry_stages \
+  tests/component/ui/api/test_api_system.py::TestSystemNavHelpers::test_resolve_nav_keeps_candidate_facing_groups_and_stubs \
+  tests/component/ui/api/test_api_system.py::TestSystemNavHelpers::test_resolve_nav_uses_int_stage_enabled_gate \
+  tests/component/ui/api/test_api_system.py::TestAst1808ProgressRankRetry \
+  tests/component/core/test_candidate.py::TestAst1253RequestedArtifactsHandoff::test_walk_helpers_order_labels_and_rubric_keys \
+  tests/component/ui/api/test_api_jobs.py::TestAst1974JobsPartitionRealDb::test_nav_counts_match_list_lengths \
+  tests/integration/scenarios/test_candidate_nav_api.py \
+  -q
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_JobsHomeRedirect.test.tsx
+```
+
+**Pass criterion:** Python narrowed green; Vitest JobsHomeRedirect green. Not the zero-arg harness.
+
+**Bible shasum (after publish):** `git show origin/sub/AST-2225/AST-2230-stage-gated-nav:docs/test-bible/ui/api/api_system.md | shasum`; same for `utils/config.md`, `core/candidate.md`, `frontend/components.md`, `integration/README.md`.

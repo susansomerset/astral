@@ -5287,3 +5287,24 @@ After AST-2228 × AST-2221 merge, `BASE_RESUME_CHAIN_ERROR_STATES` expansion omi
 **Pass criterion:** 4 passed on the narrowed run. Not the zero-arg harness.
 
 **Bible shasum (after publish):** `git show origin/sub/AST-2225/AST-2245-gap-base-resume-error-stage:docs/test-bible/utils/config.md | shasum`.
+
+### AST-2230 · AST-2225 (stage-gated NAV_CONFIG regroup + recent defaults)
+
+**Parent:** [AST-2225](https://linear.app/astralcareermatch/issue/AST-2225). **Publish:** `origin/sub/AST-2225/AST-2230-stage-gated-nav`. Plan: `docs/features/candidate/ast-2230-stage-gated-nav.md`. API gates: [`../ui/api/api_system.md`](../ui/api/api_system.md) § AST-2230. Hop labels: [`../core/candidate.md`](../core/candidate.md) § AST-2230. Frontend redirect: [`../frontend/components.md`](../frontend/components.md) § AST-2230.
+
+Candidate-facing groups → **Candidate / Criteria / Company / Job Opportunities** (order locked); item `"enabled"` = min stage int; drop Intake/Surfer/Processing/…; `NAV_GROUP_RECENT_DEFAULTS` knobs. Admin Operations/Admin/Tools unchanged. Does **not** edit `CANDIDATE_STATES` vocabulary (#1) or shell chrome (#4).
+
+| Area | Component tests |
+| --- | --- |
+| Facing order + Criteria stage 4 + Job Opportunities rows; dropped labels; recent defaults | new **`TestAst2230StageGatedNavConfig`** |
+| Facing foursome (no Jobs/Companies/Artifacts); no group `visible` | revised **`TestAst970CandidateStateRegistry::test_nav_and_gen_states_use_new_vocab`** |
+| Admin segments after facing foursome | revised **`TestAst1386ThreeSegmentAdminNav`** |
+| Applied / Meteorites under Job Opportunities; meteorite_list dropped | revised **`TestAst1479…`**, **`TestAst1495…`**, **`TestAst1749…`**, **`TestAst1974…::test_nav_jobs_items_exact`** |
+
+**Broken / obsolete this pass:** every assert looking up `NAV_CONFIG` groups labeled Jobs / Companies / Artifacts (listed above).
+
+**Integration:** revised `tests/integration/scenarios/test_candidate_nav_api.py` — see [`../integration/README.md`](../integration/README.md).
+
+## QA test manifest — AST-2230
+
+Primary command: [`../ui/api/api_system.md`](../ui/api/api_system.md) § QA test manifest — AST-2230.

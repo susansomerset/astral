@@ -33,7 +33,7 @@ Default target: all of `tests/integration/`. Pass pytest paths or flags after th
 
 **Status:** has coverage
 
-**What it proves:** Seeded SQLite + Bearer auth for `GET /api/candidates` and `GET /api/nav_config`; Jobs items stay enabled at `ACTIVE_SEARCH`; after AST-1449, `NEW_CANDIDATE` still returns Jobs / Companies / Artifacts / Candidate (no group-level state hide); unauthenticated nav returns 401. After AST-1974 the first Jobs item is `/jobs/ready` and every Jobs item carries `count` (harness resets `_meteorite_schema_ensured` so the Meteorites count reads a fresh table). Unauthenticated 401 assumes deploy env is not `local` (AST-1440 passthrough). Harness autouse sets `ASTRAL_DEPLOY_ENV=staging` so `load_dotenv()` cannot restore `local`. Component coverage: [`ui/auth.md`](../ui/auth.md) § AST-1440; [`ui/api/api_system.md`](../ui/api/api_system.md) § AST-1449.
+**What it proves:** Seeded SQLite + Bearer auth for `GET /api/candidates` and `GET /api/nav_config`; Job Opportunities items stay enabled at `ACTIVE_SEARCH`; AST-2230 facing groups are Candidate / Criteria / Company / Job Opportunities in that order; `NEW_CANDIDATE` still returns those four (Criteria items `enabled: false`); unauthenticated nav returns 401. Ready path `/jobs/ready` still carries `count`. Unauthenticated 401 assumes deploy env is not `local` (AST-1440 passthrough). Harness autouse sets `ASTRAL_DEPLOY_ENV=staging` so `load_dotenv()` cannot restore `local`. Component coverage: [`ui/auth.md`](../ui/auth.md) § AST-1440; [`ui/api/api_system.md`](../ui/api/api_system.md) § AST-2230.
 
 **Scenarios:**
 

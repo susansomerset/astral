@@ -2518,13 +2518,16 @@ class TestAst970CandidateStateRegistry:
         assert "REQUESTED_ARTIFACTS_ERROR" not in art_priors
 
     def test_nav_and_gen_states_use_new_vocab(self) -> None:
-        jobs = next(g for g in cfg.NAV_CONFIG if g.get("label") == "Jobs")
-        companies = next(g for g in cfg.NAV_CONFIG if g.get("label") == "Companies")
-        artifacts = next(g for g in cfg.NAV_CONFIG if g.get("label") == "Artifacts")
-        # AST-1449: group-level candidate-state "visible" is not a NAV_CONFIG key.
-        assert "visible" not in jobs
-        assert "visible" not in companies
-        assert "visible" not in artifacts
+        # AST-2230: candidate-facing groups are Candidate / Criteria / Company / Job Opportunities.
+        facing = [g for g in cfg.NAV_CONFIG if not g.get("admin_only")]
+        assert [g.get("label") for g in facing] == [
+            "Candidate",
+            "Criteria",
+            "Company",
+            "Job Opportunities",
+        ]
+        for g in facing:
+            assert "visible" not in g  # AST-1449: no group-level visible
         gen = cfg.build_state_ui_manifest()["candidate"]["artifact_generate_states"]
         # AST-1253: Generate/Regenerate available through search states (not while chain claimed).
         assert gen == [
@@ -2766,6 +2769,61 @@ class TestAst2245BaseResumeErrorStage:
         for name, entry in cfg.CANDIDATE_STATES.items():
             if name.startswith("ERROR_CRAFT_"):
                 assert entry["stage"] == 4, name
+
+
+class TestAst2230StageGatedNavConfig:
+    """AST-2230: NAV_CONFIG regroup + NAV_GROUP_RECENT_DEFAULTS (AC 5–6, AC 8 knobs)."""
+
+    _DROPPED = (
+        "Intake",
+        "Surfer",
+        "Surfer Consent",
+        "Watch History",
+        "New List",
+        "Inactive List",
+        "Processing",
+        "Review",
+    )
+
+    def test_candidate_facing_group_order_and_min_stages(self) -> None:
+        facing = [g for g in cfg.NAV_CONFIG if not g.get("admin_only")]
+        assert [g["label"] for g in facing] == [
+            "Candidate",
+            "Criteria",
+            "Company",
+            "Job Opportunities",
+        ]
+        criteria = next(g for g in facing if g["label"] == "Criteria")
+        assert all(it.get("enabled") == 4 for it in criteria["items"])
+        jobs = next(g for g in facing if g["label"] == "Job Opportunities")
+        assert [(it["label"], it["path"], it["enabled"]) for it in jobs["items"]] == [
+            ("Meteorites", "/jobs/meteorites", 5),
+            ("Recommendations", "/jobs/review", 5),
+            ("Ready to Apply", "/jobs/ready", 5),
+            ("Submitted Applications", "/jobs/applied", 5),
+            ("Skipped", "/jobs/skipped", 5),
+        ]
+
+    def test_dropped_labels_absent_from_candidate_facing(self) -> None:
+        labels = {
+            it.get("label")
+            for g in cfg.NAV_CONFIG
+            if not g.get("admin_only")
+            for it in g.get("items", [])
+        }
+        for gone in self._DROPPED:
+            assert gone not in labels, gone
+        assert "Jobs" not in {g.get("label") for g in cfg.NAV_CONFIG}
+        assert "Companies" not in {g.get("label") for g in cfg.NAV_CONFIG}
+        assert "Artifacts" not in {g.get("label") for g in cfg.NAV_CONFIG}
+
+    def test_nav_group_recent_defaults(self) -> None:
+        assert cfg.NAV_GROUP_RECENT_DEFAULTS == {
+            "Candidate": {"when": "incomplete_profile"},
+            "Criteria": {"when": "never"},
+            "Company": {"when": "any_item_count"},
+            "Job Opportunities": {"when": "any_item_count"},
+        }
 
 
 class TestAst996ExperienceJobArrayConfig:
@@ -5575,8 +5633,10 @@ class TestAst1386ThreeSegmentAdminNav:
 
     def test_three_admin_only_groups_order_membership_and_paste_labels(self) -> None:
         labels = [g.get("label") for g in cfg.NAV_CONFIG]
-        cand_i = labels.index("Candidate")
-        assert labels[cand_i + 1 : cand_i + 4] == ["Operations", "Admin", "Tools"]
+        # AST-2230: four candidate-facing groups precede Operations / Admin / Tools.
+        assert labels[:4] == ["Candidate", "Criteria", "Company", "Job Opportunities"]
+        ops_i = labels.index("Operations")
+        assert labels[ops_i : ops_i + 3] == ["Operations", "Admin", "Tools"]
         expected = {
             "Operations": self._OPS_PATHS,
             "Admin": self._ADMIN_PATHS,
@@ -5597,10 +5657,10 @@ class TestAst1386ThreeSegmentAdminNav:
         )
 
     def test_non_admin_candidate_groups_still_present(self) -> None:
-        # Jobs / Companies / Artifacts / Candidate unchanged for this ticket.
+        # AST-2230: Candidate / Criteria / Company / Job Opportunities (not Jobs/Companies/Artifacts).
         labels = {g.get("label") for g in cfg.NAV_CONFIG}
-        assert {"Jobs", "Companies", "Artifacts", "Candidate"} <= labels
-        for name in ("Jobs", "Companies", "Artifacts", "Candidate"):
+        assert {"Candidate", "Criteria", "Company", "Job Opportunities"} <= labels
+        for name in ("Candidate", "Criteria", "Company", "Job Opportunities"):
             group = next(g for g in cfg.NAV_CONFIG if g.get("label") == name)
             assert not group.get("admin_only")
 
@@ -5619,44 +5679,46 @@ class TestAst1479AppliedJobStatesAndNav:
         assert all(s in cfg.JOB_STATES for s in cfg.APPLIED_JOB_STATES)
 
     def test_jobs_applied_nav_enabled(self) -> None:
-        jobs = next(g for g in cfg.NAV_CONFIG if g.get("label") == "Jobs")
+        # AST-2230: path stays under Job Opportunities; label → Submitted Applications.
+        jobs = next(g for g in cfg.NAV_CONFIG if g.get("label") == "Job Opportunities")
         applied = next(it for it in jobs["items"] if it.get("path") == "/jobs/applied")
-        assert applied.get("label") == "Applied"
-        assert applied.get("enabled") is not False
+        assert applied.get("label") == "Submitted Applications"
+        assert applied.get("enabled") == 5
 
 
 class TestAst1495MeteoriteCompaniesNav:
-    """AST-1495: Companies → Meteorite nav item for meteorite_list view."""
+    """AST-1495: Companies → Meteorite — dropped from candidate-facing nav (AST-2230 AC6)."""
 
     def test_companies_meteorite_nav_item(self) -> None:
-        companies = next(g for g in cfg.NAV_CONFIG if g.get("label") == "Companies")
-        paths = [it.get("path") for it in companies.get("items", [])]
-        assert "/companies/meteorite_list" in paths
-        meteorite = next(
-            it for it in companies["items"] if it.get("path") == "/companies/meteorite_list"
-        )
-        assert meteorite.get("label") == "Meteorite"
+        paths = [
+            it.get("path")
+            for g in cfg.NAV_CONFIG
+            for it in g.get("items", [])
+            if not g.get("admin_only")
+        ]
+        assert "/companies/meteorite_list" not in paths
 
 
 class TestAst1749JobsMeteoritesNav:
-    """AST-1749: Jobs → Meteorites nav; Companies → Meteorite untouched."""
+    """AST-1749: Jobs → Meteorites under Job Opportunities; Companies → Meteorite dropped (AST-2230)."""
 
     def test_jobs_meteorites_nav_enabled(self) -> None:
-        jobs = next(g for g in cfg.NAV_CONFIG if g.get("label") == "Jobs")
+        jobs = next(g for g in cfg.NAV_CONFIG if g.get("label") == "Job Opportunities")
         item = next(it for it in jobs["items"] if it.get("path") == "/jobs/meteorites")
         assert item.get("label") == "Meteorites"
-        assert item.get("enabled") is not False
+        assert item.get("enabled") == 5
         labels = [it.get("label") for it in jobs["items"]]
-        assert labels.index("Meteorites") > labels.index("Applied")
-        # AST-1974: Responded retired; Meteorites is the last Jobs item.
-        assert labels[-1] == "Meteorites"
+        assert labels[0] == "Meteorites"
+        assert labels[-1] == "Skipped"
 
     def test_companies_meteorite_still_present(self) -> None:
-        companies = next(g for g in cfg.NAV_CONFIG if g.get("label") == "Companies")
-        meteorite = next(
-            it for it in companies["items"] if it.get("path") == "/companies/meteorite_list"
-        )
-        assert meteorite.get("label") == "Meteorite"
+        paths = [
+            it.get("path")
+            for g in cfg.NAV_CONFIG
+            for it in g.get("items", [])
+            if not g.get("admin_only")
+        ]
+        assert "/companies/meteorite_list" not in paths
 
 class TestAst1534AdhocImportConfigKeys:
     """AST-1534: UI_CONFIG import-list cap + picker visible-row literals."""
@@ -8055,15 +8117,14 @@ class TestAst1974JobsListPartition:
     """AC 1 nav shape, AC 5 Skipped build-failure states, AC 7 disjoint lists + derived priors."""
 
     def test_nav_jobs_items_exact(self) -> None:
-        # AC 1 — labels / paths / order; In Review / Recommended / Responded gone.
-        jobs = next(g for g in cfg.NAV_CONFIG if g.get("label") == "Jobs")
+        # AST-2230: Job Opportunities labels/order; Processing / New List dropped from sidebar.
+        jobs = next(g for g in cfg.NAV_CONFIG if g.get("label") == "Job Opportunities")
         assert [(it["label"], it["path"]) for it in jobs["items"]] == [
-            ("Ready", "/jobs/ready"),
-            ("Review", "/jobs/review"),
-            ("Applied", "/jobs/applied"),
-            ("Processing", "/jobs/processing"),
-            ("Skipped", "/jobs/skipped"),
             ("Meteorites", "/jobs/meteorites"),
+            ("Recommendations", "/jobs/review"),
+            ("Ready to Apply", "/jobs/ready"),
+            ("Submitted Applications", "/jobs/applied"),
+            ("Skipped", "/jobs/skipped"),
         ]
 
     def test_ready_review_lists_and_retired_constants(self) -> None:

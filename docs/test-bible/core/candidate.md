@@ -2613,3 +2613,13 @@ Runtime generalization of the candidate stage runner / claim expansion / consult
 
 Primary command + pass criterion: [`../utils/config.md`](../utils/config.md) § QA test manifest — AST-2228 (same narrowed node list; 28 passed).
 
+
+### AST-2230 · AST-2225 (craft hop labels across all NAV groups)
+
+**Parent:** [AST-2225](https://linear.app/astralcareermatch/issue/AST-2225). **Publish:** `origin/sub/AST-2225/AST-2230-stage-gated-nav`. Primary: [`../ui/api/api_system.md`](../ui/api/api_system.md) § AST-2230.
+
+`_artifacts_nav_label_for_path` walks every `NAV_CONFIG` group (Artifacts group dissolved). Hop labels pick Criteria/Company renamed strings.
+
+| Area | Component tests |
+| --- | --- |
+| Walk labels use renamed Criteria/Company item labels | revised **`TestAst1253RequestedArtifactsHandoff::test_walk_helpers_order_labels_and_rubric_keys`** |

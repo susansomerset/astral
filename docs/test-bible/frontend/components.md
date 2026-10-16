@@ -2399,3 +2399,13 @@ JD is display-only: no JD textarea, not in the draft / dirty check / Save payloa
 ## QA test manifest
 
 See **`docs/test-bible/frontend/pages.md`** § AST-2224 (shared numbered list).
+
+### AST-2230 · AST-2225 (JobsHomeRedirect → Job Opportunities)
+
+**Parent:** [AST-2225](https://linear.app/astralcareermatch/issue/AST-2225). **Publish:** `origin/sub/AST-2225/AST-2230-stage-gated-nav`. Primary: [`../ui/api/api_system.md`](../ui/api/api_system.md) § AST-2230.
+
+`JOBS_NAV_GROUP_LABEL = "Job Opportunities"`; mock nav fixture uses that label + new item order.
+
+| Area | Component tests |
+| --- | --- |
+| Landing picks first Job Opportunities item with count > 0 | revised **`test_JobsHomeRedirect.test.tsx`** |

@@ -1863,10 +1863,11 @@ class TestAst1253RequestedArtifactsHandoff:
         assert candidate_mod.is_requested_artifacts_chain_ui_task("craft_do_rubric") is True
         assert candidate_mod.is_requested_artifacts_chain_ui_task("craft_resume_base") is False
         labels = candidate_mod.requested_artifacts_chain_hop_labels()
+        # AST-2230: path→label across Criteria/Company (Artifacts group dissolved; labels renamed).
         assert labels == [
-            "Get Job Criteria",
-            "Do Job Criteria",
-            "Company Search Terms",
+            "Get the Job Criteria",
+            "Do the Job Criteria",
+            "Company Discovery Terms",
         ]
         # Rubric-only — table-backed search terms excluded from artifact keys.
         assert candidate_mod.requested_artifacts_chain_artifact_keys() == [
