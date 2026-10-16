@@ -267,3 +267,25 @@ Clear still pushes `{ server: sid, key: "" }` with no `expires_at`. A blank secr
 - GET `api_keys` is status and expiry, never the secret.
 - Production set still upserts, deploys once, then stores status and `expires_at`.
 - A hand-built PUT with a bad `expires_at` is still 400 `expires_at must be YYYY-MM-DD HH:MM:SS`.
+
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-2265
+**Publish ref:** `a2d050c168b9f4690598ad9cc6645fdec3e3da25` (`origin/sub/AST-2246/AST-2265-expiry-date-select`)
+**Overall:** CLEAN
+
+## Fix-specific checks
+
+**[bug-repro]** — OK. Date control, required-date toast, PUT `expires_at` at midnight.
+
+**## What must still hold** — OK. Blank secret, clear, GET presence, production upsert, and bad `expires_at` → 400 are unchanged.
+
+## Findings
+
+Advisory only. The prescribed ftr three-dot is bloated because ftr lags the sub; this review scored `95c333dd1^..a2d050c16`. List/label may still show the full `expires_at` string; the date control only changes the save path.
+
+```
+[code-rubric] PROCEED (Commit: a2d050c) Date select saves midnight
+```
