@@ -95,4 +95,7 @@ Isolated FastAPI Postgres queue consumer — **not** under `src/`. Flat imports 
 
 **Out of scope:** live provider HTTP, `do_task` cutover (**AST-2240**), platform enqueue (**AST-2238**).
 
-**Bible shasum (after publish):** fill after tip push.
+**Bible shasums (publish tip `1280e4fb3`):**
+- `docs/test-bible/service/astral_agent.md` — `e94d4ee58dac6d58fcdf27fa00e527665f6de89c  -`
+- `docs/test-bible/external/anthropic.md` — `c586f9a409a26252ba9881477f7f1a73bb5e0bc6  -`
+- `docs/test-bible/external/llm_compat.md` — `4e51a00948a13396c0a77b534d5c7e999c61dd2d  -`
