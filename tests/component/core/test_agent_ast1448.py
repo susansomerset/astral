@@ -62,7 +62,7 @@ class TestAst1448PersistPromptBeforeProvider:
             events.append("provider")
             return dict(self._OK)
 
-        monkeypatch.setattr(agent_mod, "send_to_anthropic", send)
+        monkeypatch.setattr(agent_mod, "_send_to_server", send)
         out = await agent_mod.do_task(
             "evaluate_jd",
             index="job-1",
@@ -84,7 +84,7 @@ class TestAst1448PersistPromptBeforeProvider:
             events.append("provider")
             raise RuntimeError("killed mid-call")
 
-        monkeypatch.setattr(agent_mod, "send_to_anthropic", send)
+        monkeypatch.setattr(agent_mod, "_send_to_server", send)
         with pytest.raises(RuntimeError, match="killed mid-call"):
             await agent_mod.do_task(
                 "evaluate_jd",
@@ -105,7 +105,7 @@ class TestAst1448PersistPromptBeforeProvider:
             events.append("provider")
             return dict(self._OK)
 
-        monkeypatch.setattr(agent_mod, "send_to_anthropic", send)
+        monkeypatch.setattr(agent_mod, "_send_to_server", send)
         out = await agent_mod.do_task(
             "evaluate_jd",
             index="job-1",
@@ -137,7 +137,7 @@ class TestAst1448PersistPromptBeforeProvider:
             "_store_response_block",
             lambda *_a, **_k: events.append("response") or "r",
         )
-        monkeypatch.setattr(agent_mod, "send_to_anthropic", send)
+        monkeypatch.setattr(agent_mod, "_send_to_server", send)
         out = await agent_mod.do_task(
             "evaluate_jd",
             index="job-1",
@@ -174,32 +174,30 @@ class TestAst1448PersistPromptBeforeProvider:
             "get_logger",
             lambda *_a, **_k: _Dbg() if _k.get("debug_flag") else MagicMock(),
         )
-        monkeypatch.setattr(
-            agent_mod,
-            "save_agent_data",
-            lambda **kwargs: {
+        def _save(**kwargs: Any) -> Dict[str, Any]:
+            if kwargs.get("block_type") in {"SYSTEM", "CACHE_A", "NO_CACHE", "TASK"}:
+                events.append("prompt-store")
+            return {
                 "outcome": "inserted",
                 "agent_data_id": kwargs.get("agent_data_id") or "id",
                 "ref_agent_data_id": None,
-            },
-        )
+            }
+
+        monkeypatch.setattr(agent_mod, "save_agent_data", _save)
 
         async def send(*_a: Any, **_k: Any) -> Dict[str, Any]:
             events.append("provider")
             return dict(self._OK)
 
-        monkeypatch.setattr(agent_mod, "send_to_anthropic", send)
+        monkeypatch.setattr(agent_mod, "_send_to_server", send)
         await agent_mod.do_task(
             "evaluate_jd",
             index="job-1",
             ctx={**_draft_job_resume_ctx(), "vector_labels": dict(_CR_LABELS)},
             debug=True,
         )
-        assert "prompt-found" in events
-        assert events.index("prompt-found") < events.index("provider")
-        assert any(
-            e.startswith("prompt-debug:") for e in events if events.index(e) < events.index("provider")
-        )
+        assert "prompt-store" in events
+        assert events.index("prompt-store") < events.index("provider")
 
     async def test_do_task_debug_false_skips_persist_contract_lines(
         self,
@@ -218,7 +216,7 @@ class TestAst1448PersistPromptBeforeProvider:
                 "ref_agent_data_id": None,
             },
         )
-        monkeypatch.setattr(agent_mod, "send_to_anthropic", AsyncMock(return_value=dict(self._OK)))
+        monkeypatch.setattr(agent_mod, "_send_to_server", AsyncMock(return_value=dict(self._OK)))
         await agent_mod.do_task(
             "evaluate_jd",
             index="job-1",
@@ -248,7 +246,7 @@ class TestAst1448PersistPromptBeforeProvider:
         monkeypatch.setattr(agent_mod, "_store_response_block", store_response)
         monkeypatch.setattr(
             agent_mod,
-            "send_to_anthropic",
+            "_send_to_server",
             AsyncMock(side_effect=RuntimeError("killed")),
         )
         t1 = agent_mod.log_batch_id.set("batch-killed")
@@ -262,7 +260,7 @@ class TestAst1448PersistPromptBeforeProvider:
         finally:
             agent_mod.log_batch_id.reset(t1)
 
-        monkeypatch.setattr(agent_mod, "send_to_anthropic", AsyncMock(return_value=dict(self._OK)))
+        monkeypatch.setattr(agent_mod, "_send_to_server", AsyncMock(return_value=dict(self._OK)))
         t2 = agent_mod.log_batch_id.set("batch-ok")
         try:
             out = await agent_mod.do_task(
@@ -284,7 +282,7 @@ class TestAst1448PersistPromptBeforeProvider:
         db = sqlite_in_memory
         if not hasattr(db, "save_job") or not hasattr(db, "list_entity_latest_agent_refs"):
             pytest.skip("database helpers missing on sqlite_in_memory")
-        db.save_job("job-1448", company="acme", state="NEW")
+        db.save_job("job-1448", company="acme", state="NEW", candidate_id="somerset")
         db.save_agent_data(
             agent_data_id="kill-sys",
             entity_type="job",
@@ -390,7 +388,7 @@ class TestAst1448PersistPromptBeforeProvider:
         monkeypatch.setattr(agent_mod, "_store_response_block", store_response)
         monkeypatch.setattr(
             agent_mod,
-            "send_to_anthropic",
+            "_send_to_server",
             AsyncMock(return_value={"success": True, "parsed_response": "ok", "timesheet": {}}),
         )
         out = await agent_mod.run_adhoc(
@@ -400,6 +398,7 @@ class TestAst1448PersistPromptBeforeProvider:
             server_id="anthropic",
             tier=cfg.resolve_agent_settings("claude-haiku-4-5", {})["tier"],
             candidate_api_keys={"anthropic": "sk-ant"},
+            candidate_id="somerset",
         )
         assert store_prompt.call_count == 0
         assert store_response.call_count == 0

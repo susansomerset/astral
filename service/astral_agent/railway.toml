@@ -1,0 +1,44 @@
+# Astral Agent — Railway config-as-code (AST-2241 / Phase 1).
+# Point this Railway *service* Config-as-Code path at:
+#   /service/astral_agent/railway.toml
+# Do NOT set Railway Root Directory to /service/astral_agent — the Dockerfile
+# COPY paths are monorepo-root relative (`COPY service/astral_agent/ …`).
+# Build context = repository root; dockerfilePath below selects the image.
+#
+# Astral-agent is a queue consumer: it claims provider jobs from the agent_job
+# table in Postgres and writes results back. Nothing calls into it for work over
+# HTTP — only /healthz and /wake (AST-2237).
+#
+# Dashboard-only (not expressible / not safe in this file):
+#   - Create a *separate* Railway service from the platform (and from Telescope).
+#   - Set ASTRAL_DATABASE_URL on astral-agent *and* the platform to the astral
+#     Postgres private URL (same DB Telescope uses). The service ensures
+#     agent_* tables on startup (idempotent). Never commit the DSN.
+#   - Provider API keys (OpenRouter / Anthropic / etc.) land with AST-2239 —
+#     set them as Railway env on this service only; never commit.
+#   - Private networking: no public domain required. Platform wakes replicas at
+#     http://<astral-agent-service>.railway.internal:8080 (wake URL config is
+#     AST-2238 on the platform).
+#   - Serverless: after IDLE_SLEEP_SECONDS with no work, the process drops its
+#     Postgres pool so Railway can sleep it; platform GET /wake resumes.
+#   - Scale out by raising replicas in the dashboard (Phase 1 fixed fleet).
+#     Do not add Judoscale / serviceInstanceUpdate / autoscaler code.
+#   - Optional: raise memory in the dashboard if provider payloads OOMs.
+
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "service/astral_agent/Dockerfile"
+watchPatterns = ["service/astral_agent/**"]
+
+[deploy]
+# Phase 1: start at 1 replica; fan out manually in the dashboard later.
+numReplicas = 1
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10
+healthcheckPath = "/healthz"
+healthcheckTimeout = 120
+# Old replica keeps running after SIGTERM so in-flight jobs finish;
+# leftovers are handed back to the queue (SHUTDOWN_GRACE_SECONDS = 25 in agent_config).
+drainingSeconds = 30
+# 1 GiB per replica — no Firefox; WORKER_CONCURRENCY=4 HTTP jobs (AST-2237 defaults).
+limitOverride = { containers = { memoryBytes = 1073741824 } }

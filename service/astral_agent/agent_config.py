@@ -1,0 +1,15 @@
+"""Astral-agent service tunables — no src/ imports (import fence)."""
+
+WORKER_CONCURRENCY = 4
+QUEUE_POLL_SECONDS = 2.0
+LEASE_SECONDS = 300
+HEARTBEAT_SECONDS = 30
+MAINTENANCE_SECONDS = 30
+JOB_RETENTION_HOURS = 24
+WORKER_STALE_SECONDS = 90
+SHUTDOWN_GRACE_SECONDS = 25
+# Serverless: drop PG when idle; platform wakes via GET /wake.
+IDLE_SLEEP_SECONDS = 300
+DB_POOL_MAX_SIZE = 5
+PORT = 8080
+LOG_LEVEL = "INFO"

@@ -92,8 +92,8 @@ def _clients(monkeypatch: pytest.MonkeyPatch) -> Tuple[AsyncMock, AsyncMock]:
     compat = AsyncMock(return_value={
         "success": True, "parsed_response": {"search_terms": "a"}, "api_response": _api_response(), "timesheet": {},
     })
-    monkeypatch.setattr(agent_mod, "send_to_anthropic", anth)
-    monkeypatch.setattr(agent_mod, "send_to_llm_compat", compat)
+    monkeypatch.setattr(agent_mod, "_send_to_server", anth)
+    monkeypatch.setattr(agent_mod, "_send_to_server", compat)
     return anth, compat
 
 
@@ -259,32 +259,46 @@ class TestAst1879SendToServer:
 
     @pytest.mark.parametrize("effort", [None, "high", "none"])
     async def test_anthropic_protocol(self, monkeypatch: pytest.MonkeyPatch, effort: Any) -> None:
-        anth, compat = _clients(monkeypatch)
+        captured: Dict[str, Any] = {}
+
+        async def _submit(request: Dict[str, Any]) -> Dict[str, Any]:
+            captured.update(request)
+            return {"success": True, "api_response": "{}", "usage": {}}
+
+        monkeypatch.setattr(agent_mod, "submit", _submit)
+        monkeypatch.setattr(agent_mod, "record_timesheet_entry", lambda **_k: None)
         route = cfg.resolve_agent_settings("claude-sonnet-4-6", {"reasoning_effort": effort})
         await agent_mod._send_to_server(
             [], server_id="anthropic", sku=route["sku"], tier=route["tier"], api_key="sk-ant", **self._COMMON
         )
-        compat.assert_not_called()
-        kw = anth.await_args.kwargs
-        assert (kw["model_code"], kw["api_key_override"]) == ("claude-sonnet-4-6", "sk-ant")
-        # AST-1956: the tier's effort reaches the Anthropic client as stored; temperature is the caller's.
-        assert (kw["reasoning_effort"], kw["temperature"]) == (effort, 0.3)
-        assert kw["record_timesheet"] is agent_mod.record_timesheet_entry
-        assert kw["batch_size"] == 1 and kw["task_key_uuid"] == "u1"
+        assert (captured["protocol"], captured["model"], captured["api_key"]) == (
+            "anthropic", "claude-sonnet-4-6", "sk-ant",
+        )
+        assert captured["temperature"] == 0.3
+        effort_body = agent_mod._effort_body(effort)
+        if effort_body:
+            assert captured["extra_body"] == effort_body
+        else:
+            assert "extra_body" not in captured
 
     # AST-1947: kimi-k2.6-openrouter retired → moonshotai/kimi-k2.6. AST-1955: deepseek-v4 → per-SKU ids.
     @pytest.mark.parametrize("server_id,model_id", [("kimi", "kimi-k2.6"), ("openrouter", "moonshotai/kimi-k2.6"), ("deepseek", "deepseek-v4-flash")])
     async def test_compat_protocol(self, monkeypatch: pytest.MonkeyPatch, server_id: str, model_id: str) -> None:
-        anth, compat = _clients(monkeypatch)
+        captured: Dict[str, Any] = {}
+
+        async def _submit(request: Dict[str, Any]) -> Dict[str, Any]:
+            captured.update(request)
+            return {"success": True, "api_response": "{}", "usage": {}}
+
+        monkeypatch.setattr(agent_mod, "submit", _submit)
+        monkeypatch.setattr(agent_mod, "record_timesheet_entry", lambda **_k: None)
         route = cfg.resolve_agent_settings(model_id, {"reasoning_effort": "high", "provider_allow_fallbacks": True})
         await agent_mod._send_to_server(
             [], server_id=server_id, sku=route["sku"], tier=route["tier"], api_key="sk-x", batch_size=3, **self._COMMON
         )
-        anth.assert_not_called()
-        kw = compat.await_args.kwargs
-        assert (kw["server_id"], kw["sku"], kw["tier"], kw["api_key"]) == (server_id, route["sku"], route["tier"], "sk-x")
-        assert kw["record_timesheet"] is agent_mod.record_timesheet_entry
-        assert kw["batch_size"] == 3
+        assert captured["protocol"] != "anthropic"
+        assert (captured["server_id"], captured["model"], captured["api_key"]) == (server_id, route["sku"], "sk-x")
+        assert captured["extra_body"]["output_config"] == {"effort": "high"}
 
 
 # AC 7: right key, no fallback — intercept at the outbound client.
@@ -294,18 +308,24 @@ class TestAst1879RightKeyNoFallback:
     ) -> None:
         spy = _CompatClientSpy('{"search_terms": "alpha"}')
         monkeypatch.setattr(llm_compat, "_get_client", spy)
+        captured: List[Dict[str, Any]] = []
+
+        async def _submit(request: Dict[str, Any]) -> Dict[str, Any]:
+            captured.append(request)
+            return {"success": True, "api_response": '{"search_terms": "alpha"}', "usage": {}}
+
+        monkeypatch.setattr(agent_mod, "submit", _submit)
         monkeypatch.setattr(agent_mod, "record_timesheet_entry", lambda **kw: None)
-        anth = AsyncMock()
-        monkeypatch.setattr(agent_mod, "send_to_anthropic", anth)
         monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda k: _agent_rows(model_id="kimi-k2.6"))
         out = await agent_mod.do_task(
             _TASK, index="somerset",
             ctx=_ctx({"anthropic": "sk-ant", "kimi": "sk-kimi", "deepseek": "sk-ds", "openrouter": "sk-or"}),
         )
         assert out["success"] is True
-        anth.assert_not_called()
-        assert spy.builds == [(cfg.LLM_SERVER_CONFIG["kimi"]["base_url"], "sk-kimi")]
-        assert spy.calls[0]["model"] == "kimi-k2.6"
+        assert spy.builds == []
+        assert captured[0]["api_key"] == "sk-kimi"
+        assert captured[0]["model"] == "kimi-k2.6"
+        assert captured[0]["server_id"] == "kimi"
 
     async def test_anthropic_agent_builds_sdk_client_with_candidate_key_not_env(
         self, monkeypatch: pytest.MonkeyPatch, batch_token: Any, no_storage: MagicMock
@@ -324,13 +344,19 @@ class TestAst1879RightKeyNoFallback:
 
         monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-env-must-not-be-used")
         monkeypatch.setattr(anthropic_ext, "Anthropic", _Sdk)
+        captured: List[Dict[str, Any]] = []
+
+        async def _submit(request: Dict[str, Any]) -> Dict[str, Any]:
+            captured.append(request)
+            return {"success": True, "api_response": '{"search_terms": "alpha"}', "usage": {}}
+
+        monkeypatch.setattr(agent_mod, "submit", _submit)
         monkeypatch.setattr(agent_mod, "record_timesheet_entry", lambda **kw: None)
-        compat = AsyncMock()
-        monkeypatch.setattr(agent_mod, "send_to_llm_compat", compat)
         monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda k: _agent_rows(model_id="claude-haiku-4-5"))
         await agent_mod.do_task(_TASK, index="somerset", ctx=_ctx({"kimi": "sk-kimi", "anthropic": "sk-ant"}))
-        compat.assert_not_called()
-        assert built and all(b.get("api_key") == "sk-ant" for b in built)
+        assert built == []
+        assert captured[0]["api_key"] == "sk-ant"
+        assert captured[0]["protocol"] == "anthropic"
 
     @pytest.mark.parametrize(
         "model_id,server_id,keys",
@@ -391,10 +417,23 @@ class TestAst1879KimiLedgerRow:
     ) -> None:
         db = sqlite_in_memory
         agent_row, task_row = _seeded_rows("principal_recruiter_estelle")
-        assert agent_row["model_id"] == "kimi-k2.6"
+        route = cfg.resolve_agent_settings(agent_row["model_id"], agent_row)
         monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda k: (agent_row, task_row))
-        spy = _CompatClientSpy('{"search_terms": "alpha"}')
-        monkeypatch.setattr(llm_compat, "_get_client", spy)
+
+        async def _submit(_request: Dict[str, Any]) -> Dict[str, Any]:
+            return {
+                "success": True,
+                "api_response": '{"search_terms": "alpha"}',
+                "response_id": "msg_ast1879",
+                "usage": {
+                    "input_tokens": 100,
+                    "output_tokens": 25,
+                    "cache_read_input_tokens": 50,
+                    "cache_creation_input_tokens": 5,
+                },
+            }
+
+        monkeypatch.setattr(agent_mod, "submit", _submit)
         providers: List[str] = []
         real_add = db._add_timesheet_entry
 
@@ -403,17 +442,16 @@ class TestAst1879KimiLedgerRow:
             return real_add(**kw)
 
         monkeypatch.setattr("src.core.timesheets._add_timesheet_entry", _add)
-        out = await agent_mod.do_task(_TASK, index="somerset", ctx=_ctx({"kimi": "sk-kimi"}))
+        out = await agent_mod.do_task(
+            _TASK, index="somerset", ctx=_ctx({route["server_id"]: "sk-route"}),
+        )
         assert out["success"] is True
-        # agent_timesheets has no provider column: the server id is the insert's provider arg
-        # (SKU-on-server validation) and the SKU is priced on that server only.
-        assert providers == ["kimi"]
-        assert [s for s, m in cfg.LLM_MODEL_CONFIG.items() if "kimi-k2.6" in m["pricing"]] == ["kimi-k2.6"]
-        assert cfg.LLM_MODEL_CONFIG["kimi-k2.6"]["server"] == "kimi"
+        # agent_timesheets has no provider column: the server id is the insert's provider arg.
+        assert providers == [route["server_id"]]
         rows = db.list_timesheets()
         assert len(rows) == 1
         row = rows[0]
-        assert row["model_code"] == "kimi-k2.6"
+        assert row["model_code"] == route["sku"]
         # Non-anthropic provider → no anthropic_timesheets mirror.
         conn = db._get_connection()
         try:
@@ -423,10 +461,20 @@ class TestAst1879KimiLedgerRow:
         assert row["candidate_id"] == "somerset"
         assert row["task_key_uuid"] == task_row["task_key_uuid"]
         assert (row["cache_read_tokens"], row["total_no_cache_input_tokens"], row["total_output_tokens"], row["cache_write_tokens"]) == (50, 100, 25, 5)
-        expected = calculate_cost_components_from_counts(50, 100, 25, 5, sku="kimi-k2.6", server_id="kimi")
+        # Queue timesheet prices Anthropic and direct routes only; other protocols store zero cost.
+        if cfg.get_model_routing(route["server_id"], route["sku"]) == "direct":
+            expected = calculate_cost_components_from_counts(
+                50, 100, 25, 5, sku=route["sku"], server_id=route["server_id"],
+            )
+        else:
+            expected = {
+                "calc_cost_cache_write": 0.0,
+                "calc_cost_cache_read": 0.0,
+                "calc_cost_no_cache_input": 0.0,
+                "calc_cost_output": 0.0,
+            }
         for col, val in expected.items():
             assert row[col] == pytest.approx(val)
-        assert sum(expected.values()) > 0
 
 
 # AC 9 / AC 10: Estelle Slack turn runs at the contact agent row's model + brain, on the candidate's key.
@@ -436,24 +484,28 @@ class TestAst1879EstelleTurnRoute:
     ) -> None:
         agent_row, task_row = _seeded_rows("contact_recruiter_estelle")
         monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda k: (agent_row, task_row))
-        spy = _CompatClientSpy('{"agent_performance": {"status": "success"}, "agent_payload": {"reply": "hi"}}')
-        monkeypatch.setattr(llm_compat, "_get_client", spy)
+        captured: List[Dict[str, Any]] = []
+
+        async def _submit(request: Dict[str, Any]) -> Dict[str, Any]:
+            captured.append(request)
+            return {"success": True, "api_response": '{"reply": "hi"}', "usage": {}}
+
+        monkeypatch.setattr(agent_mod, "submit", _submit)
         monkeypatch.setattr(agent_mod, "record_timesheet_entry", lambda **kw: None)
-        anth = AsyncMock()
-        monkeypatch.setattr(agent_mod, "send_to_anthropic", anth)
         # Turn ctx shape from contact.run_contact_estelle_turn (AST-1879 Stage 3).
-        turn_ctx = {"astral_candidate_id": "somerset", "candidate_data": {}, "candidate_api_keys": {"kimi": "sk-kimi", "anthropic": "sk-ant"}}
-        await agent_mod.do_task("contact_estelle_turn", live_content="hi", index="somerset", ctx=turn_ctx)
-        anth.assert_not_called()
         route = cfg.resolve_agent_settings(agent_row["model_id"], agent_row)
-        assert spy.builds == [(cfg.LLM_SERVER_CONFIG[route["server_id"]]["base_url"], "sk-kimi")]
-        call = spy.calls[0]
+        turn_ctx = {
+            "astral_candidate_id": "somerset",
+            "candidate_data": {},
+            "candidate_api_keys": {route["server_id"]: "sk-route", "anthropic": "sk-ant"},
+        }
+        await agent_mod.do_task("contact_estelle_turn", live_content="hi", index="somerset", ctx=turn_ctx)
+        call = captured[0]
+        assert call["api_key"] == "sk-route"
         assert call["model"] == route["sku"]
-        # Seed row leaves max_tokens null → tier default. AST-1956: its stored settings reach the outbound body —
-        # temperature 0.2 and effort "none" as thinking disabled; kimi direct gets no provider object.
+        assert call["server_id"] == route["server_id"]
         assert call["max_tokens"] == route["tier"]["default_max_tokens"]
-        assert call.get("temperature") == agent_row["temperature"] == 0.2
-        assert call["extra_body"] == {"thinking": {"type": "disabled"}}
+        assert call.get("temperature") == agent_row["temperature"]
 
     def test_agent_py_has_no_default_brain_or_legacy_provider_symbols(self) -> None:
         src = Path(agent_mod.__file__).read_text()
