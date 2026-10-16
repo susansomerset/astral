@@ -141,3 +141,53 @@ Confirm Chuckles estimate: 5 — agree
 - Do not add files outside **Files Changed**.
 - On ambiguity or codebase drift → stop and comment on parent AST-2225 with the Stage N blocked template; do not improvise.
 - Build precondition: registry import + AST-2228 APIs present (see Prerequisite).
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-2229
+**Overall:** APPROVED
+**Corpus:** b7ab2203048ce0beb2869a12200ab7fa696c8066
+**Publish ref tip:** `c6d6996c8f7d934aaeb5ca31376bff01ac430efe` (`origin/sub/AST-2225/AST-2229-readiness-advancement`)
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.entity.batch-processing | A | | |
+| patt.entity.batch-criteria | X | | No dispatch_task-shaped claim; list-scan advance only |
+| patt.task.dispatch-retry | A | | |
+| astral.batch.claim-process-release | X | | No pool claim; stale-aging peer path documented |
+| astral.dispatch.entity-state-bound | A | | |
+| stat.logging.info.dispatcher | A | | |
+| stat.logging.info.entity | B | | |
+
+## Traceability
+
+AC11 → Stage 1 (`check_profile_complete`, `incomplete_profile`; no state write on missing pieces). AC12 → Stage 1 (`advance_candidate_readiness`) + Stage 2 (`_tick_loop` after `age_stale_candidate_states`). AC13 → Stage 1 hop targets (`REQUESTED_RESUME`, `REQUESTED_ARTIFACTS`, `ACTIVE_SEARCH`); no stage-integer triggers; dispatch claim unchanged in `dispatcher.py`. Parent AC 1–10 → N/A — registry/nav/shell (#1, #3, #4). Parent AC 5–10 → N/A — same.
+
+## Findings
+
+### discuss
+- **Location:** Stage 1 step 1–2 — `check_profile_complete` / `incomplete_profile`
+- **Finding:** Required Profile pieces are fixed to `first` + `last` + `contact_email`, while parent AC 11 says “required Profile pieces” without enumerating them and epic UI text implies broader Profile-section content (sibling #3/#4 consume this signal for yellow chrome).
+- **Recommendation:** Before build, confirm with #3 that `incomplete_profile` alone is the API contract for yellow Profile, or document that context completeness stays on `check_context_complete` / a later API flag. If Susan intends yellow for missing bio/context fields at stage 2+, narrow name/email-only signal may under-deliver AC 11’s “Profile pieces” wording.
+
+### discuss
+- **Location:** Stage 1 step 4 — entity log line
+- **Finding:** Planned shape `candidate readiness_advance: {from} -> {to}` is id-pipe with `batch: -` but uses a custom event token instead of the statute’s canonical `candidate state: {from} -> {to}`.
+- **Recommendation:** At implement time, prefer the existing `state` event (still one line per advance) unless ops explicitly want a separate grep token.
+
+### acceptable
+- **Location:** Prerequisite — AST-2228 / registry import
+- **Finding:** Build depends on #1 vocabulary (`candidate_stage`, revived states, topic migrate); plan correctly blocks `config.py` edits here and tells engineer to stop on parent if registry import fails.
+- **Recommendation:** `merge-child` / build order should land #1 before #2; no plan revision required.
+
+### acceptable
+- **Location:** Stage 1 step 3 — no batch claim
+- **Finding:** Explicit Decision mirrors `age_stale_candidate_states` list scan rather than pool claim — consistent with scope (no `database.py`) and parent “if batch-claims” wording on batch statutes.
+- **Recommendation:** None.
+
+**R6 (summary):** Scope gate holds (`candidate.py` + `dispatcher.py` only). Forward-only hops, demote ban via `candidate_stage`, no `REQUESTED_*` / `*_RETRY` / `ERROR_*` scheduled hops, tick order after stale aging matches parent pipeline table. Sibling boundaries respected. Estimate confirm 5 is plausible.
+
+context_tokens≈58000
