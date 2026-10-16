@@ -5149,7 +5149,81 @@ Config only, no handlers. `CONTACT_CONTEXT_COMMAND_CONFIG` (six suffixes → `ar
 
 **Bible shasum (after publish):** `git show origin/sub/AST-2206/AST-2210-registry-estelle-prompts:docs/test-bible/utils/config.md | shasum`; same for `docs/test-bible/core/repo_admin_json.md`.
 
+### AST-2221 · AST-1201 (base resume chain registry + stage-generic resolvers)
 
+**Parent:** [AST-1201](https://linear.app/astralcareermatch/issue/AST-1201). **Publish:** `origin/sub/AST-1201/AST-2221-base-resume-chain-registry-and-seed-prompts`. Plan: `docs/features/artifacts/ast-2221-base-resume-chain-registry-and-seed-prompts.md`.
+
+Config + seed only (no `src/core/*`). `BASE_RESUME_CHAIN_TASK_KEYS` / `BASE_RESUME_CHAIN_ERROR_STATES` (nine hops, Functional-scope order); nine `TASK_CONFIG` entries (`entity_type: candidate`, JSON schemas; `draft_resume_base` shares `_CRAFT_RESUME_BASE_RESPONSE_SCHEMA` by identity + `artifact_key` `candidate.artifacts.base_resume`; `draft_resume_experiences` reuses `_EXPERIENCE_JOB_ARRAY_FIELD`); ERROR states with priors `REQUESTED_RESUME` only / `progress_rank` 4; `CANDIDATE_STAGE_DISPATCH["requested_resume"]` entry (`shape_the_story` → `REQUESTED_RESUME` → `RESUME_READY`, `auto_mode` False); three resolvers loop every stage entry (`_dispatch_trigger_state_for_task_key`, `_dispatch_entity_type_for_task_key`, `is_valid_candidate_batch_claim_state`). Catalog seed: [`../core/repo_admin_json.md`](../core/repo_admin_json.md) § AST-2221. Sibling **AST-2222** owns the stage runner.
+
+| Area | Component tests |
+| --- | --- |
+| AC 1 nine hops + shell fields; AC 2 schema/`artifact_key` identity; experience field object identity | new **`TestAst2221BaseResumeChainConfig`** — `test_nine_hops_registered`, `test_assembler_reuses_craft_schema_and_artifact_key` |
+| AC 4 ERROR states + priors; AC 5 stage entry; every stage `task_key` in `TASK_CONFIG` | same — `test_error_states_and_priors`, `test_requested_resume_stage_entry` |
+| AC 6 stage-generic resolvers (entry + craft regression); mid-chain KeyError; hop-label claim | same — `test_stage_generic_resolvers`, `test_hop_label_claim_validation` |
+| Revised: artifacts-only “no `requested_resume`” lock retired | **`TestAst972CandidateStageDispatch::test_stage_dispatch_map_and_task_config`** |
+| Revised: AUTO-off covers every stage entry (not only artifacts) | **`TestAst1022HonorAutoOffStageDispatch::test_stage_dispatch_auto_mode_seed_false`** |
+
+**Broken / obsolete this pass:** AST-972 asserted `"requested_resume" not in CANDIDATE_STAGE_DISPATCH` — product now registers that stage. AST-1022 only checked `requested_artifacts["auto_mode"]`.
+
+**Masked, not revised:** `TestAst786AgentTaskRepoJsonSeed` (pinned 57-key set) stays pre-existing red (also missing AST-2210 keys); do not re-pin here.
+
+**Integration:** none — no `tests/integration/` scenario reads `BASE_RESUME_CHAIN_*` or `requested_resume` stage dispatch.
+
+## QA test manifest — AST-2221
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst2221BaseResumeChainConfig \
+  tests/component/utils/test_config.py::TestAst972CandidateStageDispatch \
+  tests/component/utils/test_config.py::TestAst1022HonorAutoOffStageDispatch \
+  tests/component/utils/test_config.py::TestAst1252ArtifactsDispatchChainConfig \
+  tests/component/core/test_repo_admin_json.py::TestAst2221BaseResumeChainCatalogRows \
+  -q
+```
+
+**Pass criterion:** all nodes green on the command above. Not the zero-arg harness / branch-lock gate.
+
+**Bible shasum (after publish):** `git show origin/sub/AST-1201/AST-2221-base-resume-chain-registry-and-seed-prompts:docs/test-bible/utils/config.md | shasum`; same for `docs/test-bible/core/repo_admin_json.md`.
+
+### AST-2217 · AST-2215 (fetch_timesheet registries)
+
+`FETCH_TIMESHEET_CONFIG` (poller defaults: `entity_type` / `trigger_state` / `freq_hrs` None, `auto_mode` False) plus `TIMESHEET_REQUEST_TYPES`, `TIMESHEET_RECEIPT_FIELDS`, `LEDGER_TIMESHEET_STATES`, `TIMESHEET_SEARCH_SERVER_ID`. Reconcile constants left in place for AST-2218.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| New — fetch_timesheet dispatch-row defaults | `FETCH_TIMESHEET_CONFIG` | `TestAst2217FetchTimesheetRegistries::test_fetch_timesheet_config_poller_defaults` |
+| New — request / receipt / ledger / search-server registries | `TIMESHEET_*` / `LEDGER_TIMESHEET_STATES` | `…::test_request_receipt_ledger_registries` |
+
+**Primary manifest:** [`../data/database/timesheets.md`](../data/database/timesheets.md) § AST-2217.
+
+### AST-2218 · AST-2215 (`dispatch_task_admin_defaults` fold for fetch_timesheet)
+
+Mailbox-twin fold: `fetch_timesheet` → `{entity_type, trigger_state}=None`, `sort_by=None`, `batch_call_mode=0`. `is_fetch_timesheet_task_key`. Reconcile constants left in place (unused).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| New — admin defaults null entity/trigger | `dispatch_task_admin_defaults` | `TestAst2218FetchTimesheetAdminDefaults::test_fold_returns_null_entity_trigger` |
+| New — task-key helper | `is_fetch_timesheet_task_key` | `…::test_is_fetch_timesheet_task_key` |
+
+**Primary manifest:** [`../core/timesheets.md`](../core/timesheets.md) § AST-2218.
+
+### AST-2223 · AST-2216
+
+**Parent:** [AST-2216 — Make meteorite text editable (not versioned)](https://linear.app/astralcareermatch/issue/AST-2216). **Publish:** `origin/sub/AST-2216/AST-2223-candidate-meteorite-edit`.
+
+`CANDIDATE_METEORITE_EDIT_CONFIG`: locked `LANDED`, editable columns (incl. `METEORITE_CONFIG["electronic_contact_column"]`), `state_options` = every `METEORITE_STATES` key minus locked, `default_save_state` `CHECK_UNIQUE`, load-time asserts. Core/API: **`docs/test-bible/core/meteorite.md`** · **`docs/test-bible/ui/api/api_meteorite.md`** § AST-2223.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Config block shape + asserts | `src/utils/config.py` | **`TestAst2223CandidateMeteoriteEditConfig`** |
+
+**Broken / obsolete:** none — additive config block.
+
+**Integration:** none — do not invent.
+
+## QA test manifest
+
+See **`docs/test-bible/core/meteorite.md`** § AST-2223 (shared numbered list).
 ### AST-2228 · AST-2225 (candidate stage registry + topic vocabulary cutover)
 
 **Parent:** [AST-2225](https://linear.app/astralcareermatch/issue/AST-2225). **Publish:** `origin/sub/AST-2225/AST-2228-candidate-stage-registry`. Plan: `docs/features/candidate/ast-2228-candidate-stage-registry.md`. Core resolver/migrate: [`../core/candidate.md`](../core/candidate.md) § AST-2228.
@@ -5184,3 +5258,32 @@ Config only, no handlers. `CONTACT_CONTEXT_COMMAND_CONFIG` (six suffixes → `ar
 **Pass criterion:** 28 passed on the narrowed run. Not the zero-arg harness.
 
 **Bible shasum (after publish):** `git show origin/sub/AST-2225/AST-2228-candidate-stage-registry:docs/test-bible/utils/config.md | shasum`; same for `docs/test-bible/core/candidate.md`.
+
+### AST-2245 · AST-2225 (gap — BASE_RESUME_CHAIN_ERROR_STATES stage 3)
+
+**Parent:** [AST-2225](https://linear.app/astralcareermatch/issue/AST-2225). **Publish:** `origin/sub/AST-2225/AST-2245-gap-base-resume-error-stage`. Plan: `docs/features/candidate/ast-2245-gap-base-resume-error-stage.md`.
+
+After AST-2228 × AST-2221 merge, `BASE_RESUME_CHAIN_ERROR_STATES` expansion omitted `"stage"` (import assert red on `ERROR_SHAPE_THE_STORY`, …). Gap adds `"stage": 3` (resume-request prior band). Craft `ERROR_CRAFT_*` stay stage 4. No NAV / readiness / UI / data-model.
+
+| Area | Component tests |
+| --- | --- |
+| Every `CANDIDATE_STATES` entry has `stage`; every `BASE_RESUME_CHAIN_ERROR_STATES` key is stage 3 (+ priors/rank unchanged); craft ERROR stay 4 | new **`TestAst2245BaseResumeErrorStage`** |
+| AST-2221 error registry row also asserts stage 3 | revised **`TestAst2221BaseResumeChainConfig::test_error_states_and_priors`** |
+
+**Broken / obsolete this pass:** AST-2221 `test_error_states_and_priors` omitted stage (revised). **Keeper:** restored **`### AST-2228`** block above (lost on ftr `sync(dev)` of sibling epics).
+
+**Integration:** none — do not invent.
+
+## QA test manifest — AST-2245
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst2245BaseResumeErrorStage \
+  tests/component/utils/test_config.py::TestAst2221BaseResumeChainConfig::test_error_states_and_priors \
+  tests/component/utils/test_config.py::TestAst2228CandidateStageRegistry \
+  -q
+```
+
+**Pass criterion:** 4 passed on the narrowed run. Not the zero-arg harness.
+
+**Bible shasum (after publish):** `git show origin/sub/AST-2225/AST-2245-gap-base-resume-error-stage:docs/test-bible/utils/config.md | shasum`.

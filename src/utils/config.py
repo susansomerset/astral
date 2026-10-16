@@ -1656,8 +1656,13 @@ CANDIDATE_STATES = {
         for s in CANDIDATE_CRAFT_CHAIN_ERROR_STATES
     },
     # AST-2221: base-resume hop failures land on ERROR_<HOP> with REQUESTED_RESUME priors only.
+    # AST-2245: resume-request ERROR_* inherit stage 3 (parent locked band).
     **{
-        s: {"prior_states": ["REQUESTED_RESUME"], "progress_rank": 4}
+        s: {
+            "prior_states": ["REQUESTED_RESUME"],
+            "progress_rank": 4,
+            "stage": 3,
+        }
         for s in BASE_RESUME_CHAIN_ERROR_STATES
     },
     "ARTIFACTS_READY": {
@@ -2514,6 +2519,9 @@ assert CANDIDATE_STATES["PAUSE_SEARCH"]["stage"] == 5
 assert CANDIDATE_STATES["RESUME_READY"]["stage"] == 4
 assert CANDIDATE_STATES["PROFILE_READY"]["stage"] == 2
 assert CANDIDATE_STATES["DELETED"]["stage"] == 0
+assert all(
+    CANDIDATE_STATES[s]["stage"] == 3 for s in BASE_RESUME_CHAIN_ERROR_STATES
+)
 
 # Legacy labels -> live registry (AST-973 + AST-2228 topic remap). DELETED not remapped.
 CANDIDATE_LEGACY_STATE_MAP = {

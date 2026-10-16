@@ -2749,6 +2749,25 @@ class TestAst2228CandidateStageRegistry:
                 assert entry["stage"] == 4, name
 
 
+class TestAst2245BaseResumeErrorStage:
+    """AST-2245: BASE_RESUME_CHAIN_ERROR_STATES inherit stage 3 (resume-request band)."""
+
+    def test_every_registry_entry_has_stage(self) -> None:
+        assert all("stage" in v for v in cfg.CANDIDATE_STATES.values())
+
+    def test_base_resume_error_states_are_stage_3(self) -> None:
+        assert cfg.BASE_RESUME_CHAIN_ERROR_STATES
+        for st in cfg.BASE_RESUME_CHAIN_ERROR_STATES:
+            assert cfg.CANDIDATE_STATES[st]["stage"] == 3, st
+            # Priors / rank unchanged from AST-2221 — stage is the gap this ticket fills.
+            assert cfg.CANDIDATE_STATES[st]["prior_states"] == ["REQUESTED_RESUME"], st
+            assert cfg.CANDIDATE_STATES[st]["progress_rank"] == 4, st
+        # Artifact craft ERROR_* stay stage 4 (do not retarget).
+        for name, entry in cfg.CANDIDATE_STATES.items():
+            if name.startswith("ERROR_CRAFT_"):
+                assert entry["stage"] == 4, name
+
+
 class TestAst996ExperienceJobArrayConfig:
     """AST-996: shared experience job-array schema on craft-base + artifact shapes."""
 
@@ -8965,6 +8984,8 @@ class TestAst2221BaseResumeChainConfig:
             assert cfg.TASK_CONFIG[k]["error_state"] == st, k
             assert cfg.CANDIDATE_STATES[st]["prior_states"] == ["REQUESTED_RESUME"], k
             assert cfg.CANDIDATE_STATES[st]["progress_rank"] == 4, k
+            # AST-2245: resume-request ERROR_* inherit stage 3 (REQUESTED_RESUME band).
+            assert cfg.CANDIDATE_STATES[st]["stage"] == 3, k
 
     def test_requested_resume_stage_entry(self) -> None:
         assert cfg.CANDIDATE_STAGE_DISPATCH["requested_resume"] == {
