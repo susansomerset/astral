@@ -248,3 +248,19 @@ Faithful to child #3 definition; no scope creep into cutover/client/railway/test
 context_tokens≈54000
 
 [plan-rubric] PROCEED (Commit: 53e6d8da) Service provider wrappers plan
+
+## Review stub (Hedy / build)
+
+**Publish ref:** `origin/sub/AST-2235/AST-2239-provider-wrappers-inside-the-worker` @ `14d7c04fbece2d284913c2e15edc200adadb94ee`
+
+**Product commits:** `1dfd50c43` (Stage 1 — error helpers + requirements), `106246155` (Stage 2 — provider modules + executor), `14d7c04fb` (Stage 3 — worker glue + send_to stubs)
+
+**Implemented:**
+- `service/astral_agent/providers/` — Anthropic, compat (DeepSeek/Kimi/OpenRouter), OpenRouter host pin; failure_class literals local to the service
+- `executor.execute` validates the assembled request and dispatches by `protocol`
+- Soft provider failures complete the job; `ProviderJobError` → `fail(error_class=bad_request)`; other crashes → `executor_error`
+- `send_to_anthropic` / `send_to_llm_compat` raise retired; `get_receipt` / `getTimestampPrefix` / OpenRouter probe+receipt stay
+
+**Tests:** Betty at Code Complete. Do not land `do_task` cutover here (AST-2240).
+
+**Canon (self-check):** provider HTTP stays in the service; no hardcoded keys (`request["api_key"]`); crash path logs once via worker `logger.exception`. `patt.agent.provider-io-via-queue` still pending — not scored.
