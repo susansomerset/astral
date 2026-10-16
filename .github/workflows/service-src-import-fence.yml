@@ -16,5 +16,5 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install ripgrep
         run: sudo apt-get update && sudo apt-get install -y ripgrep
-      - name: Check service/telescope ↔ src import fence
+      - name: Check service ↔ src import fence
         run: ./scripts/ci/check-service-src-import-fence.sh

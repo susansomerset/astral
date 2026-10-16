@@ -238,3 +238,7 @@ Parent AC **5** stub half (direct-server stub; OpenRouter billed receipts are AS
 | New — probe row shares outer attribution | `_record_probe` / `send_to_llm_compat` | `…::test_probe_row_carries_same_attribution` |
 
 **Primary manifest:** [`../data/database/timesheets.md`](../data/database/timesheets.md) § AST-2217. **Integration:** none.
+
+### AST-2239 · AST-2235 (`send_to_llm_compat` thin stub)
+
+`send_to_llm_compat` raises `RuntimeError` (retired). Live provider HTTP: [`../service/astral_agent.md`](../service/astral_agent.md) § AST-2239. Send-path classes skipped (`@_SEND_RETIRED`); keep `TestAst1877GetClient` / `get_receipt` stub. Retirement assert: `TestAst2239SendToLlmCompatRetired`.
