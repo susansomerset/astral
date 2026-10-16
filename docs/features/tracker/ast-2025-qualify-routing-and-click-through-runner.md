@@ -1,3 +1,78 @@
+<!-- linear-archive: AST-2025 archived 2026-10-16 -->
+
+## Linear archive (AST-2025)
+
+**Archived:** 2026-10-16  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-2025/qualify-routing-and-click-through-runner-new-fetch-task-for-relative  
+**Status at archive:** Archive  
+**Project:** Astral Tracker  
+**Assignee:** katherine  
+**Priority / estimate:** None / 3  
+**Parent:** AST-2022 — New Fetch task for RELATIVE_JOB_LINK  
+**Blocked by / blocks / related:** parent: AST-2022
+
+### Description
+
+## What this implements
+
+After #1 and #2. `qualify_job_listings` sends relative-link passes to `RELATIVE_JOB_LINK`. The new gazer runner claims them, calls the Telescope click-through, saves the resolved link and JD, and transitions per the Pipeline flow. `fetch_jd_batch`'s JD gates move into a shared helper both runners call. The dispatch router wires the new task key to the runner.
+
+## Citations
+
+`patt.entity.batch-processing`, `astral.batch.claim-process-release`, `stat.logging.debug`, `stat.logging.info.entity`, `stat.logging.warning`, `stat.logging.error`.
+
+## Scope
+
+* `src/core/gazer.py`: new batch runner. For each claimed job it calls the Telescope click-through with the job's `job_site` and relative `job_link`, saves the resolved `job_link`, runs the shared JD gates, saves the JD, and transitions. The JD gate logic currently inline in `fetch_jd_batch` moves into a helper both runners call.
+* `src/core/consult.py`:
+  * In `qualify_job_listings`, `process()` changes: a non-empty, non-`http` link initializes the job and transitions to the configured relative-link state instead of raising `InvalidJobLinkError`. The empty link still raises.
+  * The job dispatch router gets a new `task_key` branch calling the gazer runner.
+
+## Acceptance criteria
+
+2. **Qualify keeps relative links.** A passing `qualify_job_listings` response with `job_link: "/jobs/123"` leaves that job in `RELATIVE_JOB_LINK` with `job_link == "/jobs/123"`. Fail: the job lands in the batch fail / error state, or `InvalidJobLinkError` appears in the log for it. A blank `job_link` fails exactly as today (`InvalidJobLinkError` → the batch fail destination). Fail: it reaches `RELATIVE_JOB_LINK`.
+3. **Negative check (no second raise path).** `rg -n 'raise InvalidJobLinkError' src/core/consult.py` returns exactly one hit, and that hit sits under an empty-link condition. Fail: zero hits (empty-link guard removed) or a hit still covering non-empty relative links.
+4. **Runner outcomes.** With the Telescope client stubbed:
+   * ok text → job `JD_READY`, `job_data.job_description` saved, `job_link` equals the stubbed absolute `final_url`;
+   * blocked text → `BOT_BLOCKED` and `job_link` resolved;
+   * closed text → `JD_SCRAPE_FAIL_CLOSED` and `job_link` resolved;
+   * click-target error → `RELATIVE_LINK_FAIL`, `job_link` still relative.
+
+   Fail: any job in a different state, or `job_link` still relative after a destination was reached.
+5. **Shared gates, not copied.** `fetch_jd_batch` and the new runner both call the same JD gate helper (`rg` of that helper's name in `src/core/gazer.py` shows the definition plus one call in each runner). Fail: gate logic (`_prune_jd`, the `min_chars` check, `_classify_jd` → `_JD_ERROR_STATES`) appears inline in both runners.
+6. **Dispatch binding.** The Scheduled Actions picker (`GET /admin/dispatch_tasks/task_keys`) lists the new task key with `entity_type: "job"` and `trigger_state: "RELATIVE_JOB_LINK"`. A manual run claims only `RELATIVE_JOB_LINK` jobs for that candidate, and every claimed job ends with `batch_id` NULL. Fail: the key is missing, the pair is wrong, other states are claimed, or a lock is left behind.
+
+## Boundaries
+
+Does not own: Telescope service/client changes (#1). Job state registry, config, and agent_task.json (#2). The qualify prompt text (Susan).
+
+## Notes for planning
+
+Parent: AST-2022 (full definition, Pipeline flow, Architectural definition links). Canon Scope for this child = Citations above.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/<parent-segment>`, child `sub/<parent-id>/<child-segment>`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-10-08T04:12:18.985Z
+[code-rubric] REVIEW (Commit: 89b5e0f) qualify batch tally bug
+
+#### betty — 2026-10-08T04:10:14.592Z
+`origin/sub/AST-2022/AST-2025-relative-link-runner` @ `89b5e0f44` · runner gaps, two nodes revised
+
+#### katherine — 2026-10-08T04:05:39.953Z
+`origin/sub/AST-2022/AST-2025-relative-link-runner` @ `4985c5bdc`
+
+#### joan — 2026-10-08T04:01:59.325Z
+[plan-rubric] PROCEED (Commit: ef11e798c) runner routing and shared gates
+
+#### katherine — 2026-10-08T04:00:13.224Z
+`origin/sub/AST-2022/AST-2025-relative-link-runner` @ `ef11e798c` · runner and routing planned
+
+---
+
 # AST-2025 — Qualify routing and click-through runner
 
 - **Ticket:** [AST-2025](https://linear.app/astralcareermatch/issue/AST-2025)
