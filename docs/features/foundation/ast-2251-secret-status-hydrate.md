@@ -215,8 +215,8 @@ context_tokens≈42000
 
 ## Frame diff
 
-- [ ] **Acceptance criteria — AC 2:** Confirm dispatch missing-key behavior is unchanged and `EXPIRED` is satisfied by omitting the server from `candidate_api_keys` (no `dispatcher.py` edit on this sub).
-- [ ] **Acceptance criteria — AC 1:** After `--execute`, operators run a deploy (or accept stale env until deploy) so hydrated values match Railway upserts — Joan’s migration note.
+- [x] **Acceptance criteria — AC 2:** Confirm dispatch missing-key behavior is unchanged and `EXPIRED` is satisfied by omitting the server from `candidate_api_keys` (no `dispatcher.py` edit on this sub).
+- [x] **Acceptance criteria — AC 1:** After `--execute`, operators run a deploy (or accept stale env until deploy) so hydrated values match Railway upserts — Joan’s migration note.
 
 ## Findings
 
@@ -263,3 +263,11 @@ context_tokens≈42000
 ```
 
 context_tokens≈38000
+
+## Resolution
+
+2026-10-16 — Radia overall CLEAN. No fix-now items.
+
+Discuss "Migration upsert without deploy": Susan had not answered. Took the finding **Default** — no `trigger_service_deploy` in the script. One line in `scripts/migrations/migrate_candidate_api_keys_to_railway.py` tells the operator to deploy the Astral service after `--execute`.
+
+Advisory items left as written: sibling AST-2250 files in the three-dot diff, off-list statutes not scored, AC 2 covered by the hydrate omission rather than a dispatcher test. Frame-diff AC 1 and AC 2 rows ticked.

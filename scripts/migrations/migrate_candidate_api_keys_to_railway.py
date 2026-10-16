@@ -2,6 +2,7 @@
 """Decrypt candidate.api_keys ciphertext, upsert one Railway variable per key, then clear ciphertext.
 
 Copy the database first. --execute calls Railway. Default is dry-run and prints no plaintext.
+After --execute, deploy the Astral service so the running process sees the new variables.
 
   cp data/astral.db data/astral.db.pre-AST-2251
   python scripts/migrations/migrate_candidate_api_keys_to_railway.py
