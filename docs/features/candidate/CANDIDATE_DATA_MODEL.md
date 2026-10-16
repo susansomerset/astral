@@ -9,7 +9,7 @@ Candidate table schema, JSON blob structure, token resolution, and implementatio
 - **state_history** — JSON array of `{from_state, to_state, timestamp, batch_id}`; appended by core on successful `transition_candidate_state` (and create seed) (AST-971). `batch_id` on a history entry may be null when the transition was not batch-anchored; row lock columns are separate (claim/clear).
 - **first**, **last**, **full**, **pronouns** — High-frequency identity columns (AST-1014). Not nested in any blob. `full` is recomputed from first+last on save when omitted or empty/whitespace; a non-empty value is an explicit override. `pronouns` holds a `PRONOUN_PREFERENCE_OPTIONS` value (default `they/them`).
 - **candidate_data** — One JSON blob; see below (three library sections + meta).
-- **candidate_api_key** — Fernet-encrypted Anthropic API key. Encrypted at rest via `ASTRAL_ENCRYPTION_KEY`; decrypted inline by `_parse_candidate_row` so callers receive plaintext.
+- **api_keys** — JSON array of `{server, status, expires_at}`. `status` is `SET` or `NOT SET`. `expires_at` is UTC `YYYY-MM-DD HH:MM:SS` or null. The secret value is not in this column. Production variable name is `candidate_secret_variable_name(server, astral_candidate_id)` (`CANDIDATE_<SANITIZED_ID>_<SUFFIX>` from `CANDIDATE_SECRET_CATALOG`). Local hydrate reads `candidate_secret_local_stub_env(server)` instead, one value for every candidate. A read with `expires_at` set and `now >= expires_at` reports `EXPIRED` and omits that server from `candidate_api_keys`. `candidate_api_key` (singular) remains an unread legacy column; it is not written by the key path.
 - **batch_id** — Golden-ticket lock for dispatch claim → process → release (AST-1258). Null or empty means unclaimed. Same pool-claim role as job/company `batch_id`.
 - **batch_created_at** — Timestamp set when the row is claimed; cleared with `batch_id` on release.
 - **created_at**, **updated_at**, **state_changed_at** — Timestamps.
@@ -199,13 +199,9 @@ Nav regroup and scheduled forward-only advancement (siblings) consume these band
 
 Jobs do not have a direct `candidate_id` column; they are scoped via their parent company (`company IN (SELECT short_name FROM company WHERE candidate_id = ?)`).
 
-## Encryption
-
-`candidate_api_key` is Fernet-encrypted at rest. Requires `ASTRAL_ENCRYPTION_KEY` environment variable (symmetric key). `_parse_candidate_row()` decrypts inline so downstream code receives plaintext. `clear_candidate_api_key()` sets the column to NULL.
-
 ## Snake_case
 
-- **DB columns:** astral_candidate_id, state, state_history, first, last, full, pronouns, candidate_data, candidate_api_key, batch_id, batch_created_at, created_at, updated_at, state_changed_at.
+- **DB columns:** astral_candidate_id, state, state_history, first, last, full, pronouns, candidate_data, candidate_api_key, api_keys, batch_id, batch_created_at, created_at, updated_at, state_changed_at.
 - **candidate_data keys:** contact, context, artifacts, and all nested keys above; meta siblings as listed.
 - **Config keys:** `CANDIDATE_STATES`, `CANDIDATE_CONFIG`, `CANDIDATE_LIBRARY_CONFIG`, etc.
 
