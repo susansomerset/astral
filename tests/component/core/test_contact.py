@@ -3285,9 +3285,13 @@ class TestAst2212ContactContextWiring:
         monkeypatch.setattr(contact_mod.database, "update_dispatch_ledger", lambda *a, **kw: e["ledger"].append(("update", a, kw)))
         monkeypatch.setattr(agent_mod, "compute_batch_cost", lambda _b: 0.0)
 
-        async def fake_do_task(task_key, *, live_content, index, ctx, debug, store_agent_data):
+        async def fake_do_task(
+            task_key, *, live_content, index, ctx, debug, store_agent_data, request_type="DISPATCH_AGENT"
+        ):
+            # AST-2220: contact ledgered paths pass CONTACT_AGENT; accept the kwarg so stubs don't TypeError.
             e["tasks"].append({"task_key": task_key, "live": live_content, "index": index, "ctx": ctx,
-                               "store": store_agent_data, "batch": log_batch_id.get()})
+                               "store": store_agent_data, "batch": log_batch_id.get(),
+                               "request_type": request_type})
             default = (
                 {"draft": "Steady under pressure.", "note": "Leaned on the channel."}
                 if task_key.startswith("draft_context_") else {"reply": "Fair, cutting it.", "revised_draft": "Steady."}
@@ -3420,6 +3424,8 @@ class TestAst2212ContactContextWiring:
         assert [x[0] for x in e["ledger"]] == ["save", "update"]
         assert e["ledger"][0][1][:3] == (task["batch"], "contact-draft_context_strengths", "X")
         assert e["ledger"][1][2]["status"] == "COMPLETED"
+        assert e["ledger"][1][2]["timesheet_state"] == "NEW"  # AST-2220
+        assert task["request_type"] == "CONTACT_AGENT"  # AST-2220
         assert log_batch_id.get() is None
         # Reply under the command message; draft then note; nothing saved.
         call = m["post"].call_args
@@ -3436,6 +3442,7 @@ class TestAst2212ContactContextWiring:
         out = contact_mod.contact_command_draft_context("X", "", source_id="CPRIV:5.0", artifact_key=self.KEY)
         assert out == {"ok": False, "meteorite_id": None, "error": "llm_down", "reply_text": "Not enough in the channel yet."}
         assert e["ledger"][1][2]["status"] == "FAILED"
+        assert e["ledger"][1][2]["timesheet_state"] == "NEW"  # AST-2220
         assert any("X | contact draft" in r.getMessage() for r in caplog.records if r.levelname == "WARNING")
 
     def test_draft_empty_text_posts_nothing(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -3532,3 +3539,155 @@ class TestAst2212ContactContextWiring:
         out = self._handle("Ev-2212-nomention", "is it relevant?", etype="message", ts="7.0", thread_ts=self.TS)
         assert out == {"accepted": False, "reason": "not_dm"}
         assert e["tasks"] == [] and m["post"].call_count == 0
+
+class TestAst2220ContactEstelleLedgerRow:
+    """AST-2220 / parent AC 9: Estelle (and peer ledgered) turns open/close a ledger row with
+    timesheet_state NEW; do_task gets CONTACT_AGENT and the timesheet row shares that batch_id.
+    """
+
+    def setup_method(self) -> None:
+        contact_mod._context_cache.clear()
+        contact_mod._seen_event_ids.clear()
+
+    _OK = {
+        "success": True,
+        "conversational_outcome": "success",
+        "agent_performance": {"status": "success"},
+        "parsed_response": {"reply": "Hello"},
+    }
+
+    def _patch_estelle(
+        self, monkeypatch: pytest.MonkeyPatch, *, do_task_result: dict | None = None, write_timesheet: bool = True
+    ) -> dict:
+        from src.utils.logging import log_batch_id
+
+        monkeypatch.setitem(CONTACT_CONFIG, "listen_enabled", True)
+        monkeypatch.setattr(
+            contact_mod,
+            "load_slack_conversation_context",
+            MagicMock(return_value={"channel": "C1", "thread_ts": "", "messages": [], "source": "cache"}),
+        )
+        monkeypatch.setattr(contact_mod, "get_candidate", MagicMock(side_effect=_turn_candidate_row))
+        monkeypatch.setattr(contact_mod, "contact_skills", MagicMock(return_value={}))
+        post = MagicMock(return_value={"ok": True, "ts": "9.0"})
+        monkeypatch.setattr(contact_mod, "contact_post_message", post)
+        monkeypatch.setattr(contact_mod, "format_contact_reply_text", lambda text: text)
+        import src.core.agent as agent_mod
+
+        monkeypatch.setattr(agent_mod, "compute_batch_cost", lambda _b: 0.0)
+        calls: list = []
+        result = dict(do_task_result or self._OK)
+
+        async def _do_task(*a, **k):
+            calls.append((a, k))
+            if write_timesheet:
+                contact_mod.database._add_timesheet_entry(
+                    f"req-{len(calls)}",
+                    "task-uuid",
+                    "kimi-k2.6",
+                    "c1",
+                    log_batch_id.get(),
+                    1,
+                    0, 0, 0, 0, 10, 5,
+                    0.0, 0.0, 0.0, 0.0,
+                    provider="kimi",
+                    request_type=k.get("request_type"),
+                    entity_type="candidate",
+                    entity_id="c1",
+                    completion_status="success",
+                )
+            return result
+
+        monkeypatch.setattr(agent_mod, "do_task", _do_task)
+        return {"post": post, "calls": calls}
+
+    def test_estelle_turn_ledger_new_and_contact_agent_timesheet(
+        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # AC 9: one closed ledger row (completed_at + timesheet_state NEW); timesheet shares batch_id + CONTACT_AGENT.
+        db = sqlite_in_memory
+        deps = self._patch_estelle(monkeypatch)
+        out = contact_mod.run_contact_estelle_turn(
+            channel="C1", text="hi", astral_candidate_id="c1", debug=False
+        )
+        assert out["ok"] is True
+        assert len(deps["calls"]) == 1
+        kw = deps["calls"][0][1]
+        assert kw["request_type"] == "CONTACT_AGENT"
+        rows = db.list_dispatch_ledger(candidate_id="c1")
+        assert len(rows) == 1
+        led = rows[0]
+        assert led["completed_at"]
+        assert led["timesheet_state"] == "NEW"
+        assert led["status"] == "COMPLETED"
+        assert led["task_key"] == "contact-estelle"
+        ts_rows = db.list_timesheets(batch_id=led["batch_id"])
+        assert len(ts_rows) == 1
+        assert ts_rows[0]["request_type"] == "CONTACT_AGENT"
+        assert ts_rows[0]["batch_id"] == led["batch_id"]
+        assert kw["request_type"] == "CONTACT_AGENT"
+
+    def test_estelle_failure_still_closes_ledger_new(
+        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        db = sqlite_in_memory
+        self._patch_estelle(
+            monkeypatch,
+            do_task_result={
+                "success": False,
+                "error": "Agent failure: blocked",
+                "conversational_outcome": "failure",
+                "agent_performance": {"status": "failure", "failure_note": "blocked"},
+                "parsed_response": None,
+            },
+            write_timesheet=True,
+        )
+        out = contact_mod.run_contact_estelle_turn(
+            channel="C1", text="hi", astral_candidate_id="c1", debug=False
+        )
+        assert out["ok"] is False
+        led = db.list_dispatch_ledger(candidate_id="c1")[0]
+        assert led["status"] == "FAILED"
+        assert led["timesheet_state"] == "NEW"
+        assert led["completed_at"]
+        assert db.list_timesheets(batch_id=led["batch_id"])[0]["request_type"] == "CONTACT_AGENT"
+
+    def test_peer_ledgered_task_contact_agent_and_new(
+        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Peer helper shares the same NEW + CONTACT_AGENT contract.
+        from src.utils.logging import log_batch_id
+        import src.core.agent as agent_mod
+
+        db = sqlite_in_memory
+        monkeypatch.setattr(agent_mod, "compute_batch_cost", lambda _b: 0.0)
+        calls: list = []
+
+        async def _do_task(*a, **k):
+            calls.append(k)
+            db._add_timesheet_entry(
+                "req-peer", "task-uuid", "kimi-k2.6", "c1", log_batch_id.get(), 1,
+                0, 0, 0, 0, 10, 5, 0.0, 0.0, 0.0, 0.0,
+                provider="kimi", request_type=k.get("request_type"),
+            )
+            return {"success": True, "parsed_response": {"draft": "x"}, "agent_performance": {"status": "success"}}
+
+        monkeypatch.setattr(agent_mod, "do_task", _do_task)
+        row = _turn_candidate_row("c1")
+        result = contact_mod._run_contact_ledgered_task(
+            "draft_context_strengths", cid="c1", row=row, live_content="hi", debug=False
+        )
+        assert result["success"] is True
+        assert calls[0]["request_type"] == "CONTACT_AGENT"
+        led = db.get_dispatch_ledger(result["batch_id"])
+        assert led["timesheet_state"] == "NEW" and led["completed_at"]
+        assert db.list_timesheets(batch_id=result["batch_id"])[0]["request_type"] == "CONTACT_AGENT"
+
+    def test_listen_off_opens_no_ledger(self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch) -> None:
+        db = sqlite_in_memory
+        deps = self._patch_estelle(monkeypatch)
+        monkeypatch.setitem(CONTACT_CONFIG, "listen_enabled", False)
+        out = contact_mod.run_contact_estelle_turn(channel="C1", text="hi", debug=False)
+        assert out["error"] == "listen_off"
+        assert deps["calls"] == []
+        assert db.list_dispatch_ledger(candidate_id="c1") == []
