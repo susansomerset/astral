@@ -1493,46 +1493,31 @@ COMPANY_STATES = {
 }
 
 # ---------------------------------------------------------------------------
-# CANDIDATE_STATES: job-style registry (AST-970). Keys are runtime states;
-# each value has prior_states (list or None), progress_rank, and optional
+# CANDIDATE_STATES: job-style registry (AST-970 + AST-2228 stage). Keys are
+# runtime states; each value has prior_states, progress_rank, stage, and optional
 # stale_after_hours/stale_state, retry_state/error_state, reap_after_hours.
 # PROSPECT = Slack-created candidate (AST-1068); prior_states None (entry state).
+# Stage is registry metadata on state — not a candidate table column (AST-2228).
 # ---------------------------------------------------------------------------
 CANDIDATE_STATES = {
-    "PROSPECT": {"prior_states": None, "progress_rank": -1},
-    "NEW_CANDIDATE": {"prior_states": None, "progress_rank": 0},
-    "INTAKE_INITIATED": {"prior_states": ["NEW_CANDIDATE"], "progress_rank": 1},
-    "REQUIRED_TOPICS_READY": {
-        "prior_states": ["INTAKE_INITIATED", "REQUIRED_TOPICS_READY_STALE"],
-        "stale_after_hours": 72,
-        "stale_state": "REQUIRED_TOPICS_READY_STALE",
+    "PROSPECT": {"prior_states": None, "progress_rank": -1, "stage": 1},
+    "NEW_CANDIDATE": {"prior_states": None, "progress_rank": 0, "stage": 1},
+    "INTAKE_INITIATED": {"prior_states": ["NEW_CANDIDATE"], "progress_rank": 1, "stage": 1},
+    "PROFILE_READY": {
+        "prior_states": ["INTAKE_INITIATED"],
         "progress_rank": 2,
+        "stage": 2,
     },
-    "REQUIRED_TOPICS_READY_STALE": {
-        "prior_states": ["REQUIRED_TOPICS_READY"],
-        "progress_rank": 2,
-    },
-    "ALL_TOPICS_READY": {
-        "prior_states": [
-            "REQUIRED_TOPICS_READY",
-            "REQUIRED_TOPICS_READY_STALE",
-            "ALL_TOPICS_READY_STALE",
-        ],
-        "stale_after_hours": 72,
-        "stale_state": "ALL_TOPICS_READY_STALE",
+    "CONTEXT_READY": {
+        "prior_states": ["PROFILE_READY"],
         "progress_rank": 3,
-    },
-    "ALL_TOPICS_READY_STALE": {
-        "prior_states": ["ALL_TOPICS_READY"],
-        "progress_rank": 3,
+        "stage": 3,
     },
     "REQUESTED_RESUME": {
-        "prior_states": [
-            "ALL_TOPICS_READY",
-            "ALL_TOPICS_READY_STALE",
-        ],
+        "prior_states": ["CONTEXT_READY"],
         "retry_state": retry_of("REQUESTED_RESUME"),
         "progress_rank": 4,
+        "stage": 3,
     },
     "RESUME_READY": {
         "prior_states": [
@@ -1542,10 +1527,12 @@ CANDIDATE_STATES = {
         "stale_after_hours": 168,
         "stale_state": "RESUME_READY_STALE",
         "progress_rank": 5,
+        "stage": 4,
     },
     "RESUME_READY_STALE": {
         "prior_states": ["RESUME_READY"],
         "progress_rank": 5,
+        "stage": 4,
     },
     "REQUESTED_ARTIFACTS": {
         "prior_states": [
@@ -1559,10 +1546,16 @@ CANDIDATE_STATES = {
         ],
         "retry_state": retry_of("REQUESTED_ARTIFACTS"),
         "progress_rank": 6,
+        "stage": 4,
     },
     # AST-2086: a failing craft hop lands on its own ERROR_<HOP> (TASK_CONFIG error_state).
+    # AST-2228: craft ERROR_* inherit artifact-waiting stage 4.
     **{
-        s: {"prior_states": ["REQUESTED_RESUME", "REQUESTED_ARTIFACTS"], "progress_rank": 6}
+        s: {
+            "prior_states": ["REQUESTED_RESUME", "REQUESTED_ARTIFACTS"],
+            "progress_rank": 6,
+            "stage": 4,
+        }
         for s in CANDIDATE_CRAFT_CHAIN_ERROR_STATES
     },
     "ARTIFACTS_READY": {
@@ -1573,18 +1566,21 @@ CANDIDATE_STATES = {
         "stale_after_hours": 168,
         "stale_state": "ARTIFACTS_READY_STALE",
         "progress_rank": 7,
+        "stage": 4,
     },
     "ARTIFACTS_READY_STALE": {
         "prior_states": ["ARTIFACTS_READY"],
         "progress_rank": 7,
+        "stage": 4,
     },
     "ACTIVE_SEARCH": {
         "prior_states": ["ARTIFACTS_READY", "ARTIFACTS_READY_STALE", "PAUSE_SEARCH"],
         "progress_rank": 8,
+        "stage": 5,
     },
-    "PAUSE_SEARCH": {"prior_states": ["ACTIVE_SEARCH"], "progress_rank": 8},
-    "INACTIVE": {"prior_states": None, "progress_rank": -1},
-    "DELETED": {"prior_states": None, "progress_rank": -1, "reap_after_hours": 720},
+    "PAUSE_SEARCH": {"prior_states": ["ACTIVE_SEARCH"], "progress_rank": 8, "stage": 5},
+    "INACTIVE": {"prior_states": None, "progress_rank": -1, "stage": 0},
+    "DELETED": {"prior_states": None, "progress_rank": -1, "stage": 0, "reap_after_hours": 720},
 }
 
 CANDIDATE_CONFIG = {
@@ -2389,6 +2385,7 @@ assert "PROSPECT" in CANDIDATE_STATES
 for _name, _cfg in CANDIDATE_STATES.items():
     assert "progress_rank" in _cfg, _name
     assert "prior_states" in _cfg, _name
+    assert "stage" in _cfg, _name
     _stale = _cfg.get("stale_state")
     if _stale is not None:
         assert _stale in CANDIDATE_STATES and "stale_after_hours" in _cfg, _name
@@ -2400,23 +2397,44 @@ for _name, _cfg in CANDIDATE_STATES.items():
         assert _err in CANDIDATE_STATES, _name
 assert CANDIDATE_STATES["DELETED"].get("reap_after_hours", 0) > 0
 assert CANDIDATE_CONFIG["initial_state"] in CANDIDATE_STATES
+# AST-2228: revived path + topic retirement + locked stage bands.
+assert "PROFILE_READY" in CANDIDATE_STATES and "CONTEXT_READY" in CANDIDATE_STATES
+assert not (
+    {
+        "REQUIRED_TOPICS_READY",
+        "REQUIRED_TOPICS_READY_STALE",
+        "ALL_TOPICS_READY",
+        "ALL_TOPICS_READY_STALE",
+    }
+    & set(CANDIDATE_STATES)
+)
+assert CANDIDATE_STATES["PAUSE_SEARCH"]["stage"] == 5
+assert CANDIDATE_STATES["RESUME_READY"]["stage"] == 4
+assert CANDIDATE_STATES["PROFILE_READY"]["stage"] == 2
+assert CANDIDATE_STATES["DELETED"]["stage"] == 0
 
-# Retired four-step names → AST-970 registry. DELETED is not remapped (hard-deleted).
+# Legacy labels -> live registry (AST-973 + AST-2228 topic remap). DELETED not remapped.
 CANDIDATE_LEGACY_STATE_MAP = {
     "LIVE_PROMPTS": "ACTIVE_SEARCH",
     "NEW": "NEW_CANDIDATE",
-    "PROFILE_READY": "NEW_CANDIDATE",
-    "CONTEXT_READY": "NEW_CANDIDATE",
+    "REQUIRED_TOPICS_READY": "PROFILE_READY",
+    "REQUIRED_TOPICS_READY_STALE": "PROFILE_READY",
+    "ALL_TOPICS_READY": "CONTEXT_READY",
+    "ALL_TOPICS_READY_STALE": "CONTEXT_READY",
 }
 
-# Candidate-only legacy labels (never job/company registry keys).
+# Candidate-only retired labels (never job/company registry keys).
 CANDIDATE_LEGACY_TRIGGER_STATES = frozenset({
-    "LIVE_PROMPTS", "PROFILE_READY", "CONTEXT_READY",
+    "LIVE_PROMPTS",
+    "REQUIRED_TOPICS_READY",
+    "REQUIRED_TOPICS_READY_STALE",
+    "ALL_TOPICS_READY",
+    "ALL_TOPICS_READY_STALE",
 })
 
 
 def remap_legacy_candidate_state(state: str) -> str:
-    """Map a persisted candidate.state onto CANDIDATE_STATES keys (AST-973)."""
+    """Map a persisted candidate state onto CANDIDATE_STATES keys (AST-973 / AST-2228)."""
     if not state:
         return CANDIDATE_CONFIG["initial_state"]
     if state in CANDIDATE_STATES:
