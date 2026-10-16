@@ -209,3 +209,19 @@ AC5 → Stage 1 (four groups, order/labels) + Stage 2 (`_resolve_nav` payload). 
 **R6 (summary):** Locked nav map matches parent brief (paths stable, label renames, stage floors). Scope gate includes all blast-radius files identified at scope-gate. No `CANDIDATE_STATES` edits, no dispatch/`trigger_state` changes, no shell chrome. Stage-gate migration from `progress_rank` / state-key `enabled` to int stage floors is explicit. Estimate 3 — agree.
 
 context_tokens≈72000
+
+## Review stub (Hedy / build)
+
+**Publish ref:** `origin/sub/AST-2225/AST-2230-stage-gated-nav`  
+**Product tip:** `ecd74a077` — Stages 1–3 complete
+
+**Stages:**
+1. `0a57f88f9` — `NAV_CONFIG` Candidate/Criteria/Company/Job Opportunities + `NAV_GROUP_RECENT_DEFAULTS`
+2. `6ef1d6d1e` — `/api/nav_config` stage gates, stage-0 omit, group `recent`, Profile `attention`
+3. `ecd74a077` — `routes.tsx` SYNC + titles; `JobsHomeRedirect` Job Opportunities label; hop-label walk all groups
+
+**Checks:** `py_compile` on touched `.py`; hop-label smoke; `validate-sub-log --stage=build` ok. Frontend `tsc` unavailable in this worktree (`node_modules` missing typescript) — routes/redirect edits are label/comment-only. Merged `origin/ftr/AST-2225-revise-candidate-ui-and-candidate-states` (AST-2245 stage-3 ERROR_* vocab) before Stage 1.
+
+**Soft-dep:** `incomplete_profile` not on tip — Profile `attention` / Candidate `recent` stay false until AST-2229 lands.
+
+**Tests:** Betty at Code Complete (`qa-child`) — engineers do not land test-tree changes.
