@@ -7,6 +7,7 @@ from flask import Blueprint, g, jsonify, request
 from ui.auth import require_auth, require_admin
 from src.utils.auth import local_auth_passthrough_payload
 from src.core.candidate import (
+    candidate_stage,
     get_candidate,
     requested_artifacts_chain_artifact_keys,
     requested_artifacts_chain_hop_labels,
@@ -14,9 +15,9 @@ from src.core.candidate import (
 )
 from src.utils.config import (
     NAV_CONFIG,
+    NAV_GROUP_RECENT_DEFAULTS,
     DATA_SHAPES,
     METEORITE_CONFIG,
-    CANDIDATE_STATES,
     CANDIDATE_STAGE_DISPATCH,
     APPLIED_JOB_STATES,
     JOBS_PROCESSING_EXCLUDED_STATES,
@@ -31,12 +32,17 @@ from src.utils.config import (
     FIELD_TOKEN_LOOKUP,
     JOBS_RECOMMENDED_REPORT_METEORITE_SECTIONS,
     build_artifacts_discussion_hop_task_keys,
-    registered_base,
     build_state_ui_manifest,
     dispatch_hop_label,
     get_auth_session_policy,
     nav_admin_only_group_labels,
 )
+
+# Soft-dep on AST-2229 — Profile attention / Candidate recent when incomplete_profile exists.
+try:
+    from src.core.candidate import incomplete_profile as _incomplete_profile
+except ImportError:  # pragma: no cover — symbol lands with readiness sibling
+    _incomplete_profile = None  # type: ignore[misc, assignment]
 from src.data.database import get_agent_task
 from src.utils.logging import get_logger
 from src.core.deploy_status import get_deploy_status_payload
@@ -46,16 +52,35 @@ system_bp = Blueprint("system", __name__, url_prefix="/api")
 
 _log = get_logger(__name__)
 
+# Candidate-facing groups omitted at stage 0 (DELETED / INACTIVE).
+_CANDIDATE_FACING_NAV_LABELS = frozenset(
+    {"Candidate", "Criteria", "Company", "Job Opportunities"}
+)
 
-def _progress_rank(state: str) -> int:
-    # {base}_RETRY ranks with its base (AST-1806).
-    cfg = CANDIDATE_STATES.get(registered_base(CANDIDATE_STATES, state) or "") or {}
-    return int(cfg.get("progress_rank", -1))
+
+def _nav_stage(candidate_state: str) -> int:
+    """Registry stage for nav gates; empty/unknown → 0 (no candidate-facing menu)."""
+    if not (candidate_state or "").strip():
+        return 0
+    try:
+        return int(candidate_stage(candidate_state))
+    except (ValueError, KeyError, TypeError):
+        return 0
 
 
-def _is_at_or_past(current_state: str, required_state: str) -> bool:
-    """True if current_state progress_rank is at or past required_state (rank >= 0)."""
-    return _progress_rank(current_state) >= _progress_rank(required_state) and _progress_rank(current_state) >= 0
+def _profile_incomplete(candidate_id: Optional[str]) -> bool:
+    if not candidate_id or _incomplete_profile is None:
+        return False
+    return bool(_incomplete_profile(candidate_id))
+
+
+def _group_is_recent(label: str, items: list, incomplete: bool) -> bool:
+    rule = (NAV_GROUP_RECENT_DEFAULTS.get(label) or {}).get("when", "never")
+    if rule == "incomplete_profile":
+        return incomplete
+    if rule == "any_item_count":
+        return any(isinstance(i.get("count"), int) and i["count"] > 0 for i in items)
+    return False
 
 
 def _get_company_counts(candidate_id: Optional[str]) -> dict:
@@ -110,27 +135,41 @@ def _get_job_counts(candidate_id: Optional[str]) -> dict:
 
 
 def _resolve_nav(candidate_state: str, candidate_id: Optional[str] = None) -> list:
-    """Walk NAV_CONFIG and resolve item-level enabled gates against candidate_state."""
+    """Walk NAV_CONFIG; gate item enabled on registry stage; attach recent/attention."""
+    stage = _nav_stage(candidate_state)
     company_counts = _get_company_counts(candidate_id)
     job_counts = _get_job_counts(candidate_id)
     nav_counts = {**company_counts, **job_counts}
+    incomplete = _profile_incomplete(candidate_id)
     resolved = []
     for group in NAV_CONFIG:
+        label = group["label"]
+        # Stage 0: omit candidate-facing groups (admin groups still resolved for admins).
+        if stage == 0 and label in _CANDIDATE_FACING_NAV_LABELS:
+            continue
         resolved_items = []
         for item in group["items"]:
             enabled_gate = item.get("enabled")
             if enabled_gate is False:
                 enabled = False
+            elif isinstance(enabled_gate, int):
+                enabled = stage >= enabled_gate
             elif isinstance(enabled_gate, str):
-                enabled = _is_at_or_past(candidate_state, enabled_gate)
+                # Legacy state-key gate (unused after AST-2230); treat as always on.
+                enabled = True
             else:
                 enabled = True
             nav_item: dict = {"label": item["label"], "path": item["path"], "enabled": enabled}
             count = nav_counts.get(item["path"])
             if count is not None:
                 nav_item["count"] = count
+            if item["path"] == "/candidate/profile":
+                nav_item["attention"] = incomplete
             resolved_items.append(nav_item)
-        resolved.append({"label": group["label"], "items": resolved_items})
+        group_out: dict = {"label": label, "items": resolved_items}
+        if label in NAV_GROUP_RECENT_DEFAULTS:
+            group_out["recent"] = _group_is_recent(label, resolved_items, incomplete)
+        resolved.append(group_out)
     return resolved
 
 

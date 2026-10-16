@@ -136,8 +136,11 @@ class TestSystemAuthRoutes:
         resp = system_client.get("/api/nav_config?candidate_id=cand-1", headers=auth_headers)
         payload = resp.get_json()
         assert resp.status_code == 200
-        jobs = next(group for group in payload if group["label"] == "Jobs")
-        assert jobs["items"][0]["count"] == 1
+        # AST-2230: Job Opportunities (was Jobs); Ready to Apply is third item.
+        jobs = next(group for group in payload if group["label"] == "Job Opportunities")
+        ready = next(it for it in jobs["items"] if it["path"] == "/jobs/ready")
+        assert ready["count"] == 1
+        assert ready["enabled"] is True
 
     def test_nav_config_early_state_keeps_candidate_facing_groups(
         self, system_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
@@ -147,8 +150,9 @@ class TestSystemAuthRoutes:
         monkeypatch.setattr(system_mod, "_get_job_counts", lambda candidate_id: {})
         resp = system_client.get("/api/nav_config?candidate_id=cand-1", headers=auth_headers)
         assert resp.status_code == 200
-        labels = {group["label"] for group in resp.get_json()}
-        assert {"Jobs", "Companies", "Artifacts", "Candidate"} <= labels
+        labels = [group["label"] for group in resp.get_json()]
+        # AST-2230 AC5: four facing groups in order (admin segments follow for admin callers).
+        assert labels[:4] == ["Candidate", "Criteria", "Company", "Job Opportunities"]
 
     def test_nav_config_admin_agent_ad_hoc_label(self, system_client: FlaskClient, auth_headers: dict[str, str]) -> None:
         payload = system_client.get("/api/nav_config", headers=auth_headers).get_json()
@@ -166,13 +170,21 @@ class TestSystemAuthRoutes:
         )
 
     def test_nav_config_three_admin_segments_for_admin(
-        self, system_client: FlaskClient, auth_headers: dict[str, str]
+        self, system_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        # AST-1386: admin sees Operations → Admin → Tools; paste labels; no admin_only in JSON.
-        payload = system_client.get("/api/nav_config", headers=auth_headers).get_json()
+        # AST-1386 + AST-2230: with a live candidate, facing foursome then Operations → Admin → Tools.
+        # (No candidate_id → stage 0 omits facing groups — covered in TestAst2230StageGatedNavApi.)
+        monkeypatch.setattr("ui.api.api_system.get_candidate", lambda candidate_id: {"state": "ACTIVE_SEARCH"})
+        monkeypatch.setattr(system_mod, "_get_company_counts", lambda candidate_id: {})
+        monkeypatch.setattr(system_mod, "_get_job_counts", lambda candidate_id: {})
+        monkeypatch.setattr(system_mod, "_profile_incomplete", lambda _cid: False)
+        payload = system_client.get(
+            "/api/nav_config?candidate_id=cand-1", headers=auth_headers
+        ).get_json()
         labels = [group["label"] for group in payload]
-        cand_i = labels.index("Candidate")
-        assert labels[cand_i + 1 : cand_i + 4] == ["Operations", "Admin", "Tools"]
+        assert labels[:4] == ["Candidate", "Criteria", "Company", "Job Opportunities"]
+        ops_i = labels.index("Operations")
+        assert labels[ops_i : ops_i + 3] == ["Operations", "Admin", "Tools"]
         tools = next(group for group in payload if group["label"] == "Tools")
         resume = next(it for it in tools["items"] if it["path"] == "/admin/session_resume_paste")
         cover = next(it for it in tools["items"] if it["path"] == "/admin/session_cover_letter")
@@ -203,15 +215,15 @@ class TestSystemAuthRoutes:
 
 
 class TestAst1808ProgressRankRetry:
-    """AST-1808 / AST-1806: REQUESTED_*_RETRY ranks with its base, so nav gating does not close."""
+    """AST-1808 / AST-2230: REQUESTED_*_RETRY inherits base stage so nav gates stay open."""
 
     @pytest.mark.parametrize("base", ["REQUESTED_RESUME", "REQUESTED_ARTIFACTS"])
     def test_retry_ranks_with_base(self, base: str) -> None:
-        assert system_mod._progress_rank(f"{base}_RETRY") == system_mod._progress_rank(base)
-        assert system_mod._progress_rank(base) >= 0
+        assert system_mod._nav_stage(f"{base}_RETRY") == system_mod._nav_stage(base)
+        assert system_mod._nav_stage(base) >= 3
 
     def test_unregistered_retry_is_unranked(self) -> None:
-        assert system_mod._progress_rank("NOPE_RETRY") == -1
+        assert system_mod._nav_stage("NOPE_RETRY") == 0
 
 
 class TestDeployStatus:
@@ -268,12 +280,15 @@ class TestDeployStatus:
 
 
 class TestSystemNavHelpers:
-    def test_is_at_or_past_compares_candidate_states(self) -> None:
-        assert system_mod._is_at_or_past("ACTIVE_SEARCH", "RESUME_READY") is True
-        assert system_mod._is_at_or_past("NEW_CANDIDATE", "ACTIVE_SEARCH") is False
-        # Terminals never unlock gated nav
-        assert system_mod._is_at_or_past("INACTIVE", "RESUME_READY") is False
-        assert system_mod._is_at_or_past("DELETED", "NEW_CANDIDATE") is False
+    def test_nav_stage_compares_registry_stages(self) -> None:
+        # AST-2230: progress_rank helpers retired — stage integers drive gates.
+        assert system_mod._nav_stage("ACTIVE_SEARCH") == 5
+        assert system_mod._nav_stage("RESUME_READY") == 4
+        assert system_mod._nav_stage("NEW_CANDIDATE") == 1
+        # Terminals → stage 0 → candidate-facing groups omitted.
+        assert system_mod._nav_stage("INACTIVE") == 0
+        assert system_mod._nav_stage("DELETED") == 0
+        assert system_mod._nav_stage("") == 0
 
     def test_company_counts_without_candidate(self) -> None:
         assert system_mod._get_company_counts(None) == {}
@@ -326,35 +341,92 @@ class TestSystemNavHelpers:
         assert system_mod._get_job_counts("cand-1") == {}
 
     def test_resolve_nav_keeps_candidate_facing_groups_and_stubs(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        # AST-1449: no group-level visible skip. AST-1974: Responded stub retired; all six Jobs lists live.
+        # AST-2230: four facing groups; int min-stage gates; Criteria locked until stage 4.
         monkeypatch.setattr(system_mod, "_get_company_counts", lambda candidate_id: {})
         monkeypatch.setattr(system_mod, "_get_job_counts", lambda candidate_id: {})
-        facing = {"Jobs", "Companies", "Artifacts", "Candidate"}
-        for state in ("NEW_CANDIDATE", "RESUME_READY"):
-            nav = system_mod._resolve_nav(state, "cand-1")
-            labels = {group["label"] for group in nav}
-            assert facing <= labels
-            jobs = next(group for group in nav if group["label"] == "Jobs")
-            assert "Responded" not in [item["label"] for item in jobs["items"]]
-            assert all(item["enabled"] is True for item in jobs["items"])
-        nav_ready = system_mod._resolve_nav("RESUME_READY", "cand-1")
-        artifacts = next(group for group in nav_ready if group["label"] == "Artifacts")
-        assert all(item["enabled"] for item in artifacts["items"])
-        candidate = next(group for group in nav_ready if group["label"] == "Candidate")
+        monkeypatch.setattr(system_mod, "_profile_incomplete", lambda _cid: False)
+        facing = ["Candidate", "Criteria", "Company", "Job Opportunities"]
+        nav_early = system_mod._resolve_nav("NEW_CANDIDATE", "cand-1")
+        assert [g["label"] for g in nav_early if g["label"] in facing] == facing
+        criteria_early = next(g for g in nav_early if g["label"] == "Criteria")
+        assert all(item["enabled"] is False for item in criteria_early["items"])
+        # RESUME_READY is stage 4 — Criteria unlocks; Job Opportunities still stage-5 locked.
+        nav_mid = system_mod._resolve_nav("RESUME_READY", "cand-1")
+        criteria_mid = next(g for g in nav_mid if g["label"] == "Criteria")
+        assert all(item["enabled"] is True for item in criteria_mid["items"])
+        jobs_mid = next(g for g in nav_mid if g["label"] == "Job Opportunities")
+        assert all(item["enabled"] is False for item in jobs_mid["items"])
+        nav_live = system_mod._resolve_nav("ACTIVE_SEARCH", "cand-1")
+        jobs = next(group for group in nav_live if group["label"] == "Job Opportunities")
+        assert all(item["enabled"] is True for item in jobs["items"])
+        candidate = next(group for group in nav_live if group["label"] == "Candidate")
         assert candidate["items"][0]["enabled"] is True
 
-    def test_resolve_nav_uses_string_enabled_gate(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_resolve_nav_uses_int_stage_enabled_gate(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # AST-2230: item enabled is a min stage int (legacy string gates retired).
         monkeypatch.setattr(
             system_mod,
             "NAV_CONFIG",
-            [{"label": "G", "items": [{"label": "X", "path": "/x", "enabled": "ACTIVE_SEARCH"}]}],
+            [{"label": "G", "items": [{"label": "X", "path": "/x", "enabled": 5}]}],
         )
         monkeypatch.setattr(system_mod, "_get_company_counts", lambda candidate_id: {})
         monkeypatch.setattr(system_mod, "_get_job_counts", lambda candidate_id: {})
+        monkeypatch.setattr(system_mod, "_profile_incomplete", lambda _cid: False)
         nav = system_mod._resolve_nav("NEW_CANDIDATE", "cand-1")
         assert nav[0]["items"][0]["enabled"] is False
         nav_live = system_mod._resolve_nav("ACTIVE_SEARCH", "cand-1")
         assert nav_live[0]["items"][0]["enabled"] is True
+
+
+class TestAst2230StageGatedNavApi:
+    """AST-2230: stage gates, recent/attention flags, stage-0 omit, dropped labels."""
+
+    def test_criteria_disabled_below_stage_4(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(system_mod, "_get_company_counts", lambda candidate_id: {})
+        monkeypatch.setattr(system_mod, "_get_job_counts", lambda candidate_id: {})
+        monkeypatch.setattr(system_mod, "_profile_incomplete", lambda _cid: False)
+        nav = system_mod._resolve_nav("CONTEXT_READY", "cand-1")  # stage 3
+        criteria = next(g for g in nav if g["label"] == "Criteria")
+        assert criteria["items"]
+        assert all(it["enabled"] is False for it in criteria["items"])
+        assert criteria["recent"] is False
+
+    def test_stage_zero_omits_candidate_facing_groups(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(system_mod, "_get_company_counts", lambda candidate_id: {})
+        monkeypatch.setattr(system_mod, "_get_job_counts", lambda candidate_id: {})
+        monkeypatch.setattr(system_mod, "_profile_incomplete", lambda _cid: False)
+        for state in ("DELETED", "INACTIVE", ""):
+            nav = system_mod._resolve_nav(state, "cand-1")
+            labels = {g["label"] for g in nav}
+            assert not (
+                {"Candidate", "Criteria", "Company", "Job Opportunities"} & labels
+            ), state
+
+    def test_recent_and_profile_attention(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            system_mod,
+            "_get_company_counts",
+            lambda candidate_id: {"/companies/watch_list": 2},
+        )
+        monkeypatch.setattr(system_mod, "_get_job_counts", lambda candidate_id: {})
+        monkeypatch.setattr(system_mod, "_profile_incomplete", lambda _cid: True)
+        nav = system_mod._resolve_nav("ACTIVE_SEARCH", "cand-1")
+        by_label = {g["label"]: g for g in nav}
+        assert by_label["Candidate"]["recent"] is True
+        assert by_label["Criteria"]["recent"] is False
+        assert by_label["Company"]["recent"] is True
+        assert by_label["Job Opportunities"]["recent"] is False
+        profile = next(it for it in by_label["Candidate"]["items"] if it["path"] == "/candidate/profile")
+        assert profile["attention"] is True
+
+    def test_dropped_labels_absent_from_resolved_nav(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(system_mod, "_get_company_counts", lambda candidate_id: {})
+        monkeypatch.setattr(system_mod, "_get_job_counts", lambda candidate_id: {})
+        monkeypatch.setattr(system_mod, "_profile_incomplete", lambda _cid: False)
+        nav = system_mod._resolve_nav("ACTIVE_SEARCH", "cand-1")
+        item_labels = {it["label"] for g in nav for it in g["items"]}
+        for gone in ("Intake", "Surfer", "Processing", "Watch History", "New List"):
+            assert gone not in item_labels
 
 
 class TestAst1116ShapesCoverLetter:

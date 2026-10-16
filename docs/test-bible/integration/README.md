@@ -24,6 +24,7 @@ Default target: all of `tests/integration/`. Pass pytest paths or flags after th
 ## Fixtures
 
 - Temp SQLite per test (`integration_db` / `seeded_candidate`) — same real-DB pattern as `tests/component/data/conftest.py`.
+- `integration_db` resets schema-ensured flags including `_artifact_schema_ensured` (AST-2230: `nav_config` → `get_candidate` hydrates `base_resume` via `get_current_artifact`; stale True from another DB left the table missing on tmp SQLite).
 - Auth via mock token authenticator (`test-token` → admin Susan) — no API↔core mocks at blueprint boundaries.
 - `integration_app` registers `system_bp` + `candidate_bp` only (minimal v1 harness).
 
@@ -33,7 +34,7 @@ Default target: all of `tests/integration/`. Pass pytest paths or flags after th
 
 **Status:** has coverage
 
-**What it proves:** Seeded SQLite + Bearer auth for `GET /api/candidates` and `GET /api/nav_config`; Jobs items stay enabled at `ACTIVE_SEARCH`; after AST-1449, `NEW_CANDIDATE` still returns Jobs / Companies / Artifacts / Candidate (no group-level state hide); unauthenticated nav returns 401. After AST-1974 the first Jobs item is `/jobs/ready` and every Jobs item carries `count` (harness resets `_meteorite_schema_ensured` so the Meteorites count reads a fresh table). Unauthenticated 401 assumes deploy env is not `local` (AST-1440 passthrough). Harness autouse sets `ASTRAL_DEPLOY_ENV=staging` so `load_dotenv()` cannot restore `local`. Component coverage: [`ui/auth.md`](../ui/auth.md) § AST-1440; [`ui/api/api_system.md`](../ui/api/api_system.md) § AST-1449.
+**What it proves:** Seeded SQLite + Bearer auth for `GET /api/candidates` and `GET /api/nav_config`; Job Opportunities items stay enabled at `ACTIVE_SEARCH`; AST-2230 facing groups are Candidate / Criteria / Company / Job Opportunities in that order; `NEW_CANDIDATE` still returns those four (Criteria items `enabled: false`); unauthenticated nav returns 401. Ready path `/jobs/ready` still carries `count`. Unauthenticated 401 assumes deploy env is not `local` (AST-1440 passthrough). Harness autouse sets `ASTRAL_DEPLOY_ENV=staging` so `load_dotenv()` cannot restore `local`. Component coverage: [`ui/auth.md`](../ui/auth.md) § AST-1440; [`ui/api/api_system.md`](../ui/api/api_system.md) § AST-2230.
 
 **Scenarios:**
 

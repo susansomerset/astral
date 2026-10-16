@@ -1329,12 +1329,14 @@ class TestAst1974JobsPartitionRealDb:
         assert len(union) == total
 
     def test_nav_counts_match_list_lengths(self, app_client: FlaskClient, auth_headers: dict[str, str]) -> None:
-        # AC 1 / AC 10 — six Jobs items, each carrying a count equal to its page's list length.
+        # AST-2230: Job Opportunities sidebar paths (Processing dropped); counts still match lists.
         nav = app_client.get("/api/nav_config?candidate_id=cand-1", headers=auth_headers).get_json()
-        jobs = next(g for g in nav if g["label"] == "Jobs")
+        jobs = next(g for g in nav if g["label"] == "Job Opportunities")
         counts = {it["path"]: it["count"] for it in jobs["items"]}
-        assert list(counts) == [f"/jobs/{v}" for v in ("ready", "review", "applied", "processing", "skipped", "meteorites")]
-        for v in self._VIEWS:
+        assert list(counts) == [
+            f"/jobs/{v}" for v in ("meteorites", "review", "ready", "applied", "skipped")
+        ]
+        for v in ("ready", "review", "applied", "skipped"):
             assert counts[f"/jobs/{v}"] == len(self._ids(app_client, auth_headers, v)), v
         assert counts["/jobs/meteorites"] == 0
 

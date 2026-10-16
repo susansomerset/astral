@@ -1863,10 +1863,11 @@ class TestAst1253RequestedArtifactsHandoff:
         assert candidate_mod.is_requested_artifacts_chain_ui_task("craft_do_rubric") is True
         assert candidate_mod.is_requested_artifacts_chain_ui_task("craft_resume_base") is False
         labels = candidate_mod.requested_artifacts_chain_hop_labels()
+        # AST-2230: path→label across Criteria/Company (Artifacts group dissolved; labels renamed).
         assert labels == [
-            "Get Job Criteria",
-            "Do Job Criteria",
-            "Company Search Terms",
+            "Get the Job Criteria",
+            "Do the Job Criteria",
+            "Company Discovery Terms",
         ]
         # Rubric-only — table-backed search terms excluded from artifact keys.
         assert candidate_mod.requested_artifacts_chain_artifact_keys() == [
@@ -2118,6 +2119,193 @@ class TestAst2228CandidateStageAndTopicMigrate:
             lambda _cid: {"state": "PROFILE_READY", "candidate_data": {"context": {}}},
         )
         assert candidate_mod.check_context_complete("somerset") is False
+
+
+class TestAst2229ProfileSignalAndReadinessAdvance:
+    """AST-2229: incomplete_profile signal + forward-only advance_candidate_readiness."""
+
+    def test_profile_complete_and_incomplete_signal(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Missing row: complete False; incomplete False (no ghost alert).
+        monkeypatch.setattr(candidate_mod.database, "get_candidate", lambda _cid: None)
+        assert candidate_mod.check_profile_complete("ghost") is False
+        assert candidate_mod.incomplete_profile("ghost") is False
+
+        complete = {
+            "first": "Ada",
+            "last": "Lovelace",
+            "candidate_data": {"contact": {"contact_email": "ada@example.com"}},
+        }
+        monkeypatch.setattr(candidate_mod.database, "get_candidate", lambda _cid: complete)
+        assert candidate_mod.check_profile_complete("somerset") is True
+        assert candidate_mod.incomplete_profile("somerset") is False
+
+        incomplete = {
+            "first": "Ada",
+            "last": " ",
+            "candidate_data": {"contact": {"contact_email": "ada@example.com"}},
+        }
+        monkeypatch.setattr(candidate_mod.database, "get_candidate", lambda _cid: incomplete)
+        assert candidate_mod.check_profile_complete("somerset") is False
+        assert candidate_mod.incomplete_profile("somerset") is True
+
+    def test_profile_signal_never_writes_state(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda _cid: {"first": "A", "last": "B", "candidate_data": {}},
+        )
+        transition = MagicMock()
+        monkeypatch.setattr(candidate_mod, "transition_candidate_state", transition)
+        assert candidate_mod.incomplete_profile("somerset") is True
+        transition.assert_not_called()
+
+    def test_advance_intake_to_profile_when_complete(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Hop table binds the real check_profile_complete — drive it via get_candidate.
+        rows = [{"astral_candidate_id": "c1", "state": "INTAKE_INITIATED"}]
+        monkeypatch.setattr(candidate_mod, "list_candidates", lambda include_deleted=False: rows)
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda _cid: {
+                "first": "Ada",
+                "last": "Lovelace",
+                "candidate_data": {"contact": {"contact_email": "ada@example.com"}},
+            },
+        )
+        hops: list[tuple[str, str]] = []
+        monkeypatch.setattr(
+            candidate_mod,
+            "transition_candidate_state",
+            lambda cid, to_state, **_k: hops.append((cid, to_state)),
+        )
+        assert candidate_mod.advance_candidate_readiness() == 1
+        assert hops == [("c1", "PROFILE_READY")]
+
+    def test_advance_skips_when_predicate_false(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        rows = [{"astral_candidate_id": "c1", "state": "INTAKE_INITIATED"}]
+        monkeypatch.setattr(candidate_mod, "list_candidates", lambda include_deleted=False: rows)
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda _cid: {"first": "Ada", "last": "", "candidate_data": {"contact": {}}},
+        )
+        transition = MagicMock()
+        monkeypatch.setattr(candidate_mod, "transition_candidate_state", transition)
+        assert candidate_mod.advance_candidate_readiness() == 0
+        transition.assert_not_called()
+
+    def test_advance_artifacts_ready_to_active_search(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        rows = [
+            {"astral_candidate_id": "ok", "state": "ARTIFACTS_READY"},
+            {"astral_candidate_id": "stale", "state": "ARTIFACTS_READY_STALE"},
+            {"astral_candidate_id": "skip", "state": "REQUESTED_ARTIFACTS"},
+        ]
+        monkeypatch.setattr(candidate_mod, "list_candidates", lambda include_deleted=False: rows)
+        hops: list[tuple[str, str]] = []
+        monkeypatch.setattr(
+            candidate_mod,
+            "transition_candidate_state",
+            lambda cid, to_state, **_k: hops.append((cid, to_state)),
+        )
+        assert candidate_mod.advance_candidate_readiness() == 2
+        assert hops == [("ok", "ACTIVE_SEARCH"), ("stale", "ACTIVE_SEARCH")]
+
+    def test_advance_hop_targets_are_registry_trigger_states(self) -> None:
+        # AC13: hop destinations are real CANDIDATE_STATES keys — never stage integers.
+        claimable = {
+            entry["trigger_state"] for entry in CANDIDATE_STAGE_DISPATCH.values()
+        }
+        for from_state, (to_state, _pred) in candidate_mod._READINESS_HOPS.items():
+            assert to_state in CANDIDATE_STATES, (from_state, to_state)
+            assert isinstance(to_state, str) and not to_state.isdigit()
+            if to_state in ("REQUESTED_RESUME", "REQUESTED_ARTIFACTS"):
+                assert to_state in claimable
+
+    def test_advance_demote_ban_skips_transition(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        rows = [{"astral_candidate_id": "c1", "state": "INTAKE_INITIATED"}]
+        monkeypatch.setattr(candidate_mod, "list_candidates", lambda include_deleted=False: rows)
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda _cid: {
+                "first": "Ada",
+                "last": "Lovelace",
+                "candidate_data": {"contact": {"contact_email": "ada@example.com"}},
+            },
+        )
+        # Force a "lower stage" reading so demote ban fires without inventing a hop.
+        monkeypatch.setattr(
+            candidate_mod,
+            "candidate_stage",
+            lambda st: 9 if st == "INTAKE_INITIATED" else 1,
+        )
+        transition = MagicMock()
+        monkeypatch.setattr(candidate_mod, "transition_candidate_state", transition)
+        assert candidate_mod.advance_candidate_readiness() == 0
+        transition.assert_not_called()
+
+    def test_advance_swallows_illegal_transition(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        rows = [{"astral_candidate_id": "c1", "state": "INTAKE_INITIATED"}]
+        monkeypatch.setattr(candidate_mod, "list_candidates", lambda include_deleted=False: rows)
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda _cid: {
+                "first": "Ada",
+                "last": "Lovelace",
+                "candidate_data": {"contact": {"contact_email": "ada@example.com"}},
+            },
+        )
+
+        def _boom(_cid, _to, **_k):
+            raise candidate_mod.IllegalCandidateTransition("INTAKE_INITIATED", "PROFILE_READY")
+
+        monkeypatch.setattr(candidate_mod, "transition_candidate_state", _boom)
+        assert candidate_mod.advance_candidate_readiness() == 0
+
+    def test_advance_context_ready_needs_raw_resume(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        rows = [{"astral_candidate_id": "c1", "state": "CONTEXT_READY"}]
+        monkeypatch.setattr(candidate_mod, "list_candidates", lambda include_deleted=False: rows)
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda _cid: {"candidate_data": {"context": {"raw_resume": "  "}}},
+        )
+        transition = MagicMock()
+        monkeypatch.setattr(candidate_mod, "transition_candidate_state", transition)
+        assert candidate_mod.advance_candidate_readiness() == 0
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda _cid: {"candidate_data": {"context": {"raw_resume": "paste"}}},
+        )
+        hops: list[tuple[str, str]] = []
+        monkeypatch.setattr(
+            candidate_mod,
+            "transition_candidate_state",
+            lambda cid, to_state, **_k: hops.append((cid, to_state)),
+        )
+        assert candidate_mod.advance_candidate_readiness() == 1
+        assert hops == [("c1", "REQUESTED_RESUME")]
+
+    def test_advance_resume_ready_needs_base_resume(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        rows = [{"astral_candidate_id": "c1", "state": "RESUME_READY_STALE"}]
+        monkeypatch.setattr(candidate_mod, "list_candidates", lambda include_deleted=False: rows)
+        monkeypatch.setattr(candidate_mod, "load_pilot_base_resume_for_candidate", lambda _cid: None)
+        transition = MagicMock()
+        monkeypatch.setattr(candidate_mod, "transition_candidate_state", transition)
+        assert candidate_mod.advance_candidate_readiness() == 0
+        monkeypatch.setattr(
+            candidate_mod, "load_pilot_base_resume_for_candidate", lambda _cid: "body"
+        )
+        hops: list[tuple[str, str]] = []
+        monkeypatch.setattr(
+            candidate_mod,
+            "transition_candidate_state",
+            lambda cid, to_state, **_k: hops.append((cid, to_state)),
+        )
+        assert candidate_mod.advance_candidate_readiness() == 1
+        assert hops == [("c1", "REQUESTED_ARTIFACTS")]
 
 
 class TestAst971CandidateTransitionHistory:
