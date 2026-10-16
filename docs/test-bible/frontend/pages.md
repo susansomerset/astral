@@ -4132,3 +4132,5 @@ cd src/ui/frontend && npm run test:component -- \
 | §6c routed page still renders | `JobsRecommended.tsx` | **`test_JobsRecommended.test.tsx`** (existing suite, regression) |
 
 Manifest: [`components.md`](components.md) § AST-2234.
+
+**AST-2252 Manage Candidates expiry:** [`../ui/api/api_candidate.md`](../ui/api/api_candidate.md) § QA test manifest — AST-2252.
