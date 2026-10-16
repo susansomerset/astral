@@ -1,3 +1,68 @@
+<!-- linear-archive: AST-2047 archived 2026-10-16 -->
+
+## Linear archive (AST-2047)
+
+**Archived:** 2026-10-16  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-2047/theme-registry-palettes-and-theme-examples-page-user-theme  
+**Status at archive:** Archive  
+**Project:** Astral Interface  
+**Assignee:** ada  
+**Priority / estimate:** None / 5  
+**Parent:** AST-2042 — User Theme  
+**Blocked by / blocks / related:** parent: AST-2042; blocks: AST-2049; blocks: AST-2048
+
+### Description
+
+## What this implements
+
+After [AST-2040](https://linear.app/astralcareermatch/issue/AST-2040) lands. Owns all config (registry, profile select field, nav item), the Dark token block plus three Light palette blocks (`light` + two examples-only alternates), the full `App.css` literal sweep, and the admin Theme Examples page, so Susan can compare the three Light variations as soon as this ships. Does not persist or apply a candidate's theme (#2), and does not touch component inline styles (#3).
+
+## Citations
+
+none — frontend and `UI_CONFIG` / `DATA_SHAPES` / `NAV_CONFIG` values only; no in-force directive reaches these files.
+
+## Scope
+
+`src/utils/config.py` (new `UI_CONFIG` theme registry dict keyed by palette id — `dark`, `light`, two Light alternates — each with label + profile-selectable flag (true only for `dark`/`light`), default id with assert; profile shape `select` on `theme` with options generated from the selectable entries; `NAV_CONFIG` Tools item `/admin/theme_examples`); `src/ui/frontend/src/lib/uiConfig.ts` (`UiConfig` gains registry + default keys); `src/ui/frontend/src/App.css` (token block also matches the dark attribute; three Light palette blocks (`light` + two alternates) each redefining every token, visibly distinct; new semantic tokens where needed; every literal outside token blocks onto a token except neutral shadows/overlays; undefined `var(--x…)` repointed; `.theme-examples-*` styles); `src/ui/frontend/src/pages/AdminThemeExamples.tsx` (**new** — one panel per registry id carrying that theme's attribute, fixed sample built from real shared classes); `src/ui/frontend/src/routes.tsx` (`admin/theme_examples` in `AdminRoute`).
+
+## Acceptance criteria
+
+1. **Registry served.** `GET /api/system/ui_config` returns a theme registry of exactly four ids, `dark`, `light`, and two Light alternates, where only `dark` and `light` are flagged profile-selectable, and the default is `dark`. `python -c "import src.utils.config"` exits 0. **Fail:** a different id count, an alternate flagged selectable, another default, or an import error.
+2. **One list of themes.** The profile shape's Theme select options (`GET /api/shapes/candidates` → `detail.profile[0]`) are exactly Dark and Light, the selectable registry entries. Flipping an alternate's selectable flag locally (reverted) adds it to the select with no other file edited. `rg -n "\"light\"" src/ui/frontend/src` returns no hit added by this epic outside `App.css` selectors. **Fail:** an alternate offered on the profile, or a second hard-coded theme list.
+3. **Dark unchanged.** On Dark, every token in `App.css` resolves to the same value as on `origin/dev` at branch point (compare `getComputedStyle(document.documentElement)` for each token name on both builds). **Fail:** any token value differs.
+4. **Every Light palette covers every token, and they differ.** Each of the three Light blocks defines exactly the same `--*:` name set as the Dark block (script-compared). No two Light blocks are identical: for each pair, `--bg-deep`, `--bg-card`, or `--accent-gold` differs. **Fail:** a missing token in any Light block, or two identical variations.
+5. **No stray colors.** `rg -n "[\"' ,(]#[0-9a-fA-F]{3,8}\b" src/ui/frontend/src --glob '*.{ts,tsx}' --glob '!*.test.*'` returns nothing (HTML entities like `&#9660;` are excluded by the leading character class). In `App.css`, every hex literal, including `var(--x, #…)` fallbacks, sits inside a theme token block. Every `var(--name` in `src/ui/frontend/src` names a property defined in a token block. **Fail:** any hex in a `.ts`/`.tsx`, a hex in an `App.css` rule body, or a reference to an undefined property.
+6. **Theme Examples page.** As admin, Tools → Theme Examples opens `/admin/theme_examples` and shows four labeled panels, one per registry id (Dark, Light, and both alternates). Each panel contains a button using the shared primary role, a table row, a select, grade dots A, B, C, D, F, X, and a toast-styled element. The four panels' computed backgrounds are pairwise different. As a non-admin, the nav item is absent and the route redirects like other admin routes. Viewing the page does not change `candidate_data.theme`. **Fail:** a missing panel or sample element, identical panel colors, non-admin access, or a stored-theme change.
+7. **Builds clean; no new lint.** In `src/ui/frontend`, `npm run build` exits 0, and `npm run lint` reports no problem that is absent on `origin/dev` (diff the problem lists). **Fail:** a non-zero exit or a new lint problem.
+
+## Boundaries
+
+Does not persist or apply a candidate's theme (#2: [candidate.py](<http://candidate.py>), CandidateProfile.tsx, CandidateContext.tsx). Does not touch component/page inline styles (#3). AC 9 here = the App.css half (no hex outside token blocks; every var(--x) defined); the .ts/.tsx grep half is #2/#3's. AC 5/6 belong to #2.
+
+## Notes for planning
+
+Canon Scope: none (locked at Discussion). Parent [AST-2042](https://linear.app/astralcareermatch/issue/AST-2042) Description carries the full Functional / Component / Technical scope.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/AST-2042-user-theme`, child `sub/AST-2042/AST-2047-theme-registry-palettes`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-10-08T20:53:16.909Z
+`[code-rubric] PROCEED (Commit: 55a3fcd69) Theme registry, palettes, examples`
+
+#### betty — 2026-10-08T20:49:30.564Z
+`origin/sub/AST-2042/AST-2047-theme-registry-palettes` @ `55a3fcd69` · 9 new tests, none broken
+
+#### joan — 2026-10-08T19:17:56.075Z
+[plan-rubric] PROCEED (Commit: fe9850b97) Registry, palettes, examples
+
+#### ada — 2026-10-08T19:15:19.227Z
+`origin/sub/AST-2042/AST-2047-theme-registry-palettes` @ `fe9850b97` · plan ready, three stages
+
+---
+
 # AST-2047 — Theme registry, palettes, and Theme Examples page (User Theme)
 
 - **Parent:** [AST-2042](https://linear.app/astralcareermatch/issue/AST-2042) — User Theme
