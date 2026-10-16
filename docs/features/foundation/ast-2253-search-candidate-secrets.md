@@ -135,3 +135,70 @@ hits = result["hits"]
 ## Estimate
 
 Confirm Chuckles estimate: 3 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-2253
+**Overall:** APPROVED
+**Corpus:** 65a2864973ecf09fd57732c2cfc9a4e1ff3e0b91
+**Publish ref:** `sub/AST-2246/AST-2253-search-candidate-secrets` @ `f599dc3b639c5493ae9b5d4086929df17c64b6ff`
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| stat.logging.warning | A | | |
+| new candidate-secret pattern (pending Archie) | B | | |
+
+## Traceability
+
+`6 → Stages 1–3 (search_google_cse has no GOOGLE_CSE_* reads; roster/timesheet paths pass hydrated google_cse_api_key / google_cse_id); Stage 4 keeps spike off process env`
+
+## Findings
+
+### discuss — Canon Scope gap
+
+- **Severity:** discuss
+- **Location:** Stage 3 — `_search_credentials` uses `database.get_candidate`
+- **Finding:** `astral.layers.import-direction` and `astral.standards.data-raises-caller-logs` are not on the frozen Citations list. Core → data import is conforming; warnings live in core, not data.
+- **Recommendation:** Archie may amend Canon Scope for Radia parity; do not score off-list here.
+
+### discuss — Pattern not in corpus
+
+- **Severity:** discuss
+- **Location:** Citations / Stages 1–3
+- **Finding:** Candidate-secret pattern still pending Archie with no canon file.
+- **Recommendation:** Plan matches epic intent (caller-supplied CSE credentials keyed off hydrate catalog ids).
+
+### discuss — Missing creds behavior on resolve hop
+
+- **Severity:** discuss
+- **Location:** Stage 3 step 2 — `creds is None` → `success: False`, `state: None`, `error: None`
+- **Finding:** No CSE call and warnings already emitted; company may remain in a pre-search state without a new transition.
+- **Recommendation:** Acceptable if product treats missing search secrets like “search did not run”; confirm in UAT that this matches dispatch expectations (not a plan rewrite).
+
+### acceptable — All `search_google_cse` call sites covered
+
+- **Severity:** acceptable
+- **Location:** Files Changed vs repo
+- **Finding:** Production callers are only `roster.py` (two sites) and the AST-489 spike; plan updates all three. No orphan caller left on `GOOGLE_CSE_*` inside the client after Stage 1.
+- **Recommendation:** None.
+
+### acceptable — Roster + spike in scope
+
+- **Severity:** acceptable
+- **Location:** Linear `## Scope` vs parent child #4 bullet list
+- **Finding:** Ticket Scope explicitly includes `roster.py` and the spike; plan matches Linear, not only the shorter parent dispatch blurb.
+- **Recommendation:** None.
+
+### acceptable — Depends on AST-2251 hydrate
+
+- **Severity:** acceptable
+- **Location:** Stage 3 helper
+- **Finding:** Assumes `candidate_api_keys` carries `google_cse_api_key` / `google_cse_id` after hydrate.
+- **Recommendation:** Land status/hydrate sibling before this child.
+
+context_tokens≈52000
+
+[plan-rubric] PROCEED (Commit: f599dc3) Candidate CSE credentials plan
