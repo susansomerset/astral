@@ -73,6 +73,7 @@ from src.utils.config import (
     SURFER_CONSENT_CONFIG,
     CANDIDATE_STATES,
     CANDIDATE_STAGE_DISPATCH,
+    remap_legacy_candidate_state,
     CRAFT_ARTIFACTS_CHAIN_TASK_TO_NAV_PATH,
     CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY,
     CRAFT_RUBRIC_UI_TASK_KEYS,
@@ -2866,16 +2867,49 @@ def requested_artifacts_chain_artifact_keys() -> list[str]:
     return keys
 
 
+def candidate_stage(state: str) -> int:
+    """Registry stage for a candidate state (incl. implicit {base}_RETRY)."""
+    base = registered_base(CANDIDATE_STATES, state)
+    if not base:
+        raise ValueError(f"Unknown candidate state: {state}")
+    return int(CANDIDATE_STATES[base]["stage"])
+
+
+_RETIRED_TOPIC_STATES = frozenset({
+    "REQUIRED_TOPICS_READY",
+    "REQUIRED_TOPICS_READY_STALE",
+    "ALL_TOPICS_READY",
+    "ALL_TOPICS_READY_STALE",
+})
+
+
+def migrate_retired_topic_candidate_states() -> int:
+    """Persist remap of live topic-ready(+stale) rows onto PROFILE_READY / CONTEXT_READY.
+    Returns count of rows rewritten."""
+    rewritten = 0
+    for row in list_candidates(include_deleted=False):
+        state = row.get("state") or ""
+        if state not in _RETIRED_TOPIC_STATES:
+            continue
+        cid = row.get("astral_candidate_id")
+        if not cid:
+            continue
+        to_state = remap_legacy_candidate_state(state)
+        transition_candidate_state(cid, to_state, force=True)
+        rewritten += 1
+    return rewritten
+
+
 def check_context_complete(candidate_id: str) -> bool:
     """True when all CANDIDATE_LIBRARY_CONFIG['context_completeness_keys'] are non-empty (no state write).
-    Already-advanced candidates (progress_rank >= ALL_TOPICS_READY) count as complete."""
+    Already-advanced candidates (progress_rank >= CONTEXT_READY) count as complete."""
     candidate = database.get_candidate(candidate_id)
     if not candidate:
         return False
     current_state = candidate.get("state", "")
     # {base}_RETRY carries its base's rank (AST-1806).
     rank = int((CANDIDATE_STATES.get(registered_base(CANDIDATE_STATES, current_state) or "") or {}).get("progress_rank", -1))
-    ready_rank = int(CANDIDATE_STATES["ALL_TOPICS_READY"]["progress_rank"])
+    ready_rank = int(CANDIDATE_STATES["CONTEXT_READY"]["progress_rank"])
     if rank >= ready_rank and rank >= 0:
         return True
     ctx = (candidate.get("candidate_data") or {}).get("context", {})
@@ -2890,6 +2924,8 @@ def check_context_complete(candidate_id: str) -> bool:
 def age_stale_candidate_states(*, now: Optional[datetime] = None) -> int:
     """Move waiting-stage candidates past stale_after_hours into stale_state.
     Returns count of successful transitions. No scheduler wiring (AST-972)."""
+    # AST-2228: heal retired topic rows before stale aging (no dispatcher/database touch).
+    migrate_retired_topic_candidate_states()
     clock = now if now is not None else datetime.now(timezone.utc)
     if clock.tzinfo is None:
         clock = clock.replace(tzinfo=timezone.utc)
