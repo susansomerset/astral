@@ -141,3 +141,67 @@ context_tokens≈86000
 | 1 | `88e10d497` | `BASE_RESUME_CHAIN_ERROR_STATES` entries get `stage: 3` + import assert |
 
 **Betty note:** Config-only registry gap. No test-tree edits in build.
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-2245
+**Publish ref:** `8ab5d2716d125d72b30e78265595b256c1e2bdb0` (`origin/sub/AST-2225/AST-2245-gap-base-resume-error-stage`)
+**Corpus:** b7ab2203048ce0beb2869a12200ab7fa696c8066
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| astral.entity.required-metadata | A | | |
+| astral.dispatch.entity-state-bound | A | | |
+
+## Column diff vs plan stage
+
+(aligned)
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **Location:** `git diff origin/dev...origin/sub/AST-2225/AST-2245-gap-base-resume-error-stage`
+- **Finding:** Three-dot diff vs `origin/dev` is the **stacked** AST-2228 slice plus AST-2245 (9 files: `config.py`, `candidate.py`, data model, 2228 plan doc, tests/bible). AST-2245 **commits** are narrow: `code(AST-2245)` touches `src/utils/config.py` (+ issue doc stub); `test(AST-2245)` adds `TestAst2245BaseResumeErrorStage`, revises `TestAst2221BaseResumeChainConfig::test_error_states_and_priors`, restores bible § AST-2228 after ftr `sync(dev)`.
+- **Note:** Expected epic stacking until #1 lands on `dev` / ftr rollup — not AST-2245 product scope creep in its own commits.
+
+- **Location:** `tests/component/utils/test_config.py` — `TestAst2221BaseResumeChainConfig::test_requested_resume_stage_entry` (added in `test(AST-2245)`)
+- **Finding:** Asserts `CANDIDATE_STAGE_DISPATCH["requested_resume"]` unchanged on tip (already on `origin/dev`); not part of plan **Files Changed** but harmless regression guard for AST-2221 dispatch binding.
+- **Note:** No canon or AC impact.
+
+## Plan fidelity (non-canon)
+
+**AST-2245 incremental** (`88e10d497` + `8ab5d2716`): matches Stage 1 — `BASE_RESUME_CHAIN_ERROR_STATES` dict expansion gets `"stage": 3` with priors/rank preserved; import assert `all(... stage == 3 for s in BASE_RESUME_CHAIN_ERROR_STATES)`; craft `ERROR_CRAFT_*` remain stage 4. No `NAV_CONFIG`, `candidate.py`, dispatcher, UI, or `CANDIDATE_DATA_MODEL.md` edits in the gap commits. AC1–AC2 one-liners pass on publish tip (9 base-resume ERROR keys at stage 3).
+
+## Estimate footprint (non-canon)
+
+Confirm estimate **1**: gap is a registry dict shape + assert + focused component tests — fits 1 point.
+
+## What's solid
+
+- Fixes the documented post-2228×2221 import failure (`assert "stage" in _cfg` on `ERROR_SHAPE_THE_STORY` et al.) without retargeting craft ERROR bands to stage 4.
+- `TestAst2245BaseResumeErrorStage` pins AC2 and explicitly guards craft ERROR stage 4 separation.
+- `astral.dispatch.entity-state-bound`: no new dispatch rows or stage-integer triggers; only registry `stage` metadata on existing ERROR keys.
+
+## Recommended actions (downstream — not for Radia)
+
+- Chuckles: append artifact, `docs(AST-2245): Radia review — clean`, push, post slim upshot `--as radia`, **Review Posted** → datt **§3h** PROCEED path.
+- `merge-child`: land `sub/AST-2245` on ftr per ticket Notes so #2/#3 import gates clear (downstream orchestration).
+
+context_tokens≈22000
