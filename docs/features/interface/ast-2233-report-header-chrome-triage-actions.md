@@ -335,4 +335,44 @@ _(Frozen Citations: none — ticket Description lists no directive ids; nothing 
 - datt: **PROCEED** → **User Testing** for header/CSS; spawn **AST-2234** for modal wiring + build green.
 - Betty (optional, 2234): Pick up skipped Print Resume modal tests per discuss Default.
 
+## Bug: AST-2268 — Modal header identity, links, date labels
+
+Items 5–7 only. Items 1–4 are in `docs/features/interface/ast-2234-modal-panes-and-wiring.md`.
+
+### As-is
+
+The modal chrome title falls back to the literal `Recommended Job Report`, and the report header's primary line is the job title (same fallback) instead of `company_name` plus job `created_at`. The job-link line and company website line are absent when `listing_href` is not http(s) even if `job_link` or `company_website` is set. The date strip reads `Date discovered` / `Date recommended` without the labels `Discovered:` and `Recommended:`.
+
+### To-be
+
+The modal title and the header identity show `company_name` and the job created date as `m/d/yy`. The job link and the company website are each their own line under that identity when those URLs exist. The date strip items read `Discovered: m/d/yy` and `Recommended: m/d/yy` (and `Applied: m/d/yy` only when applied).
+
+### Repro
+
+Open a Recommended job whose detail has `company_name` set, `discovered_at` / `created_at` set, `job_link` an http(s) URL, `listing_href` null or non-http, and `company_website` set. Modal `<h2 class="modal-title">` is `Recommended Job Report` or the job title, not `company_name` plus `m/d/yy`. No job-link `<a>` and no `.recommended-report-website-link`. Date strip text is `Date discovered …` rather than `Discovered: …`.
+
+### Root cause
+
+`JobAnalysisReportModal` sets `title={companyNameDisplay || "Recommended Job Report"}` and `jobTitle={job_title || company || "Recommended Job Report"}`, so a missing `company_name` or missing `job_title` surfaces that placeholder instead of `company_name` + created date. `jobLink` is only `httpListingHref(listing_href)`, so a usable `job_link` never becomes the href. The header date strip hard-codes `Date discovered` / `Date recommended` / `Date applied`.
+
+### Proposed change
+
+1. In `src/ui/frontend/src/components/JobAnalysisReportModal.tsx`, stop using the literal `Recommended Job Report` for the modal title and for `jobTitle`. Modal `title` is `` `${companyNameDisplay}${discoveredLabel ? ` · ${discoveredLabel}` : ""}` `` where `companyNameDisplay` is `job.company_name.trim()` when non-empty, else `job.company`, and `discoveredLabel` is the same `m/d/yy` formatting the header uses for `discovered_at` (en-US numeric month/day/2-digit year; invalid/empty → omit the date). Pass `jobTitle={job.job_title?.trim() || ""}` so the header does not invent `Recommended Job Report`. `jobLink` is `httpListingHref(job.listing_href) ?? httpListingHref(job.job_link)`. `jobLinkText` is that href, else the raw `job.job_link` or `listing_href` string when non-empty. `companyWebsite` stays `job.company_website` trimmed, or null.
+
+2. In `src/ui/frontend/src/components/RecommendedJobReportHeader.tsx`:
+   - Primary identity line (`.recommended-report-title`): `companyName`, and when `formatReportDate(discoveredAt)` is non-null append ` · ` plus that date. Do not put `jobTitle` on that line. If `jobTitle` is non-empty, render it as a secondary line under the identity (existing title size is the identity; secondary uses the job-link text size).
+   - Job-link line: if `jobLink` is not http(s) but `jobLinkText` is, use `jobLinkText` as the `<a href>`. Still render non-http text when there is no http(s) href.
+   - Website line: when `companyWebsite` is non-empty, keep it on its own line under the job link. If the value does not start with `http://` or `https://`, href is `https://` plus the trimmed value; visible text stays the given string.
+   - Date strip: replace the prefixes with `Discovered: `, `Recommended: `, and `Applied: ` (colon, then the formatted date). Still omit a row when its timestamp is null. Applied stays omitted when `appliedAt` is null.
+
+3. Do not edit shared `.modal-title` / `.modal-header` / `.modal-body` rules. Report-scoped header rules only if a new secondary job-title line needs a class: add `.recommended-report-job-title-secondary` next to the existing title rules (font-size 12px, color `--text-secondary`). No other CSS.
+
+### Blast radius
+
+Skip / Applied / Generate callbacks and labels stay. Copy and header Print stay gone. `formatReportDate` stays local to the header (modal may duplicate the three-option `Intl.DateTimeFormat` call rather than import a new helper). Betty header tests that expect `Date discovered` or the job title as `.recommended-report-title` will go red; do not edit `tests/` here. AST-2234 Analysis/Discussion/Artifacts behavior is unchanged by this section.
+
+### What must still hold
+
+Parent AC 1–2: no Copy controls and no Print Resume/Cover in the header; Skip and Applied still render only when their callbacks are passed. Parent AC 7: `company_name` is the company label (not short_name alone when `company_name` is non-empty); website is an `<a target="_blank">` on its own line under the job-link line. Parent AC 8: discovered = `discoveredAt`, recommended = `recommendedAt`, applied only when non-null. Parent AC 9: at ≤1023px Skip/Applied still wrap instead of clipping.
+
 ```

@@ -280,3 +280,51 @@ patt.artifact.read-current | A | |
 
 - Chuckles: append artifact, `docs(AST-2234): Radia review — clean`, push, post slim upshot `--as radia`, **Review Posted**.
 - Before parent UT: ensure `ftr` includes AST-2233 so header/CSS match modal props (no `resolve-child` header edits on 2234).
+
+## Bug: AST-2268 — Analysis score labels, grade dots, show rubric
+
+Items 1–4 only. Items 5–7 are in `docs/features/interface/ast-2233-report-header-chrome-triage-actions.md`.
+
+### As-is
+
+Analysis total is a bare score plus a separate `{n}% gradable` span. Each phase section title still uses `formatPhaseSectionScoreTitle` (long earned/possible template). Grade letters and confidence wrap off one line on a narrow viewport. Show rubric opens `RubricModal` with "No rubric found for this vector."
+
+### To-be
+
+Analysis header reads `Total Score: ` plus bold `41.2 (76% gradable)`. Each phase header reads like `JD Analysis - 11.0 (92% gradable)`. At ≤1023px the phase grade row stays one line of the existing unlettered dots plus confidence. Show rubric shows that vector's rubric text.
+
+### Repro
+
+Open a Recommended job whose four phase list scores sum to 41.2, job-level gradable is 76 (`jobGradablePercent`), and JD list score is 11.0 with breakdown `possible/max` rounding to 92. Analysis tab: total line is not `Total Score: 41.2 (76% gradable)`; JD section title is not `JD Analysis - 11.0 (92% gradable)`. Narrow the viewport to ≤1023px: lettered grade dots plus confidence wrap. Click **show rubric** on a phase vector whose job-carried rubric row has `content` but the candidate artifact row does not: modal body is `No rubric found for this vector.`
+
+### Root cause
+
+`renderAnalysisTotalRow` prints `formatPhaseScore(total)` and a sibling `% gradable` span with no "Total Score:" label and no single `score (% gradable)` phrase. `analysisSections` sets `nav_label` from `formatPhaseSectionScoreTitle`, which is not `{phase} - {one decimal} ({phase gradable}%)`. Phase gradable for that header is `round(100 * possible / max)` from `jobScoreBreakdownForGradesField`, not the job-level `(n - x) / n` percent. `buildPhaseSectionGradeConfidenceRow` always mounts lettered `GradeMark` (no `letterless`), and `.recommended-report-phase-grade-row` is `flex-wrap: wrap`. Show rubric: `JobAnalysisReportModal` already passes `rubricItems` (`jobRubricForField`) and `rubricArtifact`. `AgentAnalysisHeader` prefers a candidate-artifact row from `GET /api/candidates/:id` and only then the job-carried row; a live row with empty `content` wins over job-carried `content`, and `RubricModal` prints the not-found string when `content` is null.
+
+### Proposed change
+
+1. In `src/ui/frontend/src/components/JobAnalysisReportModal.tsx` `renderAnalysisTotalRow`, render one line: the text `Total Score: ` then a `<strong>` whose text is `` `${formatPhaseScore(total)}${gradable != null ? ` (${gradable}% gradable)` : ""}` ``. Do not render a second sibling span for the percent. When `total` is null, `formatPhaseScore` stays the em dash; when `gradable` is null, omit the parenthetical (same omit rule as today).
+
+2. In the same file `analysisSections`, stop calling `formatPhaseSectionScoreTitle` for the visible title. When `jobScoreBreakdownForGradesField` returns a breakdown with `max > 0` and the phase list score (`grades_field` with `_grades` → `_score`) is a finite number, set `nav_label` to `` `${base} - ${formatPhaseScore(score)} (${Math.round((100 * breakdown.possible) / breakdown.max)}% gradable)` ``. Otherwise leave `nav_label` as `base`. Keep the thermometer in `renderAnalysisMetadata` (tooltip unchanged).
+
+3. In `src/ui/frontend/src/lib/recommendedJobReport.tsx` `buildPhaseSectionGradeConfidenceRow`, add an optional argument `letterless = false`. When true, pass `letterless` to each `GradeMark`. In `JobAnalysisReportModal`, the existing `(max-width: 1023px)` `isMobile` flag is passed as that argument. In `src/ui/frontend/src/App.css`, under the report phase-grade rules, add:
+
+```css
+@media (max-width: 1023px) {
+  .recommended-report-phase-grade-row {
+    flex-wrap: nowrap;
+  }
+}
+```
+
+Do not change list rows (`buildPhaseListGradeRow` stays letterless at every width). Do not change confidence bullets.
+
+4. Show rubric — not executable in this patch. `src/ui/frontend/src/components/AgentAnalysisHeader.tsx` and `RubricModal.tsx` are not in parent AST-2226 ## Component scope. The modal already passes job-carried `rubricItems` (including `content` when the payload has it) and `rubricArtifact`. Do not edit `AgentAnalysisHeader.tsx` until that file is added to scope. The required behavior, once scoped: in `AgentAnalysisHeader`, when resolving `content` for `RubricModal`, use the job-carried `rubricItems` row's `content` when it is a non-empty string, and only then a live candidate-artifact row's non-empty `content`. A live row with blank `content` must not hide job-carried `content`. `RubricModal` text stays as-is.
+
+### Blast radius
+
+`formatPhaseSectionScoreTitle` stays exported for other callers; only the Analysis section `nav_label` stops using it. List Total still uses `totalScore` / `formatPhaseScore` and must not gain a "Total Score:" prefix. Thermometer tooltip formula stays `Score {one decimal}, {round(100 * possible / max)}% gradable`. Betty's modal/lib tests that pin the old phase title template or lettered header dots will go red; do not edit `tests/` here.
+
+### What must still hold
+
+Parent AC 15: thermometer fill is `list_score / max`, green on neutral, tooltip unchanged. Parent AC 16: the percent beside the total is still `jobGradablePercent` (`round(100 * (n - x) / n)`), hidden when `n === 0`. Phase header percent is the breakdown `possible/max` figure, not a second copy of the job-level percent. Opening the modal still lands on Analysis. Skip/Applied, Discussion, JD tab, Artifacts visibility, and mobile edit ban from the original AST-2234 stages stay.
