@@ -216,3 +216,9 @@ Canon scores: empty frozen Canon Scope. Joan `[board-joan] CANON: OK`.
 [bug-repro] not applicable — remount coverage is sibling AST-2259. ## What must still hold — OK. fix-now: none. discuss: none.
 
 Advisory: product diff is `CandidateContext.tsx` plus this plan; the remount test is AST-2259 (docs-acceptance for the product-vs-test split).
+
+### Radia review — AST-2259
+
+[code-rubric] Ticket AST-2259. Publish ref `278d31fb3889ffcb7aa529790ba772cb4f9011e7`. Corpus `b7ab2203048ce0beb2869a12200ab7fa696c8066`. Overall CLEAN.
+
+[bug-repro] OK — `admin picker survives remount for the same login email` matches the plan. ## What must still hold — OK. fix-now: none. discuss: none.
