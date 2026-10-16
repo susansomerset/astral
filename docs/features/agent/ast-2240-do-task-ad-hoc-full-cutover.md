@@ -193,3 +193,64 @@ context_tokens≈58000
 **Canon (self-check):** `do_task` remains the entry; HTTP stays in the external client. Daisy-chain and retry routing unchanged. Latest refs still SQLite. Debug lines do not include the request body or `api_key`.
 
 **Tests:** Betty at Code Complete. No test-tree edits.
+
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-2240
+**Publish ref:** `a1b48d1d5b2529675083b3359e08125b0f7209d7` (`origin/sub/AST-2235/AST-2240-do-task-ad-hoc-full-cutover`)
+**Corpus:** `b7ab2203048ce0beb2869a12200ab7fa696c8066`
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| astral.agent.do-task-delegation | A | | |
+| patt.task.daisy-chain | A | | |
+| patt.task.dispatch-retry | A | | |
+| astral.batch.entity-agent-responses-latest-only | A | | |
+| astral.standards.debug-contract-gated | A | | |
+| patt.agent.provider-io-via-queue | X | | pending Archie / not in `canon_clerk` active corpus; plan id-only |
+
+(Worst grade **A** on roll-up ids. `astral.agent.*` / `astral.batch.*` / `astral.standards.*` from `canon/statutes/astral/`; patterns via `canon_clerk expand` at corpus tip.)
+
+## Column diff vs plan stage
+
+(aligned) — Joan all **A**; code review matches.
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **sibling carry on `origin/dev...` three-dot diff:** full epic stack (AST-2237–2241 service/client/providers/railway/fence, sibling docs, Betty harness) rides this publish ref after **ftr** sync; **AST-2240 product commit** `96c9500c3` touches **`src/core/agent.py` only** — matches scope gate.
+- **`database.py`:** `agent_job` / `astral_agent` grep clean on publish ref (AC **7**); file not in cutover commit.
+
+## What's solid
+
+- **AC 5:** no `send_to_anthropic` / `send_to_llm_compat` in `agent.py`; imports `AstralAgentError`, `submit` from `src.external.astral_agent`.
+- **AC 4:** `do_task` still runs `_store_prompt_blocks` (via `asyncio.to_thread`) **before** `_send_to_server`; RESPONSE / failure-audit paths use `_provider_answer_text` for queue-returned text.
+- **`_send_to_server`:** builds AST-2239-shaped `_provider_request` (protocol, wire fields, `api_key`, probe/routing, `batch_id`); `await submit(request)`; maps `AstralAgentError` → existing failure dict **without** timesheet row; soft fails + successes call `_record_queue_timesheet` with `calculate_cost_components_from_counts` where planned.
+- **AC 8–9:** `run_next` / hop ledger logic not reworked; await is inside the hop. Ad Hoc workbench failure-audit uses `_provider_answer_text` (small touch in `run_adhoc_workbench_test` only).
+- **Delegation / layers:** provider I/O boundary is external `astral_agent.submit`; core still orchestrates assemble/store/decode/chain — matches `astral.agent.do-task-delegation`.
+- **Debug:** submit debug line logs `server_id`, `sku`, `protocol` only — no `api_key` or message bodies in new logs.
+- Plan fidelity + estimate **5** fit single-file cutover with prerequisites on branch.
+
+## Recommended actions (downstream only — not executed in this session)
+
+- Chuckles: append artifact, `docs(AST-2240): Radia review — clean`, push publish ref, post slim upshot `--as radia`, **Review Posted** → datt **PROCEED** to **User Testing**.
+
+context_tokens≈22000
