@@ -264,3 +264,69 @@ context_tokens≈54000
 **Tests:** Betty at Code Complete. Do not land `do_task` cutover here (AST-2240).
 
 **Canon (self-check):** provider HTTP stays in the service; no hardcoded keys (`request["api_key"]`); crash path logs once via worker `logger.exception`. `patt.agent.provider-io-via-queue` still pending — not scored.
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-2239
+**Publish ref:** `af06670dacb5363f7a1e1ba274d0a04e5d5f51ce` (`origin/sub/AST-2235/AST-2239-provider-wrappers-inside-the-worker`)
+**Corpus:** `b7ab2203048ce0beb2869a12200ab7fa696c8066`
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| astral.layers.core-vs-external-bright-line | A | | |
+| astral.config.secrets-and-env-specific-from-environ | B | | Provider credential on assembled `request["api_key"]`; DSN remains AST-2237 `ASTRAL_DATABASE_URL` |
+| stat.logging.error | B | | Service Railway JSON: `exception` on crash; `error` on `ProviderJobError`; `warning` on soft `success: False` |
+| patt.agent.provider-io-via-queue | X | | pending Archie / not in `canon_clerk` active corpus; plan id-only |
+
+(Worst **B** → roll-up **CLEAN**. `astral.layers.*` / `astral.config.*` from `canon/statutes/astral/` on corpus tip; `stat.logging.error` via `canon_clerk expand`.)
+
+## Column diff vs plan stage
+
+(aligned) — Joan worst **B** on `astral.config.*` and `stat.logging.error`; code matches.
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+- **AC 6 wording vs assembled wire** — Linear AC **6** says service reads provider keys from **environ only**; plan + implementation use platform-assembled **`request["api_key"]`** (no service env fallback for agent HTTP). **@susan:** amend child AC **6** to “no hardcoded secrets; keys only via assembled request / existing `ASTRAL_DATABASE_URL` for Postgres” or keep plan-only traceability? **Default:** score against plan + parent locked dumb-I/O; no `resolve-child` code change; optional Description tweak only.
+
+- **Merge order before `dev`** — `send_to_anthropic` / `send_to_llm_compat` now **raise immediately**; `do_task` still calls them until **AST-2240**. **@susan:** confirm parent **finish-up** lands **2240** (or full **ftr**) with **2239**, not an isolated **2239** merge to `dev`. **Default:** treat as epic rollup constraint (plan Stage 3 already warns); block isolated child merge, not a rework of stubs.
+
+### advisory
+
+- **sibling carry on `origin/dev...` three-dot diff:** full **AST-2237** `service/astral_agent/` skeleton, **AST-2238** issue doc, and Betty harness ride this ref; **AST-2239 product commits** (`1dfd50c43`, `106246155`, `14d7c04fb`) touch only scoped paths (providers, executor, worker glue, three `src/external` modules).
+- **Territory:** `stat.logging.error` `applies_when.paths` is `src/**`; service uses AST-2237 console logging — intentional **B**, not a fence breach.
+- **`src/external/openrouter.py`:** docstring notes chat HTTP in service; probe/receipt helpers remain for platform until **2240** moves probe into assembled requests — matches plan.
+
+## What's solid
+
+- `service/astral_agent/providers/` — fenced copies of classify/budget helpers + Anthropic / compat / OpenRouter pin paths; **no `src` imports** under providers.
+- `executor.execute` validates required keys and dispatches `anthropic` vs `anthropic_compat`; malformed input → `ProviderJobError("bad_request", …)`.
+- Provider HTTP uses **`request["api_key"]`** (e.g. `anthropic_provider.send`); no hardcoded key literals; entity / `app_log` ban greps clean on `service/astral_agent/`.
+- Soft provider failures return `success: False` dicts → **`jobqueue.complete`** with **warning** log; `ProviderJobError` → **`fail`** with `error_class`; unhandled → **`logger.exception`** + `executor_error`.
+- `send_to_anthropic` / `send_to_llm_compat` bodies are immediate **retired** `RuntimeError`; **`get_receipt` / `getTimestampPrefix`** and OpenRouter probe/receipt remain importable.
+- Plan fidelity for **2239-owned deltas**; estimate **5** still fits (provider port + stub retirement + harness, not cutover/client).
+
+## Recommended actions (downstream only — not executed in this session)
+
+- Chuckles: append artifact, `docs(AST-2239): Radia review — clean`, push publish ref, post slim upshot `--as radia`, **Review Posted** → datt **PROCEED** toward **User Testing** (optional Susan AC **6** text alignment only).
+
+context_tokens≈24000
+
+---
+
+```
+[code-rubric] PROCEED (Commit: af06670da) Service provider wrappers landed
+```
