@@ -225,3 +225,75 @@ context_tokens≈72000
 **Soft-dep:** `incomplete_profile` not on tip — Profile `attention` / Candidate `recent` stay false until AST-2229 lands.
 
 **Tests:** Betty at Code Complete (`qa-child`) — engineers do not land test-tree changes.
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-2230
+**Publish ref:** `d4556a056ece78f46db3f9090dec03d4309c86bd` (`origin/sub/AST-2225/AST-2230-stage-gated-nav`)
+**Corpus:** b7ab2203048ce0beb2869a12200ab7fa696c8066
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| astral.dispatch.entity-state-bound | A | | |
+| stat.logging.info.api | A | | |
+
+## Column diff vs plan stage
+
+(aligned)
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+- **Location:** Linear `## Scope` vs plan **Explicit scope gate** (five files)
+- **Finding:** @susan — Linear description still lists `config.py`, `api_system.py`, `routes.tsx` only; plan and build include `JobsHomeRedirect.tsx` and `candidate.py` (`_artifacts_nav_label_for_path`).
+- **Default:** Treat the five-file plan gate as authoritative for this child; sync Linear `## Scope` when convenient (docs/process only).
+
+- **Location:** AC8 / `NAV_GROUP_RECENT_DEFAULTS` + API `recent` vs sibling #4
+- **Finding:** @susan — This child ships config knobs and per-group `recent` on `/api/nav_config`; “fresh session expands only groups the API marks recent” is not fully verifiable until `NavigationShell.tsx` (#4) honors `recent`.
+- **Default:** Accept API half as done for AST-2230; exercise AC8 end-to-end in parent UAT after #4 lands.
+
+### advisory
+
+- **Location:** `git diff origin/dev...origin/sub/AST-2225/AST-2230-stage-gated-nav`
+- **Finding:** Three-dot diff vs `origin/dev` stacks #1 (AST-2228), gap (AST-2245), #2 (AST-2229), and this child. AST-2230 **product commits** (`0a57f88f9`–`ecd74a077`) touch only the scoped five files (+ Betty tests/bible); Stage 1 `config.py` edit is **NAV_CONFIG** / `NAV_GROUP_RECENT_DEFAULTS` only — no `CANDIDATE_STATES` vocabulary changes in those commits.
+
+- **Location:** `tests/integration/conftest.py` — `e304887a1`
+- **Finding:** Harness reset for `_artifact_schema_ensured` after nav_config paths hydrate `base_resume`; supports integration nav scenarios, not product scope expansion.
+
+- **Location:** Issue doc build stub “Soft-dep: `incomplete_profile` not on tip”
+- **Finding:** Branch merged `origin/sub/AST-2225/AST-2229-readiness-advancement`; `api_system.py` imports `incomplete_profile` with try/except fallback. Stub note is stale; implementation matches plan when #2 is on tip.
+
+## Plan fidelity (non-canon)
+
+Matches Stages 1–3: four-group `NAV_CONFIG` order/labels/paths/min-stage ints; dropped sidebar labels absent; `NAV_GROUP_RECENT_DEFAULTS`; `_resolve_nav` uses `candidate_stage`, stage-0 omits facing groups, Criteria `enabled: false` below stage 4, group `recent` + Profile `attention`; no progress `logger.info` on `GET /nav_config`; `routes.tsx` title SYNC; `JOBS_NAV_GROUP_LABEL = "Job Opportunities"`; hop-label walk across all nav groups. `TestAst2230StageGatedNavApi` covers AC5–AC7 and recent/attention; integration harness tweak for artifact schema.
+
+## Estimate footprint (non-canon)
+
+Confirm estimate **3**: NAV regroup + API resolver + light frontend SYNC + hop-label helper — consistent with a 3-point child.
+
+## What's solid
+
+- Stage gating uses registry **stage integers** for UI only; dispatch/`CANDIDATE_STAGE_DISPATCH` / `trigger_state` strings untouched (AC13 partition respected for this child).
+- Criteria present but disabled at stage 3 (`CONTEXT_READY`) — matches AC7.
+- Renamed criteria labels flow through `_artifacts_nav_label_for_path` (manifest test still resolves “Get Job Criteria” / “Do Job Criteria”).
+
+## Recommended actions (downstream — not for Radia)
+
+- Chuckles: append artifact, `docs(AST-2230): Radia review — clean`, push, post slim upshot `--as radia`, **Review Posted** → datt **§3h** PROCEED.
+- Optional: refresh issue doc build stub soft-dep line post–2229 merge; sync Linear Scope (discuss defaults above).
+
+context_tokens≈34000
+
