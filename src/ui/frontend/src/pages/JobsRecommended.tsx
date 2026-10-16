@@ -10,7 +10,7 @@ import Toast, { type ToastMessage } from "../components/Toast"
 import { useCandidateJobActions, type BulkActionResult } from "../hooks/useCandidateJobActions"
 import { useInPlaceLiveRefresh } from "../hooks/useInPlaceLiveRefresh"
 import api from "../lib/api"
-import { formatPhaseScore, primaryActionsForState } from "../lib/recommendedJobReport"
+import { formatPhaseScore, primaryActionsForState, totalScore } from "../lib/recommendedJobReport"
 import Time from "../components/Time"
 import JobTitleText from "../components/JobTitleText"
 
@@ -35,18 +35,6 @@ const TOTAL_SCORE_COL = "total_score"
 
 function finiteOrNull(v: unknown): number | null {
   return typeof v === "number" && Number.isFinite(v) ? v : null
-}
-
-// Sum of manifest phase_score_columns; null if any phase score is missing (AST-1968).
-function totalScore(job: Job, phaseFields: string[]): number | null {
-  if (!phaseFields.length) return null
-  let sum = 0
-  for (const field of phaseFields) {
-    const n = finiteOrNull(job[field])
-    if (n === null) return null
-    sum += n
-  }
-  return sum
 }
 
 function sortRecommendedJobs(jobs: Job[], col: string, asc: boolean, phaseFields: string[]): Job[] {

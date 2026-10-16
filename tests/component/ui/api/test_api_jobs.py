@@ -1270,6 +1270,99 @@ class TestAst1872DetailCanSkip:
         assert resp.get_json()["can_skip"] is expected
 
 
+# AST-2232: detail enrichment — can_apply, company fields, lifecycle dates (real core helpers; get_company mocked).
+class TestAst2232DetailEnrichment:
+    def _wire(
+        self, monkeypatch: pytest.MonkeyPatch, job: dict, company_row: dict | None = None,
+    ) -> None:
+        monkeypatch.setattr(jobs_mod, "get_job", lambda jid: dict(job))
+        monkeypatch.setattr(jobs_mod, "get_entity_agent_story", lambda _job: [])
+        monkeypatch.setattr(
+            jobs_mod,
+            "hydrate_job_artifacts_for_display",
+            lambda art, debug=False, astral_job_id=None: art or {},
+        )
+        monkeypatch.setattr(jobs_mod, "get_meteorite_by_astral_job_id", lambda _jid: None)
+        monkeypatch.setattr(jobs_mod, "get_company", lambda _key: company_row)
+
+    @pytest.mark.parametrize(
+        ("state", "expected"),
+        [
+            ("RECOMMENDED", True),
+            ("CANDIDATE_REVIEW", True),
+            (f"{cfg.BUILD_ARTIFACTS_BASE_STATE}.draft_job_resume", True),
+            ("CANDIDATE_SKIPPED", False),
+            # CANDIDATE_APPLIED is in its own prior_states — admission stays True (re-apply path).
+            ("CANDIDATE_APPLIED", True),
+            (None, False),
+        ],
+    )
+    def test_detail_can_apply_by_state(
+        self, jobs_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch,
+        state, expected: bool,
+    ) -> None:
+        job = {"astral_job_id": "job-2232-apply", "job_data": {}}
+        if state is not None:
+            job["state"] = state
+        self._wire(monkeypatch, job)
+        resp = jobs_client.get("/api/jobs/job-2232-apply", headers=auth_headers)
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["can_apply"] is expected
+        assert "can_skip" in body
+
+    def test_company_and_lifecycle_fields(
+        self, jobs_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        job = {
+            "astral_job_id": "job-2232-co",
+            "state": "RECOMMENDED",
+            "company_id": "acme",
+            "created_at": "2026-01-15T12:00:00Z",
+            "job_data": {},
+            "state_history": [
+                {"to_state": "NEW", "timestamp": "2026-01-10T00:00:00Z"},
+                {"to_state": "RECOMMENDED", "timestamp": "2026-01-20T08:00:00Z"},
+                {"to_state": "RECOMMENDED", "timestamp": "2026-01-21T00:00:00Z"},
+            ],
+        }
+        self._wire(
+            monkeypatch,
+            job,
+            {"company_name": "Acme Corp", "company_website": "https://acme.example"},
+        )
+        body = jobs_client.get("/api/jobs/job-2232-co", headers=auth_headers).get_json()
+        assert body["company_name"] == "Acme Corp"
+        assert body["company_website"] == "https://acme.example"
+        assert body["discovered_at"] == "2026-01-15T12:00:00Z"
+        assert body["recommended_at"] == "2026-01-20T08:00:00Z"
+        assert body["applied_at"] is None
+        assert body["can_apply"] is True
+        assert body["can_skip"] is True
+
+    def test_missing_company_nulls_not_short_name_fallback(
+        self, jobs_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        job = {
+            "astral_job_id": "job-2232-miss",
+            "state": "RECOMMENDED",
+            "company_id": "ghost",
+            "company": "ghost",
+            "created_at": "2026-02-01T00:00:00Z",
+            "job_data": {},
+            "state_history": [
+                {"to_state": "CANDIDATE_APPLIED", "timestamp": "2026-02-05T10:00:00Z"},
+            ],
+        }
+        self._wire(monkeypatch, job, company_row=None)
+        body = jobs_client.get("/api/jobs/job-2232-miss", headers=auth_headers).get_json()
+        assert body["company_name"] is None
+        assert body["company_website"] is None
+        assert body["discovered_at"] == "2026-02-01T00:00:00Z"
+        assert body["recommended_at"] is None
+        assert body["applied_at"] == "2026-02-05T10:00:00Z"
+
+
 # AST-1974 · AST-1970: real SQLite — five views partition every job once; nav counts == list lengths;
 # skip legal from Processing states (claim released), illegal from Applied; below-floor rows Skipped-only.
 class TestAst1974JobsPartitionRealDb:

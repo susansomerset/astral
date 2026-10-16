@@ -1,5 +1,6 @@
-import { act, fireEvent, render, screen } from "@testing-library/react"
-import { describe, expect, it, vi } from "vitest"
+import { act, fireEvent, screen } from "@testing-library/react"
+import { beforeEach, describe, expect, it, vi } from "vitest"
+import { renderWithProviders, stubNavViewport } from "../test-utils"
 
 // Children have their own suites (AST-2082 / AST-2083); stubs record the props this modal wires.
 const props: Record<string, Record<string, unknown>> = {}
@@ -25,13 +26,18 @@ const COVER: JobArtifactTab = {
 }
 
 describe("AST-2084 JobArtifactEditModal", () => {
+  beforeEach(() => {
+    stubNavViewport(true)
+    Object.keys(props).forEach(k => delete props[k])
+  })
+
   it("renders nothing while tab is null", () => {
-    render(<JobArtifactEditModal jobId="j1" tab={null} onClose={vi.fn()} />)
+    renderWithProviders(<JobArtifactEditModal jobId="j1" tab={null} onClose={vi.fn()} />)
     expect(document.querySelector(".modal-overlay")).toBeNull()
   })
 
   it("AST-2115 [bug-repro]: job resume opens a stacked 80%-width split pane over the page with the job editor and job_resume preview; a save bumps the preview once", () => {
-    render(<JobArtifactEditModal jobId="j1" tab={RESUME} onClose={vi.fn()} />)
+    renderWithProviders(<JobArtifactEditModal jobId="j1" tab={RESUME} onClose={vi.fn()} />)
     expect(document.querySelector(".modal-overlay--stacked")).toBeTruthy()
     expect(screen.getByRole("heading", { name: "Job Resume" })).toBeInTheDocument()
     // AST-2115: 80vw × 90vh card with its border kept, not the edge-to-edge fullscreen card.
@@ -49,7 +55,7 @@ describe("AST-2084 JobArtifactEditModal", () => {
   })
 
   it("cover letter: existing shapes editor with job persistence and the cover preview; its onSaved bumps the preview", () => {
-    render(<JobArtifactEditModal jobId="j1" tab={COVER} onClose={vi.fn()} />)
+    renderWithProviders(<JobArtifactEditModal jobId="j1" tab={COVER} onClose={vi.fn()} />)
     expect(screen.queryByTestId("resume-editor")).toBeNull()
     expect(props.artifact).toMatchObject({
       title: "Cover Letter", artifactKey: "cover_letter", taskKey: "craft_cover_letter", shapesKey: "cover_letter",
@@ -63,9 +69,19 @@ describe("AST-2084 JobArtifactEditModal", () => {
 
   it("Close calls onClose; no footer", () => {
     const onClose = vi.fn()
-    render(<JobArtifactEditModal jobId="j1" tab={RESUME} onClose={onClose} />)
+    renderWithProviders(<JobArtifactEditModal jobId="j1" tab={RESUME} onClose={onClose} />)
     expect(document.querySelector(".modal-footer")).toBeNull()
     fireEvent.click(screen.getByRole("button", { name: "Close" }))
     expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  it("AST-2234: mobile ≤1023px is Print + preview only (no split editors)", () => {
+    stubNavViewport(false)
+    renderWithProviders(<JobArtifactEditModal jobId="j1" tab={RESUME} onClose={vi.fn()} />)
+    expect(screen.getByRole("button", { name: "Print" })).toBeInTheDocument()
+    expect(screen.queryByTestId("resume-editor")).toBeNull()
+    expect(screen.queryByTestId("artifact-editor")).toBeNull()
+    expect(screen.queryByRole("separator")).toBeNull()
+    expect(props.preview).toMatchObject({ target: { kind: "job_resume", id: "j1" } })
   })
 })
