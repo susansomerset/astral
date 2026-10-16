@@ -3,6 +3,7 @@ Core candidate: candidate lifecycle management (AST-216).
 
 In-scope: initiate_candidate, save_candidate_data, get_candidate,
 transition_candidate_state, parse_candidate_resume, check_context_complete,
+check_profile_complete, incomplete_profile, advance_candidate_readiness (AST-2229),
 contact uniqueness enforcement on save (AST-1080),
 get_new_candidate_batch / clear_candidate_batch (batch claim wrappers; AST-1259),
 operative save_candidate_data(candidate_id, artifact_key, blob) + hydrate via
@@ -2919,6 +2920,103 @@ def check_context_complete(candidate_id: str) -> bool:
         if not (ctx.get(key) or "").strip():
             return False
     return True
+
+
+def check_profile_complete(candidate_id: str) -> bool:
+    """True when required Profile pieces are present (no state write)."""
+    candidate = database.get_candidate(candidate_id)
+    if not candidate:
+        return False
+    first = str(candidate.get("first") or "").strip()
+    last = str(candidate.get("last") or "").strip()
+    if not first or not last:
+        return False
+    contact = (candidate.get("candidate_data") or {}).get("contact") or {}
+    if not isinstance(contact, dict):
+        contact = {}
+    return bool(str(contact.get("contact_email") or "").strip())
+
+
+def incomplete_profile(candidate_id: str) -> bool:
+    """True when required Profile pieces are missing (alert signal for nav siblings)."""
+    # Missing row → False so callers do not paint a ghost Profile alert.
+    if not database.get_candidate(candidate_id):
+        return False
+    return not check_profile_complete(candidate_id)
+
+
+def _raw_resume_ready(candidate_id: str) -> bool:
+    """Non-empty context.raw_resume — material for REQUESTED_RESUME craft."""
+    candidate = database.get_candidate(candidate_id)
+    if not candidate:
+        return False
+    ctx = (candidate.get("candidate_data") or {}).get("context") or {}
+    if not isinstance(ctx, dict):
+        return False
+    return bool(str(ctx.get("raw_resume") or "").strip())
+
+
+def _base_resume_ready(candidate_id: str) -> bool:
+    """Operative base_resume present for REQUESTED_ARTIFACTS hop."""
+    body = load_pilot_base_resume_for_candidate(candidate_id)
+    if body is None:
+        return False
+    if isinstance(body, str):
+        return bool(body.strip())
+    return bool(body)
+
+
+def _always_ready(_candidate_id: str) -> bool:
+    return True
+
+
+# Exact from-state → (to_state, predicate). Stale companions forward; no demote hops.
+_READINESS_HOPS: Dict[str, Tuple[str, Any]] = {
+    "INTAKE_INITIATED": ("PROFILE_READY", check_profile_complete),
+    "PROFILE_READY": ("CONTEXT_READY", check_context_complete),
+    "CONTEXT_READY": ("REQUESTED_RESUME", _raw_resume_ready),
+    "RESUME_READY": ("REQUESTED_ARTIFACTS", _base_resume_ready),
+    "RESUME_READY_STALE": ("REQUESTED_ARTIFACTS", _base_resume_ready),
+    "ARTIFACTS_READY": ("ACTIVE_SEARCH", _always_ready),
+    "ARTIFACTS_READY_STALE": ("ACTIVE_SEARCH", _always_ready),
+}
+
+
+def advance_candidate_readiness() -> int:
+    """Forward-only presence advance. Returns count of successful transitions."""
+    moved = 0
+    for row in list_candidates(include_deleted=False):
+        state = row.get("state") or ""
+        cid = row.get("astral_candidate_id")
+        if not cid:
+            continue
+        hop = _READINESS_HOPS.get(state)
+        if hop is None:
+            continue
+        to_state, predicate = hop
+        if to_state not in CANDIDATE_STATES:
+            continue
+        if not predicate(cid):
+            continue
+        try:
+            if candidate_stage(to_state) < candidate_stage(state):
+                continue
+        except ValueError:
+            continue
+        try:
+            transition_candidate_state(cid, to_state)
+        except (IllegalCandidateTransition, ValueError):
+            continue
+        # Joan: statute `state` event (not a custom readiness_advance token).
+        logger.info(
+            "%s | candidate state: %s -> %s (batch: %s)",
+            cid,
+            state,
+            to_state,
+            "-",
+        )
+        moved += 1
+    return moved
 
 
 def age_stale_candidate_states(*, now: Optional[datetime] = None) -> int:
