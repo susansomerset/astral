@@ -615,3 +615,55 @@ And the new row’s prompt fields are all empty, `agent_id` is `telescope`, and 
 - `dispatch_task` `check_unique_meteorite` keeps `trigger_state` `CHECK_UNIQUE`. `SEED_CONFIG` ingress paste and retire-null-pool list stay as they are.
 - `run_check_unique_meteorite` remains the SQL uniqueness hop. This row does not add prompt text, a `TASK_CONFIG` entry, or a new `agent_task` column.
 - `agent_id` `telescope` on the new row matches the scrape/land shells so the hop stays non-LLM.
+
+## Radia review — AST-2263
+
+[code-rubric]
+**Ticket:** AST-2263
+**Publish ref:** `eac49d8927359c5dd13115731502f75c7cb16dad` (`origin/sub/AST-2260/AST-2263-check-unique-meteorite-agent-task`)
+**Corpus:** `b7ab2203048ce0beb2869a12200ab7fa696c8066`
+**Overall:** CLEAN
+
+## Canon scores
+
+No frozen Canon Scope on parent AST-2260 or child AST-2263. Plan-fix records AST-1773 citations as id-only because this delta does not touch `src/utils/config.py`, entity columns, or logging. Empty frozen list, not invented off-list ids.
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| — | — | — | empty frozen list |
+
+## Column diff vs plan stage
+
+No plan-stage scores attached. fix-board `[board-joan] CANON: OK` only.
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+**[bug-repro]** not applicable — qa-fix did not run. Test coverage is sibling gap AST-2266.
+
+**## What must still hold — OK**
+
+- AST-1773 registry / stage config / optional `employer_name`: no `src/**`, `dispatch_task`, or `config.py` edits.
+- `review_duplicate_meteorite` stays current at seq 3.5. Append-only.
+- Dispatch seed for `check_unique_meteorite` / `CHECK_UNIQUE` untouched.
+- New row is a `telescope` shell with empty prompts. Land Meteorite order `1 → 2 → 3 → 3.2 → 3.5 → 4`.
+
+## Findings
+
+### discuss
+
+- Board `[board-betty] TESTS: REVISE` is tracked on sibling [AST-2266](https://linear.app/astralcareermatch/issue/AST-2266), not a product defect on this diff.
+- No frozen Canon Scope on the bug tickets. Observation only. Proceed.
+
+### advisory
+
+- Row count and stale catalog-length locks are Betty's, per the plan's blast radius.
+
+## What's solid
+
+Literal row matches the plan-fix table. Append-only. JSON grouping order holds.
+
+context_tokens≈22000
