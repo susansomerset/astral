@@ -134,10 +134,10 @@ context_tokens≈86000
 **Publish ref:** `origin/sub/AST-2225/AST-2245-gap-base-resume-error-stage`
 **Plan path:** `docs/features/candidate/ast-2245-gap-base-resume-error-stage.md`
 
-**Built tip:** *(set after code commit)*
+**Built tip:** `88e10d497a7a8425174207b8e2e4b92d015a6449` (`88e10d497`)
 
 | Stage | Commit | Summary |
 |-------|--------|---------|
-| 1 | *(sha)* | `BASE_RESUME_CHAIN_ERROR_STATES` entries get `stage: 3` + import assert |
+| 1 | `88e10d497` | `BASE_RESUME_CHAIN_ERROR_STATES` entries get `stage: 3` + import assert |
 
 **Betty note:** Config-only registry gap. No test-tree edits in build.
