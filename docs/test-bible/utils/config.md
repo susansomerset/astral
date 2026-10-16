@@ -5149,42 +5149,21 @@ Config only, no handlers. `CONTACT_CONTEXT_COMMAND_CONFIG` (six suffixes → `ar
 
 **Bible shasum (after publish):** `git show origin/sub/AST-2206/AST-2210-registry-estelle-prompts:docs/test-bible/utils/config.md | shasum`; same for `docs/test-bible/core/repo_admin_json.md`.
 
-### AST-2217 · AST-2215 (fetch_timesheet registries)
 
-`FETCH_TIMESHEET_CONFIG` (poller defaults: `entity_type` / `trigger_state` / `freq_hrs` None, `auto_mode` False) plus `TIMESHEET_REQUEST_TYPES`, `TIMESHEET_RECEIPT_FIELDS`, `LEDGER_TIMESHEET_STATES`, `TIMESHEET_SEARCH_SERVER_ID`. Reconcile constants left in place for AST-2218.
+### AST-2232 · AST-2226 (agent_name column + Job Description top tab)
 
-| Area | Source | Component tests |
-| --- | --- | --- |
-| New — fetch_timesheet dispatch-row defaults | `FETCH_TIMESHEET_CONFIG` | `TestAst2217FetchTimesheetRegistries::test_fetch_timesheet_config_poller_defaults` |
-| New — request / receipt / ledger / search-server registries | `TIMESHEET_*` / `LEDGER_TIMESHEET_STATES` | `…::test_request_receipt_ledger_registries` |
+**Parent:** [AST-2226](https://linear.app/astralcareermatch/issue/AST-2226). **Publish:** `origin/sub/AST-2226/AST-2232-agent-name-detail-enrichment-tab-config`.
 
-**Primary manifest:** [`../data/database/timesheets.md`](../data/database/timesheets.md) § AST-2217.
-
-### AST-2218 · AST-2215 (`dispatch_task_admin_defaults` fold for fetch_timesheet)
-
-Mailbox-twin fold: `fetch_timesheet` → `{entity_type, trigger_state}=None`, `sort_by=None`, `batch_call_mode=0`. `is_fetch_timesheet_task_key`. Reconcile constants left in place (unused).
+`REPO_ADMIN_JSON_CONFIG` agent columns insert `agent_name` after `agent_id` (keeps AST-2181 `requires_structured_output`). `JOBS_RECOMMENDED_REPORT_TOP_TABS` = analysis → **job_description** → summary → artifacts → discussion → meteorite (first entry still default). Summary sections drop `raw_jd`. Seed `data/admin/agent.json` every row has non-empty `agent_name` and exact column key set. Primary manifest: **`docs/test-bible/core/tracker.md`** § AST-2232.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| New — admin defaults null entity/trigger | `dispatch_task_admin_defaults` | `TestAst2218FetchTimesheetAdminDefaults::test_fold_returns_null_entity_trigger` |
-| New — task-key helper | `is_fetch_timesheet_task_key` | `…::test_is_fetch_timesheet_task_key` |
+| Tab order + Summary sections (manifest) | `build_state_ui_manifest` | **`TestBuildStateUiManifest::test_ast565_recommended_report_manifest_tabs`** (revised) |
+| Constant tab order | `JOBS_RECOMMENDED_REPORT_TOP_TABS` | **`TestAst1550DiscussionHopKeys::test_top_tabs_discussion_after_artifacts`** (revised) · **`TestAst1691MeteoriteReportConfig`** (unchanged, holds) |
+| Columns + seed names | `REPO_ADMIN_JSON_CONFIG` + `data/admin/agent.json` | **`TestAst1955PlainAgentSettings::test_agent_repo_json_columns_and_seed`** (revised) |
 
-**Primary manifest:** [`../core/timesheets.md`](../core/timesheets.md) § AST-2218.
+**Broken / obsolete (revised):** Analysis→Summary without `job_description`; Summary `raw_jd`; agent column tuple without `agent_name` / `requires_structured_output`; AST-1955 seed model pin (models drifted on later tickets — pin is now names + column contract).
 
-### AST-2223 · AST-2216
+**Frontend fixture deferral:** `stateUiManifestFixture.ts` still pre-2232 until siblings #2/#3.
 
-**Parent:** [AST-2216 — Make meteorite text editable (not versioned)](https://linear.app/astralcareermatch/issue/AST-2216). **Publish:** `origin/sub/AST-2216/AST-2223-candidate-meteorite-edit`.
-
-`CANDIDATE_METEORITE_EDIT_CONFIG`: locked `LANDED`, editable columns (incl. `METEORITE_CONFIG["electronic_contact_column"]`), `state_options` = every `METEORITE_STATES` key minus locked, `default_save_state` `CHECK_UNIQUE`, load-time asserts. Core/API: **`docs/test-bible/core/meteorite.md`** · **`docs/test-bible/ui/api/api_meteorite.md`** § AST-2223.
-
-| Area | Source | Component tests |
-| --- | --- | --- |
-| Config block shape + asserts | `src/utils/config.py` | **`TestAst2223CandidateMeteoriteEditConfig`** |
-
-**Broken / obsolete:** none — additive config block.
-
-**Integration:** none — do not invent.
-
-## QA test manifest
-
-See **`docs/test-bible/core/meteorite.md`** § AST-2223 (shared numbered list).
+**Integration:** none.
