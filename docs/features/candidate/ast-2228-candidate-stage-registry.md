@@ -235,3 +235,18 @@ AC1 → Stage 1 (every `CANDIDATE_STATES` entry gets `stage` + import asserts). 
 **R6 (summary):** Definition fidelity holds — plan matches child partition (registry + resolver + migration + data model only; explicit exclusion of `NAV_CONFIG`, dispatcher, API, shell). Scope gate aligns with ticket `## Scope`. No sibling scope creep. Self-assessment / estimate confirm is specific. DRY: reuses `registered_base`, `remap_legacy_candidate_state`, `transition_candidate_state`, existing stale entrypoint. Craft `ERROR_*` → stage 4 matches parent banding (artifact-craft chain only; resume failures stay on `{base}_RETRY` at stage 3 via `registered_base`).
 
 context_tokens≈42000
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-2225/AST-2228-candidate-stage-registry`
+**Plan path:** `docs/features/candidate/ast-2228-candidate-stage-registry.md`
+
+**Built tip:** `be91a4690615cbaafa6cb715a18466ce2f5a108d` (`be91a469`)
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `0bb939db` | `stage` on every state; revive PROFILE/CONTEXT; retire topic keys; legacy topic remap |
+| 2 | `ff8e235f` | `candidate_stage` + `migrate_retired_topic_candidate_states`; CONTEXT_READY completeness gate |
+| 3 | `be91a469` | `CANDIDATE_DATA_MODEL.md` stage bands + topic remap doc |
+
+**Betty note:** Registry + core helpers + data-model doc only. No test-tree edits. AC1–AC3 covered by import-time asserts; AC4 = no `candidate.stage` column.
