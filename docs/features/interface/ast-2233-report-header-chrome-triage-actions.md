@@ -275,3 +275,64 @@ context_tokens≈52000
 - **Code tip:** `b4dba8d4a3a42bc92ef441ce7aabe65aefc44fd9`
 - **Stages:** `code(AST-2233): header triage actions, no Copy/Print` · `code(AST-2233): report header responsive + thermometer CSS`
 - **Notes:** Header Props drop Copy/Print; Skip/Applied/Generate in `.recommended-report-header-actions`; company + website line + date strip. CSS: ≤1023px stack, thermometer/total-gradable/Discussion hooks. Full-package `tsc` fails only on `JobAnalysisReportModal` excess props until AST-2234 (plan Decision).
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-2233
+**Publish ref:** `origin/sub/AST-2226/AST-2233-report-header-chrome-triage-actions` @ `582cdfc7caa99d816f4df52ee7e6b3dbc7a5ed67`
+**Corpus:** `b7ab2203048ce0beb2869a12200ab7fa696c8066`
+**Overall:** CLEAN
+
+## Canon scores
+
+_(Frozen Citations: none — ticket Description lists no directive ids; nothing to score.)_
+
+## Column diff vs plan stage
+
+(vacuous — aligned) Joan recorded no canon rows at plan (`Frozen Citations: none`); code review has no canon column to diverge.
+
+## Frame diff
+
+(none)
+
+## Findings
+
+**fix-now**
+
+(none)
+
+**discuss**
+
+- **Skipped modal Print Resume tests** — `test_JobAnalysisReportModal.test.tsx` marks AST-1546 / AST-1350 / AST-2084 Print Resume cases `.skip` while the header no longer exposes Print. @susan: Should those scenarios move to AST-2234’s manifest (modal-owned print path) rather than stay skipped on this sub?
+  **Default:** Leave skipped until AST-2234 lands wiring; 2234 qa-child re-enables or replaces with modal-scoped asserts.
+
+**advisory**
+
+- **sibling product carry (AST-2232):** Three-dot diff vs `origin/dev` still includes `data/admin/agent.json`, `src/utils/config.py`, `src/core/{agent,tracker}.py`, `src/data/database.py`, `src/ui/api/api_jobs.py` from merged ftr lineage. AST-2233 **code** commits are only `RecommendedJobReportHeader.tsx` + `App.css` (`985861ff`, `b4dba8d4a`). UAT for this child should sign off header/CSS, not re-audit 2232 backend.
+- **sibling test carry:** `tests/**` + `docs/test-bible/**` include Betty work for AST-2232 and AST-2233; `test_JobAnalysisReportModal.test.tsx` updates integration expectations for the new header chrome without editing `JobAnalysisReportModal.tsx` (plan boundary held).
+- **Canon Scope (Archie):** Empty frozen list is intentional; `astral.ui.frontend-file-placement` / report-scoped `App.css` rules plainly apply but were not cited (Joan plan discuss) — not scored.
+- **Corpus pin:** Joan plan corpus `65a2864…`; clerk at review tip `b7ab2203…` (`corpus_dirty: false`). Reproducible at current `canon/` tree.
+
+## Plan fidelity (§5.4)
+
+- **Scope gate:** Product diff for this ticket is the two Scope files only; no `JobAnalysisReportModal.tsx`, backend, or lib helpers.
+- **AC 1–2:** Publish-ref header has no Copy/Print props or controls; Skip / Applied / Generate live in `.recommended-report-header-actions` with correct labels; `.recommended-report-links` removed.
+- **AC 7–8:** Website is a separate URL line (`recommended-report-website-link`); `companyName` is plain text; `discoveredAt` formats on the company line and date strip; `appliedAt` omitted from strip when null.
+- **AC 3 / Stage 2:** `@media (max-width: 1023px)` stacks `.recommended-report-header-row`; date strip, thermometer, total-gradable, and Discussion label typography hooks added without edits inside shared `.modal-title` / `.modal-header` / `.modal-body` rule blocks in this diff.
+- **Sibling contract:** Prop names match the frozen table for AST-2234; `formatReportDate` uses documented `Intl.DateTimeFormat("en-US", …)` without `timeZone`.
+- **Estimate 3:** Footprint matches (presentational header + scoped CSS + Betty tests).
+
+## What's solid
+
+- Header refactor reuses existing job-link http(s) logic and keeps triage callbacks optional (row omitted when no handlers).
+- Component tests (`test_RecommendedJobReportHeader.test.tsx`) encode AC1–AC2 greps and website-vs-company separation clearly.
+- Documented expectation that full-package `tsc` may fail on modal excess props until AST-2234 — engineer did not expand Files Changed to silence the modal.
+
+## Recommended actions (downstream only — not taken in this session)
+
+- Chuckles: append artifact, `docs(AST-2233): Radia review — clean`, push sub ref, post slim upshot `--as radia`, **Review Posted**.
+- datt: **PROCEED** → **User Testing** for header/CSS; spawn **AST-2234** for modal wiring + build green.
+- Betty (optional, 2234): Pick up skipped Print Resume modal tests per discuss Default.
+
+```
