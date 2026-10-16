@@ -2613,3 +2613,33 @@ Runtime generalization of the candidate stage runner / claim expansion / consult
 
 Primary command + pass criterion: [`../utils/config.md`](../utils/config.md) § QA test manifest — AST-2228 (same narrowed node list; 28 passed).
 
+
+### AST-2229 · AST-2225 (forward-only readiness advance + incomplete profile signal)
+
+**Parent:** [AST-2225](https://linear.app/astralcareermatch/issue/AST-2225). **Publish:** `origin/sub/AST-2225/AST-2229-readiness-advancement`. Plan: `docs/features/candidate/ast-2229-readiness-advancement.md`. Tick wiring: [`dispatcher.md`](dispatcher.md) § AST-2229.
+
+`check_profile_complete` / `incomplete_profile` (first+last+contact_email; missing row → incomplete False; never writes state). `_READINESS_HOPS` forward-only table + `advance_candidate_readiness` (list-scan peer of stale aging; demote ban via `candidate_stage`; hop targets are real registry / `CANDIDATE_STAGE_DISPATCH` trigger strings). Does **not** own nav/UI (#3/#4) or vocabulary (#1).
+
+| Area | Component tests |
+| --- | --- |
+| Profile complete / incomplete signal; no state write | new **`TestAst2229ProfileSignalAndReadinessAdvance`** (profile cases) |
+| Intake→PROFILE when pieces present; skip when incomplete; ARTIFACTS→ACTIVE_SEARCH; CONTEXT→REQUESTED_RESUME via raw_resume; RESUME_READY_STALE→REQUESTED_ARTIFACTS via base_resume; hop targets registry/claimable; demote ban; illegal swallow | same class (advance cases) |
+
+**Broken / obsolete this pass:** none in `test_candidate.py`. Tick stubs: [`dispatcher.md`](dispatcher.md) § AST-2229.
+
+**Integration:** none — do not invent.
+
+## QA test manifest — AST-2229
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst2229ProfileSignalAndReadinessAdvance \
+  tests/component/core/test_dispatcher.py::TestAst972CandidateStageDispatch::test_tick_loop_invokes_stale_aging \
+  tests/component/core/test_dispatcher.py::TestAst972CandidateStageDispatch::test_tick_loop_invokes_readiness_after_stale \
+  tests/component/core/test_dispatcher.py::TestScheduler::test_tick_loop_spawns_due_auto_tasks \
+  -q
+```
+
+**Pass criterion:** 13 passed on the narrowed run. Not the zero-arg harness.
+
+**Bible shasum (after publish):** `git show origin/sub/AST-2225/AST-2229-readiness-advancement:docs/test-bible/core/candidate.md | shasum`; same for `docs/test-bible/core/dispatcher.md`.
