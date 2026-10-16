@@ -171,8 +171,8 @@ API set/clear/expiry: `7b8a8cde7`. Manage Candidates status and expiry: `5472503
 
 ## Frame diff
 
-- [ ] **Acceptance criteria — AC 2:** Confirm `TestAst2252AdminSecretExpiry` (production upsert + single deploy + status-only row) satisfies this child’s portion of parent AC 2; full epic AC may still reference later deploy/env parity in UAT.
-- [ ] **Acceptance criteria — AC 3:** Confirm GET/PUT responses and `_sanitize_candidate` never surface plaintext (covered by sanitize + production set tests).
+- [x] **Acceptance criteria — AC 2:** Confirm `TestAst2252AdminSecretExpiry` (production upsert + single deploy + status-only row) satisfies this child’s portion of parent AC 2; full epic AC may still reference later deploy/env parity in UAT.
+- [x] **Acceptance criteria — AC 3:** Confirm GET/PUT responses and `_sanitize_candidate` never surface plaintext (covered by sanitize + production set tests).
 
 ## Findings
 
@@ -208,3 +208,14 @@ API set/clear/expiry: `7b8a8cde7`. Manage Candidates status and expiry: `5472503
 - Chuckles: append this artifact to `docs/features/foundation/ast-2252-admin-secret-expiry.md`, commit `docs(AST-2252): Radia review — clean`, post slim upshot `--as radia`, move to **Review Posted**.
 
 context_tokens≈42000
+
+## Resolution
+
+2026-10-16 — `resolve(AST-2252): — clean`
+
+Radia overall CLEAN. No fix-now items. No product change.
+
+- **Discuss — Railway succeeds, DB fails.** Default taken: keep the plan tradeoff. Operator retries the save. No compensating transaction on this sub.
+- **Advisory — sibling carry.** The three-dot diff against `origin/dev` includes AST-2250 and AST-2251. This ticket’s product edits stay `src/ui/api/api_candidate.py` and `src/ui/frontend/src/pages/AdminManageCandidates.tsx`.
+- **Advisory — import direction.** Off-list. No canon id added.
+- **Frame diff AC 2 and AC 3.** Ticked. `TestAst2252AdminSecretExpiry` and `TestSanitizeCandidate` passed on `8da4c3724` during test-child.
