@@ -104,3 +104,121 @@ Plan Discuss still open: [scope-gate] needs parent/bug Component+Technical scope
 ---
 
 _Implementation detail may live in git history on `origin/dev`._
+
+## Bug: AST-2259 — Cover admin selected-candidate reload in CandidateContext tests
+
+### As-is
+
+`CandidateProvider — AST-1768 login-email candidate bind` asserts the admin picker only through an in-memory `refresh()` on the same mount (`[bug-repro] binds once per login email — refresh and admin picker are not overridden`). A remount, which is the page reload, is not asserted. `docs/test-bible/frontend/lib.md` § AST-1768 names that describe as “once-per-login” and does not name an admin-reload assertion.
+
+### To-be
+
+One new case in that describe mounts an admin, lets the login-email bind select `c2`, calls `setSelectedId("c1")`, unmounts, and mounts again with the same login, then expects the picked id `c1`. The non-admin bind-over-storage case stays. § AST-1768 names this remount as coverage distinct from same-mount `refresh()`. No edit to `CandidateContext.tsx` — that product change is AST-2258.
+
+### Repro
+
+Same fixture as the existing admin picker test (no database seed): `c1` Susan Somerset and `c2` Jolane Abrams from `GET /api/candidates`; verified login `soosomerset@gmail.com`; `GET /api/candidates/by_email` returns `{ candidate_id: "c2" }`; `is_admin: true`. The current test stops after `setSelectedId("c1")` plus `refresh()` on that hook. The hole is the missing unmount and second `renderHook` with the same wrapper.
+
+### Root cause
+
+The once-per-email guard is a ref on the provider instance. `refresh()` on the same mount never clears it, so that test stays green even when a new mount would run the login-email lookup again and replace the stored pick. The bible row records “once-per-login” without saying the assertion is same-mount only.
+
+### Proposed change
+
+`tests/component/frontend/contexts/test_CandidateContext.test.tsx` only, inside `describe("CandidateProvider — AST-1768 login-email candidate bind")`. Add one `it` after the existing refresh case, reusing `bindWrapper(true, …)` and the by-email → `c2` response:
+
+1. Mount, wait until `selectedId` is `"c2"`.
+2. `setSelectedId("c1")`.
+3. Unmount.
+4. `renderHook` again with the same wrapper.
+5. Wait until `candidatesHydrated` is true. Expect `selectedId` to be `"c1"`.
+
+Title: `admin picker survives remount for the same login email`. Do not change the body of the same-mount `refresh()` test or the non-admin test that expects a stored `c1` to become `c2`.
+
+`docs/test-bible/frontend/lib.md` § AST-1768, the login-email bind row only. Extend the Area cell from `match / verified-first / once-per-login / null+fail / unknown id / passthrough` so it also says `admin remount after setSelectedId (not the same-mount refresh())`, and name the new `it` title in the Component tests cell next to the describe name. Do not add a manifest entry and do not edit any other bible section.
+
+Do not modify `src/ui/frontend/src/contexts/CandidateContext.tsx`.
+
+### Blast radius
+
+The new node fails on a tree where a remount still replaces the stored admin id with the by-email id. Turning it green is AST-2258’s `load` change, not a product edit on this ticket. Other cases in the describe, and tests that only set `astral_selected_candidate`, stay as they are. The bible edit is that one table row.
+
+### What must still hold
+
+- Non-admin load still selects the by-email candidate over a stored id (existing test unchanged).
+- Same-mount `refresh()` still expects the admin pick `c1` and a single by-email call.
+- Verified-first, null/fail, unknown id, and no-Stytch-user cases in the same describe stay.
+- § AST-1768 return-path, `JobsJobDetail` hydration, and `by_email` API rows stay.
+
+## Bug: AST-2258 — Keep the admin selected candidate across page reload
+
+### As-is
+
+An admin's sidebar pick is written to `localStorage` (`astral_selected_candidate`), but a full page reload snaps the picker back to the candidate bound to the login email. `CandidateProvider.load` applies that bind on every mount (`bound` wins over the stored id). The once-per-email guard is `boundEmailRef`, so it survives an in-memory `refresh()` and not a document reload.
+
+### To-be
+
+After an admin picks a candidate, reloading the page keeps that candidate. The login-email bind still wins when there is no valid stored id, and when the login email changes. A non-admin still binds to the candidate for their login email on load.
+
+### Repro
+
+Fixture (same rows as the AST-1768 bind tests; no database seed):
+
+- `GET /api/candidates` → `c1` Susan Somerset, `c2` Jolane Abrams.
+- Stytch user email `soosomerset@gmail.com` (verified). `GET /api/candidates/by_email?email=soosomerset@gmail.com` → `{ candidate_id: "c2" }`.
+- Auth user `is_admin: true`.
+
+Steps: mount `CandidateProvider`, wait until `selectedId` is `c2`, call `setSelectedId("c1")`, unmount, mount again with the same login. Today the second mount selects `c2`. After the fix it stays `c1`, and `localStorage["astral_selected_candidate"]` stays `"c1"`.
+
+### Root cause
+
+`lookupBoundCandidate` returns the by-email id only when `boundEmailRef.current !== loginEmail`, then `load` sets `next = bound ?? stored ?? first`. A reload constructs a new provider, so the ref is `null`, the lookup runs again, and a list id from that lookup replaces the stored admin pick. `setSelectedId` persists only the candidate id, not the login email the bind used.
+
+### Proposed change
+
+`src/ui/frontend/src/contexts/CandidateContext.tsx` only. New key beside `STORAGE_KEY`: `astral_bound_login_email`.
+
+In the async body of `load`, after a non-empty candidate list is in hand and before `lookupBoundCandidate`:
+
+- Read `storedEmail = localStorage.getItem("astral_bound_login_email")` and `storedId = selectedIdRef.current`.
+- `storedValid` when `storedId` is a string and `list` contains that `astral_candidate_id`.
+- When `isAdmin` and `loginEmail` and `storedEmail === loginEmail` and `storedValid`, set `boundEmailRef.current = loginEmail`. That hits the existing early return in `lookupBoundCandidate`, so this load does not call `/api/candidates/by_email` and `bound` is `null`. The existing `next = bound ?? (kept ? prev : list[0])` then keeps `storedId`.
+
+In the same `_setSelectedId` updater that already writes `astral_selected_candidate`: when `bound` is a non-null string (the lookup applied an id that is in `list`), also `localStorage.setItem("astral_bound_login_email", loginEmail)`. Do not write that key when the lookup was skipped, returned null, or failed. Do not write it from `setSelectedId`.
+
+A changed login email fails the `storedEmail === loginEmail` check, so the lookup runs and its id replaces the stored pick. A missing or not-in-list stored id fails `storedValid`, so the lookup runs. `isAdmin` false never sets the ref early, so every non-admin mount still runs the lookup and `bound` still wins.
+
+`tests/component/frontend/contexts/test_CandidateContext.test.tsx`: add one case in `describe("CandidateProvider — AST-1768 login-email candidate bind")`, next to `[bug-repro] binds once per login email — refresh and admin picker are not overridden`. Same `bindWrapper(true, …)` and by-email → `c2` fixture. Mount, wait for `selectedId === "c2"`, `setSelectedId("c1")`, unmount, mount again with the same login, wait for hydration, expect `selectedId === "c1"` and `byEmailCalls()` length `1`. Leave the non-admin test that a stored id loses to the login-email candidate unchanged.
+
+### Blast radius
+
+`load` / `lookupBoundCandidate` / `setSelectedId` are the only writers of `astral_selected_candidate`. Readers (nav, admin pages, theme, `JobsJobDetail`) follow `selectedId` after hydration; they do not learn a new key. Tests that set only `astral_selected_candidate` and never `astral_bound_login_email` keep today's rule (a lookup id in the list still wins). The in-memory admin `refresh()` case stays green because `boundEmailRef` is already set. A later admin remount in the same jsdom, after a successful bind has written `astral_bound_login_email`, will keep a still-valid stored id instead of rebinding.
+
+### What must still hold
+
+AST-1768 bind, unchanged except the admin reload keep above:
+
+- Non-admin mount selects the by-email candidate and overwrites `astral_selected_candidate` (existing test stays).
+- Verified email wins over `emails[0]`.
+- A lookup id missing from the list is ignored; null or failed lookup keeps a valid stored id, else the first candidate.
+- No Stytch user → no by-email call.
+- Same-mount `refresh()` does not run the lookup a second time, so an admin pick is not overridden.
+- `candidatesHydrated` flips only after that resolution, so `JobsJobDetail` company align still runs after the bind.
+- `alignSelectedCandidateForJobCompany` stays admin-only.
+- Theme (`data-theme`) and the tab title still follow whatever `selectedId` this load kept.
+
+### Radia review
+
+[code-rubric] Ticket AST-2258. Publish ref `87fec5803a1f5007cb89869d82b441cae1766563`. Corpus `b7ab2203048ce0beb2869a12200ab7fa696c8066`. Overall CLEAN.
+
+Canon scores: empty frozen Canon Scope. Joan `[board-joan] CANON: OK`.
+
+[bug-repro] not applicable — remount coverage is sibling AST-2259. ## What must still hold — OK. fix-now: none. discuss: none.
+
+Advisory: product diff is `CandidateContext.tsx` plus this plan; the remount test is AST-2259 (docs-acceptance for the product-vs-test split).
+
+### Radia review — AST-2259
+
+[code-rubric] Ticket AST-2259. Publish ref `278d31fb3889ffcb7aa529790ba772cb4f9011e7`. Corpus `b7ab2203048ce0beb2869a12200ab7fa696c8066`. Overall CLEAN.
+
+[bug-repro] OK — `admin picker survives remount for the same login email` matches the plan. ## What must still hold — OK. fix-now: none. discuss: none.

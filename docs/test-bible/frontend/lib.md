@@ -434,7 +434,7 @@ Copied `/jobs/detail/<id>` opened logged-out → magic link completes in a **new
 | --- | --- | --- |
 | Return path survives new tab; tab-scoped keys unchanged | `sessionAuthMark.ts` | **`test_sessionAuthMark.test.ts`** — **`AST-1768 return path survives magic-link new tab`** (`[bug-repro]`) |
 | Magic-link new tab → captured deeplink (§6c routed page) | `Authenticate.tsx` (no product diff) | **`test_Authenticate.test.tsx`** — **`[bug-repro] AST-1768: magic link in a new tab…`** |
-| Login-email bind: match / verified-first / once-per-login / null+fail / unknown id / passthrough | `CandidateContext.tsx` | **`test_CandidateContext.test.tsx`** — **`CandidateProvider — AST-1768 login-email candidate bind`** |
+| Login-email bind: match / verified-first / once-per-login / null+fail / unknown id / passthrough / admin remount after setSelectedId (not the same-mount refresh()) | `CandidateContext.tsx` | **`test_CandidateContext.test.tsx`** — **`CandidateProvider — AST-1768 login-email candidate bind`** (`admin picker survives remount for the same login email`) |
 | Non-admin host waits for hydration (§6c routed page) | `JobsJobDetail.tsx` | **`test_JobsJobDetail.test.tsx`** — **`JobsJobDetail — AST-1768 non-admin waits for candidate hydration`** (`[bug-repro]`) |
 | `GET /api/candidates/by_email` | `src/ui/api/api_candidate.py` | **`test_api_candidate.py::TestAst1768CandidateByEmailApi`** (`test_bug_repro_*` + auth gate) — see [`../ui/api/api_candidate.md`](../ui/api/api_candidate.md) |
 
