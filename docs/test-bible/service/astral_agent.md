@@ -11,6 +11,7 @@ Isolated FastAPI Postgres queue consumer — **not** under `src/`. Flat imports 
 | Tree / Dockerfile / requirements / ban greps | `tests/component/service/test_astral_agent_fence.py` | no |
 | Settings, stub executor, result codec, claim/lease/terminal | `tests/component/service/test_astral_agent_queue.py` | no |
 | `app.py` `/healthz` + `/wake` | `tests/component/service/test_astral_agent_app.py` | no |
+| Railway Phase 1 + fence extension | `tests/component/service/test_astral_agent_deploy_ci.py` | no |
 
 **Integration tier:** no existing `tests/integration/` scenario exercises astral-agent (platform client is sibling **AST-2238**). No integration revision this pass.
 
@@ -52,6 +53,40 @@ Isolated FastAPI Postgres queue consumer — **not** under `src/`. Flat imports 
 
 **Broken / obsolete:** none (new service; no deleted modules).
 
-**Out of scope:** live Postgres dual-replica race, Railway/CI (**AST-2241**), platform client (**AST-2238**), provider wrappers (**AST-2239**).
+**Out of scope:** live Postgres dual-replica race, platform client (**AST-2238**), provider wrappers (**AST-2239**). Railway/CI owned by **AST-2241** below.
 
 **Bible shasum (publish tip `8f385ce71`):** `931ca561cc9499a6fe0a896b6f7d568b13b71df7  -`
+
+---
+
+### AST-2241 · AST-2235 (Railway Phase 1 + import-fence extension)
+
+**Scope:** `service/astral_agent/railway.toml` (Phase 1 replicas, Dockerfile builder, 1 GiB, `/healthz`, drain); widen `scripts/ci/check-service-src-import-fence.sh` to all `service/**/*.py`; rename workflow step to full service↔src fence. No app/provider/client code.
+
+| Area | Component tests |
+| --- | --- |
+| railway.toml Phase 1 contract | `test_astral_agent_deploy_ci.py::TestAst2241RailwayPhase1Toml` |
+| Fence green + probe under `service/astral_agent/` | `test_astral_agent_deploy_ci.py::TestAst2241ImportFenceExtension` |
+| Workflow step title | `…::test_workflow_step_names_full_service_fence` |
+| Telescope healthcheck assert (obsolete AST-1727) | `test_telescope_deploy_ci.py::TestRailwayPhase1Toml::test_healthcheck_and_no_phase2_hooks` |
+| Fence ok wording regression | `test_telescope_deploy_ci.py::TestBidirectionalImportFence::test_ci_fence_script_exits_zero` |
+
+## QA test manifest
+
+1. **Astral-agent Railway + fence (required):** `tests/component/service/test_astral_agent_deploy_ci.py`
+2. **Telescope deploy/fence revise (required):** `tests/component/service/test_telescope_deploy_ci.py`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/service/test_astral_agent_deploy_ci.py \
+  tests/component/service/test_telescope_deploy_ci.py \
+  -q
+```
+
+**Pass criterion:** pytest green on both paths — not zero-arg harness / branch-lock gate.
+
+**Broken / obsolete revised:** `TestRailwayPhase1Toml::test_no_healthcheck_path_and_no_phase2_hooks` → `test_healthcheck_and_no_phase2_hooks` (live Telescope toml has `healthcheckPath`; AST-2241 mirrors that for astral-agent).
+
+**Out of scope:** Judoscale / Phase-2 autoscaler, live Railway dashboard, AST-2237–2240 product logic.
+
+**Bible shasum (after publish):** `git show origin/sub/AST-2235/AST-2241-railway-phase-1-import-fence-extension:docs/test-bible/service/astral_agent.md | shasum`
