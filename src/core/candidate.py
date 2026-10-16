@@ -1898,7 +1898,8 @@ def rollup_current_vector_grades(candidate_id: str, artifact_key: str) -> Dict[s
         uid = str(row.get("rubric_vector_uuid") or "").strip()
         if code and uid and code not in uuid_by_code:
             uuid_by_code[code] = uid
-    # list_vector_feedback(owner_task_key=) expands to owner + craft. Keep consumers only.
+    # owner_task_key expands to owner + craft only, so twins never come back.
+    # Query each consumer task_key (plan step 4) and still drop blank uuids.
     consumers = frozenset(
         tk
         for tk in TASK_CONFIG
@@ -1906,7 +1907,12 @@ def rollup_current_vector_grades(candidate_id: str, artifact_key: str) -> Dict[s
     )
     # (batch_id, task_key, code) -> (pinned uuid, run timestamp)
     pins: Dict[Tuple[str, str, str], Tuple[str, str]] = {}
-    for row in database.list_vector_feedback(candidate_id=cid, owner_task_key=owner):
+    feedback_rows: List[Dict[str, Any]] = []
+    for task_key in consumers:
+        feedback_rows.extend(
+            database.list_vector_feedback(candidate_id=cid, task_key=task_key)
+        )
+    for row in feedback_rows:
         task_key = str(row.get("task_key") or "")
         uid = str(row.get("rubric_vector_uuid") or "").strip()
         if task_key not in consumers or not uid:
