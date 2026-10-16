@@ -32,6 +32,7 @@ const CandidateContext = createContext<CandidateCtx>({
 })
 
 const STORAGE_KEY = "astral_selected_candidate"
+const BOUND_EMAIL_KEY = "astral_bound_login_email"
 
 export function CandidateProvider({ children }: { children: ReactNode }) {
   const { isAdmin, loading: authLoading } = useAuth()
@@ -96,11 +97,20 @@ export function CandidateProvider({ children }: { children: ReactNode }) {
         setCandidates(list)
         if (list.length === 0) return
         // Bind resolves before hydration flips, so JobsJobDetail's company align runs after it.
+        // AST-2258: a reload has a fresh ref, so remember the email the bind applied and
+        // skip replacing a valid stored id when this admin's login still matches.
+        const storedEmail = localStorage.getItem(BOUND_EMAIL_KEY)
+        const storedId = selectedIdRef.current
+        const storedValid = typeof storedId === "string" && list.some(c => c.astral_candidate_id === storedId)
+        if (isAdmin && loginEmail && storedEmail === loginEmail && storedValid) {
+          boundEmailRef.current = loginEmail
+        }
         const bound = await lookupBoundCandidate(list)
         _setSelectedId(prev => {
           const kept = prev && list.some(c => c.astral_candidate_id === prev)
           const next = bound ?? (kept ? prev : list[0].astral_candidate_id)
           localStorage.setItem(STORAGE_KEY, next!)
+          if (bound) localStorage.setItem(BOUND_EMAIL_KEY, loginEmail)
           return next
         })
       } catch {
