@@ -2399,3 +2399,46 @@ JD is display-only: no JD textarea, not in the draft / dirty check / Save payloa
 ## QA test manifest
 
 See **`docs/test-bible/frontend/pages.md`** § AST-2224 (shared numbered list).
+
+### AST-2233 · AST-2226 (report header chrome + triage actions)
+
+**Parent:** [AST-2226](https://linear.app/astralcareermatch/issue/AST-2226). **Publish:** `origin/sub/AST-2226/AST-2233-report-header-chrome-triage-actions`.
+
+`RecommendedJobReportHeader`: no Copy / header Print props or controls; company plain + optional ` · m/d/yy` from `discoveredAt`; website URL on its own line; date strip (applied only when `appliedAt`); action row **Skip This Job** / **Applied to this Job** / optional **Generate Artifacts**. `App.css`: responsive stack ≤1023px, date strip, thermometer green-on-neutral, total-gradable + Discussion hooks. Modal call-site wiring remains sibling **AST-2234** (expected `tsc` red until then).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| AC1–3 header chrome + dates + actions | `RecommendedJobReportHeader.tsx` | **`test_RecommendedJobReportHeader.test.tsx`** — **`RecommendedJobReportHeader — AST-2233 triage chrome`** (+ retained AST-1695 / 1704 / 1873 line / 1983) |
+| Modal header regression (Copy gone; Skip label/actions) | `JobAnalysisReportModal.tsx` → header | revised sticky-header + AST-1421/1696 absence; AST-1874 Skip → **Skip This Job** / `.recommended-report-header-actions` |
+| Print Resume via header | was header-mounted | **`it.skip`** AST-1546 / AST-1350 / AST-2084 Print Resume until AST-2234 remounts |
+
+**Broken / obsolete (revised this pass):** AST-1421 / AST-1696 / AST-1873 Copy+Skip-in-links asserts; modal sticky header company-as-website-link + Copy; Skip label `Skip this Job` / `.recommended-report-links`.
+
+**Out of scope:** editing `JobAnalysisReportModal.tsx` product (AST-2234). Backend / AST-2232 field shapes.
+
+**Integration:** none.
+
+## QA test manifest
+
+1. **Vitest (required):**
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_RecommendedJobReportHeader.test.tsx \
+  ../../../tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx
+```
+
+2. **AC greps (expect empty):**
+
+```bash
+grep -nE 'Copy Job Link|Copy Job JSON|Copy Application Email|Copy LinkedIn|onCopyDetailLink|onCopySnapshot|onCopyApplicationEmail|onCopyLinkedIn' src/ui/frontend/src/components/RecommendedJobReportHeader.tsx
+grep -n 'Print Resume\|Print Cover' src/ui/frontend/src/components/RecommendedJobReportHeader.tsx
+```
+
+3. **CSS hooks present:** `rg -n 'recommended-report-date-strip|recommended-report-thermometer-fill|max-width: 1023px' src/ui/frontend/src/App.css`
+
+4. **Boundaries:** `git diff origin/dev...HEAD -- src/ui/frontend/src/components/JobAnalysisReportModal.tsx` empty on this child's product commits (modal may still typecheck-red vs header Props until AST-2234).
+
+**Pass criterion:** items 1–3 green / empty / present; item 4 holds for product Files Changed. Not zero-arg harness.
+
+**Bible shasum (publish tip):** fill after push.
