@@ -193,3 +193,44 @@ Every row in **Files Changed** is under those paths. Technical kinds covered: `a
 ## Estimate
 
 Confirm Chuckles estimate: 5 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-2237
+**Overall:** APPROVED
+**Corpus:** b7ab2203048ce0beb2869a12200ab7fa696c8066
+**Publish ref:** `f5c9c38d8b4eb19d3ae3f9e76601d175c9b8e8ea` (`origin/sub/AST-2235/AST-2237-astral-agent-queue-schema-and-worker-skeleton`)
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.entity.batch-processing | A | | |
+| stat.logging.error | B | | |
+| stat.logging.warning | B | | |
+| stat.logging.info | B | | |
+| stat.logging.debug | B | | |
+| patt.agent.provider-io-via-queue | X | | pending Archie / not in `canon_clerk` active corpus; plan id-only per Canon notes |
+| astral.config.secrets-and-env-specific-from-environ | A | | |
+
+(Worst grade **B** → roll-up PROCEED. `astral.config.*` resolved from `canon/statutes/astral/config/` at corpus tip; not in `canon_clerk expand` roster.)
+
+## Traceability
+
+Child AC: **1→S3** (tree/Dockerfile/jobqueue); **2→S1–S2** (DDL/claim/complete + worker terminal path; harness Betty); **3→S1–S3** (entity-ban greps); **4→S1** (`settings.load_settings` / required `ASTRAL_DATABASE_URL`); **5→S1 `logging_util` + S2–S3** (console-only + platform-write greps). Parent AC **2,4,6–8,10,12** N/A — explicit boundaries / siblings. No orphan stages.
+
+## Findings
+
+**acceptable** — **Linear assignee** Katherine at fetch time (not Joan); spawn still valid for stdout handoff; Chuckles restores assignee per §8.
+
+**acceptable** — **Logging statutes** (`applies_when.paths`: `src/**`) vs `service/astral_agent/`; plan documents intentional semantic mapping via Telescope-shaped stdlib/Railway JSON console logging without `src` imports — graded **B**, not a fence violation.
+
+**acceptable** — **`patt.agent.provider-io-via-queue`** flagged pending; skeleton only (stub executor) matches child boundary; full pattern deferred to AST-2239/2240.
+
+## R6 (summary)
+
+Definition fidelity: matches AST-2235 child #1 and ticket **## Scope** / **Boundaries**; Files Changed ⊆ `service/astral_agent/`; no `railway.toml`, `src/**`, provider HTTP, or CI fence. DRY: structural mirror of `service/telescope/{jobqueue,worker,app}.py` with renames — parent-locked Telescope shape. Self-assessment: **Estimate** confirm only; stage **Done when** + decision callouts are specific. No `fix-now` / `discuss` blockers.
+
+context_tokens≈42000
+
