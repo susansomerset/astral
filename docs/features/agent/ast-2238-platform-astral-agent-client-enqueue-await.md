@@ -167,3 +167,46 @@ ASTRAL_AGENT_CONFIG = {
 ## Estimate
 
 Confirm Chuckles estimate: 3 — agree
+
+## Joan validate
+
+[plan-discuss] round=1 concern  
+[plan-rubric]  
+**Ticket:** AST-2238  
+**Overall:** REVISE  
+**Corpus:** b7ab2203048ce0beb2869a12200ab7fa696c8066  
+**Publish ref:** `494eb53d79301eef5cb5b454922cb12b406f2b4d` (`origin/sub/AST-2235/AST-2238-platform-astral-agent-client-enqueue-await`)
+
+### Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| astral.layers.core-vs-external-bright-line | A | | |
+| astral.config.secrets-and-env-specific-from-environ | A | | |
+| stat.logging.error | A | | |
+| stat.logging.warning | A | | |
+| stat.logging.info | A | | |
+| stat.logging.debug | A | | |
+| patt.agent.provider-io-via-queue | X | | pending Archie / not in `canon_clerk` active corpus; plan id-only |
+
+(Worst grade **A** on roll-up ids. `astral.config.*` resolved from `canon/statutes/astral/config/` at corpus tip.)
+
+### Traceability
+
+Linear child lists **only AC 9** (parent/service wording: service env secrets + no Stytch on wake/health). Plan has **no** `## Traceability` / AC mapping. Intended child outcomes (enqueue/await client, `ASTRAL_AGENT_CONFIG`, contract mirror, strict platform DSN) live in Purpose/Stages only — **not** keyed to ticket AC checkboxes. Parent epic AC **3** (job lifecycle) / **6** (cutover) / **9** (service secrets) are not partitioned in the ticket body; platform slice of **9** (DSN via env) → **S1–S2** if amended; service halves → **N/A** (AST-2237/2239). **R5 fail** until plan maps child-appropriate ACs or documents explicit N/A quotes.
+
+### Findings
+
+**fix-now** — **R5 / ticket AC hygiene.** Child **Acceptance criteria** is a single pasted parent AC 9 (service provider keys + wake/health auth). That does not describe this child’s deliverables and cannot be traced stage-by-stage without fiction. **Recommendation:** Chuckles amend Linear child ACs to platform-client checks (config block, `submit`/`AstralAgentError` surface, strict `ASTRAL_DATABASE_URL`, no `service.*` import, contract constants); plan adds a one-line **## Traceability** table keyed to those numbers (and explicit N/A for any service-only parent bullets).
+
+**discuss** — **DSN strictness vs Telescope.** Plan requires `os.environ[KEY]` for DSN; live `telescope.py` uses `.get` then empty check. Astral-agent plan is **stricter** and aligns with `astral.config.secrets-and-env-specific-from-environ` — no plan change required; optional note in plan that this is intentional divergence from Telescope client.
+
+**acceptable** — Assignee Ada (not Joan) at fetch; stdout handoff only.
+
+**acceptable** — Telescope-shaped structural copy, AST-2237 contract mirror without `service` imports, scope gate (two files only), `require_controlled_external_io`, wake optional via documented Decision.
+
+### R6 (summary)
+
+Definition fidelity: matches AST-2235 child #2 scope and boundaries; no `agent.py`/provider/cutover creep. DRY: explicit mirror of telescope queue half. Self-assessment: Estimate confirm only; stage **Done when** and Decision callouts are specific. Canon list has no **D**/**F**.
+
+context_tokens≈48000
