@@ -2836,9 +2836,9 @@ def is_requested_artifacts_chain_ui_task(task_key: str) -> bool:
 
 
 def _artifacts_nav_label_for_path(path: str) -> str:
-    """Resolve Artifacts NAV_CONFIG child label for a path string."""
+    """Resolve NAV_CONFIG child label for a path (any group — Artifacts group dissolved)."""
     for section in NAV_CONFIG:
-        if not isinstance(section, dict) or section.get("label") != "Artifacts":
+        if not isinstance(section, dict):
             continue
         for item in section.get("items") or []:
             if isinstance(item, dict) and item.get("path") == path:
