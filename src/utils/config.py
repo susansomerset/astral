@@ -5785,6 +5785,29 @@ TELESCOPE_CONFIG = {
     "default_wait_ready": False,
 }
 
+# ---------------------------------------------------------------------------
+# ASTRAL_AGENT_CONFIG: platform side of the astral-agent Postgres job queue.
+# Provider calls are rows in agent_job (schema owned by service/astral_agent/jobqueue.py);
+# the platform inserts a job and waits for the worker to write the result.
+# database_url is env-only (ASTRAL_DATABASE_URL — never a code default).
+# ---------------------------------------------------------------------------
+ASTRAL_AGENT_CONFIG = {
+    "database_url_env": "ASTRAL_DATABASE_URL",
+    "job_deadline_seconds": 900,
+    "max_attempts": 4,
+    "poll_interval_seconds": 1.0,
+    "db_pool_max_size": 10,
+    "default_priority": 0,
+    "worker_stale_seconds": 90,
+    # Serverless astral-agent: when no worker is live, GET <base url>/wake to wake it.
+    # Base url is the private address (…railway.internal:8080) from
+    # ASTRAL_AGENT_BASE_URL, else the first of ASTRAL_AGENT_BASE_URLS. Unset → no wake.
+    "base_url_envs": ("ASTRAL_AGENT_BASE_URL", "ASTRAL_AGENT_BASE_URLS"),
+    "wake_path": "/wake",
+    "wake_throttle_seconds": 30,
+    "wake_timeout_seconds": 30,  # HTTP-only cold start (no Firefox)
+}
+
 
 # ---------------------------------------------------------------------------
 # AGENT_CONFIG: Anthropic model catalog. Keyed by model_code (alias form — auto-upgrades

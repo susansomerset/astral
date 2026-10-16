@@ -1523,6 +1523,31 @@ class TestAst1726TelescopeConfig:
         assert "playwright_browsers_path" not in cfg.RAILWAY_CONFIG
 
 
+class TestAst2238AstralAgentConfig:
+    """AST-2238: ASTRAL_AGENT_CONFIG queue/wake keys — env key name only, no DSN literal."""
+
+    def test_astral_agent_config_keys(self) -> None:
+        c = cfg.ASTRAL_AGENT_CONFIG
+        assert c["database_url_env"] == "ASTRAL_DATABASE_URL"
+        assert c["job_deadline_seconds"] == 900
+        assert c["max_attempts"] == 4
+        assert c["poll_interval_seconds"] == 1.0
+        assert c["db_pool_max_size"] == 10
+        assert c["default_priority"] == 0
+        assert c["worker_stale_seconds"] == 90
+        assert c["base_url_envs"] == ("ASTRAL_AGENT_BASE_URL", "ASTRAL_AGENT_BASE_URLS")
+        assert c["wake_path"] == "/wake"
+        assert c["wake_throttle_seconds"] == 30
+        assert c["wake_timeout_seconds"] == 30
+
+    def test_no_dsn_or_provider_secret_literals_in_block(self) -> None:
+        blob = repr(cfg.ASTRAL_AGENT_CONFIG)
+        assert "postgresql://" not in blob.lower()
+        assert "postgres://" not in blob.lower()
+        assert "sk-" not in blob
+        assert "api_key" not in blob.lower()
+
+
 class TestAst507EncodedPrefilterConfig:
     """AST-507: PREFILTER_PASSED/FAILED states, transitions, grades_encoded prefilter task."""
 

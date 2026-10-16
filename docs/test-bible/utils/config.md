@@ -4360,6 +4360,14 @@ Mailbox task key `meteorite_email` → `stage_email_meteorite`; `debug_func` →
 
 External map: [`docs/test-bible/external/telescope.md`](../external/telescope.md).
 
+### AST-2238 · AST-2235 (ASTRAL_AGENT_CONFIG)
+
+**Scope:** `ASTRAL_AGENT_CONFIG` after `TELESCOPE_CONFIG` — env key name for DSN, deadline 900, stale 90, wake throttle/timeout; no DSN or provider secret literals. Client: [`external/astral_agent.md`](../external/astral_agent.md).
+
+| Area | Component tests |
+| --- | --- |
+| Config keys + no secret literals | `tests/component/utils/test_config.py::TestAst2238AstralAgentConfig` |
+
 ### AST-1749 · AST-1741
 
 **Parent:** [AST-1741](https://linear.app/astralcareermatch/issue/AST-1741/add-meteorites-to-the-jobs-navigation). **Publish:** `origin/sub/AST-1741/AST-1749-jobs-meteorites-nav-list-page-detail-modal`.
