@@ -3995,6 +3995,9 @@ def _parse_candidate_row(d: Dict[str, Any]) -> Dict[str, Any]:
     d["_legacy_secret_ids"] = [
         row["server"] for row in rows if "key" in row and "status" not in row
     ]
+    # Deferred: candidate imports database at module load.
+    from src.core.candidate import hydrate_candidate_secrets
+    hydrate_candidate_secrets(d)
     return d
 
 
