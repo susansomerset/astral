@@ -306,3 +306,60 @@ context_tokens≈38000
 - **Publish ref:** `origin/sub/AST-2226/AST-2232-agent-name-detail-enrichment-tab-config`
 - **Tip:** `98cab23162b2477fefd11ad18bbda6653b154de9` (product @ `c54e581bbb8665548e94045354baade04c7e0ea0`)
 - **Stages landed:** 1 config · 2 seed · 3 database · 4 story + lifecycle helpers · 5 detail enrichment
+
+## Radia review
+
+```text
+[code-rubric]
+**Ticket:** AST-2232
+**Publish ref:** `origin/sub/AST-2226/AST-2232-agent-name-detail-enrichment-tab-config` @ `fefad13c1c9b87c08fb9845c39541bad065f17a0`
+**Corpus:** `b7ab2203048ce0beb2869a12200ab7fa696c8066`
+**Overall:** CLEAN
+
+## Canon scores
+
+stat.logging.debug | A | |
+stat.logging.error | A | |
+stat.logging.info.api | A | |
+
+## Column diff vs plan stage
+
+(aligned) — Joan graded all three statutes **A** at plan (`ea17ea6`); code review matches.
+
+## Frame diff
+
+(none)
+
+## Findings
+
+**fix-now**
+
+(none)
+
+**discuss**
+
+(none)
+
+**advisory**
+
+- **sibling test carry:** `tests/component/**` and `docs/test-bible/**` changes ride the sub branch with product work (Betty manifest); not scored as cross-ticket scope — Relations empty, product files stay inside the explicit scope gate.
+- **Canon Scope (observation for Archie):** Frozen list is logging-only; this diff also touches `REPO_ADMIN_JSON_CONFIG`, `database.py`, and core/API enrichment — `astral.config.config-source-of-truth`, `astral.layers.import-direction`, and `astral.standards.in-scope-only` plainly apply but are off-list (Joan already flagged at plan; not scored here).
+- **Seed contract:** Stage 2 drops `brain_setting` / `mode` from `data/admin/agent.json` rows; plan documents revert-validation — no product code reads those keys from the file in this diff.
+
+## Plan fidelity (§5.4)
+
+- Stages 1–5 land as planned: `agent_name` column + seed, DB read/write, story enrichment, lifecycle helpers, `detail()` adds `can_apply`, company fields, lifecycle timestamps without short_name fallback; `get_company` stays on existing `src.core.roster` import with **Calling/Response** debug matching meteorite peers in `detail()`.
+- Explicit scope gate respected: no React / `api_admin.py` / modal files in product diff.
+- Estimate **5** still fits footprint (six scoped product files + seed + Betty tests/bible).
+
+## What's solid
+
+- `job_state_admits_transition(..., "CANDIDATE_APPLIED")` mirrors Skip — core owns admission, UI consumes booleans.
+- `get_entity_agent_story` reuses one `task_row` and omits blank `agent_name` like `task_name`.
+- Component tests assert tab order, `can_apply` by state, company nullability, and lifecycle helpers — aligns with sibling contract table in the plan doc.
+
+## Recommended actions (downstream only — not taken in this session)
+
+- Chuckles: append this artifact to `docs/features/interface/ast-2232-agent-name-detail-enrichment-tab-config.md`, commit `docs(AST-2232): Radia review — clean`, push sub ref, post slim upshot `--as radia`, move **Review Posted**.
+- datt: **PROCEED** → **User Testing** (no fix-now); siblings AST-2226 #2/#3 can wire header/panes to the frozen JSON contract.
+```
