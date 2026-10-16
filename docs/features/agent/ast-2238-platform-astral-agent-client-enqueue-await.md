@@ -155,6 +155,8 @@ ASTRAL_AGENT_CONFIG = {
 
 ⚠️ **Decision — optional wake base URL via `.get` on env:** Same operational exception as Telescope: wake is best-effort serverless ping; unset means "jobs wait until a worker starts." DSN remains strict `os.environ[KEY]`.
 
+⚠️ **Decision — DSN stricter than live Telescope client:** `telescope.py` uses `.get` then an empty check. This client uses `os.environ[KEY]` (no `.get`) on purpose, matching `astral.config.secrets-and-env-specific-from-environ`. Do not loosen it to match Telescope.
+
 **Stage 2 commit message:** `code(AST-2238): astral_agent enqueue/await client`
 
 ## Execution contract
@@ -164,9 +166,30 @@ ASTRAL_AGENT_CONFIG = {
 - Do not import `service.*` or edit AST-2237 trees.
 - Ambiguity → stop and comment on **AST-2238** (parent only if the question is epic-wide design).
 
+## Traceability
+
+| AC | Check | Satisfied by |
+|----|--------|----------------|
+| 1 | `ASTRAL_AGENT_CONFIG` keys; no DSN/secret literals | Stage 1 |
+| 2 | Enqueue/await surface + dedicated error on failure/cancel/connectivity | Stage 2 (`submit`, `AstralAgentError`) |
+| 3 | `ASTRAL_DATABASE_URL` via required `os.environ[...]`; missing/blank fails before insert | Stage 2 `_dsn()` |
+| 4 | No `service.*` import; constants duplicated locally | Stage 2 imports + Execution contract |
+| 5 | `_JOB_TABLE` / channels / terminal statuses match AST-2237 | Contract mirror table |
+| 6 | Platform slice of parent AC 9: env-only DSN, no hardcoded secrets | Stage 1 + Stage 2 `_dsn()`. Service provider keys and Stytch on wake/health → **N/A** (AST-2237 / AST-2239) |
+
+Parent AC **1–2, 4–8, 10–12** → **N/A** (service tree, fence, cutover, local reads, `database.py`, daisy-chain, console logs, Ad Hoc — other children). Parent AC **3** (claim/lease lifecycle) → **N/A** here; this ticket only inserts and awaits. No orphan stages.
+
 ## Estimate
 
 Confirm Chuckles estimate: 3 — agree
+
+## Revisions
+
+### Revision 1 — 2026-10-16
+
+Driven by: Joan `[plan-discuss] round=1 concern` / fix-now R5 — Linear child ACs are now the six platform-client checks; plan had no AC map.
+
+Changes: Added **## Traceability** keyed to child AC 1–6 (AC 6 service half and parent AC 1–8, 10–12 marked N/A). Noted intentional DSN divergence from Telescope `.get`.
 
 ## Joan validate
 
