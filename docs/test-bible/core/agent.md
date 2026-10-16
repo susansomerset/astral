@@ -2248,3 +2248,18 @@ git checkout -- data/
 **Regression (no new reds):** `tests/component --continue-on-collection-errors`. The failing-id set on the tip is a subset of the 351 failures that were red before this build (337 on the tip). The five collection errors (`test_meteorite_email`, `test_page_intake`, `test_surfer`, `test_meteorites`, `test_surfer_batches`) are pre-existing. `test_intake::test_background_initiate_failure_writes_assistant_error` is order-dependent: it passes alone and in its own file.
 
 **Pass criterion:** pytest green on the manifest lines, not the zero-arg harness or branch-lock gate.
+
+### AST-2217 · AST-2215 (call-time attribution into `_send_to_server`)
+
+Parent AC **8**: `do_task` passes `request_type="DISPATCH_AGENT"`, task `entity_type`, and `entity_id=index` when the call covers one entity; multi-entity (`batch_size > 1` or multiple `batch_entities`) leaves `entity_id` empty. Contact attribution is AST-2220.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| New — single-entity DISPATCH_AGENT + index entity_id | `do_task` → `_send_to_server` | `TestAst2217CallTimeAttribution::test_single_entity_passes_dispatch_agent_and_index` |
+| New — multi-entity leaves entity_id empty | `do_task` → `_send_to_server` | `…::test_multi_entity_leaves_entity_id_empty` |
+
+**Primary manifest:** [`../data/database/timesheets.md`](../data/database/timesheets.md) § AST-2217. **Integration:** none.
+
+### AST-2220 · AST-2215 (`do_task` optional `request_type`)
+
+`do_task(..., request_type=...)` defaults to `DISPATCH_AGENT`; contact turns pass `CONTACT_AGENT` (AST-2220). Pass-through to `_send_to_server` / recorded timesheet. Primary coverage: [`contact.md`](contact.md) § AST-2220. Dispatch default still covered by AST-2217 `TestAst2217CallTimeAttribution`.

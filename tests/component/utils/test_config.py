@@ -2537,7 +2537,7 @@ class TestAst972CandidateStageDispatch:
     """AST-972 → AST-1252: CANDIDATE_STAGE_DISPATCH artifacts entry + claim/trigger helpers."""
 
     def test_stage_dispatch_map_and_task_config(self) -> None:
-        assert "requested_resume" not in cfg.CANDIDATE_STAGE_DISPATCH
+        # AST-2221: requested_resume stage entry is live — assert shape in TestAst2221BaseResumeChainConfig.
         arts = cfg.CANDIDATE_STAGE_DISPATCH["requested_artifacts"]
         assert arts["task_key"] == "craft_get_rubric"
         assert arts["trigger_state"] == "REQUESTED_ARTIFACTS"
@@ -2581,11 +2581,11 @@ class TestAst972CandidateStageDispatch:
     reason="AST-972 product not on this publish tip",
 )
 class TestAst1022HonorAutoOffStageDispatch:
-    """AST-1022 → AST-1252: remaining stage entry seeds AUTO off."""
+    """AST-1022 → AST-1252: every stage entry seeds AUTO off (AST-2221 adds requested_resume)."""
 
     def test_stage_dispatch_auto_mode_seed_false(self) -> None:
-        arts = cfg.CANDIDATE_STAGE_DISPATCH["requested_artifacts"]
-        assert arts["auto_mode"] is False
+        for stage_key, entry in cfg.CANDIDATE_STAGE_DISPATCH.items():
+            assert entry["auto_mode"] is False, stage_key
 
 
 class TestAst1252ArtifactsDispatchChainConfig:
@@ -8804,3 +8804,142 @@ class TestAst2177StructuredOutputConfig:
         assert "agent_payload" in prefix
         assert "agent_payload" not in structured
         assert structured.startswith("agent_performance refers ONLY") and "failure_note" in structured
+
+class TestAst2217FetchTimesheetRegistries:
+    """AST-2217: fetch_timesheet dispatch-row defaults + request/receipt/ledger registries."""
+
+    def test_fetch_timesheet_config_poller_defaults(self) -> None:
+        from src.utils import config as cfg
+        ft = cfg.FETCH_TIMESHEET_CONFIG
+        assert ft["task_key"] == "fetch_timesheet"
+        assert ft["entity_type"] is None and ft["trigger_state"] is None and ft["freq_hrs"] is None
+        assert ft["auto_mode"] is False
+        assert ft["min_count"] == 1 and ft["batch_size"] == 1
+
+    def test_request_receipt_ledger_registries(self) -> None:
+        from src.utils import config as cfg
+        assert set(cfg.TIMESHEET_REQUEST_TYPES) == {"DISPATCH_AGENT", "DISPATCH_SEARCH", "CONTACT_AGENT"}
+        assert set(cfg.LEDGER_TIMESHEET_STATES) == {"NEW", "FETCHING", "RECEIPTED"}
+        assert "platform_cost" in cfg.TIMESHEET_RECEIPT_FIELDS
+        assert cfg.TIMESHEET_SEARCH_SERVER_ID == "google_cse"
+        # Reconcile constants left in place for AST-2218 (byte-stable shape).
+        assert hasattr(cfg, "TIMESHEET_RECONCILE_ENABLED")
+        assert hasattr(cfg, "TIMESHEET_BATCH_RECONCILE_ENABLED")
+
+class TestAst2218FetchTimesheetAdminDefaults:
+    """AST-2218: dispatch_task_admin_defaults fold + is_fetch_timesheet_task_key."""
+
+    def test_fold_returns_null_entity_trigger(self) -> None:
+        from src.utils import config as cfg
+        d = cfg.dispatch_task_admin_defaults("fetch_timesheet")
+        assert d["entity_type"] is None and d["trigger_state"] is None
+        assert d["sort_by"] is None and d["batch_call_mode"] == 0
+
+    def test_is_fetch_timesheet_task_key(self) -> None:
+        from src.utils import config as cfg
+        assert cfg.is_fetch_timesheet_task_key("fetch_timesheet") is True
+        assert cfg.is_fetch_timesheet_task_key(" fetch_timesheet ") is True
+        assert cfg.is_fetch_timesheet_task_key("evaluate_jd") is False
+
+
+# Branches: nine hops + schemas; assembler schema identity; ERROR priors; stage entry;
+# stage-generic resolvers (entry hop + craft regression); hop-label claim validation.
+class TestAst2221BaseResumeChainConfig:
+    """AST-2221: BASE_RESUME_CHAIN registry, requested_resume stage, stage-generic resolvers."""
+
+    def test_nine_hops_registered(self) -> None:
+        assert cfg.BASE_RESUME_CHAIN_TASK_KEYS == (
+            "shape_the_story",
+            "draft_resume_experiences",
+            "draft_supporting_sections",
+            "draft_highlights",
+            "draft_core_competencies",
+            "draft_professional_summary",
+            "draft_keywords",
+            "draft_resume_base",
+            "draft_title_patterns",
+        )
+        for k in cfg.BASE_RESUME_CHAIN_TASK_KEYS:
+            t = cfg.TASK_CONFIG[k]
+            assert t["entity_type"] == "candidate", k
+            assert t["requires_candidate_key"] is True, k
+            assert t["response_format"] == "json", k
+            assert t["trigger_state"] is None, k
+            assert t["response_schema"], k
+
+    def test_assembler_reuses_craft_schema_and_artifact_key(self) -> None:
+        t = cfg.TASK_CONFIG["draft_resume_base"]
+        assert t["response_schema"] is cfg._CRAFT_RESUME_BASE_RESPONSE_SCHEMA
+        assert t["artifact_key"] == "candidate.artifacts.base_resume"
+        # experience field object identity (not a copied dict)
+        exp = cfg.TASK_CONFIG["draft_resume_experiences"]["response_schema"]["experience"]
+        assert exp is cfg._EXPERIENCE_JOB_ARRAY_FIELD
+
+    def test_error_states_and_priors(self) -> None:
+        assert cfg.BASE_RESUME_CHAIN_ERROR_STATES == tuple(
+            cfg.error_state_for(k) for k in cfg.BASE_RESUME_CHAIN_TASK_KEYS
+        )
+        for k in cfg.BASE_RESUME_CHAIN_TASK_KEYS:
+            st = cfg.error_state_for(k)
+            assert cfg.TASK_CONFIG[k]["error_state"] == st, k
+            assert cfg.CANDIDATE_STATES[st]["prior_states"] == ["REQUESTED_RESUME"], k
+            assert cfg.CANDIDATE_STATES[st]["progress_rank"] == 4, k
+
+    def test_requested_resume_stage_entry(self) -> None:
+        assert cfg.CANDIDATE_STAGE_DISPATCH["requested_resume"] == {
+            "task_key": "shape_the_story",
+            "trigger_state": "REQUESTED_RESUME",
+            "pass_state": "RESUME_READY",
+            "auto_mode": False,
+        }
+        # Every stage entry task_key is in TASK_CONFIG (import-time assert twin).
+        for entry in cfg.CANDIDATE_STAGE_DISPATCH.values():
+            assert entry["task_key"] in cfg.TASK_CONFIG
+
+    def test_stage_generic_resolvers(self) -> None:
+        from src.utils.config import (
+            _dispatch_entity_type_for_task_key,
+            _dispatch_trigger_state_for_task_key,
+        )
+
+        assert _dispatch_trigger_state_for_task_key("shape_the_story") == "REQUESTED_RESUME"
+        assert _dispatch_entity_type_for_task_key("shape_the_story") == "candidate"
+        # Existing artifacts stage must not regress.
+        assert _dispatch_trigger_state_for_task_key("craft_get_rubric") == "REQUESTED_ARTIFACTS"
+        assert _dispatch_entity_type_for_task_key("craft_get_rubric") == "candidate"
+        # Mid-chain hops stay stage-trigger-less (sibling owns claim/resume).
+        with pytest.raises(KeyError):
+            _dispatch_trigger_state_for_task_key("draft_highlights")
+
+    def test_hop_label_claim_validation(self) -> None:
+        # Stage-generic claim validator accepts REQUESTED_RESUME.<hop> like REQUESTED_ARTIFACTS.<hop>.
+        assert cfg.is_valid_candidate_batch_claim_state(
+            cfg.dispatch_hop_label("REQUESTED_RESUME", "shape_the_story"),
+        ) is True
+        assert cfg.is_valid_candidate_batch_claim_state(
+            cfg.dispatch_hop_label("REQUESTED_ARTIFACTS", "craft_get_rubric"),
+        ) is True
+
+
+class TestAst2223CandidateMeteoriteEditConfig:
+    """AST-2223: CANDIDATE_METEORITE_EDIT_CONFIG — locked / pick-list / default / editable fields."""
+
+    def test_config_is_source_of_truth(self) -> None:
+        cme = cfg.CANDIDATE_METEORITE_EDIT_CONFIG
+        assert cme["locked_states"] == ("LANDED",)
+        assert cme["default_save_state"] == "CHECK_UNIQUE"
+        assert cme["default_save_state"] in cme["state_options"]
+        assert set(cme["locked_states"]).isdisjoint(cme["state_options"])
+        assert set(cme["state_options"]) == set(cfg.METEORITE_STATES) - set(cme["locked_states"])
+        assert "LANDED" not in cme["state_options"]
+        assert "state" in cme["editable_fields"] and "content" in cme["editable_fields"]
+        assert cfg.METEORITE_CONFIG["electronic_contact_column"] in cme["editable_fields"]
+        # Editable list is exactly the six plan columns (electronic contact from METEORITE_CONFIG).
+        assert list(cme["editable_fields"]) == [
+            "state",
+            "content",
+            "link",
+            "job_title",
+            "employer_name",
+            cfg.METEORITE_CONFIG["electronic_contact_column"],
+        ]

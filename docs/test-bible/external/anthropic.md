@@ -123,3 +123,14 @@ Hollow / unusable response fail-closed + blank exception `error=` normalize. Pri
 **Regression (no new reds):** `tests/component/external/test_anthropic.py`, `test_llm_compat.py`, `test_openrouter.py`, `tests/component/utils/test_llm_external.py`, `tests/component/utils/test_formatting.py`, `tests/component/core/test_agent.py`, `test_agent_ast1448.py`, `test_agent_ast1879.py`. The 52 failures that were already red before the build (mostly `test_agent.py` decode / `do_task` cases) are identical on the tip.
 
 **Pass criterion:** pytest green on the manifest lines, not the zero-arg harness or branch-lock gate.
+
+### AST-2217 · AST-2215 (zero-stub `get_receipt` + call-time attribution)
+
+Parent AC **5** stub half + AC **8** Anthropic recorded-row attribution. `get_receipt` returns one dict per id with exactly `TIMESHEET_RECEIPT_FIELDS`; `platform_cost` always `None`; no HTTP. `send_to_anthropic` stamps `request_type` / `entity_*` / `call_start`/`call_stop` / response size into `record_timesheet` kwargs.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| New — stub receipt shape + null platform cost | `get_receipt` | `TestAst2217ReceiptStubAndAttribution::test_get_receipt_zero_stub_shape_and_null_cost` |
+| New — recorded call carries attribution + timing | `send_to_anthropic` | `…::test_recorded_call_carries_attribution` |
+
+**Primary manifest:** [`../data/database/timesheets.md`](../data/database/timesheets.md) § AST-2217. **Integration:** none.

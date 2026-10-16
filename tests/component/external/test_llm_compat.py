@@ -925,3 +925,59 @@ class TestAst2179ForcedToolTransport:
         out = await _send(forced_tool=_TOOL)
         assert out["success"] is False and out["failure_class"] == "max_tokens"
         assert out["parsed_response"] is None
+
+class TestAst2217ReceiptStubAndAttribution:
+    """AST-2217 AC5 stub half + AC8 attribution on compat real + probe rows."""
+
+    def test_get_receipt_zero_stub_shape_and_null_cost(self) -> None:
+        from src.utils.config import TIMESHEET_RECEIPT_FIELDS
+        receipts = llm_compat.get_receipt(["gen-1", "gen-2"], api_key="ignored")
+        assert len(receipts) == 2
+        for row in receipts:
+            assert set(row) == set(TIMESHEET_RECEIPT_FIELDS)
+            assert row["platform_cost"] is None
+            assert row["completion_status"] == "stub"
+
+    @pytest.mark.asyncio
+    async def test_recorded_call_carries_attribution(self, client: _RecordingClient) -> None:
+        recorded: list = []
+        out = await _send(
+            record_timesheet=lambda **kw: recorded.append(kw),
+            request_type="DISPATCH_AGENT",
+            entity_type="company",
+            entity_id="co-1",
+            server_id="kimi",
+            sku="kimi-k2.6",
+            tier=_tier(),
+        )
+        assert out["success"] is True
+        assert recorded
+        row = recorded[0]
+        assert row["request_type"] == "DISPATCH_AGENT"
+        assert (row["entity_type"], row["entity_id"]) == ("company", "co-1")
+        assert row["call_start"] and row["call_stop"]
+        assert row["provider"] == "kimi"
+
+    @pytest.mark.asyncio
+    async def test_probe_row_carries_same_attribution(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # OpenRouter + batch → probe records its own timesheet row with the outer attribution.
+        monkeypatch.setattr(openrouter, "_hosts", {})
+        token = log_batch_id.set("batch-2217-probe")
+        try:
+            recorded: list = []
+            monkeypatch.setattr(llm_compat, "_get_client", lambda *_a, **_k: _HostClient(provider="DeepInfra"))
+            out = await _send(
+                record_timesheet=lambda **kw: recorded.append(kw),
+                request_type="DISPATCH_AGENT",
+                entity_type="job",
+                entity_id="job-77",
+                tier=_tier(quantization="bf16", provider_allow_fallbacks=True),
+            )
+            assert out["success"] is True
+            # Probe + real = 2 recorded rows, same attribution.
+            assert len(recorded) >= 2
+            assert all(r["request_type"] == "DISPATCH_AGENT" for r in recorded)
+            assert all(r["entity_id"] == "job-77" for r in recorded)
+            assert all(r["entity_type"] == "job" for r in recorded)
+        finally:
+            log_batch_id.reset(token)

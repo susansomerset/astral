@@ -4086,3 +4086,37 @@ The `AdminAgentPrompts.tsx` editor gains a "Requires structured output" checkbox
 - Edit: the API's 400 gate text reaches the error toast and the editor stays open.
 
 **Revised:** the exact POST / PUT bodies in "Add saves every setting…" and "AC 10: Edit renders…" gain `requires_structured_output: false`. Manifest: [`../ui/api/api_admin.md`](../ui/api/api_admin.md) § AST-2181.
+
+### AST-2224 · AST-2216
+
+**Parent:** [AST-2216 — Make meteorite text editable (not versioned)](https://linear.app/astralcareermatch/issue/AST-2216). **Publish:** `origin/sub/AST-2216/AST-2224-meteorite-modal-edit-form`.
+
+`JobsMeteorites` passes list `load` as `MeteoriteDetailModal` `onSaved` so a successful candidate save refreshes the list (§6c page wiring). Modal behavior: **`docs/test-bible/frontend/components.md`** § AST-2224.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| §6c page render + Save → list reload | `JobsMeteorites.tsx` | **`test_JobsMeteorites.test.tsx`** › **`JobsMeteorites — AST-2224 onSaved list refresh`** |
+| Modal AC 1 / 12 | `MeteoriteDetailModal.tsx` | **`test_MeteoriteDetailModal.test.tsx`** › **`MeteoriteDetailModal — AST-2224 candidate edit form`** |
+
+**Broken / obsolete:** none — additive `onSaved={load}` prop.
+
+**Integration:** none — do not invent.
+
+## QA test manifest
+
+1. Modal: `tests/component/frontend/components/test_MeteoriteDetailModal.test.tsx` — **`MeteoriteDetailModal — AST-2224 candidate edit form`**
+2. Page (§6c): `tests/component/frontend/pages/test_JobsMeteorites.test.tsx` — **`JobsMeteorites — AST-2224 onSaved list refresh`**
+3. Regression: full `test_MeteoriteDetailModal.test.tsx` + `test_JobsMeteorites.test.tsx` (AST-1749 / AST-1983 / AST-1976 / AST-1980 / AST-1982 cases stay green)
+4. Docs-acceptance: `rg -n 'LANDED\|"CHECK_UNIQUE"\|"NEW"' src/ui/frontend/src/components/MeteoriteDetailModal.tsx` empty
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_MeteoriteDetailModal.test.tsx \
+  ../../../tests/component/frontend/pages/test_JobsMeteorites.test.tsx
+```
+
+**Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible path shasums (publish tip `2b5a8f786`):**
+- `docs/test-bible/frontend/components.md` — `02f1b04adf3b3953651804b5f19d8db18208b65b`
+- `docs/test-bible/frontend/pages.md` — `7dd54eed4d2ffc854170b508a0e283487e8e0b62`

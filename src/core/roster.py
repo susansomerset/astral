@@ -37,6 +37,7 @@ from src.external.telescope import (
 )
 from src.external.google_cse import GoogleCseHit, search_google_cse
 from src.core.agent import do_task
+from src.core.timesheets import record_search_timesheet_entry
 from src.data.database import (
     claim_company_batch,
     count_companies,
@@ -689,7 +690,7 @@ async def resolve_company_website(
     query = f"{name} official website"
     logger.debug("Calling search_google_cse: query=%r", query)
     try:
-        hits = search_google_cse(
+        result = search_google_cse(
             query=query,
             max_results=int(cfg["max_results"]),
             site_filters=None,
@@ -704,6 +705,19 @@ async def resolve_company_website(
             exc,
         )
         return {"success": False, "state": None, "error": str(exc)}
+    hits = result["hits"]
+    # AC10: record only inside a batch (avoid orphans when log_batch_id is unset).
+    batch_id = log_batch_id.get()
+    if batch_id:
+        record_search_timesheet_entry(
+            candidate_id=(entity.get("candidate_id") or "").strip() or None,
+            batch_id=batch_id,
+            hit_count=result["hit_count"],
+            call_start=result["call_start"],
+            call_stop=result["call_stop"],
+            entity_type="company",
+            entity_id=short_name,
+        )
     logger.debug("Response from search_google_cse: %s", hits)
     if not hits:
         logger.debug("Response from search_google_cse: zero hits query=%r", query)
@@ -801,7 +815,7 @@ async def run_inflow_discovery_batch(
     for term in terms:
         logger.debug("Calling search_google_cse: query=%r", term)
         try:
-            hits = search_google_cse(
+            result = search_google_cse(
                 query=term,
                 max_results=int(cfg["max_results_per_query"]),
                 site_filters=None,
@@ -818,6 +832,16 @@ async def run_inflow_discovery_batch(
             )
             errors += 1
             continue
+        hits = result["hits"]
+        record_search_timesheet_entry(
+            candidate_id=candidate_id,
+            batch_id=batch_id,
+            hit_count=result["hit_count"],
+            call_start=result["call_start"],
+            call_stop=result["call_stop"],
+            entity_type="candidate",
+            entity_id=candidate_id,
+        )
         logger.debug("Response from search_google_cse: %s", hits)
         update_company_search_term_last_scan_at(candidate_id, term)
         for hit in hits:

@@ -2619,12 +2619,39 @@ def write_candidate_dispatch_hop_label(
     return label
 
 
-def requested_artifacts_dispatch_claim_states() -> List[str]:
-    """Bare trigger + retry + live-chain hop labels for craft_get_rubric @ REQUESTED_ARTIFACTS."""
-    trigger = CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["trigger_state"]
-    states: List[str] = list(dispatch_claim_states(trigger, "candidate"))
-    for tk in _walk_requested_artifacts_chain_task_keys():
-        states.append(dispatch_hop_label(trigger, tk))
+def _candidate_stage_for_trigger(bare_trigger: str) -> dict:
+    """CANDIDATE_STAGE_DISPATCH entry whose trigger_state matches bare_trigger."""
+    bare = (bare_trigger or "").strip()
+    for entry in CANDIDATE_STAGE_DISPATCH.values():
+        if entry.get("trigger_state") == bare:
+            return entry
+    raise ValueError(f"no CANDIDATE_STAGE_DISPATCH stage for trigger {bare!r}")
+
+
+def _walk_candidate_stage_chain_task_keys(stage: dict) -> list[str]:
+    """Live run_next walk from stage entry hop; defensive cycle bail (write-path is acyclic)."""
+    start = (stage.get("task_key") or "").strip()
+    out: list[str] = []
+    seen: set[str] = set()
+    key = start
+    while key:
+        if key in seen:
+            raise RuntimeError(f"craft run_next cycle at {key!r}")
+        seen.add(key)
+        out.append(key)
+        key = (_current_agent_task_run_next(key) or "").strip()
+    return out
+
+
+def candidate_stage_dispatch_claim_states(trigger_state: str) -> List[str]:
+    """Bare trigger + retry + live-chain hop labels for any CANDIDATE_STAGE_DISPATCH stage."""
+    raw = (trigger_state or "").strip()
+    parsed = parse_dispatch_hop_label(raw)
+    bare = parsed[0] if parsed else raw
+    stage = _candidate_stage_for_trigger(bare)
+    states: List[str] = list(dispatch_claim_states(bare, "candidate"))
+    for tk in _walk_candidate_stage_chain_task_keys(stage):
+        states.append(dispatch_hop_label(bare, tk))
     seen: set[str] = set()
     out: List[str] = []
     for s in states:
@@ -2632,6 +2659,24 @@ def requested_artifacts_dispatch_claim_states() -> List[str]:
             seen.add(s)
             out.append(s)
     return out
+
+
+def requested_artifacts_dispatch_claim_states() -> List[str]:
+    """Bare trigger + retry + live-chain hop labels for craft_get_rubric @ REQUESTED_ARTIFACTS."""
+    return candidate_stage_dispatch_claim_states(
+        CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["trigger_state"]
+    )
+
+
+def is_candidate_stage_chain_task(task_key: str) -> bool:
+    """True when task_key is on any CANDIDATE_STAGE_DISPATCH live run_next walk."""
+    tk = (task_key or "").strip()
+    if not tk:
+        return False
+    for stage in CANDIDATE_STAGE_DISPATCH.values():
+        if tk in _walk_candidate_stage_chain_task_keys(stage):
+            return True
+    return False
 
 
 def _start_candidate_reap_timer(candidate_id: str) -> None:
@@ -2760,17 +2805,9 @@ def start_requested_artifacts(candidate_id: str) -> str:
 
 def _walk_requested_artifacts_chain_task_keys() -> list[str]:
     """Live run_next walk from stage entry hop; defensive cycle bail (write-path is acyclic)."""
-    start = CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["task_key"]
-    out: list[str] = []
-    seen: set[str] = set()
-    key = (start or "").strip()
-    while key:
-        if key in seen:
-            raise RuntimeError(f"craft run_next cycle at {key!r}")
-        seen.add(key)
-        out.append(key)
-        key = (_current_agent_task_run_next(key) or "").strip()
-    return out
+    return _walk_candidate_stage_chain_task_keys(
+        CANDIDATE_STAGE_DISPATCH["requested_artifacts"]
+    )
 
 
 def requested_artifacts_chain_task_keys() -> list[str]:
@@ -4045,6 +4082,23 @@ def _persist_craft_dispatch_success(candidate_id: str, task_key: str, parsed: An
             raise ValueError("craft_company_search_terms search_terms must be a string")
         apply_company_search_terms_save(candidate_id, {"company_search_terms": terms})
         return
+    # AST-2222: terminal base-resume hop — contact field, not an artifact key.
+    if task_key == "draft_title_patterns":
+        if not isinstance(parsed, dict):
+            raise ValueError("draft_title_patterns parsed_response must be a dict")
+        raw = parsed.get("title_patterns")
+        if isinstance(raw, list):
+            text = "\n".join(str(x).strip() for x in raw if str(x).strip())
+        elif isinstance(raw, str):
+            text = raw.strip()
+        else:
+            raise ValueError(
+                f"draft_title_patterns title_patterns must be str or list, got {type(raw).__name__}"
+            )
+        if not text:
+            raise ValueError("draft_title_patterns title_patterns must be non-empty")
+        save_candidate_data(candidate_id, {"contact": {"title_patterns": text}})
+        return
     artifact_key = CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY.get(task_key)
     if artifact_key:
         if not isinstance(parsed, dict):
@@ -4062,6 +4116,10 @@ def _persist_craft_dispatch_success(candidate_id: str, task_key: str, parsed: An
         arts = {artifact_key: criteria}
         normalize_rubric_artifacts_on_save(arts)
         apply_rubric_vectors_save(candidate_id, arts)
+        return
+    # Intermediate stage hops: RESPONSE already in agent_data; no artifact write.
+    cfg = TASK_CONFIG.get(task_key) or {}
+    if cfg.get("entity_type") == "candidate" and not cfg.get("artifact_key"):
         return
     raise ValueError(f"unsupported craft task_key for dispatch persist: {task_key!r}")
 
@@ -4090,10 +4148,18 @@ async def run_requested_artifacts_dispatch(
     candidate = database.get_candidate(candidate_id)
     if not candidate:
         return {**zero, "total_processed": 1, "total_errors": 1}
-    stage = CANDIDATE_STAGE_DISPATCH["requested_artifacts"]
-    raw_trigger = (trigger_state or "").strip() or stage["trigger_state"]
-    parsed_trig = parse_dispatch_hop_label(raw_trigger)
+    # Resolve stage from bare trigger; omit → requested_artifacts. Non-stage bare keeps
+    # that stage's defaults so the unregistered-trigger fail path (warn, no hop ERROR) still works.
+    raw_trigger = (trigger_state or "").strip()
+    parsed_trig = parse_dispatch_hop_label(raw_trigger) if raw_trigger else None
     bare_trigger = parsed_trig[0] if parsed_trig else raw_trigger
+    stage_triggers = {e["trigger_state"] for e in CANDIDATE_STAGE_DISPATCH.values()}
+    if bare_trigger in stage_triggers:
+        stage = _candidate_stage_for_trigger(bare_trigger)
+    else:
+        stage = CANDIDATE_STAGE_DISPATCH["requested_artifacts"]
+        if not bare_trigger:
+            bare_trigger = stage["trigger_state"]
     pass_state = stage["pass_state"]
     current = (candidate.get("state") or "").strip()
     start_key = (task_key or "").strip() or (stage.get("task_key") or "").strip()

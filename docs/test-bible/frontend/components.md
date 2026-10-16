@@ -1607,7 +1607,7 @@ Job Detail / JAR chrome: `job_link` is an href / `window.open` target only for `
 
 **Parent:** [AST-1741](https://linear.app/astralcareermatch/issue/AST-1741/add-meteorites-to-the-jobs-navigation). **Publish:** `origin/sub/AST-1741/AST-1749-jobs-meteorites-nav-list-page-detail-modal`.
 
-`MeteoriteDetailModal.tsx` — read-only detail (sections from API): http(s) link gate, job deeplink gate, 404 honesty, no Save footer. Page wiring: **`docs/test-bible/frontend/pages.md`** § AST-1749.
+`MeteoriteDetailModal.tsx` — read-only detail (sections from API): http(s) link gate, job deeplink gate, 404 honesty, no Save footer when not editable. **AST-2224** adds candidate edit form + Save when the server envelope says editable — see § AST-2224. Page wiring: **`docs/test-bible/frontend/pages.md`** § AST-1749.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
@@ -2381,3 +2381,21 @@ JD is display-only: no JD textarea, not in the draft / dirty check / Save payloa
 `<form role="search">` with a `type="search"` input (`aria-label="Search"`) is the first child of `.sidebar-scroll` — above the Jobs group, outside `.sidebar-chrome`, same element in wide and drawer layouts. Submit only: trimmed non-blank value → `navigate("/search?q=<encoded>")` and closes the drawer (pathname auto-close misses `/search` → `/search?q=other`).
 
 **New:** `test_NavigationShell.test.tsx` › **`AST-2174 sidebar search box`** — placement wide + narrow (2), Enter `acme` → `/search?q=acme`, trims + encodes `R&D 50%`, blank / whitespace Enter and plain typing stay on `/jobs`, narrow submit from `/search` closes the drawer. **Broken / obsolete:** none (16 existing cases unchanged; input role `searchbox` ≠ the candidate `combobox`). Manifest: [`pages.md`](pages.md) § AST-2174.
+
+### AST-2224 · AST-2216
+
+**Parent:** [AST-2216 — Make meteorite text editable (not versioned)](https://linear.app/astralcareermatch/issue/AST-2216). **Publish:** `origin/sub/AST-2216/AST-2224-meteorite-modal-edit-form`.
+
+`MeteoriteDetailModal` consumes AST-2223 detail envelope (`editable` / `editable_fields` / `state_options` / `default_save_state`): edit form when editable, PUT save, post-save draft from stored `meteorite.state`, optional `onSaved`. No client hard-coded `LANDED` / `CHECK_UNIQUE` / `NEW`. Page wiring: **`docs/test-bible/frontend/pages.md`** § AST-2224. Server: **`docs/test-bible/ui/api/api_meteorite.md`** § AST-2223.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| AC1 rg; editable controls + default select; non-editable no Save; Save 200/`onSaved`; Save 409 | `MeteoriteDetailModal.tsx` | **`test_MeteoriteDetailModal.test.tsx`** › **`MeteoriteDetailModal — AST-2224 candidate edit form`** |
+
+**Broken / obsolete:** AST-1749 prose “no Save footer” is read-only / 404 only — editable rows now show Modal Save. Existing AST-1749 / AST-1983 cases stay green (payloads omit `editable: true`).
+
+**Integration:** none — no scenario opens meteorite modal edit; do not invent.
+
+## QA test manifest
+
+See **`docs/test-bible/frontend/pages.md`** § AST-2224 (shared numbered list).

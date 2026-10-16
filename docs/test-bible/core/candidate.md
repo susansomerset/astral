@@ -2527,3 +2527,38 @@ grep -rnE '(draft|save|show)-(strengths|dealbreakers|priorities|ideal-day|bio-su
 **Pass criterion:** 54 passed; AC 3 grep empty. Not the zero-arg harness. `test_contact.py` needs `asyncpg` / `nh3` in the interpreter (use `/home/susan/astral/.venv/bin/python` on this worktree); restore `data/contact_estelle_activity.json` if a `test_contact.py` run dirties it.
 
 **Bible shasum (after publish):** `git show origin/sub/AST-2206/AST-2211-show-save-handlers-threaded-history:docs/test-bible/core/candidate.md | shasum`; same for `docs/test-bible/external/slack.md`.
+
+### AST-2222 · AST-1201 (stage-generic candidate chain runner)
+
+**Parent:** [AST-1201](https://linear.app/astralcareermatch/issue/AST-1201). **Publish:** `origin/sub/AST-1201/AST-2222-stage-generic-candidate-chain-runner`. Plan: `docs/features/artifacts/ast-2222-stage-generic-candidate-chain-runner.md`. Registry/seed: sibling **AST-2221**.
+
+Runtime generalization of the candidate stage runner / claim expansion / consult routing for every `CANDIDATE_STAGE_DISPATCH` stage. `REQUESTED_RESUME` walks the nine-hop base-resume chain; intermediate hops no-op in `_persist_craft_dispatch_success`; `draft_title_patterns` writes `contact.title_patterns`; `draft_resume_base` keeps the existing `artifact_key` path; success → `RESUME_READY`; mid-chain reclaim + retry→`ERROR_<HOP>` match the artifacts stage. `REQUESTED_ARTIFACTS` behaviour unchanged. No config/seed edits on this tip.
+
+| Area | Component tests |
+| --- | --- |
+| Claim states both stages; `is_candidate_stage_chain_task`; AC 6/7 source scans | **`TestAst2222StageGenericHelpers`** (`tests/component/core/test_ast2222_stage_generic_runner.py`) |
+| AC 10/11 persist: title_patterns str/list; intermediate no-op; junk still raises | **`TestAst2222PersistCraftDispatch`** |
+| AC 8 slice / AC 12 / AC 13: success → `RESUME_READY`; retry→error; mid-chain start key | **`TestAst2222RequestedResumeDispatch`** |
+| AC 8–11 seeded smoke: walk nine hops, rotate `base_resume`, tagline→meta, title_patterns, assembler-only art growth | **`TestAst2222ResumeChainSeededSmoke`** |
+| Consult routes `REQUESTED_RESUME` + mid-hop resume | **`TestAst2222ConsultRoutesResumeStage`** |
+| AC 14 rubric regression (existing) | **`TestAst972RequestedStageDispatch`** · **`TestAst1389RequestedArtifactsHopLabels`** · **`TestAst1846RequestedArtifactsWarnThenError`** · **`TestAst972CandidateStageConsultRouting`** |
+
+**Broken / obsolete this pass:** none — product change is additive for the resume stage; existing artifacts worker tests stay green.
+
+**Integration:** none — no `tests/integration/` scenario covers `REQUESTED_RESUME` chain walk; do not invent.
+
+## QA test manifest — AST-2222
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_ast2222_stage_generic_runner.py \
+  tests/component/core/test_candidate.py::TestAst972RequestedStageDispatch \
+  tests/component/core/test_candidate.py::TestAst1389RequestedArtifactsHopLabels \
+  tests/component/core/test_candidate.py::TestAst1846RequestedArtifactsWarnThenError \
+  tests/component/core/test_consult.py::TestAst972CandidateStageConsultRouting \
+  -q
+```
+
+**Pass criterion:** 24 passed (11 new + 13 existing). Not the zero-arg harness.
+
+**Bible shasum (after publish):** `git show origin/sub/AST-1201/AST-2222-stage-generic-candidate-chain-runner:docs/test-bible/core/candidate.md | shasum`
