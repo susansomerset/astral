@@ -52,8 +52,15 @@ export default function RecommendedJobReportHeader({
   // Display text prefers the caller's jobLinkText; the href is jobLink only when http(s).
   const link = jobLinkText?.trim() || jobLink?.trim() || null
   const rawHref = jobLink?.trim() ?? ""
-  const href = /^https?:\/\//i.test(rawHref) ? rawHref : null
-  const website = companyWebsite?.trim() || null
+  const httpHref = /^https?:\/\//i.test(rawHref)
+    ? rawHref
+    : (link && /^https?:\/\//i.test(link) ? link : null)
+  const href = httpHref
+  const websiteRaw = companyWebsite?.trim() || null
+  const website = websiteRaw
+  const websiteHref = websiteRaw
+    ? (/^https?:\/\//i.test(websiteRaw) ? websiteRaw : `https://${websiteRaw}`)
+    : null
   const discoveredLabel = formatReportDate(discoveredAt)
   const recommendedLabel = formatReportDate(recommendedAt)
   const appliedLabel = formatReportDate(appliedAt)
@@ -62,7 +69,10 @@ export default function RecommendedJobReportHeader({
     <div className="recommended-report-header">
       <div className="recommended-report-header-row">
         <div className="recommended-report-title-block">
-          <span className="recommended-report-title"><JobTitleText title={jobTitle} fallback={jobTitle} /></span>
+          <span className="recommended-report-title">
+            {companyName}
+            {discoveredLabel ? ` · ${discoveredLabel}` : ""}
+          </span>
           {link && (
             <div className="recommended-report-job-link-text">
               {href ? (
@@ -74,10 +84,15 @@ export default function RecommendedJobReportHeader({
               )}
             </div>
           )}
-          {website && (
+          {jobTitle.trim() && (
+            <div className="recommended-report-job-title-secondary">
+              <JobTitleText title={jobTitle} fallback={jobTitle} />
+            </div>
+          )}
+          {website && websiteHref && (
             <div className="recommended-report-website-line">
               <a
-                href={website}
+                href={websiteHref}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="recommended-report-website-link"
@@ -131,13 +146,13 @@ export default function RecommendedJobReportHeader({
       {(discoveredLabel || recommendedLabel || appliedLabel) && (
         <div className="recommended-report-date-strip">
           {discoveredLabel && (
-            <span className="recommended-report-date-strip-item">Date discovered {discoveredLabel}</span>
+            <span className="recommended-report-date-strip-item">Discovered: {discoveredLabel}</span>
           )}
           {recommendedLabel && (
-            <span className="recommended-report-date-strip-item">Date recommended {recommendedLabel}</span>
+            <span className="recommended-report-date-strip-item">Recommended: {recommendedLabel}</span>
           )}
           {appliedLabel && (
-            <span className="recommended-report-date-strip-item">Date applied {appliedLabel}</span>
+            <span className="recommended-report-date-strip-item">Applied: {appliedLabel}</span>
           )}
         </div>
       )}

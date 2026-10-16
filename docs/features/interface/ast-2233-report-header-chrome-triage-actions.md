@@ -335,4 +335,122 @@ _(Frozen Citations: none — ticket Description lists no directive ids; nothing 
 - datt: **PROCEED** → **User Testing** for header/CSS; spawn **AST-2234** for modal wiring + build green.
 - Betty (optional, 2234): Pick up skipped Print Resume modal tests per discuss Default.
 
+## Bug: AST-2268 — Modal header identity, links, date labels
+
+Items 5–7 only. Items 1–4 are in `docs/features/interface/ast-2234-modal-panes-and-wiring.md`.
+
+### As-is
+
+The modal chrome title falls back to the literal `Recommended Job Report`, and the report header's primary line is the job title (same fallback) instead of `company_name` plus job `created_at`. The job-link line and company website line are absent when `listing_href` is not http(s) even if `job_link` or `company_website` is set. The date strip reads `Date discovered` / `Date recommended` without the labels `Discovered:` and `Recommended:`.
+
+### To-be
+
+The modal title and the header identity show `company_name` and the job created date as `m/d/yy`. The job link and the company website are each their own line under that identity when those URLs exist. The date strip items read `Discovered: m/d/yy` and `Recommended: m/d/yy` (and `Applied: m/d/yy` only when applied).
+
+### Repro
+
+Open a Recommended job whose detail has `company_name` set, `discovered_at` / `created_at` set, `job_link` an http(s) URL, `listing_href` null or non-http, and `company_website` set. Modal `<h2 class="modal-title">` is `Recommended Job Report` or the job title, not `company_name` plus `m/d/yy`. No job-link `<a>` and no `.recommended-report-website-link`. Date strip text is `Date discovered …` rather than `Discovered: …`.
+
+### Root cause
+
+`JobAnalysisReportModal` sets `title={companyNameDisplay || "Recommended Job Report"}` and `jobTitle={job_title || company || "Recommended Job Report"}`, so a missing `company_name` or missing `job_title` surfaces that placeholder instead of `company_name` + created date. `jobLink` is only `httpListingHref(listing_href)`, so a usable `job_link` never becomes the href. The header date strip hard-codes `Date discovered` / `Date recommended` / `Date applied`.
+
+### Proposed change
+
+1. In `src/ui/frontend/src/components/JobAnalysisReportModal.tsx`, stop using the literal `Recommended Job Report` for the modal title and for `jobTitle`. Modal `title` is `` `${companyNameDisplay}${discoveredLabel ? ` · ${discoveredLabel}` : ""}` `` where `companyNameDisplay` is `job.company_name.trim()` when non-empty, else `job.company`, and `discoveredLabel` is the same `m/d/yy` formatting the header uses for `discovered_at` (en-US numeric month/day/2-digit year; invalid/empty → omit the date). Pass `jobTitle={job.job_title?.trim() || ""}` so the header does not invent `Recommended Job Report`. `jobLink` is `httpListingHref(job.listing_href) ?? httpListingHref(job.job_link)`. `jobLinkText` is that href, else the raw `job.job_link` or `listing_href` string when non-empty. `companyWebsite` stays `job.company_website` trimmed, or null.
+
+2. In `src/ui/frontend/src/components/RecommendedJobReportHeader.tsx`:
+   - Primary identity line (`.recommended-report-title`): `companyName`, and when `formatReportDate(discoveredAt)` is non-null append ` · ` plus that date. Do not put `jobTitle` on that line. If `jobTitle` is non-empty, render it as a secondary line under the identity (existing title size is the identity; secondary uses the job-link text size).
+   - Job-link line: if `jobLink` is not http(s) but `jobLinkText` is, use `jobLinkText` as the `<a href>`. Still render non-http text when there is no http(s) href.
+   - Website line: when `companyWebsite` is non-empty, keep it on its own line under the job link. If the value does not start with `http://` or `https://`, href is `https://` plus the trimmed value; visible text stays the given string.
+   - Date strip: replace the prefixes with `Discovered: `, `Recommended: `, and `Applied: ` (colon, then the formatted date). Still omit a row when its timestamp is null. Applied stays omitted when `appliedAt` is null.
+
+3. Do not edit shared `.modal-title` / `.modal-header` / `.modal-body` rules. Report-scoped header rules only if a new secondary job-title line needs a class: add `.recommended-report-job-title-secondary` next to the existing title rules (font-size 12px, color `--text-secondary`). No other CSS.
+
+### Blast radius
+
+Skip / Applied / Generate callbacks and labels stay. Copy and header Print stay gone. `formatReportDate` stays local to the header (modal may duplicate the three-option `Intl.DateTimeFormat` call rather than import a new helper). Betty header tests that expect `Date discovered` or the job title as `.recommended-report-title` will go red; do not edit `tests/` here. AST-2234 Analysis/Discussion/Artifacts behavior is unchanged by this section.
+
+### What must still hold
+
+Parent AC 1–2: no Copy controls and no Print Resume/Cover in the header; Skip and Applied still render only when their callbacks are passed. Parent AC 7: `company_name` is the company label (not short_name alone when `company_name` is non-empty); website is an `<a target="_blank">` on its own line under the job-link line. Parent AC 8: discovered = `discoveredAt`, recommended = `recommendedAt`, applied only when non-null. Parent AC 9: at ≤1023px Skip/Applied still wrap instead of clipping.
+
 ```
+
+
+## Joan board AST-2268
+
+[board-joan] CANON: OK
+
+Plan-fix for AST-2268 is a UAT regression restore: header identity/links/date labels (2233 patch) and Analysis labels, mobile grade dots, show-rubric content preference (2234 patch). No statute or pattern text change, carve-out, or new directive. Rubric resolution still uses existing API/read paths; it only fixes empty live row winning over job-carried content. Report-scoped CSS stays inside the AST-2233 boundary (no shared .modal-title / .modal-header / .modal-body edits). Parent AST-2226 canon scope does not require an amendment for this shape.
+
+## Radia review AST-2268
+
+[code-rubric]
+**Ticket:** AST-2268
+**Publish ref:** `origin/sub/AST-2226/AST-2268-recommended-modal-header-score-labels-and-show-rubric-miss-uat` @ `b53ef9c267200fd3ac4100acc436f716ac61da80`
+**Diff base:** `origin/ftr/AST-2226-updates-to-recommended-job-modal` @ `c58774be6a5dec062fef3c5f58fe671a58f8ef5f` (three-dot vs sub includes stacked merges from other work; **canon + fix review scoped to** `cf7439838..b53ef9c26` — 10 files, AST-2268 product + tests + bible)
+**Corpus:** _(no frozen directive ids on ticket; Joan board CANON: OK)_
+**Overall:** CLEAN
+
+## Canon scores
+
+_(Frozen Citations: none — Joan `[board-joan] CANON: OK`; no statute/pattern ids to score.)_
+
+## Column diff vs plan stage
+
+no plan-stage canon scores attached (board-only CANON: OK)
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+**[bug-repro]** OK — Two tagged tests pin concrete **To-be** behavior (not tautologies):
+- `test_JobAnalysisReportModal.test.tsx` — `[bug-repro] AST-2268 JD header is score and gradable percent` asserts `JD Analysis - 3.7 (83% gradable)`, rejects earned/possible template, and `Total Score:` in `.recommended-report-total-gradable` (items 1–2).
+- `test_AgentAnalysisHeader.test.tsx` — `[bug-repro] AST-2268: job-carried rubric content beats a blank live row` mocks live detail row without usable `content`, job-carried `rubricItems` with `Job carried body`; expects body text and not `No rubric found for this vector.` (item 4). Would fail pre-fix preference order.
+
+**## What must still hold** — OK (both plan-fix patches):
+- **2233 patch:** No Copy/Print props or controls reintroduced; Skip/Applied/Generate still callback-gated; `company_name` drives identity; website remains separate `<a target="_blank">` with `https://` prefix when needed; date strip uses `discoveredAt` / `recommendedAt` / `appliedAt` with applied omitted when null; report-scoped CSS only (`.recommended-report-job-title-secondary`, phase-grade `nowrap` media query) — no shared `.modal-title` / `.modal-header` / `.modal-body` rule edits.
+- **2234 patch:** `jobGradablePercent` still feeds total parenthetical; phase titles use breakdown `possible/max` (not job-level %); thermometer block untouched in diff; `buildPhaseSectionGradeConfidenceRow(..., isMobile)` adds letterless dots at ≤1023px; rubric still uses existing GET + `RubricModal` loading gate; Skip/`can_*`, tab filter, JD pane, Artifacts/mobile paths not removed in fix commits.
+
+## Findings
+
+**fix-now**
+
+(none)
+
+**discuss**
+
+- **Duplicate company block:** After AST-2268, `.recommended-report-title` and `.recommended-report-company-line` both show `companyName` (+ date on each). Plan-fix primary identity moved to `.recommended-report-title` but did not drop the older company line. @susan — intentional double line or follow-up cosmetic trim? **Default:** leave for UAT; remove `.recommended-report-company-line` duplicate in a tiny follow-up if Susan flags it.
+- **Empty modal title:** When `company_name` and `company` are both empty, `modalTitle` is `""` (no `Recommended Job Report` fallback). **Default:** accept over the wrong literal; only revisit if empty `<h2>` is worse in practice.
+
+**advisory**
+
+- **Diff base width:** `ftr...sub` three-dot stat is huge (other epics merged onto sub); scoring used AST-2268 commits only — expected for fix-lane sub stacked above advancing `ftr`.
+- **Item 3 (mobile dots):** Implemented via `letterless` + CSS `flex-wrap: nowrap`; no dedicated `[bug-repro]` — coverage is code + CSS, not a viewport assertion (Betty manifest lists modal/header tests).
+- **Engineer thread:** `b53ef9c26` notes two Generate-hidden asserts stale — header on this tip is AST-2233-shaped; optional Betty tidy, not merge-blocking.
+
+## Plan fidelity (§5.4)
+
+- Items 1–7 map to `JobAnalysisReportModal`, `RecommendedJobReportHeader`, `AgentAnalysisHeader`, `RubricModal`, `recommendedJobReport.tsx`, `App.css` — matches amended scope (including `AgentAnalysisHeader` / `RubricModal` after `[scope-gate]`).
+- `jobLink` / `jobLinkText` fall back to `job_link` when `listing_href` is not http(s); modal title `company · m/d/yy`; show-rubric job-before-blank-live content order per plan.
+
+## What's solid
+
+- `rubricContentFor` matches plan resolution (usable job content first; live only when job missing/blank).
+- `RubricModal` trims before not-found string.
+- Revised AST-1695/1704/1983/2233 tests align with company-primary identity.
+
+## Chuckles (read-only — you do not act)
+
+| Gate | Parent | Next |
+|------|--------|------|
+| **PROCEED** (clean, C7 complete) | AST-2226 live | → **Review Posted** → fix-lane clean shortcut → **User Testing** (`resolve-child` skipped) |
+
+```
+[code-rubric] PROCEED (Commit: b53ef9c26) UAT regressions restored
+```
+
+context_tokens≈24000

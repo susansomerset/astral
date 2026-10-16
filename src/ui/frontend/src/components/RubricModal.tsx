@@ -13,7 +13,9 @@ export default function RubricModal({ open, onClose, vector, content, loading = 
   return (
     <Modal open={open} onClose={onClose} title={`Rubric — ${vector}`} stacked>
       <div className="entity-jd-content">
-        {loading ? "Loading rubric…" : (content ?? "No rubric found for this vector.")}
+        {loading
+          ? "Loading rubric…"
+          : (content?.trim() ? content : "No rubric found for this vector.")}
       </div>
     </Modal>
   )
