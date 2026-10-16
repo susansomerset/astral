@@ -1,3 +1,72 @@
+<!-- linear-archive: AST-2150 archived 2026-10-16 -->
+
+## Linear archive (AST-2150)
+
+**Archived:** 2026-10-16  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-2150/default-scheduled-actions-and-execution-history-to-all-candidates  
+**Status at archive:** Archive  
+**Project:** Astral Contact  
+**Assignee:** katherine  
+**Priority / estimate:** None / 2  
+**Parent:** AST-2148 — Remove autofilter by candidate from Execution history & Scheduled Actions  
+**Blocked by / blocks / related:** parent: AST-2148
+
+### Description
+
+## What this implements
+
+Removes the left-nav candidate auto-filter (initial default and nav-sync) from Scheduled Actions and Execution History so both open on **All** and only narrow when the operator picks a candidate; Execution History still honors an explicit `candidate_id` URL. Does not touch the shared hook, the other screens that use it, the Add Task pre-fill, or any API.
+
+## Citations
+
+none — Canon Scope is empty (frontend filter default only; no in-force pattern or statute applies).
+
+## Scope
+
+* `src/ui/frontend/src/pages/AdminScheduledActions.tsx` — **modified** — drop the nav-synced candidate filter default; filter starts at All. Technical: stop using the nav-synced `useAdminCandidateFilter` hook; hold the Candidate filter as plain page state that starts at All (empty), with the candidate option list taken from the candidate context sorted the same way the shared control expects. The existing client-side row filter, the All-candidate default sort (by Avail desc), and the Add Task modal's `selectedId` pre-fill are unchanged.
+* `src/ui/frontend/src/pages/AdminPerformanceMonitor.tsx` — **modified** (Execution History) — drop the nav-synced candidate filter default and the first-visit effect that writes the nav candidate into the URL. Technical: stop using the nav-synced hook; the Candidate filter value is read straight from the URL `candidate_id` param (absent = All) and written back through the existing URL setter; remove the first-visit effect that copies the left-nav candidate into the URL. Timezone derivation from the left-nav candidate is unchanged.
+
+## Acceptance criteria
+
+ 1. **Wrong-shape guard:** `rg -n "useAdminCandidateFilter" src/ui/frontend/src/pages/AdminScheduledActions.tsx src/ui/frontend/src/pages/AdminPerformanceMonitor.tsx` returns nothing. Fail: either page still imports the nav-synced hook (including via a new option flag on it).
+ 2. **Hook and other screens untouched:** `git diff origin/dev -- src/ui/frontend/src/hooks/useAdminCandidateFilter.ts src/ui/frontend/src/components/AdminCandidateFilterControl.tsx src/ui/frontend/src/pages/AdminAgentTimesheets.tsx src/ui/frontend/src/pages/AdminVectorFeedback.tsx src/ui/frontend/src/pages/AdminTaskPerformance.tsx src/ui/api/` is empty. Fail: any diff.
+ 3. **Scheduled Actions default All:** with left-nav candidate **A** selected and dispatch tasks for **A** and **B**, first load shows the Candidate dropdown at **All** and rows for both **A** and **B**. Fail: dropdown shows **A** or **B**'s rows are hidden.
+ 4. **Scheduled Actions ignores nav:** switching left-nav from **A** to **B** leaves the Candidate dropdown and visible rows unchanged. Fail: dropdown changes or rows narrow.
+ 5. **Execution History default All:** opening Execution History with left-nav **A** selected and no `candidate_id` in the URL issues `/api/admin/dispatch_ledger` without a `candidate_id` query param, leaves the page URL without `candidate_id`, and shows the dropdown at **All**. Fail: the fetch or URL carries `candidate_id=A`, or the dropdown shows **A**.
+ 6. **Execution History ignores nav:** switching left-nav from **A** to **B** does not add/change `candidate_id` in the URL or the ledger fetch. Fail: either changes.
+ 7. **Bookmark honored:** opening Execution History with `?candidate_id=B` (left-nav **A**) fetches the ledger with `candidate_id=B` and shows **B** in the dropdown. Fail: fetch unscoped, scoped to **A**, or dropdown not **B**.
+ 8. **Manual filter still works:** on both screens, choosing **B** in the dropdown narrows to **B** (Scheduled Actions rows all have `candidate_id` **B**; Execution History refetches with `candidate_id=B`), and choosing **All** restores every candidate. Fail: selection has no effect or All does not restore.
+ 9. **Add Task pre-fill unchanged:** on Scheduled Actions with left-nav **A**, **Add Task** opens with Candidate **A**; with no left-nav candidate, Save stays disabled (`save disabled on add when no candidate selected` stays green). Fail: pre-fill is blank with **A** selected, or Save enables with no candidate.
+10. **Build:** `npm run build` passes and `npm run lint` reports no findings in the changed files beyond those already on `origin/dev` (dev carries pre-existing lint errors); the Vitest files named in Technical scope pass. Fail: build error, a new lint finding in a changed file, or a failing Vitest.
+
+## Boundaries
+
+Single child of AST-2148 — no siblings. Does not touch `src/ui/frontend/src/hooks/useAdminCandidateFilter.ts`, `src/ui/frontend/src/components/AdminCandidateFilterControl.tsx`, Agent Timesheets / Vector Feedback / Task Performance, the Add Task modal candidate pre-fill, Execution History timezone derivation, or any backend/API file.
+
+## Notes for planning
+
+Canon Scope is empty. Test impact (Betty, `qa-child`): the AST-634 nav-default / nav-sync cases in `tests/component/frontend/pages/test_AdminScheduledActions.test.tsx` and the AST-634 setup note in `tests/component/frontend/pages/test_AdminPerformanceMonitor.test.tsx` assert the behavior being removed; the AST-628 summary in `docs/test-bible/frontend/pages.md` describes it. `tests/component/frontend/hooks/test_useAdminCandidateFilter.test.tsx` stays as-is.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/AST-2148-sa-eh-default-all-candidates`, child `sub/AST-2148/AST-2150-sa-eh-default-all-candidates`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-10-12T18:46:41.366Z
+[code-rubric] PROCEED (Commit: 1d360ee85) SA/EH default All
+
+#### betty — 2026-10-12T18:44:25.514Z
+`origin/sub/AST-2148/AST-2150-sa-eh-default-all-candidates` @ `1d360ee85` · All-default tests, bible updated
+
+#### joan — 2026-10-12T18:36:14.713Z
+[plan-rubric] PROCEED (Commit: e2af6d87) two pages, All default
+
+#### katherine — 2026-10-12T18:34:32.189Z
+`origin/sub/AST-2148/AST-2150-sa-eh-default-all-candidates` @ `e2af6d87b` · plan; lint baseline flagged
+
+---
+
 # AST-2150 — Default Scheduled Actions and Execution History to All candidates
 
 **Parent:** [AST-2148](https://linear.app/astralcareermatch/issue/AST-2148) · **Ticket:** [AST-2150](https://linear.app/astralcareermatch/issue/AST-2150)
