@@ -119,3 +119,48 @@ Confirm Chuckles estimate: 2 — agree
 - Before Stage 1 coding: verify tip has #3 `recent` / `attention` / stage-0 omit — else stop and comment (Prerequisite).
 - Do not add files outside **Files Changed**.
 - On ambiguity → stop and comment on parent AST-2225 with the Stage N blocked template.
+
+## Joan validate
+
+[plan-discuss] round=1 concern
+[plan-rubric]
+**Ticket:** AST-2231
+**Overall:** REVISE
+**Corpus:** b7ab2203048ce0beb2869a12200ab7fa696c8066
+**Publish ref tip:** `69badaef9f4727cd823d49c8fbd84df53b30a6a2` (`origin/sub/AST-2225/AST-2231-candidate-shell-ux`)
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| stat.logging.info.api | X | | Frontend-only; no `src/ui/api/**` changes |
+
+## Traceability
+
+AC8 → Stage 1 step 6 (rely on #3 omitting stage-0 groups; no client stage math). AC9 → Stage 1 step 2 (picker/menu only when `isAdmin`). AC10 → Stage 1 step 4 + Stage 2 (Profile `attention` affordance). Parent AC 10 (recent expand) → Stage 1 step 3 (seed expand from group `recent`; API/config from #3). Parent AC 1–7, 11–13 → N/A (vocabulary, advancement, nav map owned elsewhere). Child does not own API `incomplete_profile` (#2/#3).
+
+## Findings
+
+### fix-now
+- **Location:** Stage 1 step 3 — default-collapse + recent expand
+- **Finding:** Seeding expanded groups when `loadExpanded()` is **empty** cannot distinguish (a) fresh session / never written `nav:expanded` from (b) user toggled and saved an empty expanded set (`[]` in localStorage). Today `loadExpanded()` returns `new Set()` for both; re-seeding from API `recent` on every nav fetch (including 30s poll) would re-expand “recent” groups after the user deliberately collapsed everything.
+- **Recommendation:** Seed only when `localStorage.getItem(NAV_STORAGE_KEY) === null` (first visit), or use a one-shot ref on the first successful fetch; treat persisted `[]` as intentional “all collapsed.” Spell that in the plan before build.
+
+### discuss
+- **Location:** Stage 1 step 3 vs Stage 1 step 7 (30s poll)
+- **Finding:** Even with a null-key-only seed, the plan should state explicitly that silent poll updates `navGroups` only and must **not** reset `expanded` unless the seed rule above fires once.
+- **Recommendation:** One sentence in step 3 or 7 so implementer does not call `setExpanded` inside the poll path.
+
+### acceptable
+- **Location:** Linear assignee
+- **Finding:** Assignee Ada Lovelace (Joan expected during validate pass).
+- **Recommendation:** Chuckles handoff only.
+
+### acceptable
+- **Location:** Prerequisite AST-2230
+- **Finding:** Hard stop if `recent` / `attention` / stage-0 omit missing — correct; no client-side heuristics or `api_system.py` edits.
+- **Recommendation:** None.
+
+**R6 (summary):** Scope gate matches ticket (NavigationShell + App.css only). Picker hide, disabled-but-visible, Profile attention, stage-0 via empty API groups, and prerequisite on #3 are otherwise faithful to parent shell slice. Estimate 2 — agree once expand-seed rule is tightened.
+
+context_tokens≈95000
