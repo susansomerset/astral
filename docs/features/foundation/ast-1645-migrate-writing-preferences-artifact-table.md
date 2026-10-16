@@ -264,3 +264,10 @@ From AST-1645 / AST-1665 (do not regress):
 6. UI stays on `ContextTextPage`; `ArtifactEditor` untouched.
 7. No bulk backfill / rewrite of historical dict artifact rows as part of this fix.
 8. Bug AC: miller current WP shows non-empty readable text after GET hydrate; both version uuids reload non-empty bodies after move; new dict writes cannot land without plain_text validation (already true on tip).
+
+## Radia review (AST-2243)
+
+[code-rubric] PROCEED (Commit: a8d074db4780b68550fd449557d9534658afe7fd) tests pin hydrate coerce
+
+Overall CLEAN. Fix-specific: [bug-repro] N/A (on-ticket Betty tests); What must still hold OK. Canon: patt.artifact.read-current / write-operative / manage-catalog — A. No fix-now.
+
