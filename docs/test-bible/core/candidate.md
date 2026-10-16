@@ -2653,3 +2653,5 @@ Primary command + pass criterion: [`../utils/config.md`](../utils/config.md) § 
 | Area | Component tests |
 | --- | --- |
 | Walk labels use renamed Criteria/Company item labels | revised **`TestAst1253RequestedArtifactsHandoff::test_walk_helpers_order_labels_and_rubric_keys`** |
+
+**AST-2251 hydrate:** [`../data/database/candidates.md`](../data/database/candidates.md) § QA test manifest — AST-2251.

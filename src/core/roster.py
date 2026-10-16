@@ -42,6 +42,7 @@ from src.data.database import (
     claim_company_batch,
     count_companies,
     get_active_trigger_states,
+    get_candidate,
     get_company,
     get_company_batch,
     get_company_job_counts,
@@ -672,6 +673,27 @@ async def vet_inflow_discovery_company_batch(
     return {"passed": passed, "failed": failed, "skipped": 0, "total": total}
 
 
+def _search_credentials(candidate_id: str) -> tuple[str, str] | None:
+    """(api_key, cx) from hydrated candidate_api_keys, or None after a warning per missing id."""
+    cid = (candidate_id or "").strip()
+    row = get_candidate(cid) if cid else None
+    keys = (row or {}).get("candidate_api_keys") or {}
+    found = {
+        "google_cse_api_key": keys.get("google_cse_api_key") or "",
+        "google_cse_id": keys.get("google_cse_id") or "",
+    }
+    missing = [secret_id for secret_id, value in found.items() if not value]
+    if not missing:
+        return found["google_cse_api_key"], found["google_cse_id"]
+    for secret_id in missing:
+        logger.warning(
+            "%s secret %s is missing — this search is not running",
+            cid or "-",
+            secret_id,
+        )
+    return None
+
+
 async def resolve_company_website(
     short_name: str,
     entity: Dict[str, Any],
@@ -688,10 +710,17 @@ async def resolve_company_website(
         return {"success": True, "state": "WEBSITE_FOUND", "error": None}
     name = (entity.get("company_name") or short_name or "").strip()
     query = f"{name} official website"
+    cid = (entity.get("candidate_id") or "").strip()
+    creds = _search_credentials(cid)
+    if creds is None:
+        return {"success": False, "state": None, "error": None}
+    api_key, cx = creds
     logger.debug("Calling search_google_cse: query=%r", query)
     try:
         result = search_google_cse(
             query=query,
+            api_key=api_key,
+            cx=cx,
             max_results=int(cfg["max_results"]),
             site_filters=None,
             days=cfg["date_restrict_days"],
@@ -813,10 +842,17 @@ async def run_inflow_discovery_batch(
     errors = 0
     logger.debug("Beginning CSE term loop on %s items", term_total)
     for term in terms:
+        creds = _search_credentials(candidate_id)
+        if creds is None:
+            errors += 1
+            continue
+        api_key, cx = creds
         logger.debug("Calling search_google_cse: query=%r", term)
         try:
             result = search_google_cse(
                 query=term,
+                api_key=api_key,
+                cx=cx,
                 max_results=int(cfg["max_results_per_query"]),
                 site_filters=None,
                 days=int(cfg["date_restrict_days"]),

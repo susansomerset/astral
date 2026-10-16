@@ -33,7 +33,7 @@ Stage 2 only. Roster call sites + stub are under [`roster.md`](roster.md) / [`..
 | --- | --- | --- |
 | New — optional entity kwargs on search recorder | `record_search_timesheet_entry` | `TestRecordSearchTimesheetEntry::test_optional_entity_kwargs_persist` |
 | New — `_get_receipt_fn` routes `google_cse` | `_get_receipt_fn` | `TestAst2219GoogleCseReceiptRoute::test_get_receipt_fn_routes_google_cse` |
-| New — fetch stubs CSE with empty key (no skip) | `run_fetch_timesheet` | `…::test_fetch_stubs_google_cse_without_candidate_key` |
+| Revised AST-2253 — missing `google_cse_api_key` skips; a present key is passed | `run_fetch_timesheet` | `…::test_fetch_skips_google_cse_without_candidate_key` · `…::test_fetch_passes_google_cse_api_key` |
 
 ## QA test manifest
 
@@ -55,3 +55,5 @@ docs/test-bible/core/dispatcher.md     816b345d1efef103ec5fd9045bd7fa96a1119178
 docs/test-bible/utils/config.md        ba2102e17949a85d11a1c2dd92c82a4189694e0c
 # timesheets.md: git show origin/sub/AST-2215/AST-2218-fetch-timesheet-openrouter-daemon-retire:docs/test-bible/core/timesheets.md | shasum
 ```
+
+**AST-2253 search key on fetch:** [`../external/google_cse.md`](../external/google_cse.md) § QA test manifest — AST-2253.

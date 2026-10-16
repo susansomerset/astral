@@ -6,7 +6,6 @@ Callers and spike scripts surface human-facing errors.
 
 from __future__ import annotations
 
-import os
 import time
 from collections.abc import Callable
 from datetime import datetime, timezone
@@ -212,6 +211,8 @@ def _http_get_with_pacing_and_retry(
 def search_google_cse(
     query: str,
     *,
+    api_key: str,
+    cx: str,
     max_results: int = 10,
     site_filters: Sequence[str] | None = None,
     days: int | None = None,
@@ -219,7 +220,7 @@ def search_google_cse(
 ) -> GoogleCseSearchResult:
     """Run a Custom Search query; returns hits plus call timing and hit_count.
 
-    Credentials: GOOGLE_CSE_API_KEY and GOOGLE_CSE_ID via os.environ (no fallbacks).
+    Credentials: caller passes api_key and cx. This function does not read the environment.
 
     ``site_filters``: only ``str`` entries are used; other types in the sequence are
     skipped (callers should pass host/path tokens as strings).
@@ -234,15 +235,8 @@ def search_google_cse(
     """
     call_start = datetime.now(timezone.utc).isoformat()
     require_controlled_external_io("google_cse.search_google_cse")
-    try:
-        api_key = os.environ["GOOGLE_CSE_API_KEY"]
-        cx = os.environ["GOOGLE_CSE_ID"]
-    except KeyError as err:
-        name = err.args[0]
-        raise RuntimeError(
-            f"missing environment variable {name!r}; set GOOGLE_CSE_API_KEY "
-            "and GOOGLE_CSE_ID (see env.example)"
-        ) from err
+    if not (api_key or "").strip() or not (cx or "").strip():
+        raise ValueError("api_key and cx are required")
 
     base = query.strip()
     if not base:

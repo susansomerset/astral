@@ -16,6 +16,7 @@ Required environment variables (set in Railway / .env):
 Config sections:
   ASTRAL_CONFIG   — paths, state machines, batch settings
   RAILWAY_CONFIG  — gunicorn deployment settings (workers, timeout)
+  CANDIDATE_SECRET_RAILWAY_CONFIG / CANDIDATE_SECRET_CATALOG — Railway target env names and candidate-secret catalog (AST-2250)
   AGENT_CONFIG    — Anthropic model catalog (pricing, output defaults)
   LLM_SERVER_CONFIG — LLM servers (endpoint, auth, thinking-off body, request extras, concurrency) (AST-1851)
   LLM_MODEL_CONFIG  — LLM models (one id per vendor SKU) → server + routing + SKU + output default/floor + pricing (AST-1851, AST-1955, AST-1963)
@@ -6050,6 +6051,75 @@ LLM_PROBE_MESSAGE = "Respond with 1."
 ALLOWED_TIMESHEET_PROVIDERS = tuple(LLM_SERVER_CONFIG)
 # Search timesheet rows (AST-2219 writer); not an LLM_SERVER_CONFIG id.
 TIMESHEET_SEARCH_SERVER_ID = "google_cse"
+
+# AST-2250 — Railway write target. Readers use os.environ[CANDIDATE_SECRET_RAILWAY_CONFIG[…]]
+# at call time (no .get). Not RAILWAY_CONFIG (that dict is gunicorn).
+CANDIDATE_SECRET_RAILWAY_CONFIG = {
+    "graphql_url": "https://backboard.railway.com/graphql/v2",
+    "token_env": "ASTRAL_RAILWAY_TOKEN",
+    "project_id_env": "ASTRAL_RAILWAY_PROJECT_ID",
+    "environment_id_env": "ASTRAL_RAILWAY_ENVIRONMENT_ID",
+    "service_id_env": "ASTRAL_RAILWAY_SERVICE_ID",
+}
+
+# id → production variable-name shape + local stub env name.
+# production_suffix is appended after the sanitized candidate id.
+# Local runs share one stub env per secret id for every candidate (sibling hydrate).
+CANDIDATE_SECRET_CATALOG = {
+    "anthropic": {
+        "production_suffix": "ANTHROPIC",
+        "local_stub_env": "CANDIDATE_SECRET_STUB_ANTHROPIC",
+    },
+    "kimi": {
+        "production_suffix": "KIMI",
+        "local_stub_env": "CANDIDATE_SECRET_STUB_KIMI",
+    },
+    "openrouter": {
+        "production_suffix": "OPENROUTER",
+        "local_stub_env": "CANDIDATE_SECRET_STUB_OPENROUTER",
+    },
+    "deepseek": {
+        "production_suffix": "DEEPSEEK",
+        "local_stub_env": "CANDIDATE_SECRET_STUB_DEEPSEEK",
+    },
+    "google_cse_api_key": {
+        "production_suffix": "GOOGLE_CSE_API_KEY",
+        "local_stub_env": "CANDIDATE_SECRET_STUB_GOOGLE_CSE_API_KEY",
+    },
+    "google_cse_id": {
+        "production_suffix": "GOOGLE_CSE_ID",
+        "local_stub_env": "CANDIDATE_SECRET_STUB_GOOGLE_CSE_ID",
+    },
+}
+
+
+def candidate_secret_variable_name(secret_id: str, candidate_id: str) -> str:
+    """Production Railway variable name for one candidate secret. No I/O."""
+    row = CANDIDATE_SECRET_CATALOG.get(secret_id)
+    if row is None:
+        raise ValueError(
+            f"Unknown candidate secret {secret_id!r}. Valid: {list(CANDIDATE_SECRET_CATALOG)}"
+        )
+    raw = (candidate_id or "").strip()
+    if not raw:
+        raise ValueError("candidate_id is required")
+    token = "".join(ch if ch.isascii() and ch.isalnum() else "_" for ch in raw.upper())
+    return f"CANDIDATE_{token}_{row['production_suffix']}"
+
+
+def candidate_secret_local_stub_env(secret_id: str) -> str:
+    """Env name of the shared local stub for this secret id. No I/O."""
+    row = CANDIDATE_SECRET_CATALOG.get(secret_id)
+    if row is None:
+        raise ValueError(
+            f"Unknown candidate secret {secret_id!r}. Valid: {list(CANDIDATE_SECRET_CATALOG)}"
+        )
+    return row["local_stub_env"]
+
+
+assert set(CANDIDATE_SECRET_CATALOG) == set(LLM_SERVER_CONFIG) | {"google_cse_api_key", "google_cse_id"}
+assert len({row["local_stub_env"] for row in CANDIDATE_SECRET_CATALOG.values()}) == len(CANDIDATE_SECRET_CATALOG)
+assert len({row["production_suffix"] for row in CANDIDATE_SECRET_CATALOG.values()}) == len(CANDIDATE_SECRET_CATALOG)
 
 TIMESHEET_REQUEST_TYPES = (
     "DISPATCH_AGENT",

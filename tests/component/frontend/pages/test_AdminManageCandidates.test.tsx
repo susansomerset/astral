@@ -61,8 +61,8 @@ const candidate = {
   state: "ACTIVE",
   // AST-1901: stored keys only, in array order — server id + label, never the key.
   api_keys: [
-    { server: "kimi", label: "Kimi" },
-    { server: "openrouter", label: "OpenRouter" },
+    { server: "kimi", label: "Kimi", status: "SET", expires_at: "2999-01-01 00:00:00" },
+    { server: "openrouter", label: "OpenRouter", status: "SET", expires_at: null },
   ],
   first: "Jane",
   last: "Doe",
@@ -83,13 +83,12 @@ function keyFieldByLabel(container: HTMLElement, label: string) {
   return within(container).getByText(label, { selector: "label.dep-field-label" }).closest(".dep-field") as HTMLElement
 }
 
-/** AST-1920: key field labels in render order. */
+/** Key field labels in render order (AST-2252: `label · STATUS`). */
 function keyFieldLabels(container: HTMLElement) {
   return Array.from(container.querySelectorAll("label.dep-field-label"))
     .map(l => l.textContent ?? "")
-    .filter(t => / API key \(/.test(t))
+    .filter(t => t.includes(" · "))
 }
-const SET = "(set — leave blank to keep current)"
 
 /** No AST-1901 picker / Remove chrome left in the modal. */
 function expectNoPickerOrRemove(container: HTMLElement) {
@@ -155,30 +154,34 @@ describe("AdminManageCandidates", () => {
     const editModal = screen.getByText(/Edit: doe_jane/).closest(".modal-card") as HTMLElement
     // AST-1920: one field per catalog server, catalog order, set or not; Clear only on stored entries.
     expect(keyFieldLabels(editModal)).toEqual([
-      "Anthropic API key (not set)",
-      `Kimi API key ${SET}`,
-      "DeepSeek API key (not set)",
-      `OpenRouter API key ${SET}`,
+      "Anthropic · NOT SET",
+      "Kimi · SET · 2999-01-01 00:00:00",
+      "DeepSeek · NOT SET",
+      "OpenRouter · SET",
+      "Google CSE API key · NOT SET",
+      "Google CSE engine id · NOT SET",
     ])
     expect(within(editModal).getAllByRole("button", { name: "Clear" })).toHaveLength(2)
     expectNoPickerOrRemove(editModal)
-    const kimi = keyFieldByLabel(editModal, `Kimi API key ${SET}`)
-    const deepseek = keyFieldByLabel(editModal, "DeepSeek API key (not set)")
+    const kimi = keyFieldByLabel(editModal, "Kimi · SET · 2999-01-01 00:00:00")
+    const deepseek = keyFieldByLabel(editModal, "DeepSeek · NOT SET")
     expect(within(deepseek).queryByRole("button", { name: "Clear" })).not.toBeInTheDocument()
     const dsInput = deepseek.querySelector("input") as HTMLInputElement
     expect(dsInput.type).toBe("password")
     await userEvent.click(within(deepseek).getByRole("button", { name: "Show" }))
     expect(dsInput.type).toBe("text")
     fireEvent.change(dsInput, { target: { value: "  sk-ds-new  " } })
+    const expiry = deepseek.querySelectorAll("input")[1] as HTMLInputElement
+    await userEvent.type(expiry, "2999-01-02 03:04:05")
+    expect(expiry).toHaveValue("2999-01-02 03:04:05")
     await userEvent.click(within(kimi).getByRole("button", { name: "Clear" }))
     const clearDialog = await screen.findByRole("alertdialog", { name: "Clear Kimi API key" })
     await userEvent.click(within(clearDialog).getByRole("button", { name: "Clear key" }))
     await userEvent.click(within(editModal).getByRole("button", { name: "Save" }))
     await waitFor(() => expect(screen.getByText("Candidate updated")).toBeInTheDocument())
-    // Only changed rows ride on the PUT as [{server, key}], catalog order; typed key trimmed, cleared "".
     expect(putBodies.at(-1)?.api_keys).toEqual([
       { server: "kimi", key: "" },
-      { server: "deepseek", key: "sk-ds-new" },
+      { server: "deepseek", key: "sk-ds-new", expires_at: "2999-01-02 03:04:05" },
     ])
     expect(putBodies.at(-1)).not.toHaveProperty("api_key")
 
@@ -194,8 +197,23 @@ describe("AdminManageCandidates", () => {
     renderWithProviders(<ManageCandidates />)
     await waitFor(() => expect(screen.getByText("doe_jane")).toBeInTheDocument())
     const row = screen.getByText("doe_jane").closest("tr") as HTMLElement
-    expect(row.textContent).toContain("Kimi, OpenRouter")
+    expect(row.textContent).toContain("Kimi SET 2999-01-01 00:00:00")
+    expect(row.textContent).toContain("OpenRouter SET")
     expect(row.textContent).not.toContain("Not set")
+  })
+
+  it("AST-2252: a secret without a valid expiry does not save", async () => {
+    mockApi()
+    renderWithProviders(<ManageCandidates />)
+    await waitFor(() => expect(screen.getByText("doe_jane")).toBeInTheDocument())
+    await userEvent.click(screen.getByRole("button", { name: "Edit" }))
+    const editModal = screen.getByText(/Edit: doe_jane/).closest(".modal-card") as HTMLElement
+    const deepseek = keyFieldByLabel(editModal, "DeepSeek · NOT SET")
+    fireEvent.change(deepseek.querySelector("input") as HTMLInputElement, { target: { value: "sk-ds" } })
+    fireEvent.change(deepseek.querySelectorAll("input")[1] as HTMLInputElement, { target: { value: "tomorrow" } })
+    await userEvent.click(within(editModal).getByRole("button", { name: "Save" }))
+    expect(screen.getByText("Expiry must be YYYY-MM-DD HH:MM:SS UTC")).toBeInTheDocument()
+    expect(putBodies).toEqual([])
   })
 
   it("AST-1920: no keys shows Not set and a (not set) field for every catalog server; Save without changes omits api_keys", async () => {
@@ -210,13 +228,15 @@ describe("AdminManageCandidates", () => {
     await userEvent.click(screen.getByRole("button", { name: "Edit" }))
     const editModal = screen.getByText(/Edit: doe_jane/).closest(".modal-card") as HTMLElement
     expect(keyFieldLabels(editModal)).toEqual([
-      "Anthropic API key (not set)",
-      "Kimi API key (not set)",
-      "DeepSeek API key (not set)",
-      "OpenRouter API key (not set)",
+      "Anthropic · NOT SET",
+      "Kimi · NOT SET",
+      "DeepSeek · NOT SET",
+      "OpenRouter · NOT SET",
+      "Google CSE API key · NOT SET",
+      "Google CSE engine id · NOT SET",
     ])
     expect(within(editModal).queryByRole("button", { name: "Clear" })).not.toBeInTheDocument()
-    expect(within(editModal).getAllByRole("button", { name: "Show" })).toHaveLength(4)
+    expect(within(editModal).getAllByRole("button", { name: "Show" })).toHaveLength(6)
     expectNoPickerOrRemove(editModal)
     await userEvent.click(within(editModal).getByRole("button", { name: "Save" }))
     await waitFor(() => expect(screen.getByText("Candidate updated")).toBeInTheDocument())
@@ -224,7 +244,13 @@ describe("AdminManageCandidates", () => {
   }, 15000)
 
   it("AST-1920: a stored key for a server not in the catalog stays visible and clearable; blank fields are not sent", async () => {
-    const withRetired = { ...candidate, api_keys: [{ server: "retired_srv", label: "retired_srv" }, { server: "kimi", label: "Kimi" }] }
+    const withRetired = {
+      ...candidate,
+      api_keys: [
+        { server: "retired_srv", label: "retired_srv", status: "SET", expires_at: null },
+        { server: "kimi", label: "Kimi", status: "EXPIRED", expires_at: "2000-01-01 00:00:00" },
+      ],
+    }
     mockApi()
     const base = mockedApi.getMockImplementation()!
     mockedApi.mockImplementation(async (url: string, init?: RequestInit) =>
@@ -236,15 +262,17 @@ describe("AdminManageCandidates", () => {
     const editModal = screen.getByText(/Edit: doe_jane/).closest(".modal-card") as HTMLElement
     // Catalog rows first, then the retired stored entry.
     expect(keyFieldLabels(editModal)).toEqual([
-      "Anthropic API key (not set)",
-      `Kimi API key ${SET}`,
-      "DeepSeek API key (not set)",
-      "OpenRouter API key (not set)",
-      `retired_srv API key ${SET}`,
+      "Anthropic · NOT SET",
+      "Kimi · EXPIRED · 2000-01-01 00:00:00",
+      "DeepSeek · NOT SET",
+      "OpenRouter · NOT SET",
+      "Google CSE API key · NOT SET",
+      "Google CSE engine id · NOT SET",
+      "retired_srv · SET",
     ])
-    const anthropic = keyFieldByLabel(editModal, "Anthropic API key (not set)")
+    const anthropic = keyFieldByLabel(editModal, "Anthropic · NOT SET")
     fireEvent.change(anthropic.querySelector("input") as HTMLInputElement, { target: { value: "   " } })
-    const retired = keyFieldByLabel(editModal, `retired_srv API key ${SET}`)
+    const retired = keyFieldByLabel(editModal, "retired_srv · SET")
     await userEvent.click(within(retired).getByRole("button", { name: "Clear" }))
     const dialog = await screen.findByRole("alertdialog", { name: "Clear retired_srv API key" })
     await userEvent.click(within(dialog).getByRole("button", { name: "Clear key" }))

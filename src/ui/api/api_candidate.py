@@ -3,7 +3,9 @@
 import base64
 import binascii
 import copy
+import os
 import struct
+from datetime import datetime
 
 from flask import Blueprint, g, jsonify, request
 
@@ -53,13 +55,22 @@ from src.core.candidate import (
     update_candidate_api_keys,
 )
 from src.core.contact import resolve_pinned_base_resume
+from src.external.railway import (
+    RailwayCallFailed,
+    delete_service_variable,
+    trigger_service_deploy,
+    upsert_service_variable,
+)
 from src.utils.config import (
+    CANDIDATE_SECRET_CATALOG,
+    CANDIDATE_SECRET_RAILWAY_CONFIG,
     CANDIDATE_STATES,
     CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY,
     LLM_SERVER_CONFIG,
     RUBRIC_CRITERIA_ARTIFACT_KEYS,
     TASK_CONFIG,
     UI_CONFIG,
+    candidate_secret_variable_name,
 )
 from src.utils.deploy_status import ui_llm_debug
 from src.utils.logging import get_logger
@@ -117,13 +128,31 @@ def _validate_cover_letter_signature_image(value) -> None:
         )
 
 
+def _secret_label(sid: str) -> str:
+    row = LLM_SERVER_CONFIG.get(sid) or {}
+    if row.get("label"):
+        return row["label"]
+    if sid == "google_cse_api_key":
+        return "Google CSE API key"
+    if sid == "google_cse_id":
+        return "Google CSE engine id"
+    return sid
+
+
 def _sanitize_candidate(c: dict) -> dict:
-    """Strip every key (plaintext map + legacy ciphertext); expose the api_keys array as [{server, label}]. Applied to every outbound candidate."""
-    keys = c.pop("candidate_api_keys", None) or {}
+    """Status and expiry only. Never the secret."""
+    c.pop("candidate_api_keys", None)
     c.pop("candidate_api_key", None)
-    # One entry per stored key, in array order (AST-1901) — no fixed per-server slots, never the key itself.
+    status = c.pop("candidate_secret_status", None) or {}
+    c.pop("_legacy_secret_ids", None)
     c["api_keys"] = [
-        {"server": sid, "label": (LLM_SERVER_CONFIG.get(sid) or {}).get("label", sid)} for sid in keys
+        {
+            "server": sid,
+            "label": _secret_label(sid),
+            "status": rec.get("status") or "NOT SET",
+            "expires_at": rec.get("expires_at"),
+        }
+        for sid, rec in status.items()
     ]
     return c
 
@@ -342,7 +371,9 @@ def create_candidate():
 def update_candidate_data(candidate_id):
     """Update candidate_data fields (merge=True). If 'state' is in the body,
     applies it via transition_candidate_state (fail closed on illegal hops).
-    api_keys handling ([{server, key}]): non-empty key = set/replace that server's entry, "" = remove it; duplicate servers → 400."""
+    api_keys is [{server, key, expires_at}]. Non-empty key sets that catalog id and
+    requires expires_at YYYY-MM-DD HH:MM:SS. key "" clears it. Duplicate server → 400.
+    The secret is not returned."""
     body = request.get_json(silent=True) or {}
     if not body:
         return jsonify({"error": "No data provided"}), 400
@@ -365,18 +396,33 @@ def update_candidate_data(candidate_id):
             state_override is not None or api_keys is not None or confirm_override is True
         ):
             return jsonify({"error": "Admin access required"}), 403
+        api_key_edits = []
         if api_keys is not None:
             if not isinstance(api_keys, list):
                 return jsonify({"error": "api_keys must be an array of {server, key}"}), 400
             seen_servers: set = set()
             for e in api_keys:
                 sid = e.get("server") if isinstance(e, dict) else None
-                if sid not in LLM_SERVER_CONFIG or not isinstance(e.get("key"), str):
+                key_raw = e.get("key") if isinstance(e, dict) else None
+                if sid not in CANDIDATE_SECRET_CATALOG or not isinstance(key_raw, str):
                     # Name the server only — never echo a submitted key.
                     return jsonify({"error": f"Invalid api_keys entry for server {sid!r}"}), 400
                 if sid in seen_servers:
                     return jsonify({"error": f"Duplicate api_keys entry for server {sid!r}"}), 400
                 seen_servers.add(sid)
+                key = key_raw.strip()
+                if key:
+                    expires_raw = e.get("expires_at")
+                    if not isinstance(expires_raw, str) or not expires_raw.strip():
+                        return jsonify({"error": "expires_at is required"}), 400
+                    expires_at = expires_raw.strip()
+                    try:
+                        datetime.strptime(expires_at, "%Y-%m-%d %H:%M:%S")
+                    except ValueError:
+                        return jsonify({"error": "expires_at must be YYYY-MM-DD HH:MM:SS"}), 400
+                    api_key_edits.append({"server": sid, "key": key, "expires_at": expires_at})
+                else:
+                    api_key_edits.append({"server": sid, "key": ""})
         base_resume_in_save = False
         pilot_body = None
         resume_structure_body = None
@@ -555,9 +601,21 @@ def update_candidate_data(candidate_id):
                     }), 400
                 except ValueError as e:
                     return jsonify({"error": str(e)}), 400
-        # Edits land in the candidate's api_keys array; the data layer encrypts (AST-1901).
+        # Railway first (production only), then status + expiry. The key is not stored.
         if api_keys:
-            update_candidate_api_keys(candidate_id, [{"server": e["server"], "key": e["key"].strip()} for e in api_keys])
+            token_env = CANDIDATE_SECRET_RAILWAY_CONFIG["token_env"]
+            production = token_env in os.environ and bool(os.environ[token_env].strip())
+            if production:
+                for edit in api_key_edits:
+                    name = candidate_secret_variable_name(edit["server"], candidate_id)
+                    if edit["key"]:
+                        upsert_service_variable(name=name, value=edit["key"])
+                    else:
+                        delete_service_variable(name=name)
+                trigger_service_deploy()
+            update_candidate_api_keys(candidate_id, api_key_edits)
+    except RailwayCallFailed as exc:
+        return jsonify({"error": str(exc)}), 502
     except Exception as e:
         # Failed Save: keep submitted criteria recoverable via GET …/pending
         logger.exception(
