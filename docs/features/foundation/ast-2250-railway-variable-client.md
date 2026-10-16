@@ -259,3 +259,68 @@ context_tokens≈32000
 **Built:** `ef39d41ffdc9395ce80079b3c024c1ea00bba48a` on `sub/AST-2246/AST-2250-railway-variable-client`
 
 Catalog and env names: `cd65ade937d9a785ea753e9c0ae107643391fe21`. Railway client: `ef39d41ffdc9395ce80079b3c024c1ea00bba48a`. No test-tree edits. `stat.logging.error` logs once at the Railway handler with the variable name and no secret; `stat.logging.warning` has no call site in this module.
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-2250
+**Publish ref:** `18d83fcece0ac468db94a88ce019413e30c0cf9f` (`origin/sub/AST-2246/AST-2250-railway-variable-client`)
+**Corpus:** `65a2864973ecf09fd57732c2cfc9a4e1ff3e0b91`
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| stat.logging.error | A | | |
+| stat.logging.warning | A | | |
+| new candidate-secret pattern (pending Archie) | A | | |
+
+## Column diff vs plan stage
+
+| slug | Joan | Radia | note |
+|------|------|-------|------|
+| new candidate-secret pattern (pending Archie) | B | A | Plan-stage B reflected corpus-not-approved; diff implements parent AST-2246 technical scope for this child (write/delete/deploy, no read-back, `skipDeploys` + separate deploy, catalog + stub env names). |
+
+(stat.logging.error, stat.logging.warning: aligned at A)
+
+## Frame diff
+
+- [ ] **Acceptance criteria — AC 2:** Confirm parent AC 2’s Admin + DB portions remain on later siblings; this child’s manifest (`TestAst2250RailwayVariableClient` upsert + deploy, no secret in logs) is the intended partial satisfaction for AST-2250.
+
+## Findings
+
+### advisory — Scope vs Linear AC wording
+
+- **Location:** Linear `## Acceptance criteria` vs `docs/features/foundation/ast-2250-railway-variable-client.md` `## Scope check`
+- **Finding:** AC 2 still reads “component test of Admin set”; shipped work is Betty’s Railway/catalog component tests, which matches the plan partition.
+- **Recommendation:** Tick the frame-diff row above at `resolve-child` §10; no product change on this sub.
+
+### advisory — Build stub superseded
+
+- **Location:** Issue doc `## Review stub (build-child)` (“No test-tree edits”)
+- **Finding:** Diff includes `tests/component/**`, `docs/test-bible/**` from `qa-child`; expected after **Tests Passed**.
+- **Recommendation:** None — manifest in `docs/test-bible/external/railway.md` matches the tests.
+
+### advisory — Off-list statutes (do not score)
+
+- **Location:** `src/utils/config.py`, `src/external/railway.py`
+- **Finding:** `astral.config.config-source-of-truth`, `astral.config.secrets-and-env-specific-from-environ`, and `astral.layers.import-direction` govern this footprint but are not on the frozen Citations list; behavior matches Joan’s plan-stage discussion (catalog literals, hard `os.environ[…]` at call time, `external → utils` only).
+- **Recommendation:** Archie may widen parent Canon Scope at Discussion for comparable Radia columns; do not insert ids on this pass (per `review-child` §5.3).
+
+## What's solid
+
+- `src/external/railway.py`: GraphQL upsert/delete/deploy as planned; `require_controlled_external_io`; single `logger.exception` path via `_fail` with redaction, `RailwayCallFailed` message limited to operation + variable name, `from None` on raised errors; no variable read; `KeyError` for missing `ASTRAL_RAILWAY_*` without logging.
+- `src/utils/config.py` + `env.example`: catalog, helpers, import-time asserts, gunicorn `RAILWAY_CONFIG` untouched; commented names only in `env.example`.
+- Component tests align with bible manifest and assert redaction, `skipDeploys`, and guard hooks.
+
+## Recommended actions (downstream only — not in Radia lane)
+
+- Chuckles: append this artifact to `docs/features/foundation/ast-2250-railway-variable-client.md`, commit `docs(AST-2250): Radia review — clean`, post slim upshot `--as radia`, move to **Review Posted**.
+- datt: **PROCEED** → **User Testing** when Susan’s pipeline allows (no fix-now).
+
+```
+[code-rubric] PROCEED (Commit: 18d83fc) Railway client matches plan
+```
+
+context_tokens≈45000
