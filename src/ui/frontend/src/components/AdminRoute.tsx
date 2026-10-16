@@ -9,7 +9,7 @@ export default function AdminRoute({ children }: { children: ReactNode }) {
     return <p>Loading…</p>
   }
   if (!isAdmin) {
-    return <Navigate to="/jobs/recommended" replace />
+    return <Navigate to="/" replace />
   }
   return children
 }

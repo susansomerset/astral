@@ -1,14 +1,25 @@
-import { useEffect, useState } from "react"
-import { NavLink, Outlet, useLocation } from "react-router-dom"
+import { useEffect, useState, type FormEvent } from "react"
+import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom"
 import { UserPromptProvider } from "./UserPrompt"
 import { useAuth } from "../contexts/AuthContext"
 import { useCandidate, type CandidateInfo } from "../contexts/CandidateContext"
 import api from "../lib/api"
 import AdminDeployFooter from "./AdminDeployFooter"
 import astralLogo from "../assets/astral_logo.png"
+import astralLogoLight from "../assets/astral_logo_light.png"
 
-interface NavItem { label: string; path: string; enabled: boolean; count?: number }
-interface NavGroup { label: string; items: NavItem[] }
+interface NavItem {
+  label: string
+  path: string
+  enabled: boolean
+  count?: number
+  attention?: boolean
+}
+interface NavGroup {
+  label: string
+  items: NavItem[]
+  recent?: boolean
+}
 
 const NAV_STORAGE_KEY = "nav:expanded"
 
@@ -38,14 +49,18 @@ export default function NavigationShell() {
   const [expanded, setExpanded] = useState<Set<string>>(loadExpanded)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
+  // AST-2040: per-deploy-env logo background from /api/ui_config; null keeps the stylesheet color.
+  const [logoBackground, setLogoBackground] = useState<string | null>(null)
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [candidateMenuOpen, setCandidateMenuOpen] = useState(false)
+  const [searchText, setSearchText] = useState("")
   const [isWide, setIsWide] = useState(() =>
     typeof window !== "undefined"
       ? window.matchMedia(`(min-width: ${NAV_WIDE_MIN_PX}px)`).matches
       : true
   )
   const location = useLocation()
+  const navigate = useNavigate()
   const { isAdmin, loading: authLoading } = useAuth()
   const { candidates, selectedId, setSelectedId } = useCandidate()
 
@@ -58,10 +73,15 @@ export default function NavigationShell() {
           if (!r.ok) throw new Error(`${r.status}`)
           return r.json()
         })
-        .then(data => {
+        .then((data: NavGroup[]) => {
           setNavGroups(data)
           setLoading(false)
           setError(false)
+          // AST-2231: seed expand from API recent only on true first visit (key absent).
+          // Persisted [] stays all-collapsed; poll must not re-seed.
+          if (localStorage.getItem(NAV_STORAGE_KEY) === null) {
+            setExpanded(new Set(data.filter(g => g.recent === true).map(g => g.label)))
+          }
         })
         .catch(() => {
           setLoading(false)
@@ -71,6 +91,18 @@ export default function NavigationShell() {
     const interval = setInterval(() => fetchNav(true), 30_000)
     return () => clearInterval(interval)
   }, [selectedId, authLoading])
+
+  useEffect(() => {
+    if (authLoading) return
+    // Chrome only — any failure silently keeps today's look (no error banner).
+    api("/api/ui_config", { silent: true })
+      .then(r => (r.ok ? r.json() : null))
+      .then(cfg => {
+        const bg = cfg?.logo_background
+        setLogoBackground(typeof bg === "string" && bg ? bg : null)
+      })
+      .catch(() => {})
+  }, [authLoading])
 
   useEffect(() => {
     const mq = window.matchMedia(`(min-width: ${NAV_WIDE_MIN_PX}px)`)
@@ -104,7 +136,20 @@ export default function NavigationShell() {
     })
   }
 
+  // AST-2174: Enter only (no search-as-you-type); blank / whitespace-only does nothing.
+  function submitSearch(e: FormEvent) {
+    e.preventDefault()
+    const q = searchText.trim()
+    if (!q) return
+    // Pathname-change auto-close misses /search → /search?q=other, so close the drawer here.
+    setDrawerOpen(false)
+    navigate(`/search?q=${encodeURIComponent(q)}`)
+  }
+
   const selectedCandidate = candidates.find(c => c.astral_candidate_id === selectedId)
+  // Saved profile theme "light" (the Light option) swaps in the light wordmark.
+  const logoSrc =
+    selectedCandidate?.candidate_data?.theme === "light" ? astralLogoLight : astralLogo
   const selectedLabel = selectedCandidate
     ? candidateLabel(selectedCandidate)
     : (selectedId ?? "")
@@ -139,16 +184,19 @@ export default function NavigationShell() {
         className={"sidebar" + (drawerOpen ? " sidebar--open" : "")}
       >
         <div className="sidebar-chrome">
-          <div className="sidebar-logo">
-            <img src={astralLogo} alt="Astral" />
+          <div
+            className="sidebar-logo"
+            style={logoBackground ? { backgroundColor: logoBackground } : undefined}
+          >
+            <img src={logoSrc} alt="Astral" />
           </div>
-          {candidates.length > 0 && (
+          {/* AST-2231: picker chrome for admins only — non-admins never see select/menu. */}
+          {isAdmin && candidates.length > 0 && (
             isWide ? (
               <div className="sidebar-candidate-select">
                 <select
                   value={selectedId ?? ""}
-                  disabled={!isAdmin}
-                  onChange={e => isAdmin && setSelectedId(e.target.value)}
+                  onChange={e => setSelectedId(e.target.value)}
                 >
                   {candidates.map(c => (
                     <option key={c.astral_candidate_id} value={c.astral_candidate_id}>
@@ -178,9 +226,7 @@ export default function NavigationShell() {
                           <button
                             type="button"
                             className={"sidebar-candidate-menu-item" + (selected ? " is-selected" : "")}
-                            disabled={!isAdmin}
                             onClick={() => {
-                              if (!isAdmin) return
                               setSelectedId(c.astral_candidate_id)
                               setCandidateMenuOpen(false)
                             }}
@@ -197,6 +243,16 @@ export default function NavigationShell() {
           )}
         </div>
         <div className="sidebar-scroll">
+          <form className="sidebar-search" role="search" onSubmit={submitSearch}>
+            <input
+              type="search"
+              className="sidebar-search-input"
+              placeholder="Search"
+              aria-label="Search"
+              value={searchText}
+              onChange={e => setSearchText(e.target.value)}
+            />
+          </form>
           {loading ? (
             <p className="sidebar-loading">Loading...</p>
           ) : error ? (
@@ -215,19 +271,32 @@ export default function NavigationShell() {
                   </h3>
                   {isExpanded && group.items.map(item => {
                     const badge = item.count != null
-                      ? <span style={{ marginLeft: 6, fontSize: 11, color: "#888", fontWeight: 400 }}>[{item.count}]</span>
+                      ? <span style={{ marginLeft: 6, fontSize: 11, color: "var(--text-muted)", fontWeight: 400 }}>[{item.count}]</span>
                       : null
+                    // AST-2231: yellow Profile attention when API marks incomplete_profile.
+                    const attention =
+                      item.path === "/candidate/profile" && item.attention === true
+                        ? (
+                          <span
+                            className="nav-link-attention"
+                            aria-label="Profile needs attention"
+                            title="Profile needs attention"
+                          >
+                            !
+                          </span>
+                        )
+                        : null
                     return item.enabled ? (
                       <NavLink
                         key={item.path}
                         to={item.path}
                         className={({ isActive }) => "nav-link" + (isActive ? " active" : "")}
                       >
-                        {item.label}{badge}
+                        {item.label}{attention}{badge}
                       </NavLink>
                     ) : (
                       <span key={item.path} className="nav-link disabled">
-                        {item.label}{badge}
+                        {item.label}{attention}{badge}
                       </span>
                     )
                   })}

@@ -10,6 +10,10 @@
 
 ---
 
+### AST-2086 · AST-2073 (pointer)
+
+Stage `REQUESTED_*_ERROR` retired: failures name the craft hop — `_requested_stage_failure_target(primary, current, task_key)` → `ERROR_<HOP>` off the holding (**`TestAst1808RetryResolvesViaBase`**); empty-token → the failing hop's (entry hop when `empty_token_task` is absent) (**`TestAst2006RequestedArtifactsEmptyTokens`**). Primary manifest: **`docs/test-bible/utils/config.md`** § AST-2086.
+
 ### AST-517 · AST-518 · AST-519 · AST-477
 
 **`artifacts.resume_structure`** holds the candidate-owned section catalog (id, title, enabled, order, **`job_agent_editable`**); **`artifacts.base_resume`** holds string content keyed by enabled section ids. **`craft_resume_base`** response schema requires **`resume_structure`**; **`parse_candidate_resume`** persists both blobs. Legacy global **`base_resume_structure`** and **`base_resume.accent_color`** are read shims only. **AST-518** drives **`builder.py`** body emission and **`tracker.py`** job **`resume_content`** filtering to catalog subset + contact snapshot; cover letter stored as **`Subject`** / **`Letter`** with legacy **`re_line`** / **`body`** read shims. **AST-519** exposes **`GET …/resume_structure`**, filters **`base_resume`** keys on PUT, and drives **Base Resume Content** tabs + accent from per-candidate structure (not global shapes).
@@ -683,6 +687,8 @@ Locks craft/parse/finalize prompts + draft validate on the shared experience job
 
 **Integration:** no existing scenario asserts profile/contact library homes — no revision; do not invent new integration coverage.
 
+**AST-1904 / AST-1905:** saved contact line wins over a sparser blob. See **`docs/test-bible/core/builder.md`** § AST-1014 · AST-952 (bug-repro + revised **`TestBuilderHelpers`**). The narrowed run below already covers both classes whole.
+
 **AST-1014** narrowed run:
 
 ```bash
@@ -888,6 +894,32 @@ Append-merge `EMBEDDED_EVALUATE_JD_CRITERIA` (QC then GC; AST-1084) into `evalua
 ./scripts/testing/run_component_tests.sh \
   tests/component/core/test_candidate.py::TestAst1085EvaluateJdEmbeddedMerge \
   tests/component/utils/test_config.py::TestAst1084EvaluateJdCriteria \
+  -q
+```
+
+---
+
+### AST-1881 · AST-1876
+
+**Parent:** [AST-1876](https://linear.app/astralcareermatch/issue/AST-1876). **Publish:** `origin/sub/AST-1876/AST-1882-prefilter-rc-default-vector-tests` (gap child AST-1882; product AST-1881).
+
+`EMBEDDED_COMPANY_PREFILTER_CRITERIA` (RC) prepend-merged into `prefilter_company` / `company_prefilter` / `craft_prefilter_rubric` on save, craft generate and persist, so it is stored in `rubric_vector` — embedded wins on duplicate code (case-insensitive). The duplicate hand-written Reality Check block is removed from the `prefilter_company` `cache_prompt` (`[bug-repro]`: `test_prefilter_prompt_has_no_hand_written_reality_check` pins the rubric section, not a `{$RUBRIC_VECTORS}` count — the token also appears in the AST-1154 completeness section). Config definition: **`docs/test-bible/utils/config.md`** (**AST-707**, revised **AST-1881**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Helper + save / craft generate / persist; prompt dedupe | `src/core/candidate.py`, `data/admin/agent_task.json` | **`TestAst1881PrefilterRcDefaultVector`** |
+
+**Broken / obsolete:** `TestAst707EmbeddedPrefilterConfig::test_embedded_rc_registry` revised (old real-vs-fraudulent scale with E is obsolete). Pre-existing red, not AST-1881: `test_roster.py::TestAst707EmbeddedRcBatchHydration` fails on `origin/dev` too (ctx-artifact criteria no longer reach batch hydration → `HOMEPAGE_READY_RETRY`); left for a separate drift ticket.
+
+**Integration:** none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst1881PrefilterRcDefaultVector \
+  tests/component/utils/test_config.py::TestAst707EmbeddedPrefilterConfig \
+  tests/component/core/test_candidate.py::TestAst1085EvaluateJdEmbeddedMerge \
+  tests/component/core/test_candidate.py::TestAst723RubricVectorsCutover::test_prefilter_merges_embedded_rc_from_table \
+  tests/component/core/test_consult.py::TestRubricLookup::test_matches_criterion_by_code \
   -q
 ```
 
@@ -1718,7 +1750,7 @@ Board REVISE: no save-time duplicate rubric-code guard. Product fix lands on AST
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Save-time duplicate-code guard | `src/core/candidate.py` (`normalize_rubric_artifacts_on_save`) | **`TestAst1513DuplicateRubricCodes::test_normalize_rejects_duplicate_do_rubric_codes`** (**[bug-repro]**) |
+| Save-time duplicate-code guard | `src/core/candidate.py` (`normalize_rubric_artifacts_on_save`) | ~~`TestAst1513DuplicateRubricCodes::test_normalize_rejects_duplicate_do_rubric_codes`~~ — **superseded by AST-2008** (raise reversed to uptick; class rewritten as `TestAst2008RubricCodeUptick`, see below) |
 
 **Broken / obsolete:** none — additive guard; existing `TestNormalizeRubricArtifactsOnSaveExtended` unique-code paths unchanged.
 
@@ -1733,6 +1765,56 @@ Board REVISE: no save-time duplicate rubric-code guard. Product fix lands on AST
 ```bash
 ./scripts/testing/run_component_tests.sh \
   tests/component/core/test_candidate.py::TestAst1513DuplicateRubricCodes \
+  -q
+```
+
+---
+
+### AST-2008 · AST-2007 (fix lane — rubric code uptick, consult timeout retry, ledger call outcome, reconcile off)
+
+**Parent:** AST-2007 (orphaned mini-parent off `origin/dev`). **Publish:** `origin/sub/AST-2007/AST-2008-rubric-codes-timeout-ledger`. Plan: `docs/features/consult/ast-1513-reject-duplicate-do-rubric-codes-meteorite-grade-do-is-failing.md` § Bug: AST-2008. Primary manifest lives here; component pointers in `core/consult.md`, `core/agent.md`, `core/timesheets.md`, `data/database/rubric_vectors.md`, `data/database/dispatch_ledger.md`, `utils/config.md`.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Revised (was AST-1513 raise) — duplicate codes no longer raise on save (Repro 1) | `normalize_rubric_artifacts_on_save` | `TestAst2008RubricCodeUptick::test_normalize_accepts_duplicate_do_rubric_codes` |
+| New — later duplicate re-lettered `TP`→`TX` + one WARNING (artifact key, code, new code) | `_uptick_duplicate_rubric_codes` | `…::test_uptick_reletters_later_duplicate_and_logs` |
+| New — reserved originals: `TP,TP,TX` → `TP,TY,TX` (Repro 2) | `_uptick_duplicate_rubric_codes` | `…::test_uptick_never_takes_a_later_original_code` |
+| New — pure: new list, shallow copy for re-lettered item, input untouched; non-dict passes through; blank code **filled** from the label (**AST-2126**, rewritten in AST-2127 — was "blank code passes through") | `_uptick_duplicate_rubric_codes` | `…::test_uptick_is_pure_passes_non_dict_and_fills_blank_codes` |
+| New — Decision C: all 26 candidates reserved → kept + WARNING, never raises | `_uptick_duplicate_rubric_codes` | `…::test_uptick_exhausted_keeps_duplicate_and_warns` |
+| New — shared save path upticks before sync (UI + craft) | `apply_rubric_vectors_save` | `…::test_apply_save_upticks_before_sync` |
+| New — uptick after QC/GC merge; embedded codes untouched (AST-1085 holds) | `apply_rubric_vectors_save` | `…::test_apply_save_upticks_after_embedded_merge` |
+
+**Broken / obsolete (rewritten this pass):** `TestAst1513DuplicateRubricCodes::test_normalize_rejects_duplicate_do_rubric_codes` (replaced, not annotated); `test_agent.py::TestAst1960LedgerHost::test_ledger_write_failure_never_fails_the_call` (message → "call outcome", now also on failed calls); `test_timesheets.py::TestAst1966RecordNeverWaits::test_openrouter_row_returns_before_blocked_lookup` + `TestRecordTimesheetEntry` (`reconcile_on` fixture — flag on so AST-1966 branches stay covered; initial wait zeroed in the blocked-lookup test); `…::test_unknown_model_raises_after_insert_without_thread` (same fixture — flag-off return would skip the routing `ValueError`).
+
+**Pre-existing reds on this tree (not AST-2008, not in manifest):** `test_timesheets.py::TestAst1966RetryThenGiveUp` (expected waits omit `TIMESHEET_RECONCILE_INITIAL_WAIT_SECONDS`); `test_rubric_vectors.py` backfill/purge classes (seed state `NEW`); ~100 more across `test_candidate` / `test_consult` / `test_agent` / `test_config` — identical set before and after this pass.
+
+**Integration:** none (no `tests/integration/` scenario saves rubrics, times out a consult, or reads ledger call columns).
+
+## QA test manifest
+
+1. **[bug-repro] rubric uptick:** `tests/component/core/test_candidate.py::TestAst2008RubricCodeUptick`
+2. **[bug-repro] sync duplicate retire:** `tests/component/data/database/test_rubric_vectors.py::TestAst2008SyncRetiresDuplicateCurrentRows`
+3. **[bug-repro] timeout → retry hop:** `tests/component/core/test_consult.py::TestAst2008RenderVerdictTimeoutRetry`
+4. **[bug-repro] ledger call outcome:** `tests/component/core/test_agent.py::TestAst1960LedgerHost` + `tests/component/data/database/test_dispatch_ledger.py::TestAst2008LedgerCallOutcomeColumns`
+5. **[bug-repro] reconcile off:** `tests/component/core/test_timesheets.py::TestAst2008ReconcileSwitch` + `tests/component/utils/test_config.py::TestAst1964ModelRouting::test_reconcile_ships_disabled`
+6. **Regression (green pre- and post-fix):** `tests/component/core/test_timesheets.py::TestRecordTimesheetEntry`, `…::TestAst1966RecordNeverWaits`, `tests/component/data/database/test_rubric_vectors.py::TestAst723SyncRubricVectors`, `tests/component/core/test_consult.py::TestAst897HoldStateOnBalanceRefusal`
+7. **Branch locks:** `candidate.py`, `consult.py`, `agent.py`, `timesheets.py` stay 100% — new branches covered by items 1–5.
+
+**Pass criterion:** items 1–5 red on the pre-fix tree (verified: 21 nodes, each red for the plan's Root cause, not import/fixture); all green after make-fix; item 6 green throughout.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst2008RubricCodeUptick \
+  tests/component/data/database/test_rubric_vectors.py::TestAst2008SyncRetiresDuplicateCurrentRows \
+  tests/component/data/database/test_rubric_vectors.py::TestAst723SyncRubricVectors \
+  tests/component/core/test_consult.py::TestAst2008RenderVerdictTimeoutRetry \
+  tests/component/core/test_consult.py::TestAst897HoldStateOnBalanceRefusal \
+  tests/component/core/test_agent.py::TestAst1960LedgerHost \
+  tests/component/data/database/test_dispatch_ledger.py \
+  tests/component/core/test_timesheets.py::TestAst2008ReconcileSwitch \
+  tests/component/core/test_timesheets.py::TestRecordTimesheetEntry \
+  tests/component/core/test_timesheets.py::TestAst1966RecordNeverWaits \
+  tests/component/utils/test_config.py::TestAst1964ModelRouting \
   -q
 ```
 
@@ -2157,6 +2239,37 @@ Operative `plain_text` validate on str-path (reuse); Writing Preferences `save_a
 - `docs/test-bible/core/candidate.md` — *(filled after publish)*
 - `docs/test-bible/ui/api/api_candidate.md` — *(filled after publish)*
 
+### AST-2243 · AST-2236 (fix — WP hydrate dict coerce)
+
+**Parent:** [AST-2236 — read current artifact for writing preferences is not working](https://linear.app/astralcareermatch/issue/AST-2236). **Publish:** `origin/sub/AST-2236/AST-2243-wp-hydrate-coerce`.
+
+`hydrate_operative_writing_preferences_for_response` coerces dict current bodies for display overlay (prefer non-empty `writing_general_instructions`, else stable `json.dumps`); string bodies unchanged; miss leaves legacy blob; other non-str types still skip. Does not rewrite artifact rows. Operative plain_text save still rejects non-str. Tests live in the AST-1665 class (flipped + added).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| dict coerce + instructions prefer + non-dict cd / non-dict-non-str skip | `src/core/candidate.py` | **`TestAst1665WritingPreferencesOperativeSaveHydrate`** — `test_hydrate_ignores_non_dict_cd_and_coerces_dict_body`, `test_hydrate_dict_prefers_writing_general_instructions` |
+
+**Broken / obsolete this pass:** `test_hydrate_ignores_non_dict_cd_and_non_str_body` (expected dict early-return blanking) — replaced by coerce asserts above.
+
+**Integration:** none — do not invent.
+
+## QA test manifest
+
+1. Coerce dict body (json.dumps fallback) + non-dict cd / other non-str skip: `tests/component/core/test_candidate.py::TestAst1665WritingPreferencesOperativeSaveHydrate::test_hydrate_ignores_non_dict_cd_and_coerces_dict_body`
+2. Prefer `writing_general_instructions` overlay: `tests/component/core/test_candidate.py::TestAst1665WritingPreferencesOperativeSaveHydrate::test_hydrate_dict_prefers_writing_general_instructions`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst1665WritingPreferencesOperativeSaveHydrate::test_hydrate_ignores_non_dict_cd_and_coerces_dict_body \
+  tests/component/core/test_candidate.py::TestAst1665WritingPreferencesOperativeSaveHydrate::test_hydrate_dict_prefers_writing_general_instructions \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/core/candidate.md` — *(filled after publish)*
+
 ### AST-1679 · AST-1677
 
 **Parent:** [AST-1677 — Move candidate_data.artifacts.resume_structure to artifact table](https://linear.app/astralcareermatch/issue/AST-1677). **Publish:** `origin/sub/AST-1677/AST-1679-operative-save-hydrate-blob-retirement`.
@@ -2263,3 +2376,280 @@ Shared with **`docs/test-bible/data/database/dispatch_tasks.md`** § AST-1781 (l
 
 **Bible shasum (publish tip):** fill after `merge-tests` —
 - `docs/test-bible/core/candidate.md`
+
+
+### AST-1807 · AST-1805 (implicit _RETRY substate)
+
+**Parent:** [AST-1804](https://linear.app/astralcareermatch/issue/AST-1804). **Publish:** `origin/sub/AST-1804/AST-1807-implicit-retry-tests`. Product: **AST-1805** (`{base}_RETRY` validates through its registered base; retry priors derived by `state_prior_states`). Probe retries are never registry keys, so these stay green through **AST-1806**'s purge. Unregistered base (`NOPE_RETRY`) is still rejected everywhere.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| `RESUME_READY → RESUME_READY_RETRY` saves | `src/core/candidate.py` `transition_candidate_state` / `_candidate_prior_states` | **`TestTransitionCandidateState::test_ast1807_accepts_implicit_retry_of_registered_base`** |
+| Derived priors gate `NEW_CANDIDATE → RESUME_READY_RETRY` | same | **`…::test_ast1807_derived_priors_still_gate_retry`** |
+| `NOPE_RETRY` → `Unknown candidate state` | same | **`…::test_ast1807_rejects_unregistered_base_retry`** |
+
+**Broken / obsolete:** none.
+
+**Integration:** none — do not invent.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestTransitionCandidateState::test_ast1807_accepts_implicit_retry_of_registered_base \
+  tests/component/core/test_candidate.py::TestTransitionCandidateState::test_ast1807_derived_priors_still_gate_retry \
+  tests/component/core/test_candidate.py::TestTransitionCandidateState::test_ast1807_rejects_unregistered_base_retry \
+  -q
+```
+
+
+### AST-1808 · AST-1806 (explicit _RETRY registry purge)
+
+**Parent:** [AST-1804](https://linear.app/astralcareermatch/issue/AST-1804). **Publish:** `origin/sub/AST-1804/AST-1808-purge-retry-tests`. Product: **AST-1806** (18 `*_RETRY` registry keys + declared retry priors deleted; retries are implicit substates, priors derived by `state_prior_states`). Green only once AST-1806 is on the tree (ftr `2a419fbf`+); pre-purge `65e3ca6f` is red.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Retry-only row `_requested_stage_failure_target(X_RETRY, X_RETRY)` → `error_state` (pre-purge `KeyError`); base → `retry_state` | `src/core/candidate.py` | **`TestAst1808RetryResolvesViaBase::test_requested_stage_failure_target_retry_only_row`** |
+| `check_context_complete` on `REQUESTED_ARTIFACTS_RETRY` == base | same | **`…::test_check_context_complete_retry_matches_base`** |
+
+**Broken / obsolete:** none.
+
+**Integration:** none — do not invent.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst1808RetryResolvesViaBase \
+  -q
+```
+
+### AST-1846 · AST-1828 (bug-repro — requested artifacts retry WARNING)
+
+**Primary manifest:** **`docs/test-bible/core/roster.md`** § AST-1846. AST-1839: `run_requested_artifacts_dispatch` failure into the retry holding logs WARNING and counts `total_failed` (not `total_errors`); failure out of the holding → error_state, ERROR, `total_errors`. Hop-label hold / unregistered trigger → WARNING, `total_failed`.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Primary failure → retry, WARNING, `total_errors == 0` | `src/core/candidate.py` | **`TestAst1846RequestedArtifactsWarnThenError::test_primary_failure_warns_into_retry_uncounted`** (**bug-repro**) |
+| Retry failure → error_state, ERROR | same | **`…::test_retry_failure_logs_error`** (branch lock) |
+| Hop-label hold → WARNING | same | **`…::test_hop_label_hold_warns`** (branch lock) |
+| Unregistered trigger → WARNING | same | **`…::test_unregistered_trigger_warns`** (branch lock) |
+| Flipped (retry failure counts `total_errors`, not `total_failed`) | same | `TestAst972RequestedStageDispatch::test_artifacts_dispatch_retry_failure_errors` |
+
+**Integration:** none.
+
+### AST-1878 · AST-1851 (per-server key wrappers + session paste on selected candidate)
+
+**Primary manifest:** **`docs/test-bible/data/database/candidates.md`** § AST-1878.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Revised — `set_candidate_api_key` / `clear_candidate_api_key(cid, server_id)` delegate to per-server DB helpers | `src/core/candidate.py` | `TestCandidateAdminFacades::test_save_candidate_admin_and_clear_api_key` |
+| **AST-1901:** the two wrappers are replaced by `update_candidate_api_keys(cid, [{server, key}])` | `src/core/candidate.py` | `TestCandidateAdminFacades::test_save_candidate_admin_and_update_api_keys` · `::test_per_server_set_clear_wrappers_retired` (manifest: [`../data/database/candidates.md`](../data/database/candidates.md) § AST-1901) |
+| New — session paste 400 without `candidate_id` / 404 unknown, before ledger or `do_task` | `run_session_resume_parse` | `TestAst986SessionResumeParse::test_400_requires_candidate_id_before_ledger_or_task` · `::test_404_unknown_candidate_before_ledger` |
+| Revised — session calls pass `candidate_id=`; 200 path reads the candidate once, ctx carries a copy of its `candidate_api_keys`, no bind/persist | `run_session_resume_parse` | `TestAst986SessionResumeParse` (all) · `TestAst996ExperienceJobArray::test_session_parse_returns_job_array_in_base_resume` |
+
+### AST-2006 · AST-2000 (bug — runtime empty-token guard)
+
+**Parent:** [AST-1986](https://linear.app/astralcareermatch/issue/AST-1986) (orphaned mini-parent). **Product:** [AST-2000](https://linear.app/astralcareermatch/issue/AST-2000); canon carve-out [AST-2005](https://linear.app/astralcareermatch/issue/AST-2005) (`patt.task.dispatch-retry`). **Publish:** `origin/sub/AST-1986/AST-2006-empty-token-guard-tests`. `run_requested_artifacts_dispatch`: an `empty_tokens` response on a registered stage trigger → that stage's `CANDIDATE_STATES` `error_state`, counted `total_errors == 1`, no `RuntimeError` / retry path; an invalid edge (`ValueError`) logs one WARNING and still counts the error.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| **AST-2086:** trigger / `_RETRY` → entry hop `ERROR_CRAFT_GET_RUBRIC`; mid-chain → the failing hop's `ERROR_<HOP>`; no `empty_token_task` → entry hop's (stage `REQUESTED_*_ERROR` retired) | `run_requested_artifacts_dispatch` | **`TestAst2006RequestedArtifactsEmptyTokens::test_goes_straight_to_hop_error_state`** (4 params) |
+| `ValueError` on the error edge → one `skipped error_state …` WARNING, `total_errors == 1`, no raise | same | **`…::test_invalid_edge_warns_and_still_counts_error`** |
+
+**Broken / obsolete:** none. (`retry_holding` param is green on dev too — `_RETRY` → `error_state` was already the second-strike route.)
+
+Manifest: **`docs/test-bible/core/agent.md`** § AST-2006.
+
+**AST-2048 (pointer):** `save_candidate_data` theme allowlist (profile-selectable `UI_CONFIG["themes"]` ids only) — **`TestAst2048ThemeAllowlist`** (8; new lines fully branch-covered for `LOCKED_AT_100`). Manifest: [`../frontend/pages.md`](../frontend/pages.md) § AST-2048.
+
+### AST-2066 · AST-2043 (versioning data/core — move-current + history)
+
+**Publish:** `origin/sub/AST-2043/AST-2066-versioning-core`. Core list-versions / set-current for candidate catalog keys and one rubric criterion. Version map = `{uuid: {created_at, current, position}}` oldest first. `set_candidate_artifact_current` runs the same AUTO revalidation as the save path; a revalidation failure logs one WARNING and still returns. Rubric set-current maps the rubric artifact key to its owner task (`do_rubric` → `grade_do`).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Version map / catalog-entry rejects / list+set round trip / revalidate warn / rubric owner + blank args / key → owner task | `src/core/candidate.py` | **`TestAst2066CandidateVersions`** (9; new lines fully branch-covered for `LOCKED_AT_100`) |
+| Job list/set + identical-to-current no-op (AC7) | `src/core/tracker.py` | [`tracker.md`](tracker.md) § AST-2066 |
+| `set_current_artifact` (AC4, AC5) + same-second `rowid` order | `src/data/database.py` | [`../data/database/artifacts.md`](../data/database/artifacts.md) § AST-2066 |
+| `set_current_rubric_vector` (AC6) + `list_rubric_vectors(code=)` | `src/data/database.py` | [`../data/database/rubric_vectors.md`](../data/database/rubric_vectors.md) § AST-2066 |
+
+**Broken / obsolete:** none — `test_candidate.py` + `test_tracker.py` fail the same 40 tests on the `tests` tip before and after the AST-2066 product merge (unrelated tickets, plus `nh3` missing in some venvs). No integration scenario touches these paths.
+
+**Manifest (test-child) — narrowed; AST-2066 classes only:**
+
+1. Data artifact move-current (AC4, AC5) + tie-break: `tests/component/data/database/test_artifacts.py::TestAst2066SetCurrentArtifact`
+2. Data rubric criterion (AC6): `tests/component/data/database/test_rubric_vectors.py::TestAst2066RubricCriterionVersions`
+3. Candidate core: `tests/component/core/test_candidate.py::TestAst2066CandidateVersions`
+4. Tracker core + job identical no-op (AC7): `tests/component/core/test_tracker.py::TestAst2066JobVersions`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/data/database/test_artifacts.py::TestAst2066SetCurrentArtifact \
+  tests/component/data/database/test_rubric_vectors.py::TestAst2066RubricCriterionVersions \
+  tests/component/core/test_candidate.py::TestAst2066CandidateVersions \
+  tests/component/core/test_tracker.py::TestAst2066JobVersions \
+  -q
+```
+
+**Pass criterion:** 29 passed on lines 1–4. Narrowed run, not the zero-arg harness / branch-lock gate. AC5 `created_at` is whole-second, so order is asserted via `rowid` (list order), not a strict `>`.
+
+### AST-2081 · AST-2046 (shared structure-editor payload)
+
+New public `resume_structure_editor_payload(resolved)`. It was lifted out of the candidate resume_structure GET and is shared with the new job GET. Rows and coercions are unchanged. `catalog` gains `body_format_details` (`{fmt: {label, description, font_family}}`, where `font_family` is the resolved `BUILD_CONFIG["default_style"]["fonts"]` stack) and `hidden_flow_label`.
+
+**New:** **`TestAst2081ResumeStructureEditorPayload`** (3: row coercions incl. non-dict spec skip / non-int order / non-str format / invalid page-break → default; catalog superset + format details; non-dict `sections`). New lines are fully branch-covered for `LOCKED_AT_100`. Manifest: [`tracker.md`](tracker.md) § AST-2081.
+
+### AST-2091 · AST-2013 (`rubric_dispatch_error` — dispatch gate reason)
+
+**New:** `TestAst2091RubricDispatchError` — duplicate codes (`strip().upper()`, sorted, non-dict criteria skipped; since **AST-2126** blank / lowercase / `V01` codes return the invalid-codes reason first — see § AST-2127) → `Rubric '<artifact>' has duplicate vector codes: …`; empty → `… is empty for this candidate.`; alias owner resolution (`meteorite_grade_do` → `grade_do`, `meteorite_like` → `grade_like`); craft / non-rubric / unknown task and blank candidate → `None` without a rubric read. Red pre-fix (helper missing). Collects on the sub; fails collection on the `tests` tip until AST-2081 config reaches `origin/dev`. Primary manifest: **`docs/test-bible/ui/api/api_admin.md`** § AST-2091.
+
+### AST-2127 · AST-2112 (bug-repro — AST-2126 rubric codes always `[A-Z]{2}`)
+
+`_uptick_duplicate_rubric_codes` now fills blank / invalid codes from the label (`_derive_rubric_code`: two word initials, else first two letters of one word, else none → first free `AA…ZZ`; derived collision → `base[0]` + uptick letter; one WARNING per fill; every `AA–ZZ` reserved → `ValueError`), normalises ` tp` → `TP` in a copy, then re-letters duplicates (AST-2008 unchanged). `rubric_dispatch_error` returns `Rubric '<rk>' has invalid vector codes: … — re-save the rubric` (strict on the stored value, sorted, blank as `(blank)`) before the duplicate check. Primary manifest: **`core/consult.md`** § AST-2127.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Plan probe `['', 'V02', ' tp', 'TP']` → `['HO', 'ST', 'TP', 'TX']`; normalised copy | `_uptick_duplicate_rubric_codes` | **`TestAst2126RubricCodeFill::test_plan_probe_codes`** |
+| Label base: `Leadership`→`LE`; `123` / `""` / `Q` → `AA` | `_derive_rubric_code` | **`…::test_label_base`** (4) |
+| Two `Hands On` blanks → `HO`, `HX` + two `invalid code … -> XX` WARNINGs | same | **`…::test_derived_collision_upticks_and_warns`** |
+| Later valid original `HO` reserved → blank takes `HX` | same | **`…::test_derived_skips_reserved_original`** |
+| All 676 codes reserved → `ValueError: … no free two-letter code for 'Late'` | same | **`…::test_no_free_code_raises`** |
+| Blank code filled (rewritten) | `_uptick_duplicate_rubric_codes` | **`TestAst2008RubricCodeUptick::test_uptick_is_pure_passes_non_dict_and_fills_blank_codes`** |
+| Valid duplicates (`" TP"`, `TP`, `SA`, `"SA "`) → duplicate reason (split from old test) | `rubric_dispatch_error` | **`TestAst2091RubricDispatchError::test_duplicates_strip_and_sorted`** |
+| ` tp` / `sa` / blank → `invalid vector codes: (blank), sa, tp` wins over duplicates (split from old test) | same | **`…::test_invalid_codes_win_over_duplicates`** |
+| `[V01, AB]` via `meteorite_grade_do` → `invalid vector codes: V01` | same | **`…::test_v01_code_is_invalid`** |
+
+**Broken / obsolete (rewritten, not annotated):** `TestAst2008RubricCodeUptick::test_uptick_is_pure_and_passes_non_dict_and_blank_codes` → `…_fills_blank_codes`; `TestAst2091RubricDispatchError::test_duplicates_case_insensitive_sorted_and_blank_codes_ignored` → split into the two rows above. AST-2091 empty / craft / alias / blank-candidate guards unchanged.
+
+### AST-2211 · AST-2206 (Contact `/show-` + `/save-` context handlers, channel → candidate lookup)
+
+**Parent:** [AST-2206](https://linear.app/astralcareermatch/issue/AST-2206). **Publish:** `origin/sub/AST-2206/AST-2211-show-save-handlers-threaded-history`. Plan: `docs/features/contact/ast-2211-show-save-handlers-threaded-history.md`. Threaded history half: [`../external/slack.md`](../external/slack.md) § AST-2211.
+
+`get_candidate_id_for_slack_channel(channel_id, *, debug=False)` — the one non-deleted candidate whose `contact.slack_channel_id` matches; blank / unmapped / ambiguous → `None` (ambiguous logs one warning naming channel + ids). `contact_command_show_context` (read-current via `get_candidate_current`; miss → `No {label} saved yet for this candidate.`) and `contact_command_save_context` (`sanitize_contact_text` → `save_candidate_data`; ack `Saved. That's now the current {label}.`; empty after sanitize → warning + the entry's `usage_reply_text`, no write). Both: blank candidate → `no_candidate` (no reply); `artifact_key` not one of the six context keys → warning + `unknown_artifact_key`, no read/write. Runner wiring is sibling **AST-2212**. `candidate.py` is in `LOCKED_AT_100`; the new block (lookup → save handler) is fully line + branch covered by this class alone.
+
+| Area | Component tests |
+| --- | --- |
+| Lookup: unique hit (trimmed, blank-id row ignored), `include_deleted=False` | new **`TestAst2211ContactContextHandlers::test_lookup_unique_hit_non_deleted_only`** |
+| Lookup: ambiguous → `None` + one warning; unmapped → `None`, no warning | **`…::test_lookup_ambiguous_warns_and_unmapped_is_quiet`** |
+| Lookup: blank channel never lists candidates; `debug=True` sets the flag | **`…::test_lookup_blank_channel_skips_list_and_debug_sets_flag`** |
+| Both handlers: blank candidate → `no_candidate` | **`…::test_blank_candidate_returns_no_candidate`** (2) |
+| Both handlers: `None` / `candidate.artifacts.base_resume` key → warning, no read, no write | **`…::test_unknown_key_warns_and_touches_nothing`** (4) |
+| Every context key, real SQLite: show miss text → save (nh3 drops tags + script) ack → show returns saved body; one version | **`…::test_show_save_round_trip_every_context`** (6) |
+| Identical-after-sanitize re-save adds no version; changed text adds one | **`…::test_identical_resave_adds_no_version`** |
+| Empty after sanitize → `Usage: @Estelle /save-ideal-day <text>`, no version, warning | **`…::test_empty_after_sanitize_posts_usage_and_writes_nothing`** |
+
+**Broken / obsolete this pass:** none. **Pre-existing red, not this ticket:** 27 failures across `test_candidate.py` + `test_slack.py`, identical with and without this pass's test edits (e.g. `TestAst1576SaveCandidateDataOperative`).
+
+**Integration:** none — do not invent.
+
+## QA test manifest — AST-2211
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst2211ContactContextHandlers \
+  tests/component/external/test_slack.py::TestAst2211FullHistoryThreadReplies \
+  tests/component/external/test_slack.py::TestAst1787ChannelListMembershipFullHistory \
+  tests/component/core/test_contact.py::TestAst1788AdminSlackChannelOrchestration \
+  tests/component/ui/api/test_api_contact.py::TestAst1788AdminSlackChannelApis \
+  tests/component/utils/test_config.py::TestAst2210ContextCommandRegistry \
+  -q
+# Ticket AC 3 — must print nothing
+grep -rnE '(draft|save|show)-(strengths|dealbreakers|priorities|ideal-day|bio-summary|backstory)' src/core/
+```
+
+**Pass criterion:** 54 passed; AC 3 grep empty. Not the zero-arg harness. `test_contact.py` needs `asyncpg` / `nh3` in the interpreter (use `/home/susan/astral/.venv/bin/python` on this worktree); restore `data/contact_estelle_activity.json` if a `test_contact.py` run dirties it.
+
+**Bible shasum (after publish):** `git show origin/sub/AST-2206/AST-2211-show-save-handlers-threaded-history:docs/test-bible/core/candidate.md | shasum`; same for `docs/test-bible/external/slack.md`.
+
+### AST-2222 · AST-1201 (stage-generic candidate chain runner)
+
+**Parent:** [AST-1201](https://linear.app/astralcareermatch/issue/AST-1201). **Publish:** `origin/sub/AST-1201/AST-2222-stage-generic-candidate-chain-runner`. Plan: `docs/features/artifacts/ast-2222-stage-generic-candidate-chain-runner.md`. Registry/seed: sibling **AST-2221**.
+
+Runtime generalization of the candidate stage runner / claim expansion / consult routing for every `CANDIDATE_STAGE_DISPATCH` stage. `REQUESTED_RESUME` walks the nine-hop base-resume chain; intermediate hops no-op in `_persist_craft_dispatch_success`; `draft_title_patterns` writes `contact.title_patterns`; `draft_resume_base` keeps the existing `artifact_key` path; success → `RESUME_READY`; mid-chain reclaim + retry→`ERROR_<HOP>` match the artifacts stage. `REQUESTED_ARTIFACTS` behaviour unchanged. No config/seed edits on this tip.
+
+| Area | Component tests |
+| --- | --- |
+| Claim states both stages; `is_candidate_stage_chain_task`; AC 6/7 source scans | **`TestAst2222StageGenericHelpers`** (`tests/component/core/test_ast2222_stage_generic_runner.py`) |
+| AC 10/11 persist: title_patterns str/list; intermediate no-op; junk still raises | **`TestAst2222PersistCraftDispatch`** |
+| AC 8 slice / AC 12 / AC 13: success → `RESUME_READY`; retry→error; mid-chain start key | **`TestAst2222RequestedResumeDispatch`** |
+| AC 8–11 seeded smoke: walk nine hops, rotate `base_resume`, tagline→meta, title_patterns, assembler-only art growth | **`TestAst2222ResumeChainSeededSmoke`** |
+| Consult routes `REQUESTED_RESUME` + mid-hop resume | **`TestAst2222ConsultRoutesResumeStage`** |
+| AC 14 rubric regression (existing) | **`TestAst972RequestedStageDispatch`** · **`TestAst1389RequestedArtifactsHopLabels`** · **`TestAst1846RequestedArtifactsWarnThenError`** · **`TestAst972CandidateStageConsultRouting`** |
+
+**Broken / obsolete this pass:** none — product change is additive for the resume stage; existing artifacts worker tests stay green.
+
+**Integration:** none — no `tests/integration/` scenario covers `REQUESTED_RESUME` chain walk; do not invent.
+
+## QA test manifest — AST-2222
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_ast2222_stage_generic_runner.py \
+  tests/component/core/test_candidate.py::TestAst972RequestedStageDispatch \
+  tests/component/core/test_candidate.py::TestAst1389RequestedArtifactsHopLabels \
+  tests/component/core/test_candidate.py::TestAst1846RequestedArtifactsWarnThenError \
+  tests/component/core/test_consult.py::TestAst972CandidateStageConsultRouting \
+  -q
+```
+
+**Pass criterion:** 24 passed (11 new + 13 existing). Not the zero-arg harness.
+
+**Bible shasum (after publish):** `git show origin/sub/AST-1201/AST-2222-stage-generic-candidate-chain-runner:docs/test-bible/core/candidate.md | shasum`
+### AST-2228 · AST-2225 (stage resolver + topic-row migrate + CONTEXT_READY gate)
+
+**Parent:** [AST-2225](https://linear.app/astralcareermatch/issue/AST-2225). **Publish:** `origin/sub/AST-2225/AST-2228-candidate-stage-registry`. Config registry half: [`../utils/config.md`](../utils/config.md) § AST-2228.
+
+`candidate_stage(state)` reads registry `stage` via `registered_base` (unknown → `ValueError`). `migrate_retired_topic_candidate_states()` force-transitions live topic-ready(+stale) rows onto `PROFILE_READY` / `CONTEXT_READY` via `remap_legacy_candidate_state`. Hooked at the start of `age_stale_candidate_states` (first stale tick heals; no dispatcher edit). `check_context_complete` completeness rank is `CONTEXT_READY` (was `ALL_TOPICS_READY`). Happy-path transitions use PROFILE → CONTEXT. No `candidate.stage` column.
+
+| Area | Component tests |
+| --- | --- |
+| Happy path PROFILE/CONTEXT; intake → PROFILE; RESUME_READY_STALE → REQUESTED_ARTIFACTS; age_stale on RESUME_READY | revised **`TestAst970CandidateStateMachine`** |
+| `candidate_stage` bands + retry inherit + unknown; migrate rewrite count; age_stale calls migrate first; CONTEXT_READY rank gate | new **`TestAst2228CandidateStageAndTopicMigrate`** |
+| Completeness past CONTEXT_READY | revised **`TestCheckContextCompleteExtended::test_returns_true_when_already_at_or_past_context_ready`** |
+
+**Broken / obsolete this pass:** AST-970 hops/stale/age asserts naming `REQUIRED_TOPICS_*` / `ALL_TOPICS_*`; completeness test name tied to `ALL_TOPICS_READY`.
+
+**Integration:** none — do not invent.
+
+## QA test manifest — AST-2228
+
+Primary command + pass criterion: [`../utils/config.md`](../utils/config.md) § QA test manifest — AST-2228 (same narrowed node list; 28 passed).
+
+
+### AST-2229 · AST-2225 (forward-only readiness advance + incomplete profile signal)
+
+**Parent:** [AST-2225](https://linear.app/astralcareermatch/issue/AST-2225). **Publish:** `origin/sub/AST-2225/AST-2229-readiness-advancement`. Plan: `docs/features/candidate/ast-2229-readiness-advancement.md`. Tick wiring: [`dispatcher.md`](dispatcher.md) § AST-2229.
+
+`check_profile_complete` / `incomplete_profile` (first+last+contact_email; missing row → incomplete False; never writes state). `_READINESS_HOPS` forward-only table + `advance_candidate_readiness` (list-scan peer of stale aging; demote ban via `candidate_stage`; hop targets are real registry / `CANDIDATE_STAGE_DISPATCH` trigger strings). Does **not** own nav/UI (#3/#4) or vocabulary (#1).
+
+| Area | Component tests |
+| --- | --- |
+| Profile complete / incomplete signal; no state write | new **`TestAst2229ProfileSignalAndReadinessAdvance`** (profile cases) |
+| Intake→PROFILE when pieces present; skip when incomplete; ARTIFACTS→ACTIVE_SEARCH; CONTEXT→REQUESTED_RESUME via raw_resume; RESUME_READY_STALE→REQUESTED_ARTIFACTS via base_resume; hop targets registry/claimable; demote ban; illegal swallow | same class (advance cases) |
+
+**Broken / obsolete this pass:** none in `test_candidate.py`. Tick stubs: [`dispatcher.md`](dispatcher.md) § AST-2229.
+
+**Integration:** none — do not invent.
+
+## QA test manifest — AST-2229
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst2229ProfileSignalAndReadinessAdvance \
+  tests/component/core/test_dispatcher.py::TestAst972CandidateStageDispatch::test_tick_loop_invokes_stale_aging \
+  tests/component/core/test_dispatcher.py::TestAst972CandidateStageDispatch::test_tick_loop_invokes_readiness_after_stale \
+  tests/component/core/test_dispatcher.py::TestScheduler::test_tick_loop_spawns_due_auto_tasks \
+  -q
+```
+
+**Pass criterion:** 13 passed on the narrowed run. Not the zero-arg harness.
+
+**Bible shasum (after publish):** `git show origin/sub/AST-2225/AST-2229-readiness-advancement:docs/test-bible/core/candidate.md | shasum`; same for `docs/test-bible/core/dispatcher.md`.
+
+### AST-2230 · AST-2225 (craft hop labels across all NAV groups)
+
+**Parent:** [AST-2225](https://linear.app/astralcareermatch/issue/AST-2225). **Publish:** `origin/sub/AST-2225/AST-2230-stage-gated-nav`. Primary: [`../ui/api/api_system.md`](../ui/api/api_system.md) § AST-2230.
+
+`_artifacts_nav_label_for_path` walks every `NAV_CONFIG` group (Artifacts group dissolved). Hop labels pick Criteria/Company renamed strings.
+
+| Area | Component tests |
+| --- | --- |
+| Walk labels use renamed Criteria/Company item labels | revised **`TestAst1253RequestedArtifactsHandoff::test_walk_helpers_order_labels_and_rubric_keys`** |

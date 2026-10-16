@@ -57,11 +57,35 @@ class TestSystemAuthRoutes:
         assert isinstance(palette, list)
         assert palette
         assert all(isinstance(hex, str) and hex.startswith("#") for hex in palette)
+        # Every palette color has a display name for the swatch tooltip.
+        names = payload.get("base_resume_accent_names")
+        assert isinstance(names, dict) and set(names) == set(palette)
+        assert all(isinstance(n, str) and n.strip() for n in names.values())
 
     def test_ui_config_includes_list_table_layout_defaults(self, system_client: FlaskClient, auth_headers: dict[str, str]) -> None:
         payload = system_client.get("/api/ui_config", headers=auth_headers).get_json()
         assert payload.get("list_table_frozen_data_columns") == 2
         assert payload.get("list_table_cell_truncate_chars") == 30
+
+    def test_ui_config_includes_job_title_truncate_chars(self, system_client: FlaskClient, auth_headers: dict[str, str]) -> None:
+        # AST-1982: JobTitleText cut length is served from UI_CONFIG (one source for the 50).
+        payload = system_client.get("/api/ui_config", headers=auth_headers).get_json()
+        assert payload.get("job_title_truncate_chars") == 50
+
+    def test_ui_config_serves_theme_registry(self, system_client: FlaskClient, auth_headers: dict[str, str]) -> None:
+        # AST-2047 AC1: registry + default ride the UI_CONFIG spread. Flask's JSON provider sorts keys,
+        # so served order is alphabetical, not registry order — compare as a set.
+        payload = system_client.get("/api/ui_config", headers=auth_headers).get_json()
+        # AST-2122 AC9: no examples-only grade-color sets. AST-2129 AC1: exactly four palettes, all selectable.
+        assert payload["themes"] == {
+            "dark": {"label": "Dark", "profile_selectable": True},
+            "light": {"label": "Light", "profile_selectable": True},
+            "shapes_light": {"label": "Shapes - Light", "profile_selectable": True},
+            "shapes_dark": {"label": "Shapes - Dark", "profile_selectable": True},
+        }
+        # Suffix match, not the literal key: AC8 requires the retired key name to be absent from tests/.
+        assert [k for k in payload if k.endswith("_grade_sets")] == []
+        assert payload["default_theme"] == "dark"
 
     def test_ui_config_includes_preamble_config(self, system_client: FlaskClient, auth_headers: dict[str, str]) -> None:
         # AST-1016: Intro + steps for AST-1017; route alias matches existing ui_config tests.
@@ -86,6 +110,15 @@ class TestSystemAuthRoutes:
         assert block["authoring_help"] == COVER_FROM_BLOCK_CONFIG["authoring_help"]
         assert block["session_authoring_help"] == COVER_FROM_BLOCK_CONFIG["session_authoring_help"]
 
+    def test_ui_config_includes_field_tokens(self, system_client: FlaskClient, auth_headers: dict[str, str]) -> None:
+        # Per-field `{$` lookup lists for the profile / artifact / session edit screens.
+        from src.utils.config import FIELD_TOKEN_LOOKUP
+
+        payload = system_client.get("/api/ui_config", headers=auth_headers).get_json()
+        assert payload["field_tokens"] == {k: list(v) for k, v in FIELD_TOKEN_LOOKUP.items()}
+        assert "LINKEDIN_URL" in payload["field_tokens"]["contact.cover_letter_from_block"]
+        assert payload["field_tokens"]["cover_letter.signature"] == ["SIGNATURE_IMAGE"]
+
     def test_nav_config_without_candidate_id(self, system_client: FlaskClient, auth_headers: dict[str, str]) -> None:
         resp = system_client.get("/api/nav_config", headers=auth_headers)
         assert resp.status_code == 200
@@ -99,12 +132,15 @@ class TestSystemAuthRoutes:
     def test_nav_config_uses_candidate_state(self, system_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr("ui.api.api_system.get_candidate", lambda candidate_id: {"state": "ACTIVE_SEARCH"})
         monkeypatch.setattr(system_mod, "_get_company_counts", lambda candidate_id: {"/companies/watch_list": 4})
-        monkeypatch.setattr(system_mod, "_get_job_counts", lambda candidate_id: {"/jobs/in_review": 1})
+        monkeypatch.setattr(system_mod, "_get_job_counts", lambda candidate_id: {"/jobs/ready": 1})
         resp = system_client.get("/api/nav_config?candidate_id=cand-1", headers=auth_headers)
         payload = resp.get_json()
         assert resp.status_code == 200
-        jobs = next(group for group in payload if group["label"] == "Jobs")
-        assert jobs["items"][0]["count"] == 1
+        # AST-2230: Job Opportunities (was Jobs); Ready to Apply is third item.
+        jobs = next(group for group in payload if group["label"] == "Job Opportunities")
+        ready = next(it for it in jobs["items"] if it["path"] == "/jobs/ready")
+        assert ready["count"] == 1
+        assert ready["enabled"] is True
 
     def test_nav_config_early_state_keeps_candidate_facing_groups(
         self, system_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
@@ -114,8 +150,9 @@ class TestSystemAuthRoutes:
         monkeypatch.setattr(system_mod, "_get_job_counts", lambda candidate_id: {})
         resp = system_client.get("/api/nav_config?candidate_id=cand-1", headers=auth_headers)
         assert resp.status_code == 200
-        labels = {group["label"] for group in resp.get_json()}
-        assert {"Jobs", "Companies", "Artifacts", "Candidate"} <= labels
+        labels = [group["label"] for group in resp.get_json()]
+        # AST-2230 AC5: four facing groups in order (admin segments follow for admin callers).
+        assert labels[:4] == ["Candidate", "Criteria", "Company", "Job Opportunities"]
 
     def test_nav_config_admin_agent_ad_hoc_label(self, system_client: FlaskClient, auth_headers: dict[str, str]) -> None:
         payload = system_client.get("/api/nav_config", headers=auth_headers).get_json()
@@ -133,13 +170,21 @@ class TestSystemAuthRoutes:
         )
 
     def test_nav_config_three_admin_segments_for_admin(
-        self, system_client: FlaskClient, auth_headers: dict[str, str]
+        self, system_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        # AST-1386: admin sees Operations → Admin → Tools; paste labels; no admin_only in JSON.
-        payload = system_client.get("/api/nav_config", headers=auth_headers).get_json()
+        # AST-1386 + AST-2230: with a live candidate, facing foursome then Operations → Admin → Tools.
+        # (No candidate_id → stage 0 omits facing groups — covered in TestAst2230StageGatedNavApi.)
+        monkeypatch.setattr("ui.api.api_system.get_candidate", lambda candidate_id: {"state": "ACTIVE_SEARCH"})
+        monkeypatch.setattr(system_mod, "_get_company_counts", lambda candidate_id: {})
+        monkeypatch.setattr(system_mod, "_get_job_counts", lambda candidate_id: {})
+        monkeypatch.setattr(system_mod, "_profile_incomplete", lambda _cid: False)
+        payload = system_client.get(
+            "/api/nav_config?candidate_id=cand-1", headers=auth_headers
+        ).get_json()
         labels = [group["label"] for group in payload]
-        cand_i = labels.index("Candidate")
-        assert labels[cand_i + 1 : cand_i + 4] == ["Operations", "Admin", "Tools"]
+        assert labels[:4] == ["Candidate", "Criteria", "Company", "Job Opportunities"]
+        ops_i = labels.index("Operations")
+        assert labels[ops_i : ops_i + 3] == ["Operations", "Admin", "Tools"]
         tools = next(group for group in payload if group["label"] == "Tools")
         resume = next(it for it in tools["items"] if it["path"] == "/admin/session_resume_paste")
         cover = next(it for it in tools["items"] if it["path"] == "/admin/session_cover_letter")
@@ -167,6 +212,18 @@ class TestSystemAuthRoutes:
         monkeypatch.setattr("src.core.agent.get_entity_response", MagicMock(return_value={"block_data": "{}"}))
         resp = system_client.get("/api/agent_data/batch-1/entity/acme", headers=auth_headers)
         assert resp.status_code == 200
+
+
+class TestAst1808ProgressRankRetry:
+    """AST-1808 / AST-2230: REQUESTED_*_RETRY inherits base stage so nav gates stay open."""
+
+    @pytest.mark.parametrize("base", ["REQUESTED_RESUME", "REQUESTED_ARTIFACTS"])
+    def test_retry_ranks_with_base(self, base: str) -> None:
+        assert system_mod._nav_stage(f"{base}_RETRY") == system_mod._nav_stage(base)
+        assert system_mod._nav_stage(base) >= 3
+
+    def test_unregistered_retry_is_unranked(self) -> None:
+        assert system_mod._nav_stage("NOPE_RETRY") == 0
 
 
 class TestDeployStatus:
@@ -223,12 +280,15 @@ class TestDeployStatus:
 
 
 class TestSystemNavHelpers:
-    def test_is_at_or_past_compares_candidate_states(self) -> None:
-        assert system_mod._is_at_or_past("ACTIVE_SEARCH", "RESUME_READY") is True
-        assert system_mod._is_at_or_past("NEW_CANDIDATE", "ACTIVE_SEARCH") is False
-        # Terminals never unlock gated nav
-        assert system_mod._is_at_or_past("INACTIVE", "RESUME_READY") is False
-        assert system_mod._is_at_or_past("DELETED", "NEW_CANDIDATE") is False
+    def test_nav_stage_compares_registry_stages(self) -> None:
+        # AST-2230: progress_rank helpers retired — stage integers drive gates.
+        assert system_mod._nav_stage("ACTIVE_SEARCH") == 5
+        assert system_mod._nav_stage("RESUME_READY") == 4
+        assert system_mod._nav_stage("NEW_CANDIDATE") == 1
+        # Terminals → stage 0 → candidate-facing groups omitted.
+        assert system_mod._nav_stage("INACTIVE") == 0
+        assert system_mod._nav_stage("DELETED") == 0
+        assert system_mod._nav_stage("") == 0
 
     def test_company_counts_without_candidate(self) -> None:
         assert system_mod._get_company_counts(None) == {}
@@ -248,42 +308,125 @@ class TestSystemNavHelpers:
     def test_job_counts_without_candidate(self) -> None:
         assert system_mod._get_job_counts(None) == {}
 
+    def test_job_counts_six_paths_with_floor_arithmetic(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # AST-1974 AC 10: six keys; below-floor moves from Processing to Skipped; Meteorites = list length.
+        from src.utils import config as cfg
+
+        def _count(states=None, candidate_id=None, exclude_states=None):
+            assert candidate_id == "cand-1"
+            if exclude_states is not None:
+                assert states is None and exclude_states == list(cfg.JOBS_PROCESSING_EXCLUDED_STATES)
+                return 10
+            return {
+                tuple(cfg.READY_JOB_STATES): 1,
+                tuple(cfg.REVIEW_JOB_STATES): 2,
+                tuple(cfg.APPLIED_JOB_STATES): 3,
+                tuple(cfg.SKIPPED_STATES): 4,
+            }[tuple(states)]
+
+        monkeypatch.setattr("src.core.tracker.count_jobs", _count)
+        monkeypatch.setattr("src.core.tracker.count_jobs_below_dispatch_score_floor", lambda candidate_id: 2)
+        monkeypatch.setattr("src.data.database.list_meteorites_for_candidate", lambda candidate_id: [{}, {}, {}])
+        assert system_mod._get_job_counts("cand-1") == {
+            "/jobs/ready": 1,
+            "/jobs/review": 2,
+            "/jobs/applied": 3,
+            "/jobs/processing": 8,
+            "/jobs/skipped": 6,
+            "/jobs/meteorites": 3,
+        }
+
     def test_job_counts_swallow_errors(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr("src.core.tracker.count_jobs_below_dispatch_score_floor", lambda candidate_id: (_ for _ in ()).throw(RuntimeError("boom")))
         assert system_mod._get_job_counts("cand-1") == {}
 
     def test_resolve_nav_keeps_candidate_facing_groups_and_stubs(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        # AST-1449: no group-level visible skip; Applied/Responded stay disabled stubs.
+        # AST-2230: four facing groups; int min-stage gates; Criteria locked until stage 4.
         monkeypatch.setattr(system_mod, "_get_company_counts", lambda candidate_id: {})
         monkeypatch.setattr(system_mod, "_get_job_counts", lambda candidate_id: {})
-        facing = {"Jobs", "Companies", "Artifacts", "Candidate"}
-        for state in ("NEW_CANDIDATE", "RESUME_READY"):
-            nav = system_mod._resolve_nav(state, "cand-1")
-            labels = {group["label"] for group in nav}
-            assert facing <= labels
-            jobs = next(group for group in nav if group["label"] == "Jobs")
-            applied = next(item for item in jobs["items"] if item["label"] == "Applied")
-            responded = next(item for item in jobs["items"] if item["label"] == "Responded")
-            assert applied["enabled"] is False
-            assert responded["enabled"] is False
-        nav_ready = system_mod._resolve_nav("RESUME_READY", "cand-1")
-        artifacts = next(group for group in nav_ready if group["label"] == "Artifacts")
-        assert all(item["enabled"] for item in artifacts["items"])
-        candidate = next(group for group in nav_ready if group["label"] == "Candidate")
+        monkeypatch.setattr(system_mod, "_profile_incomplete", lambda _cid: False)
+        facing = ["Candidate", "Criteria", "Company", "Job Opportunities"]
+        nav_early = system_mod._resolve_nav("NEW_CANDIDATE", "cand-1")
+        assert [g["label"] for g in nav_early if g["label"] in facing] == facing
+        criteria_early = next(g for g in nav_early if g["label"] == "Criteria")
+        assert all(item["enabled"] is False for item in criteria_early["items"])
+        # RESUME_READY is stage 4 — Criteria unlocks; Job Opportunities still stage-5 locked.
+        nav_mid = system_mod._resolve_nav("RESUME_READY", "cand-1")
+        criteria_mid = next(g for g in nav_mid if g["label"] == "Criteria")
+        assert all(item["enabled"] is True for item in criteria_mid["items"])
+        jobs_mid = next(g for g in nav_mid if g["label"] == "Job Opportunities")
+        assert all(item["enabled"] is False for item in jobs_mid["items"])
+        nav_live = system_mod._resolve_nav("ACTIVE_SEARCH", "cand-1")
+        jobs = next(group for group in nav_live if group["label"] == "Job Opportunities")
+        assert all(item["enabled"] is True for item in jobs["items"])
+        candidate = next(group for group in nav_live if group["label"] == "Candidate")
         assert candidate["items"][0]["enabled"] is True
 
-    def test_resolve_nav_uses_string_enabled_gate(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_resolve_nav_uses_int_stage_enabled_gate(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # AST-2230: item enabled is a min stage int (legacy string gates retired).
         monkeypatch.setattr(
             system_mod,
             "NAV_CONFIG",
-            [{"label": "G", "items": [{"label": "X", "path": "/x", "enabled": "ACTIVE_SEARCH"}]}],
+            [{"label": "G", "items": [{"label": "X", "path": "/x", "enabled": 5}]}],
         )
         monkeypatch.setattr(system_mod, "_get_company_counts", lambda candidate_id: {})
         monkeypatch.setattr(system_mod, "_get_job_counts", lambda candidate_id: {})
+        monkeypatch.setattr(system_mod, "_profile_incomplete", lambda _cid: False)
         nav = system_mod._resolve_nav("NEW_CANDIDATE", "cand-1")
         assert nav[0]["items"][0]["enabled"] is False
         nav_live = system_mod._resolve_nav("ACTIVE_SEARCH", "cand-1")
         assert nav_live[0]["items"][0]["enabled"] is True
+
+
+class TestAst2230StageGatedNavApi:
+    """AST-2230: stage gates, recent/attention flags, stage-0 omit, dropped labels."""
+
+    def test_criteria_disabled_below_stage_4(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(system_mod, "_get_company_counts", lambda candidate_id: {})
+        monkeypatch.setattr(system_mod, "_get_job_counts", lambda candidate_id: {})
+        monkeypatch.setattr(system_mod, "_profile_incomplete", lambda _cid: False)
+        nav = system_mod._resolve_nav("CONTEXT_READY", "cand-1")  # stage 3
+        criteria = next(g for g in nav if g["label"] == "Criteria")
+        assert criteria["items"]
+        assert all(it["enabled"] is False for it in criteria["items"])
+        assert criteria["recent"] is False
+
+    def test_stage_zero_omits_candidate_facing_groups(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(system_mod, "_get_company_counts", lambda candidate_id: {})
+        monkeypatch.setattr(system_mod, "_get_job_counts", lambda candidate_id: {})
+        monkeypatch.setattr(system_mod, "_profile_incomplete", lambda _cid: False)
+        for state in ("DELETED", "INACTIVE", ""):
+            nav = system_mod._resolve_nav(state, "cand-1")
+            labels = {g["label"] for g in nav}
+            assert not (
+                {"Candidate", "Criteria", "Company", "Job Opportunities"} & labels
+            ), state
+
+    def test_recent_and_profile_attention(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            system_mod,
+            "_get_company_counts",
+            lambda candidate_id: {"/companies/watch_list": 2},
+        )
+        monkeypatch.setattr(system_mod, "_get_job_counts", lambda candidate_id: {})
+        monkeypatch.setattr(system_mod, "_profile_incomplete", lambda _cid: True)
+        nav = system_mod._resolve_nav("ACTIVE_SEARCH", "cand-1")
+        by_label = {g["label"]: g for g in nav}
+        assert by_label["Candidate"]["recent"] is True
+        assert by_label["Criteria"]["recent"] is False
+        assert by_label["Company"]["recent"] is True
+        assert by_label["Job Opportunities"]["recent"] is False
+        profile = next(it for it in by_label["Candidate"]["items"] if it["path"] == "/candidate/profile")
+        assert profile["attention"] is True
+
+    def test_dropped_labels_absent_from_resolved_nav(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(system_mod, "_get_company_counts", lambda candidate_id: {})
+        monkeypatch.setattr(system_mod, "_get_job_counts", lambda candidate_id: {})
+        monkeypatch.setattr(system_mod, "_profile_incomplete", lambda _cid: False)
+        nav = system_mod._resolve_nav("ACTIVE_SEARCH", "cand-1")
+        item_labels = {it["label"] for g in nav for it in g["items"]}
+        for gone in ("Intake", "Surfer", "Processing", "Watch History", "New List"):
+            assert gone not in item_labels
 
 
 class TestAst1116ShapesCoverLetter:

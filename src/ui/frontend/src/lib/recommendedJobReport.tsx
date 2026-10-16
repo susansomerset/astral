@@ -1,5 +1,6 @@
 import type { ReactNode } from "react"
 import { ConfidenceBullets } from "../components/ConfidenceBullets"
+import { GradeMark } from "../components/GradeMark"
 import {
   buildJobListRubricColumnsForGroup,
   buildJobListRubricColumnsFromArtifact,
@@ -27,7 +28,7 @@ export function primaryActionsForState(
   return manifest?.jobs.recommended.primary_actions_by_state?.[state] ?? []
 }
 
-/** True for BUILD_ARTIFACTS and legacy daisy-chain BUILD_ARTIFACTS.<hop> (not ERROR_BUILD_ARTIFACTS). */
+/** True for BUILD_ARTIFACTS and legacy daisy-chain BUILD_ARTIFACTS.<hop> (not the per-hop artifact-chain error states). */
 export function isArtifactsBuildInProgress(jobState: string): boolean {
   return jobState === "BUILD_ARTIFACTS" || jobState.startsWith("BUILD_ARTIFACTS.")
 }
@@ -83,15 +84,71 @@ export function printCoverVisible(artifacts: unknown): boolean {
   return artifactHasContent(artifacts, "cover_letter")
 }
 
-export function materialsPreviewVisible(
-  jobState: string,
-  artifacts: unknown,
-): boolean {
-  if (jobState === "CANDIDATE_REVIEW") return true
-  return (
-    printResumeVisible(artifacts)
-    || printCoverVisible(artifacts)
-  )
+/** Sum of phase list scores; null if any phase score is missing (AST-1968 / AST-2234). */
+export function totalScore(
+  job: Record<string, unknown>,
+  phaseFields: string[],
+): number | null {
+  if (!phaseFields.length) return null
+  let sum = 0
+  for (const field of phaseFields) {
+    const v = job[field]
+    if (typeof v !== "number" || !Number.isFinite(v)) return null
+    sum += v
+  }
+  return sum
+}
+
+export type PhaseThermometerModel = { fillRatio: number; tooltip: string }
+
+/** Green-fill thermometer for one Analysis phase (AST-2234). */
+export function phaseThermometerModel(
+  score: unknown,
+  breakdown: { earned: number; possible: number; max: number } | null,
+): PhaseThermometerModel | null {
+  if (!breakdown) return null
+  if (typeof score !== "number" || !Number.isFinite(score)) return null
+  const { possible, max } = breakdown
+  if (!(max > 0)) return null
+  const fillRatio = Math.min(1, Math.max(0, score / max))
+  const tooltip =
+    `Score ${formatPhaseScore(score)}, ${Math.round((100 * possible) / max)}% gradable`
+  return { fillRatio, tooltip }
+}
+
+const ANALYSIS_GRADES_FIELDS = ["jd_grades", "do_grades", "get_grades", "like_grades"] as const
+
+/** Job-level gradable % = round(100 * (n - x) / n) over Analysis phase grade vectors (AST-2234). */
+export function jobGradablePercent(job: Record<string, unknown>): number | null {
+  let n = 0
+  let xCount = 0
+  for (const field of ANALYSIS_GRADES_FIELDS) {
+    const grades = jobGradesForField(job, field)
+    if (!Array.isArray(grades)) continue
+    for (const row of grades) {
+      if (!row || typeof row !== "object" || Array.isArray(row)) continue
+      n += 1
+      if ((row as { grade?: unknown }).grade === "X") xCount += 1
+    }
+  }
+  if (n === 0) return null
+  return Math.round((100 * (n - xCount)) / n)
+}
+
+/** Unescaped RESPONSE agent_payload prose for Discussion (AST-2234). */
+export function extractAgentPayloadText(responseContent: string): string {
+  try {
+    const parsed: unknown = JSON.parse(responseContent)
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return ""
+    const payload = (parsed as { agent_payload?: unknown }).agent_payload
+    if (typeof payload === "string") return payload
+    if (payload != null && typeof payload === "object") {
+      return JSON.stringify(payload, null, 2)
+    }
+    return ""
+  } catch {
+    return ""
+  }
 }
 
 interface GradeCell {
@@ -160,14 +217,6 @@ export function gradesForHeader(
   return []
 }
 
-function gradeDot(grade: string, tooltip: string) {
-  return (
-    <span className={`grade-dot dot-${grade.toLowerCase()}`} title={tooltip || undefined}>
-      {grade}
-    </span>
-  )
-}
-
 export function buildPhaseTabGradeDots(
   gradesRaw: unknown,
   rubricArtifactKey: string | undefined,
@@ -185,11 +234,36 @@ export function buildPhaseTabGradeDots(
     .map(col => {
       const { grade, gradeTooltip } = gradeAndConfidenceForCol(gradesRaw, col)
       if (!grade) return null
-      return gradeDot(grade, gradeTooltip)
+      return <GradeMark grade={grade} tooltip={gradeTooltip} />
     })
     .filter(Boolean)
   if (!dots.length) return null
   return <>{dots}</>
+}
+
+/**
+ * Single source of column set, order, grade lookup and tooltip for a phase's grade row.
+ * Shared by the modal Analysis header and the Recommended list lines so they can't drift.
+ */
+function phaseGradeCells(gradesRaw: unknown, job: Record<string, unknown>, gradesField: string) {
+  // Job-carried *_rubric (or grades-only) — never live candidate artifacts (AST-1327).
+  const baseCols = buildJobListRubricColumnsForGroup({ gradeKey: gradesField, columnSourceJob: job })
+  const cols = sortRubricColumnsByImportanceAndGrade(
+    baseCols,
+    col => gradeAndConfidenceForCol(gradesRaw, col).grade,
+  )
+  const out: Array<{ key: string; grade: string; tooltip: string; confidence?: number }> = []
+  for (const col of cols) {
+    const { grade, confidence, reason } = gradeAndConfidenceForCol(gradesRaw, col)
+    if (!grade) continue
+    out.push({
+      key: col.code || col.label,
+      grade,
+      tooltip: formatGradeDotTooltipWithVectorLabel(col, grade, reason, confidence),
+      confidence,
+    })
+  }
+  return out
 }
 
 /** Horizontal grade + confidence row for Analysis section headers (AST-950 / AST-1327 / AST-1771). */
@@ -198,26 +272,29 @@ export function buildPhaseSectionGradeConfidenceRow(
   job: Record<string, unknown>,
   gradesField: string,
 ): ReactNode {
-  // Job-carried *_rubric (or grades-only) — never live candidate artifacts (AST-1327).
-  const baseCols = buildJobListRubricColumnsForGroup({ gradeKey: gradesField, columnSourceJob: job })
-  const cols = sortRubricColumnsByImportanceAndGrade(
-    baseCols,
-    col => gradeAndConfidenceForCol(gradesRaw, col).grade,
-  )
-  const cells: ReactNode[] = []
-  for (const col of cols) {
-    const { grade, confidence, reason } = gradeAndConfidenceForCol(gradesRaw, col)
-    if (!grade) continue
-    const gradeTooltip = formatGradeDotTooltipWithVectorLabel(col, grade, reason, confidence)
-    cells.push(
-      <span key={col.code || col.label} className="recommended-report-phase-grade-cell">
-        {gradeDot(grade, gradeTooltip)}
-        <ConfidenceBullets confidence={confidence} />
-      </span>,
-    )
-  }
+  const cells = phaseGradeCells(gradesRaw, job, gradesField)
   if (!cells.length) return null
-  return <div className="recommended-report-phase-grade-row">{cells}</div>
+  return (
+    <div className="recommended-report-phase-grade-row">
+      {cells.map(c => (
+        <span key={c.key} className="recommended-report-phase-grade-cell">
+          <GradeMark grade={c.grade} tooltip={c.tooltip} />
+          <ConfidenceBullets confidence={c.confidence} />
+        </span>
+      ))}
+    </div>
+  )
+}
+
+/** Recommended list line: same circles/order/tooltip as the modal, no letters, no confidence (AST-1968). */
+export function buildPhaseListGradeRow(job: Record<string, unknown>, gradesField: string): ReactNode {
+  const cells = phaseGradeCells(jobGradesForField(job, gradesField), job, gradesField)
+  if (!cells.length) return null
+  return (
+    <div className="recommended-list-phase-grade-row">
+      {cells.map(c => <span key={c.key}><GradeMark grade={c.grade} tooltip={c.tooltip} letterless /></span>)}
+    </div>
+  )
 }
 
 export function formatPhaseTabNavLabel(prefix: string, dots: ReactNode): ReactNode {
@@ -277,21 +354,32 @@ export function jobScoreBreakdownForGradesField(
   return { earned, possible, max }
 }
 
-/** Analysis section header title with score chrome (AST-1348). */
+/** Recommended list phase score (JD/DO/GET/LIKE): one decimal, else em dash (AST-522, AST-1874). */
+export function formatPhaseScore(value: unknown): string {
+  if (typeof value === "number" && Number.isFinite(value)) return value.toFixed(1)
+  return "\u2014"
+}
+
+/** Analysis section header title with score chrome (AST-1348); list score fills {score} (AST-1874). */
 export function formatPhaseSectionScoreTitle(
   phaseLabel: string,
   breakdown: { earned: number; possible: number; max: number },
   template: string,
+  score?: unknown,
 ): string {
   const e = String(Math.round(breakdown.earned))
   const p = String(Math.round(breakdown.possible))
   const m = String(Math.round(breakdown.max))
+  // No list score → drop the whole " - {score}" segment; never render an em dash here.
+  const hasScore = typeof score === "number" && Number.isFinite(score)
+  const s = hasScore ? formatPhaseScore(score) : ""
   const tpl = template.trim()
   if (!tpl) {
-    return `${phaseLabel} - score: ${e} out of ${p} possible (${m} max total)`
+    return `${phaseLabel}${hasScore ? ` - ${s}` : ""} - score: ${e} out of ${p} possible (${m} max total)`
   }
-  return tpl
+  return (hasScore ? tpl : tpl.replaceAll(" - {score}", ""))
     .replaceAll("{phase_label}", phaseLabel)
+    .replaceAll("{score}", s)
     .replaceAll("{earned}", e)
     .replaceAll("{possible}", p)
     .replaceAll("{max}", m)

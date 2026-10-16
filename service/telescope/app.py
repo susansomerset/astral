@@ -1,334 +1,190 @@
-"""Astral Telescope FastAPI entrypoint."""
+"""Astral Telescope — Postgres queue consumer driving one Firefox per process.
+
+No scrape HTTP API: the platform enqueues jobs in telescope_job and waits for results
+(see jobqueue.py). HTTP serves only /healthz and /wake.
+
+Serverless: after IDLE_SLEEP_SECONDS with nothing queued, running or in flight, the
+process drops its Postgres connections and Firefox. With no outbound traffic, Railway
+puts the container to sleep. The platform wakes it with GET /wake when it enqueues.
+"""
 
 from __future__ import annotations
 
 import asyncio
+import time
 from contextlib import asynccontextmanager
-from typing import Any, Awaitable, Callable, Literal, Optional, Tuple, Union
+from typing import Optional
 
-from fastapi import Depends, FastAPI, HTTPException, Request
+import asyncpg
+from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field, field_validator
 
-from auth import require_bearer
-from browser import BrowserPool
-from capture import (
-    CaptureQueryError,
-    capture_html,
-    capture_links,
-    capture_text,
-    resolve_capture_query,
-)
-from interact import dismiss_cookies, expand_page, navigate, wait_ready_generic
-from logging_util import configure_logging, get_logger
-from meta import build_scrape_meta
+import jobqueue
+from browser import Firefox
+from logging_util import configure_logging, get_logger, worker_label
 from settings import settings
+from worker import QueueWorker
 
 configure_logging()
 _log = get_logger(__name__)
 
-# Expand = scroll + Load More on this URL only — not numbered / Next pagination (AST-1737).
-_EXPAND_DESC = (
-    "Infinite-scroll + Load More/Show More on the current document. "
-    "Does not navigate numbered pagination or Next-page URLs."
-)
+_IDLE_CHECK_SECONDS = 15.0
 
 
-# tag + selector = same primary; class_name / id are optional secondaries.
-_PRIMARY_DESC = (
-    "Element tag / CSS primary (alias of tag). Same slot as tag — "
-    "html, div, span, body, head, ul, page, or legacy CSS."
-)
-_TAG_DESC = (
-    "Element tag primary (alias of selector). Same slot as selector — "
-    "html, div, span, body, head, ul, or page."
-)
-_CLASS_DESC = (
-    "Secondary class filter: elements with class=\"…\". "
-    "Combines with a bare tag primary as {tag}.{class}, or alone as .{class}."
-)
-_ID_DESC = (
-    "Secondary id filter: elements with id=\"…\". "
-    "Combines with bare tag / class as {tag}.{class}#id, or alone as #id."
-)
+class Runtime:
+    """Postgres pool + Firefox + queue worker, which can sleep and wake together."""
 
-CaptureField = Literal["text", "links", "html"]
-CAPTURE_FIELDS = frozenset({"text", "links", "html"})
+    def __init__(self) -> None:
+        self.db: Optional[asyncpg.Pool] = None
+        self.firefox: Optional[Firefox] = None
+        self.worker: Optional[QueueWorker] = None
+        self.asleep = False
+        self._lock = asyncio.Lock()
+        self._idle_task: Optional[asyncio.Task] = None
 
-_FIELDS_DESC = (
-    "What to extract from one page load. Response includes final_url, scrape_meta, "
-    "and only the requested capture keys (text, links, html)."
-)
+    async def start(self) -> None:
+        async with self._lock:
+            await self._start_locked()
+        self._idle_task = asyncio.create_task(self._idle_loop(), name="telescope-idle")
 
+    async def close(self) -> None:
+        if self._idle_task is not None:
+            self._idle_task.cancel()
+            await asyncio.gather(self._idle_task, return_exceptions=True)
+        async with self._lock:
+            if not self.asleep:
+                await self._stop_locked()
 
-class _TelescopeScrapeBody(BaseModel):
-    url: str
-    selector: Optional[str] = Field(default=None, description=_PRIMARY_DESC)
-    tag: Optional[str] = Field(default=None, description=_TAG_DESC)
-    class_name: Optional[str] = Field(default=None, description=_CLASS_DESC)
-    id: Optional[str] = Field(default=None, description=_ID_DESC)
-    expand: bool = Field(default=True, description=_EXPAND_DESC)
-    wait_ready: bool = False
+    async def wake(self) -> bool:
+        """Resume if asleep. Returns True when this call woke the process."""
+        async with self._lock:
+            if not self.asleep:
+                return False
+            _log.info("%s | telescope waking", worker_label())
+            await self._start_locked()
+            return True
 
-
-class TelescopeRequest(_TelescopeScrapeBody):
-    fields: list[CaptureField] = Field(
-        default_factory=lambda: ["text", "links"],
-        description=_FIELDS_DESC,
-    )
-
-    @field_validator("fields")
-    @classmethod
-    def _normalize_fields(cls, v: list[str]) -> list[str]:
-        if not v:
-            raise ValueError("fields must include at least one of: text, links, html")
-        bad = [f for f in v if f not in CAPTURE_FIELDS]
-        if bad:
-            raise ValueError(f"invalid fields: {bad}")
-        seen: set[str] = set()
-        out: list[str] = []
-        for field in v:
-            if field not in seen:
-                seen.add(field)
-                out.append(field)
-        return out
-
-
-class TelescopeHtmlRequest(_TelescopeScrapeBody):
-    """Legacy /telescope/html — same body minus fields; always html-only."""
-
-
-def _resolve_body_selector(
-    *,
-    selector: Optional[str],
-    tag: Optional[str],
-    class_name: Optional[str],
-    id: Optional[str] = None,
-) -> Optional[str]:
-    """Map request filter fields to the CSS string capture_* expects; 400 on bad input."""
-    try:
-        resolved = resolve_capture_query(
-            selector=selector, tag=tag, class_name=class_name, id=id
+    async def _start_locked(self) -> None:
+        self.db = await jobqueue.create_pool(
+            settings.database_url, max_size=settings.db_pool_max_size
         )
-    except CaptureQueryError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from None
-    # Log primary (+ optional class/id) without dumping page content
-    primary = (tag or "").strip() or (selector or "").strip() or None
-    cn = (class_name or "").strip() or None
-    eid = (id or "").strip() or None
-    if primary or cn or eid:
-        _log.info(
-            "telescope filter mode=primary(+class/id) primary=%s class_name=%s id=%s resolved=%s",
-            primary,
-            cn,
-            eid,
-            resolved,
-        )
-    return resolved
+        await jobqueue.ensure_schema(self.db)
+        self.firefox = Firefox()
+        self.worker = QueueWorker(self.db, self.firefox)  # sets the worker label before Firefox logs
+        await self.firefox.start()
+        await self.worker.start()
+        self.asleep = False
 
+    async def _stop_locked(self) -> None:
+        if self.worker is not None:
+            await self.worker.stop()
+        if self.firefox is not None:
+            await self.firefox.stop()
+        if self.db is not None:
+            await self.db.close()
+        self.db = self.firefox = self.worker = None
+
+    async def _idle_loop(self) -> None:
+        while True:
+            await asyncio.sleep(_IDLE_CHECK_SECONDS)
+            try:
+                await self._maybe_sleep()
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                _log.warning(
+                    "%s | telescope idle check failed: %s: %s",
+                    worker_label(),
+                    type(exc).__name__,
+                    exc,
+                )
+
+    async def _maybe_sleep(self) -> None:
+        async with self._lock:
+            if self.asleep or self.worker is None or self.db is None:
+                return
+            idle = self.worker.idle_seconds()
+            if idle < settings.idle_sleep_seconds:
+                return
+            if await jobqueue.has_pending(self.db):
+                return  # retries waiting on backoff, or another replica's work
+            await self.worker.stop()  # also deletes our telescope_worker row
+            # Race guard: the platform inserts a job, then checks for a live worker
+            # before pinging /wake. We delete our worker row, then check the queue.
+            # Whichever side goes second sees the other, so no job is stranded.
+            if await jobqueue.has_pending(self.db):
+                _log.info(
+                    "%s | telescope staying awake: work arrived while going to sleep",
+                    worker_label(),
+                )
+                self.worker = QueueWorker(self.db, self.firefox)
+                await self.worker.start()
+                return
+            await self.firefox.stop()
+            await self.db.close()
+            self.db = self.firefox = self.worker = None
+            self.asleep = True
+            _log.info(
+                "%s | telescope sleeping: idle %ds, Postgres and Firefox closed until GET /wake",
+                worker_label(),
+                round(idle),
+            )
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     configure_logging()
-    if not settings.bearer_token:
-        raise RuntimeError("TELESCOPE_BEARER_TOKEN is required")
-    pool = BrowserPool()
-    await pool.start()
-    app.state.pool = pool
+    if not settings.database_url:
+        raise RuntimeError("ASTRAL_DATABASE_URL is required")
+    runtime = Runtime()
+    await runtime.start()
+    app.state.runtime = runtime
     try:
         yield
     finally:
-        await pool.stop()
+        await runtime.close()
 
 
 app = FastAPI(title="Astral Telescope", lifespan=lifespan)
 
-WorkFn = Callable[[Any], Awaitable[Any]]
 
-
-async def _run_browser_job(
-    pool: BrowserPool,
-    url: str,
-    expand: bool,
-    wait_ready: bool,
-    work: WorkFn,
-) -> Tuple[Any, bool]:
-    cookies_dismissed = False
-
-    async def _scrape(page: Any) -> Any:
-        nonlocal cookies_dismissed
-        await navigate(page, url)
-        cookies_dismissed = await dismiss_cookies(page)
-        if expand:
-            await expand_page(page)
-        if wait_ready:
-            await wait_ready_generic(page)
-        return await work(page)
-
-    max_attempts = settings.scrape_retry_count + 1
-    last_exc: Optional[Exception] = None
-    for attempt in range(max_attempts):
-        try:
-            async with pool.page() as page:
-                result = await asyncio.wait_for(
-                    _scrape(page),
-                    timeout=settings.request_timeout_seconds,
-                )
-            return result, cookies_dismissed
-        except asyncio.TimeoutError:
-            _log.warning(
-                "telescope timeout url=%s timeout_s=%s",
-                url,
-                settings.request_timeout_seconds,
-            )
-            raise HTTPException(status_code=504, detail="timeout") from None
-        except HTTPException:
-            raise
-        except Exception as exc:
-            last_exc = exc
-            if attempt + 1 >= max_attempts:
-                break
-            delay_s = settings.scrape_retry_base_delay_seconds * (2**attempt)
-            _log.warning(
-                "telescope scrape retry url=%s attempt=%d/%d delay_s=%s err=%s: %s",
-                url,
-                attempt + 2,
-                max_attempts,
-                delay_s,
-                type(exc).__name__,
-                exc,
-            )
-            await asyncio.sleep(delay_s)
-
-    assert last_exc is not None
-    _log.exception(
-        "telescope scrape_failed url=%s\n  %s: %s",
-        url,
-        type(last_exc).__name__,
-        last_exc,
-    )
-    raise HTTPException(status_code=502, detail="scrape_failed") from None
-
-
-def _unwrap_job(
-    raw: Union[Tuple[Any, bool], Any],
-) -> Tuple[Any, bool]:
-    """Production returns (result, cookies_dismissed); test doubles may return result only."""
-    if isinstance(raw, tuple) and len(raw) == 2 and isinstance(raw[1], bool):
-        return raw[0], raw[1]
-    return raw, False
-
-
-@app.get("/healthz", dependencies=[Depends(require_bearer)])
-async def healthz(request: Request):
-    pool: BrowserPool = request.app.state.pool
+@app.get("/wake")
+async def wake(request: Request):
+    runtime: Runtime = request.app.state.runtime
     try:
-        ok = await pool.health_poke()
+        woke = await runtime.wake()
     except Exception as exc:
         _log.exception(
-            "healthz browser poke failed\n  %s: %s",
-            type(exc).__name__,
-            exc,
+            "%s | telescope wake failed: %s: %s", worker_label(), type(exc).__name__, exc
         )
-        return JSONResponse(status_code=503, content={"status": "unhealthy"})
-    if not ok:
-        _log.warning("healthz browser disconnected after poke")
-        return JSONResponse(status_code=503, content={"status": "unhealthy"})
-    return {"status": "ok"}
+        return JSONResponse(status_code=503, content={"status": "wake_failed"})
+    return {"status": "awake", "woke": woke}
 
 
-async def _scrape_with_fields(
-    pool: BrowserPool,
-    *,
-    url: str,
-    expand: bool,
-    wait_ready: bool,
-    sel: Optional[str],
-    fields: list[str],
-) -> dict:
-    want = set(fields)
-
-    async def work(page):
-        out: dict = {"final_url": page.url}
-        if "text" in want:
-            out["text"] = await capture_text(page, sel)
-        if "links" in want:
-            out["links"] = await capture_links(page, sel)
-        if "html" in want:
-            out["html"] = await capture_html(page, sel)
-        return out
-
-    raw = await _run_browser_job(pool, url, expand, wait_ready, work)
-    result, cookies_dismissed = _unwrap_job(raw)
-    meta_src = result.get("text")
-    if meta_src is None:
-        meta_src = result.get("html")
-    result["scrape_meta"] = build_scrape_meta(
-        requested_url=url,
-        final_url=result.get("final_url") or "",
-        text_or_html=meta_src,
-        cookies_dismissed=cookies_dismissed,
-    )
-    return result
-
-
-@app.post("/telescope", dependencies=[Depends(require_bearer)])
-async def post_telescope(request: Request, body: TelescopeRequest):
-    url = (body.url or "").strip()
-    if not url:
-        raise HTTPException(status_code=400, detail="url required")
-    sel = _resolve_body_selector(
-        selector=body.selector,
-        tag=body.tag,
-        class_name=body.class_name,
-        id=body.id,
-    )
-    pool: BrowserPool = request.app.state.pool
-    result = await _scrape_with_fields(
-        pool,
-        url=url,
-        expand=body.expand,
-        wait_ready=body.wait_ready,
-        sel=sel,
-        fields=body.fields,
-    )
-    _log.info(
-        "telescope ok method=/telescope final_url=%s fields=%s",
-        result.get("final_url"),
-        list(body.fields),
-    )
-    return result
-
-
-@app.post("/telescope/html", dependencies=[Depends(require_bearer)])
-async def post_telescope_html(request: Request, body: TelescopeHtmlRequest):
-    url = (body.url or "").strip()
-    if not url:
-        raise HTTPException(status_code=400, detail="url required")
-    sel = _resolve_body_selector(
-        selector=body.selector,
-        tag=body.tag,
-        class_name=body.class_name,
-        id=body.id,
-    )
-    pool: BrowserPool = request.app.state.pool
-    result = await _scrape_with_fields(
-        pool,
-        url=url,
-        expand=body.expand,
-        wait_ready=body.wait_ready,
-        sel=sel,
-        fields=["html"],
-    )
-    html = result.get("html")
-    if isinstance(html, list):
-        html_len = sum(len(h or "") for h in html)
-    else:
-        html_len = len(html or "")
-    _log.info(
-        "telescope ok method=/telescope/html final_url=%s html_len=%d",
-        result.get("final_url"),
-        html_len,
-    )
-    return result
+@app.get("/healthz")
+async def healthz(request: Request):
+    runtime: Runtime = request.app.state.runtime
+    if runtime.asleep:
+        return {"status": "asleep"}  # healthy by design; /wake resumes it
+    worker = runtime.worker
+    firefox = runtime.firefox
+    # The claim loop wakes at least every queue_poll_seconds; a long silence means it's stuck.
+    loop_age_s = time.monotonic() - worker.last_loop_at
+    loop_ok = loop_age_s < max(30.0, settings.queue_poll_seconds * 10)
+    try:
+        browser_ok = await firefox.health_poke()
+    except Exception as exc:
+        _log.exception("healthz browser poke failed\n  %s: %s", type(exc).__name__, exc)
+        browser_ok = False
+    body = {
+        "status": "ok" if (loop_ok and browser_ok and worker.db_ok) else "unhealthy",
+        "worker_id": worker.worker_id,
+        "in_flight": worker.in_flight,
+        "db_ok": worker.db_ok,
+        "browser_ok": browser_ok,
+        "claim_loop_age_s": round(loop_age_s, 1),
+    }
+    if body["status"] != "ok":
+        _log.warning("healthz unhealthy %s", body)
+        return JSONResponse(status_code=503, content=body)
+    return body

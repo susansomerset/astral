@@ -6,10 +6,11 @@ Uses Python's standard logging module with consistent formatting.
 
 Log output goes to both stdout and the app_log database table. Console is always
 stdout: on Railway (`RAILWAY_ENVIRONMENT` set) each line is JSON with `level` +
-`message`; off-Railway the plain `LEVEL name: message` format remains. The
+`message`, plus `batch_id` / `candidate_id` when set; off-Railway the plain `LEVEL name: message` format remains. The
 database handler stores message only — level and logger_name are columns.
 Switching to Better Stack or another provider means updating this module only.
-Telescope and gunicorn console setup are out of scope.
+Telescope console setup is out of scope; gunicorn access lines for
+`RAILWAY_CONFIG['access_log_quiet_paths']` are dropped (AST-2078).
 
 B2 / D2 (AST-388): `add_log_entry` is imported inside `_flush_buffer` only (late import — utils must not load `data` at module import time). Handler errors print one line to stderr so failures are visible without crashing the logging caller.
 
@@ -19,9 +20,9 @@ automatically tagged with the batch_id. Callers never set it directly.
 
 The `log_candidate_id` context var is optional (AST-1598), parallel to
 `log_batch_id`: when set, DB log rows are stamped with that candidate_id;
-when unset, candidate_id is NULL. Callers that want a stamp set the
-contextvar (dispatcher/UI wiring is out of AST-1598 scope — this module
-only defines and reads it).
+when unset, candidate_id is NULL. Set alongside `log_batch_id` at each
+candidate-owned batch start and cleared at the same teardown. Read by the DB
+handler and the Railway JSON formatter.
 
 The `log_debug` context var is the emit gate for `logger.debug` (stat.logging.debug).
 The run entry sets it; call sites always call `logger.debug` and do not inspect it.
@@ -34,6 +35,8 @@ Usage:
     logger.info("Info message")
     logger.warning("Warning message")
     logger.error("Error message")
+    logger.warn_exc("...")   # in an except block: WARNING one-liner, traceback at DEBUG
+    logger.error_exc("...")  # in an except block: ERROR one-liner, traceback at DEBUG
 """
 
 import atexit
@@ -43,6 +46,8 @@ import logging
 import os
 import sys
 import threading
+import traceback
+from collections.abc import Mapping
 from typing import Any, Optional
 
 # Dispatcher sets this at batch run start; logging handler reads it on each emit
@@ -71,6 +76,9 @@ DEBUG_DETAIL_PREFIX = " | "  # two spaces, pipe, two spaces — working-log deta
 DEBUG_LINE_THRESHOLD = 50
 DEBUG_HEAD_LINES = 15
 DEBUG_TAIL_LINES = 15
+DEBUG_STRING_HEAD_CHARS = 1000
+DEBUG_STRING_TAIL_CHARS = 1000
+DEBUG_STRING_THRESHOLD = DEBUG_STRING_HEAD_CHARS + DEBUG_STRING_TAIL_CHARS
 
 
 def _on_railway() -> bool:
@@ -79,22 +87,36 @@ def _on_railway() -> bool:
 
 
 class _RailwayJsonFormatter(logging.Formatter):
-    """One JSON object per line for Railway severity filters."""
+    """One JSON object per line for Railway severity filters; batch_id / candidate_id added when their contextvars are set."""
 
     def format(self, record: logging.LogRecord) -> str:
         msg = f"{record.name}: {record.getMessage()}"
         if record.exc_info:
             msg = msg + "\n" + self.formatException(record.exc_info)
-        return json.dumps(
-            {
-                "level": _RAILWAY_LEVEL.get(record.levelno, "error"),
-                "message": msg,
-            },
-            ensure_ascii=False,
-        )
+        payload = {"level": _RAILWAY_LEVEL.get(record.levelno, "error"), "message": msg}
+        # Omit (never null) when unset so batch-less lines keep today's exact shape.
+        batch_id = log_batch_id.get()
+        if batch_id:
+            payload["batch_id"] = batch_id
+        candidate_id = log_candidate_id.get()
+        if candidate_id:
+            payload["candidate_id"] = candidate_id
+        return json.dumps(payload, ensure_ascii=False)
 
 
 _RAILWAY_JSON_FORMATTER = _RailwayJsonFormatter()
+
+
+def truncate_debug_string(text: str) -> str:
+    """Cap debug string blobs — first 1k + last 1k chars when over 2k total."""
+    if not text or len(text) <= DEBUG_STRING_THRESHOLD:
+        return text
+    omitted = len(text) - DEBUG_STRING_THRESHOLD
+    return (
+        f"{text[:DEBUG_STRING_HEAD_CHARS]}"
+        f"<{omitted} chars omitted>"
+        f"{text[-DEBUG_STRING_TAIL_CHARS:]}"
+    )
 
 
 def truncate_debug_content(text: str) -> list[str]:
@@ -102,6 +124,7 @@ def truncate_debug_content(text: str) -> list[str]:
 
     Callers should pass normalized text; splitlines() drops a terminal empty line.
     """
+    text = truncate_debug_string(text)
     lines = text.splitlines()
     if not lines:
         return []
@@ -218,8 +241,28 @@ class _DatabaseLogHandler(logging.Handler):
             )
 
 
+class _QuietAccessFilter(logging.Filter):
+    """Drop gunicorn.access records for config-listed background polling paths (AST-2078).
+
+    Logger-level, so it applies before gunicorn's own access handler and before
+    propagation to root — whichever gunicorn setting enabled access logging.
+    gunicorn passes its atoms dict as the single log arg; atom `U` is PATH_INFO.
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        # Late import: config.py imports get_logger at module top (same cycle guard as AST-388).
+        from src.utils.config import RAILWAY_CONFIG
+
+        args = record.args
+        return not (
+            isinstance(args, Mapping)
+            and args.get("U") in RAILWAY_CONFIG["access_log_quiet_paths"]
+        )
+
+
 _db_handler_attached = False
 _db_handler_instance: Optional[_DatabaseLogHandler] = None
+_quiet_access_filter_attached = False
 
 
 def flush_log_buffer() -> None:
@@ -236,14 +279,16 @@ def log_llm_batch_summary(
     *,
     response: Any = None,
     error: Optional[str] = None,
+    host: Optional[str] = None,
 ) -> None:
-    """One INFO/ERROR per LLM call when log_batch_id is set (Execution History / app_log)."""
+    """One INFO/WARNING per LLM call when log_batch_id is set (Execution History / app_log); INFO names the served host when given."""
     if not log_batch_id.get():
         return
-    # error is not None (incl. "") → ERROR path; never fake a healthy stop=? / zero-token INFO (AST-1190).
+    # error is not None (incl. "") → WARNING path; never fake a healthy stop=? / zero-token INFO (AST-1190).
+    # WARNING, not ERROR: the caller logs ERROR only when the entity lands in an error state (AST-1839).
     if error is not None:
         display_error = error if str(error).strip() else "(empty error)"
-        logger.error(
+        logger.warning(
             "LLM %s task=%s %.1fs error=%s",
             provider,
             prompt_label,
@@ -255,9 +300,12 @@ def log_llm_batch_summary(
     usage = getattr(response, "usage", None) if response is not None else None
     in_tok = getattr(usage, "input_tokens", 0) if usage else 0
     out_tok = getattr(usage, "output_tokens", 0) if usage else 0
+    # Served host (AST-1959) rides the same line, never a second one; omitted when the caller has none.
+    host_part = f" host={host}" if host else ""
     logger.info(
-        "LLM %s task=%s %.1fs stop=%s tokens in=%s out=%s",
+        "LLM %s%s task=%s %.1fs stop=%s tokens in=%s out=%s",
         provider,
+        host_part,
         prompt_label,
         duration,
         stop,
@@ -298,6 +346,24 @@ class _PrefixedLogger:
         """Match stdlib logging.Logger API — used for cheap guards before expensive debug work."""
         return self._logger.isEnabledFor(level)
 
+    def _truncate_debug_args(self, args: tuple[Any, ...]) -> tuple[Any, ...]:
+        out: list[Any] = []
+        for value in args:
+            if isinstance(value, str):
+                out.append(truncate_debug_string(value))
+            elif isinstance(value, (dict, list, tuple)):
+                try:
+                    out.append(
+                        truncate_debug_string(
+                            json.dumps(value, ensure_ascii=False, default=repr)
+                        )
+                    )
+                except Exception:
+                    out.append(truncate_debug_string(repr(value)))
+            else:
+                out.append(value)
+        return tuple(out)
+
     def debug(self, message: str, *args, **kwargs):
         """Always-call debug. Emits `{lineno}: {message}` only when `log_debug` is true."""
         if not log_debug.get():
@@ -307,7 +373,8 @@ class _PrefixedLogger:
         # left logger.debug() a no-op even when log_debug was true.
         if self._logger.getEffectiveLevel() > logging.DEBUG:
             self._logger.setLevel(logging.DEBUG)
-        self._logger.debug("%s: " + str(message), lineno, *args, **kwargs)
+        safe_args = self._truncate_debug_args(args)
+        self._logger.debug("%s: " + str(message), lineno, *safe_args, **kwargs)
 
     def test(self, message: str):
         """Test logging - uses DEBUG level but only when debug flag is set.
@@ -345,7 +412,7 @@ class _PrefixedLogger:
         """Emit working detail line with DEBUG_DETAIL_PREFIX when debug_flag is True."""
         if not self._debug_flag:
             return
-        self._logger.debug(f"{DEBUG_DETAIL_PREFIX}{message}")
+        self._logger.debug(f"{DEBUG_DETAIL_PREFIX}{truncate_debug_string(message)}")
 
     def debug_detail_block(self, text: str) -> None:
         """Emit truncated multiline detail via debug_detail."""
@@ -365,6 +432,26 @@ class _PrefixedLogger:
 
     def exception(self, message: str, *args, **kwargs):
         self._logger.exception(message, *args, **kwargs)
+
+    def _exc_line(self, level: int, message: str, args: tuple, kwargs: dict) -> None:
+        """One-liner at `level`; the traceback rides DEBUG only (gated by log_debug)."""
+        exc = kwargs.pop("exc_info", None)
+        self._logger.log(level, message, *args, **kwargs)
+        if not log_debug.get():
+            return
+        # exc_info is an exception instance for gather results, else the active except block's.
+        ei = (type(exc), exc, exc.__traceback__) if isinstance(exc, BaseException) else sys.exc_info()
+        if self._logger.getEffectiveLevel() > logging.DEBUG:
+            self._logger.setLevel(logging.DEBUG)
+        self._logger.debug("Traceback:\n%s", "".join(traceback.format_exception(*ei)).rstrip())
+
+    def warn_exc(self, message: str, *args, **kwargs):
+        """Caught exception we can't fix (bad input, scrape/provider failure): WARNING + DEBUG traceback."""
+        self._exc_line(logging.WARNING, message, args, kwargs)
+
+    def error_exc(self, message: str, *args, **kwargs):
+        """Caught exception in our own code or infra (DB, ledger, crash): ERROR + DEBUG traceback."""
+        self._exc_line(logging.ERROR, message, args, kwargs)
 
     def critical(self, message: str, *args, **kwargs):
         self._logger.critical(message, *args, **kwargs)
@@ -399,5 +486,11 @@ def get_logger(name: Optional[str] = None, debug_flag: bool = False) -> _Prefixe
         logging.getLogger().addHandler(_db_handler_instance)
         atexit.register(flush_log_buffer)
         _db_handler_attached = True
+
+    # Runs in the gunicorn worker at app import; inert off gunicorn (gunicorn.access never emits).
+    global _quiet_access_filter_attached
+    if not _quiet_access_filter_attached:
+        logging.getLogger("gunicorn.access").addFilter(_QuietAccessFilter())
+        _quiet_access_filter_attached = True
 
     return _PrefixedLogger(base_logger, debug_flag=debug_flag)

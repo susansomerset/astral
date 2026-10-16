@@ -16,7 +16,10 @@ Required environment variables (set in Railway / .env):
 Config sections:
   ASTRAL_CONFIG   — paths, state machines, batch settings
   RAILWAY_CONFIG  — gunicorn deployment settings (workers, timeout)
-  AGENT_CONFIG    — Anthropic model catalog (pricing, defaults)
+  AGENT_CONFIG    — Anthropic model catalog (pricing, output defaults)
+  LLM_SERVER_CONFIG — LLM servers (endpoint, auth, thinking-off body, request extras, concurrency) (AST-1851)
+  LLM_MODEL_CONFIG  — LLM models (one id per vendor SKU) → server + routing + SKU + output default/floor + pricing (AST-1851, AST-1955, AST-1963)
+  OPENROUTER_MODEL_TABLE — OpenRouter catalog rows expanded into LLM_MODEL_CONFIG (price, max output) (AST-1938, AST-1955)
   TASK_CONFIG     — task definitions (schemas, grading, job consult orchestration fields)
   COMPANY_STATES  — company state list + batch criteria
   CANDIDATE_STATES — candidate state registry (prior_states, companions, progress_rank)
@@ -26,19 +29,21 @@ Config sections:
   SURFER_CONSENT_CONFIG — Surfer install disclosure version + copy + consent status vocabulary (AST-1235; UI = AST-1237/1238)
   PREAMBLE_VALIDATION_CONFIG — Ruth Valid/Try Again/Escalate task_key + outcomes (AST-1015)
   ROSTER_CONFIG   — roster-specific (prefilter, locate_job_page, parse_job_list)
+  WEB_DATA_CONFIG — web_data content-type keys + company_data keys that hold telescope row ids (AST-2131)
   GAZER_CONFIG    — gazer batch steps (validate_title inline-only, fetch_jd, fetch_culture_pages, gaze)
   JOB_STATES      — job state list + prior_states / retry_state per state
   TRACKER_CONFIG  — tracker-specific (ingest, jd processing)
   NAV_CONFIG      — UI navigation structure
   DATA_SHAPES     — UI data contracts per entity
   BUILD_CONFIG    — artifact rendering tokens, section metadata, JSON shape contracts
-  ARTIFACT_CONFIG — versioned artifact registry keyed by entity._data path (entity, candidate_scoped, body_shape, ingestion_owner); keys = candidate.artifacts.base_resume, candidate.artifacts.resume_structure, job.artifacts.job_resume, job.artifacts.cover_letter, candidate.context.strengths, candidate.context.priorities, candidate.context.deal_breakers, candidate.context.bio_summary, candidate.context.backstory, candidate.context.ideal_day, candidate.context.writing_preferences; SoT in config — callers import ARTIFACT_CONFIG (AST-1573 / AST-1575 / AST-1576 / AST-1590 / AST-1632 / AST-1648 / AST-1651 / AST-1654 / AST-1658 / AST-1661 / AST-1664 / AST-1678)
+  ARTIFACT_CONFIG — versioned artifact registry keyed by entity._data path (entity, candidate_scoped, body_shape, ingestion_owner); keys = candidate.artifacts.base_resume, candidate.artifacts.resume_structure, job.artifacts.job_resume, job.artifacts.cover_letter, job.artifacts.job_resume_structure, candidate.context.strengths, candidate.context.priorities, candidate.context.deal_breakers, candidate.context.bio_summary, candidate.context.backstory, candidate.context.ideal_day, candidate.context.writing_preferences; SoT in config — callers import ARTIFACT_CONFIG (AST-1573 / AST-1575 / AST-1576 / AST-1590 / AST-1632 / AST-1648 / AST-1651 / AST-1654 / AST-1658 / AST-1661 / AST-1664 / AST-1678 / AST-2081)
   TOKEN_SOURCES — prompt {$TOKEN} registry with required source_type (data_field / artifact / special_case); artifact rows carry artifact_key into ARTIFACT_CONFIG (AST-1596 / AST-1578)
   AUTH_CONFIG     — Stytch credentials, admin lists (AST-609), session duration / activity-extension cadence (AST-1373), local_operator identity literals
   ADMIN_CONFIG    — admin UI (reconciliation + Avail-gt0 always-visible dispatch keys AST-1106)
   MERGE_TICKET_LOG_CONFIG — append-only parent epic land history (AST-675/681)
   REPO_ADMIN_JSON_CONFIG — repo-owned agent / agent_task JSON under data/admin/ (AST-782)
   PROVIDER_BALANCE_REFUSAL — LLM billing/credit exhaustion match rules (AST-897)
+  PROVIDER_RATE_LIMIT — LLM 429 still refused after retries match rules (AST-2010)
   PROVIDER_CALL_BUDGET — LLM per-call wall budget + timeout failure class (AST-1189)
   PROVIDER_EMPTY_RESPONSE — hollow / unusable LLM response (AST-1190)
   INBOX_CREATE_JOB_CONFIG — Manage Email strip/extract + header+body wrapper (AST-1049 / AST-1537)
@@ -52,10 +57,10 @@ Config sections:
   METEORITE_STATES — staging-row state registry for the `meteorite` table (`prior_states` per state); distinct from `JOB_STATES` keys like `METEORITE_NEW` (AST-1557); `CHECK_UNIQUE` / `DUPLICATE` uniqueness gate (AST-1773)
   METEORITE_MONITORING_CONFIG — already-ingested inbox outcome literal (AST-1559)
   METEORITE_INGRESS_DISPATCH_CONFIG — table transition dispatch task keys + trigger states + scrape outcome map (AST-1560); check_unique hop (AST-1773)
-  METEORITE_BOT_BLOCKED_NOTIFY_CONFIG — BOT_BLOCKED Estelle DM notify + nag limits (AST-1561)
+  METEORITE_BOT_BLOCKED_NOTIFY_CONFIG — BOT_BLOCKED_SCRAPE_METEORITE Estelle DM notify + nag limits (AST-1561)
   REVIEW_DUPLICATE_METEORITE_CONFIG — Ruth duplicate-review closed outcomes + peer id key (AST-1773)
   SEED_CONFIG — SQL-first seed register (idempotent INSERT tuples per table-purpose); dispatch_task-* are Linear paste only, never auto-executed (AST-1496)
-  CONTACT_CONFIG  — Contact listen + debug flags, Slack env-name contracts, skills ACL (AST-1066 / AST-1206; distinct from TASK_CONFIG)
+  CONTACT_CONFIG  — Contact listen + debug flags, Slack env-name contracts, skills ACL, Slack commands registry incl. 18 context commands generated from CONTACT_CONTEXT_COMMAND_CONFIG (AST-1066 / AST-1206 / AST-2035 / AST-2206; distinct from TASK_CONFIG)
   CANDIDATE_CONTACT_UNIQUENESS_CONFIG — contact uniqueness / within-candidate dedupe field paths + compare rules (AST-1079; sibling to CANDIDATE_LOOKUP_CONFIG)
 """
 
@@ -64,7 +69,7 @@ import os
 import re
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, FrozenSet, List, Optional, Union
+from typing import Any, Dict, FrozenSet, List, Optional, Tuple, Union
 from zoneinfo import ZoneInfo
 
 from dotenv import load_dotenv
@@ -160,7 +165,6 @@ _EXPERIENCE_JOB_ARRAY_FIELD_OPTIONAL: Dict[str, Any] = {
 # Optional TASK_CONFIG.task_type: CRAFT | RUBRIC | CHAT | CHAIN (schema-only except CHAIN in consult).
 TASK_TYPES = frozenset({"CRAFT", "RUBRIC", "CHAT", "CHAIN"})
 BUILD_ARTIFACTS_BASE_STATE = "BUILD_ARTIFACTS"
-ERROR_BUILD_ARTIFACTS_STATE = "ERROR_BUILD_ARTIFACTS"
 LEGACY_BUILD_ARTIFACTS_PREFIX = "BUILD_ARTIFACTS."
 RESUME_ARTIFACT_COMPOUND_PREFIX = LEGACY_BUILD_ARTIFACTS_PREFIX
 
@@ -190,6 +194,158 @@ _CRAFT_RESUME_NORMALIZE_TASK_KEYS = frozenset({
     "simple_resume_parse",
 })
 
+# AST-2206: shared by the six draft_context_* tasks (principal Estelle drafts one context piece).
+_CONTACT_DRAFT_RESPONSE_SCHEMA: Dict[str, Any] = {
+    "draft": {"type": "str", "required": True},
+    "note": {"type": "str", "required": False},
+}
+
+# ---------------------------------------------------------------------------
+# Implicit retry substate (AST-1804): {base}_RETRY is valid wherever {base} is a
+# registry key. Validators resolve through the base — never the full _RETRY string.
+# Defined above TASK_CONFIG so registries/task configs can build names via retry_of.
+# ---------------------------------------------------------------------------
+RETRY_SUFFIX = "_RETRY"
+
+
+def retry_of(base: str) -> str:
+    """Implicit retry substate name for a registered base state."""
+    return f"{base}{RETRY_SUFFIX}"
+
+
+ALL_X_SUFFIX = "_ALL_X"
+
+
+def all_x_of(base: str) -> str:
+    """Second-strike all-literal-X terminal for a scored task's fail_state (AST-2096)."""
+    return f"{base}{ALL_X_SUFFIX}"
+
+
+def retry_base(state: Optional[str]) -> Optional[str]:
+    """Base of an implicit retry substate, or None when state has no _RETRY suffix."""
+    s = (state or "").strip()
+    if s.endswith(RETRY_SUFFIX) and len(s) > len(RETRY_SUFFIX):
+        return s[: -len(RETRY_SUFFIX)]
+    return None
+
+
+def registered_base(registry: Dict[str, Any], state: Optional[str]) -> Optional[str]:
+    """Registry key that owns state: itself, or the base of {base}_RETRY; None when neither is registered."""
+    s = (state or "").strip()
+    if s in registry:
+        return s
+    base = retry_base(s)
+    return base if base is not None and base in registry else None
+
+
+# ---------------------------------------------------------------------------
+# Terminal-state grammar (AST-2086, patt.state.terminal-naming): failures are
+# ERROR_<TASK_KEY>[_<CONDITION>], bot walls BOT_BLOCKED_<TASK_KEY>. Built from the
+# failing task_key — never typed. JD_SCRAPE_FAIL_CLOSED / _MISSING are the one literal family.
+# ---------------------------------------------------------------------------
+# Closed condition vocabulary — the only legal _<CONDITION> suffixes.
+TERMINAL_CONDITIONS = (
+    "UNREADABLE", "COOKIE", "NOT_FOUND", "NO_JOBLIST", "NO_JOBLIST_LINKS", "NO_SELECTION",
+    "NO_CULTURE_LINKS", "NO_WEBSITE_CONTENT", "UNPARSEABLE", "CLICK",
+)
+ERROR_STATE_PREFIX = "ERROR_"
+BOT_BLOCKED_STATE_PREFIX = "BOT_BLOCKED_"
+
+
+def error_state_for(task_key: str, condition: Optional[str] = None) -> str:
+    """ERROR_<TASK_KEY> (cause unknown) or ERROR_<TASK_KEY>_<condition> (condition ∈ TERMINAL_CONDITIONS)."""
+    tk = (task_key or "").strip()
+    if not tk or (condition is not None and condition not in TERMINAL_CONDITIONS):
+        raise ValueError(f"error_state_for: bad task_key {task_key!r} / condition {condition!r}")
+    return f"{ERROR_STATE_PREFIX}{tk.upper()}" + (f"_{condition}" if condition else "")
+
+
+def bot_blocked_state_for(task_key: str) -> str:
+    """BOT_BLOCKED_<TASK_KEY> — the failing task hit a bot / challenge wall."""
+    tk = (task_key or "").strip()
+    if not tk:
+        raise ValueError(f"bot_blocked_state_for: bad task_key {task_key!r}")
+    return f"{BOT_BLOCKED_STATE_PREFIX}{tk.upper()}"
+
+
+def parse_terminal_state(state: str) -> Optional[Tuple[str, str, Optional[str]]]:
+    """(kind, task_key, condition) for a grammar name; kind is "error" | "bot_blocked". None otherwise."""
+    s = (state or "").strip()
+    if s.startswith(BOT_BLOCKED_STATE_PREFIX) and len(s) > len(BOT_BLOCKED_STATE_PREFIX):
+        return ("bot_blocked", s[len(BOT_BLOCKED_STATE_PREFIX):].lower(), None)
+    if not s.startswith(ERROR_STATE_PREFIX) or len(s) <= len(ERROR_STATE_PREFIX):
+        return None
+    body = s[len(ERROR_STATE_PREFIX):]
+    # Longest suffix first so NO_JOBLIST_LINKS wins over NO_JOBLIST.
+    for cond in sorted(TERMINAL_CONDITIONS, key=len, reverse=True):
+        if body.endswith(f"_{cond}") and len(body) > len(cond) + 1:
+            return ("error", body[: -len(cond) - 1].lower(), cond)
+    return ("error", body.lower(), None)
+
+
+# Artifact-chain hops (run_next order); each hop names its own error, so the dispatch rule
+# keys on membership here — never on a shared error_state.
+BUILD_ARTIFACTS_CHAIN_TASK_KEYS = (
+    "anticipate_scan", "contemplate_job", "advise_job_resume", "draft_job_resume",
+    "check_job_resume", "finalize_job_resume", "draft_cover_letter", "check_cover_letter",
+    "finalize_cover_letter", "propose_application_responses",
+)
+BUILD_ARTIFACTS_CHAIN_ERROR_STATES = tuple(error_state_for(k) for k in BUILD_ARTIFACTS_CHAIN_TASK_KEYS)
+# Candidate craft chain (REQUESTED_ARTIFACTS entry craft_get_rubric, run_next order).
+CANDIDATE_CRAFT_CHAIN_TASK_KEYS = (
+    "craft_get_rubric", "craft_do_rubric", "craft_like_rubric", "craft_evaluate_meteorite_rubric",
+    "craft_jobdesc_rubric", "craft_prefilter_rubric", "craft_company_search_terms", "craft_joblist_rubric",
+)
+CANDIDATE_CRAFT_CHAIN_ERROR_STATES = tuple(error_state_for(k) for k in CANDIDATE_CRAFT_CHAIN_TASK_KEYS)
+# Base resume chain (REQUESTED_RESUME entry shape_the_story, run_next order). AST-2221.
+BASE_RESUME_CHAIN_TASK_KEYS = (
+    "shape_the_story",
+    "draft_resume_experiences",
+    "draft_supporting_sections",
+    "draft_highlights",
+    "draft_core_competencies",
+    "draft_professional_summary",
+    "draft_keywords",
+    "draft_resume_base",
+    "draft_title_patterns",
+)
+BASE_RESUME_CHAIN_ERROR_STATES = tuple(error_state_for(k) for k in BASE_RESUME_CHAIN_TASK_KEYS)
+
+
+def is_registered_state(registry: Dict[str, Any], state: Optional[str]) -> bool:
+    """True for registry keys and implicit {base}_RETRY of a registry key."""
+    return registered_base(registry, state) is not None
+
+
+def state_prior_states(registry: Dict[str, Any], to_state: str) -> Optional[List[str]]:
+    """Effective prior_states for to_state, with retry edges derived from the base (AST-1805).
+
+    Into retry_of(B): B, retry_of(B) (re-entry), and every S whose retry_state routes to retry_of(B)
+    (cross-base, e.g. VALID_TITLE → NEW_RETRY). Always derived, even while a legacy explicit key exists.
+    Into base T with priors P (None = unrestricted): P, retry_of(p) and R[p].retry_state for each p in P,
+    plus retry_of(T) (a retry drains back to its base).
+    Raises KeyError when to_state is not registered.
+    """
+    ts = (to_state or "").strip()
+    base = retry_base(ts)
+    if base is not None and base in registry:
+        feeders = [s for s, cfg in registry.items() if (cfg or {}).get("retry_state") == ts]
+        return list(dict.fromkeys([base, ts, *feeders]))
+    if ts not in registry:
+        raise KeyError(f"unregistered state: {ts!r}")
+    prior = (registry[ts] or {}).get("prior_states")
+    if prior is None:
+        return None
+    out: List[str] = list(prior)
+    for p in prior:
+        out.append(retry_of(p))
+        rs = (registry.get(p) or {}).get("retry_state")
+        if rs:
+            out.append(rs)
+    out.append(retry_of(ts))
+    return list(dict.fromkeys(out))
+
+
 # ---------------------------------------------------------------------------
 # TASK_CONFIG: code-owned task definitions. Prompt content (system_prompt,
 # task_prompt, cached_blocks, uncached_blocks) now lives in the agent_task
@@ -213,7 +369,7 @@ TASK_CONFIG = {
         "response_format": "json",
         "context_format": "simple_resume_parse_{index}",
         "entity_type": None,
-        "requires_candidate_key": False,
+        "requires_candidate_key": True,
         "trigger_state": None,
     },
     # DECOMMISSIONED (AST-1108): superseded by intake chat; keep key for legacy callers/tests.
@@ -368,6 +524,90 @@ TASK_CONFIG = {
         "requires_candidate_key": True,
         "trigger_state": None,
     },
+    # AST-2221 base resume chain (REQUESTED_RESUME → RESUME_READY; succession via agent_task.run_next).
+    "shape_the_story": {
+        "response_schema": {
+            "story": {"type": "str", "required": True},
+        },
+        "response_format": "json",
+        "entity_type": "candidate",
+        "requires_candidate_key": True,
+        "trigger_state": None,
+    },
+    "draft_resume_experiences": {
+        "response_schema": {
+            "experience": _EXPERIENCE_JOB_ARRAY_FIELD,
+        },
+        "response_format": "json",
+        "entity_type": "candidate",
+        "requires_candidate_key": True,
+        "trigger_state": None,
+    },
+    "draft_supporting_sections": {
+        "response_schema": {
+            "education_certifications": {"type": "str", "required": False},
+            "technical_skills": {"type": "str", "required": False},
+            "prior_experience": {"type": "str", "required": False},
+            "publications": {"type": "str", "required": False},
+        },
+        "response_format": "json",
+        "entity_type": "candidate",
+        "requires_candidate_key": True,
+        "trigger_state": None,
+    },
+    "draft_highlights": {
+        "response_schema": {
+            "highlights": {"type": "str", "required": True},
+        },
+        "response_format": "json",
+        "entity_type": "candidate",
+        "requires_candidate_key": True,
+        "trigger_state": None,
+    },
+    "draft_core_competencies": {
+        "response_schema": {
+            "core_competencies": {"type": "str", "required": True},
+        },
+        "response_format": "json",
+        "entity_type": "candidate",
+        "requires_candidate_key": True,
+        "trigger_state": None,
+    },
+    "draft_professional_summary": {
+        "response_schema": {
+            "professional_summary": {"type": "str", "required": True},
+        },
+        "response_format": "json",
+        "entity_type": "candidate",
+        "requires_candidate_key": True,
+        "trigger_state": None,
+    },
+    "draft_keywords": {
+        "response_schema": {
+            "keywords": {"type": "str", "required": True},
+        },
+        "response_format": "json",
+        "entity_type": "candidate",
+        "requires_candidate_key": True,
+        "trigger_state": None,
+    },
+    "draft_resume_base": {
+        "response_schema": _CRAFT_RESUME_BASE_RESPONSE_SCHEMA,
+        "response_format": "json",
+        "entity_type": "candidate",
+        "requires_candidate_key": True,
+        "trigger_state": None,
+        "artifact_key": "candidate.artifacts.base_resume",
+    },
+    "draft_title_patterns": {
+        "response_schema": {
+            "title_patterns": {"type": "str", "required": True},
+        },
+        "response_format": "json",
+        "entity_type": "candidate",
+        "requires_candidate_key": True,
+        "trigger_state": None,
+    },
     # Phase C. Company Roster
     # VET COMPANY PROMPT - Estelle 3
     "find_company_website": {
@@ -394,7 +634,7 @@ TASK_CONFIG = {
         "trigger_state": "WEBSITE_REVIEW",
         "agent_task": "find_company_website",
         "pass_state": "WEBSITE_FOUND",
-        "fail_state": "NO_WEBSITE",
+        "fail_state": error_state_for("resolve_website", "NOT_FOUND"),
     },
     "prefilter_company": {
         "response_format": "json",
@@ -428,6 +668,27 @@ TASK_CONFIG = {
         "requires_candidate_key": True,
         "trigger_state": None,
     },
+    # AST-2054: Estelle company upshot — one call per batch; saved to company_data.company_upshot.
+    # Routing lives in ROSTER_CONFIG["company_upshot"] (defined below TASK_CONFIG, so literals here).
+    "company_upshot": {
+        "response_format": "json",
+        "response_schema": {
+            "companies": {
+                "type": "list", "required": True,
+                "items_schema": {
+                    "company_id": {"type": "str", "required": True},
+                    "upshot": {"type": "str", "required": True},
+                    "company_name": {"type": "str", "required": False},
+                },
+            },
+        },
+        "context_format": "company_upshot_{index}",
+        "entity_type": "company",
+        "requires_candidate_key": True,
+        "trigger_state": "UPSHOT_READY",
+        "pass_state": "WATCH",
+        "error_state": error_state_for("company_upshot"),
+    },
     "select_job_page": {
         "response_schema": {
             "selected_page": {"type": "int", "required": True},
@@ -441,7 +702,7 @@ TASK_CONFIG = {
         "response_format": "json",
         "context_format": "select_job_page_{index}",
         "entity_type": "company",
-        "requires_candidate_key": False,
+        "requires_candidate_key": True,
         "trigger_state": None,
     },
     "parse_job_list": {
@@ -505,8 +766,10 @@ TASK_CONFIG = {
         "fallback_batch_size": 30,
         # DB dispatch_task.batch_size overrides; below is config default only.
         "pass_state": "PASSED_JOBLIST",
+        # AST-2022: pass + non-empty, non-http(s) job_link → here instead of InvalidJobLinkError (routing is AST-2025).
+        "relative_link_state": "RELATIVE_JOB_LINK",
         "fail_state": "FAILED_JOBLIST",
-        "error_state": "ERROR_QUALIFY_JOB_LISTINGS",
+        "error_state": error_state_for("qualify_job_listings"),
         "min_job_title_length": 5,
         "context_format": "qualify_job_listings_{index}",
         "entity_type": "job",
@@ -542,9 +805,9 @@ TASK_CONFIG = {
         "min_jd_chars": 40,          # usable visible JD floor (align with METEORITE_EMAIL_INGEST_CONFIG)
         "pass_state": "METEORITE_QUALIFIED",
         "fail_state": "METEORITE_FAILED_QUALIFY",
-        "error_state": "METEORITE_ERROR_QUALIFY",
+        "error_state": error_state_for("qualify_meteorite"),
         "email_link_prefix": "email-",  # AST-1197: synthesized job_link token when there is no ATS URL
-        "bot_blocked_state": "BOT_BLOCKED",  # AST-1197: challenge/Cloudflare JD → universal bot state (AST-1195)
+        "bot_blocked_state": bot_blocked_state_for("qualify_meteorite"),  # AST-1197: challenge/Cloudflare JD
         "company_stem_response_key": "company_stem",  # AST-1494: RESPONSE + enrich map key
         "context_format": "qualify_meteorite_{index}",
         "entity_type": "job",
@@ -626,7 +889,7 @@ TASK_CONFIG = {
         "fallback_batch_size": 10,
         "pass_state": "PASSED_JD",
         "fail_state": "FAILED_JD",
-        "error_state": "ERROR_EVALUATE_JD",
+        "error_state": error_state_for("evaluate_jd"),
         "min_jd_chars": 80,
         "not_ready_state": "PASSED_JOBLIST",
         "context_format": "evaluate_jd_{index}",
@@ -660,7 +923,7 @@ TASK_CONFIG = {
         "fallback_batch_size": 10,
         "pass_state": "METEORITE_PASSED_JD",
         "fail_state": "METEORITE_FAILED_JD",
-        "error_state": "METEORITE_ERROR_EVALUATE_JD",
+        "error_state": error_state_for("evaluate_meteorite"),
         # Matches qualify_meteorite's own min_jd_chars (40) — that task is the authoritative
         # usability gate for meteorite content, so this pre-filter is structurally a no-op by
         # the time a job reaches METEORITE_QUALIFIED. Deliberately no not_ready_state: unlike
@@ -695,7 +958,7 @@ TASK_CONFIG = {
         "fallback_batch_size": 10,
         "pass_state": "PASSED_DO",
         "fail_state": "FAILED_DO",
-        "error_state": "FAILED_TECHNICAL_DO",
+        "error_state": error_state_for("grade_do"),
         "save_prefix": "do",
         "grading_mode": "scored",
         "context_format": "grade_do_{index}",
@@ -720,7 +983,7 @@ TASK_CONFIG = {
         "fallback_batch_size": 10,
         "pass_state": "PASSED_GET",
         "fail_state": "FAILED_GET",
-        "error_state": "FAILED_TECHNICAL_GET",
+        "error_state": error_state_for("grade_get"),
         "save_prefix": "get",
         "grading_mode": "scored",
         "context_format": "grade_get_{index}",
@@ -748,7 +1011,7 @@ TASK_CONFIG = {
         "fallback_batch_size": 10,
         "pass_state": "METEORITE_PASSED_DO",
         "fail_state": "METEORITE_FAILED_DO",
-        "error_state": "METEORITE_FAILED_TECHNICAL_DO",
+        "error_state": error_state_for("meteorite_grade_do"),
         "save_prefix": "do",
         "grading_mode": "scored",
         "context_format": "meteorite_grade_do_{index}",
@@ -773,7 +1036,7 @@ TASK_CONFIG = {
         "fallback_batch_size": 10,
         "pass_state": "METEORITE_PASSED_GET",
         "fail_state": "METEORITE_FAILED_GET",
-        "error_state": "METEORITE_FAILED_TECHNICAL_GET",
+        "error_state": error_state_for("meteorite_grade_get"),
         "save_prefix": "get",
         "grading_mode": "scored",
         "context_format": "meteorite_grade_get_{index}",
@@ -798,7 +1061,7 @@ TASK_CONFIG = {
         "fallback_batch_size": 10,
         "pass_state": "PASSED_LIKE",
         "fail_state": "FAILED_LIKE",
-        "error_state": "FAILED_TECHNICAL_LIKE",
+        "error_state": error_state_for("grade_like"),
         "save_prefix": "like",
         "requires_company": True,
         "grading_mode": "scored",
@@ -837,7 +1100,7 @@ TASK_CONFIG = {
             },
         },
         "pass_state": "RECOMMENDED",
-        "error_state": "PASSED_LIKE_RETRY",
+        "error_state": retry_of("PASSED_LIKE"),
         "context_format": "analysis_upshot_{index}",
         "entity_type": "job",
         "requires_candidate_key": True,
@@ -863,7 +1126,7 @@ TASK_CONFIG = {
         "fallback_batch_size": 10,
         "pass_state": "METEORITE_PASSED_LIKE",
         "fail_state": "METEORITE_FAILED_LIKE",
-        "error_state": "METEORITE_FAILED_TECHNICAL_LIKE",
+        "error_state": error_state_for("meteorite_like"),
         "save_prefix": "like",
         "requires_company": False,
         "grading_mode": "scored",
@@ -902,7 +1165,7 @@ TASK_CONFIG = {
             },
         },
         "pass_state": "RECOMMENDED",
-        "error_state": "METEORITE_PASSED_LIKE_RETRY",
+        "error_state": retry_of("METEORITE_PASSED_LIKE"),
         "context_format": "meteorite_upshot_{index}",
         "entity_type": "job",
         "requires_candidate_key": True,
@@ -925,7 +1188,6 @@ TASK_CONFIG = {
         "requires_candidate_key": True,
         "trigger_state": None,
         "task_type": "CHAIN",
-        "error_state": ERROR_BUILD_ARTIFACTS_STATE,
     },
     "contemplate_job": {
         "response_schema": {
@@ -937,7 +1199,6 @@ TASK_CONFIG = {
         "requires_candidate_key": True,
         "trigger_state": None,
         "task_type": "CHAIN",
-        "error_state": ERROR_BUILD_ARTIFACTS_STATE,
     },
     "advise_job_resume": {
         "response_schema": {
@@ -949,7 +1210,6 @@ TASK_CONFIG = {
         "requires_candidate_key": True,
         "trigger_state": None,
         "task_type": "CHAIN",
-        "error_state": ERROR_BUILD_ARTIFACTS_STATE,
     },
     # Structure-keyed resume draft hop (AST-551 / AST-594); section bodies validated at runtime.
     "draft_job_resume": {
@@ -975,7 +1235,6 @@ TASK_CONFIG = {
         "requires_candidate_key": True,
         "trigger_state": None,
         "task_type": "CHAIN",
-        "error_state": ERROR_BUILD_ARTIFACTS_STATE,
     },
     "check_job_resume": {
         "response_schema": {
@@ -987,7 +1246,6 @@ TASK_CONFIG = {
         "requires_candidate_key": True,
         "trigger_state": None,
         "task_type": "CHAIN",
-        "error_state": ERROR_BUILD_ARTIFACTS_STATE,
     },
     "finalize_job_resume": {
         "response_schema": {
@@ -1005,7 +1263,6 @@ TASK_CONFIG = {
         "requires_candidate_key": True,
         "trigger_state": None,
         "task_type": "CHAIN",
-        "error_state": ERROR_BUILD_ARTIFACTS_STATE,
         "artifact_key": "job.artifacts.job_resume",
     },
     "draft_cover_letter": {
@@ -1073,12 +1330,93 @@ TASK_CONFIG = {
             },
         },
         "entity_type": None,
-        "requires_candidate_key": False,
+        "requires_candidate_key": True,
         "trigger_state": None,
         "task_type": "CHAT",
         "agent_task": "contact_estelle_turn",
     },
+    # AST-2206: principal Estelle drafts one candidate context piece from the Slack channel
+    # history + resume/profile. Drafting never saves (no artifact_key on purpose).
+    "draft_context_strengths": {
+        "print_label": "Draft Context: Strengths",
+        "response_format": "json",
+        "response_schema": _CONTACT_DRAFT_RESPONSE_SCHEMA,
+        "entity_type": None,
+        "requires_candidate_key": True,
+        "trigger_state": None,
+        "task_type": "CRAFT",
+        "agent_task": "draft_context_strengths",
+    },
+    "draft_context_deal_breakers": {
+        "print_label": "Draft Context: Deal Breakers",
+        "response_format": "json",
+        "response_schema": _CONTACT_DRAFT_RESPONSE_SCHEMA,
+        "entity_type": None,
+        "requires_candidate_key": True,
+        "trigger_state": None,
+        "task_type": "CRAFT",
+        "agent_task": "draft_context_deal_breakers",
+    },
+    "draft_context_priorities": {
+        "print_label": "Draft Context: Priorities",
+        "response_format": "json",
+        "response_schema": _CONTACT_DRAFT_RESPONSE_SCHEMA,
+        "entity_type": None,
+        "requires_candidate_key": True,
+        "trigger_state": None,
+        "task_type": "CRAFT",
+        "agent_task": "draft_context_priorities",
+    },
+    "draft_context_ideal_day": {
+        "print_label": "Draft Context: Ideal Day",
+        "response_format": "json",
+        "response_schema": _CONTACT_DRAFT_RESPONSE_SCHEMA,
+        "entity_type": None,
+        "requires_candidate_key": True,
+        "trigger_state": None,
+        "task_type": "CRAFT",
+        "agent_task": "draft_context_ideal_day",
+    },
+    "draft_context_bio_summary": {
+        "print_label": "Draft Context: Bio Summary",
+        "response_format": "json",
+        "response_schema": _CONTACT_DRAFT_RESPONSE_SCHEMA,
+        "entity_type": None,
+        "requires_candidate_key": True,
+        "trigger_state": None,
+        "task_type": "CRAFT",
+        "agent_task": "draft_context_bio_summary",
+    },
+    "draft_context_backstory": {
+        "print_label": "Draft Context: Backstory",
+        "response_format": "json",
+        "response_schema": _CONTACT_DRAFT_RESPONSE_SCHEMA,
+        "entity_type": None,
+        "requires_candidate_key": True,
+        "trigger_state": None,
+        "task_type": "CRAFT",
+        "agent_task": "draft_context_backstory",
+    },
+    # AST-2206: contact Estelle's turn in a /draft-<context> thread — prose reply, revised draft
+    # only when asked. Named by CONTACT_DRAFT_THREAD_CONFIG["revise_task_key"].
+    "contact_draft_revise": {
+        "print_label": "Contact Draft Revise",
+        "response_format": "json",
+        "response_schema": {
+            "reply": {"type": "str", "required": True},
+            "revised_draft": {"type": "str", "required": False},
+        },
+        "entity_type": None,
+        "requires_candidate_key": True,
+        "trigger_state": None,
+        "task_type": "CHAT",
+        "agent_task": "contact_draft_revise",
+    },
 }
+# AST-1851: every LLM task runs on the candidate's platform key — a system-key task is a bug.
+assert all(cfg.get("requires_candidate_key") is True for cfg in TASK_CONFIG.values()), [
+    k for k, cfg in TASK_CONFIG.items() if cfg.get("requires_candidate_key") is not True
+]
 assert TASK_CONFIG["qualify_meteorite"]["response_schema"]["jobs"]["items_schema"]["astral_job_id"]["required"] is False
 assert TASK_CONFIG["qualify_meteorite"]["response_schema"]["jobs"]["items_schema"]["company_job_id"]["required"] is False
 assert TASK_CONFIG["qualify_meteorite"]["response_schema"]["jobs"]["items_schema"]["job_link"]["required"] is False
@@ -1090,7 +1428,10 @@ assert TASK_CONFIG["qualify_meteorite"]["company_stem_response_key"] in (
     TASK_CONFIG["qualify_meteorite"]["response_schema"]["jobs"]["items_schema"]
 )
 assert TASK_CONFIG["qualify_meteorite"]["email_link_prefix"] == "email-"
-assert TASK_CONFIG["qualify_meteorite"]["bot_blocked_state"] == "BOT_BLOCKED"
+assert TASK_CONFIG["qualify_meteorite"]["bot_blocked_state"] == bot_blocked_state_for("qualify_meteorite")
+# AST-2086: every artifact / candidate craft / base-resume chain hop names its own failure (ERROR_<HOP>).
+for _hop in (*BUILD_ARTIFACTS_CHAIN_TASK_KEYS, *CANDIDATE_CRAFT_CHAIN_TASK_KEYS, *BASE_RESUME_CHAIN_TASK_KEYS):
+    TASK_CONFIG[_hop]["error_state"] = error_state_for(_hop)
 
 def is_conversational_task(task_key: str) -> bool:
     """True when TASK_CONFIG marks the task as CHAT (AST-1072 conversational envelope)."""
@@ -1112,9 +1453,9 @@ RUBRIC_TOTAL = 3000
 # AST-1347 — job_data phase contribution breakdown beside {prefix}_score
 PHASE_SCORE_BREAKDOWN_KEY_SUFFIX = "score_breakdown"  # → f"{prefix}_score_breakdown"
 PHASE_SCORE_BREAKDOWN_FIELDS = ("earned", "possible", "max")
-# AST-1348 — Analysis section header title when a phase breakdown is available
+# AST-1348 / AST-1872 — Analysis section header title when a phase breakdown is available; {score} = list phase score (UI drops " - {score}" when absent)
 PHASE_SCORE_HEADER_TITLE_TEMPLATE = (
-    "{phase_label} - score: {earned} out of {possible} possible ({max} max total)"
+    "{phase_label} - {score} - score: {earned} out of {possible} possible ({max} max total)"
 )
 
 
@@ -1201,153 +1542,152 @@ COMPANY_STATES = {
     # AST-1672: pre-vet inflow land state (discovery → DISCOVERED; vet/CSE claim here).
     "DISCOVERED": {"batch_criteria": {"sort_by": "updated_at"}},
     "WEBSITE_FOUND": {"batch_criteria": {"limit": 10, "sort_by": "updated_at"}},
-    # Dual ownership (AST-892): empty homepage_text → fetch_website scrape retry; non-empty → prefilter second strike.
-    "WEBSITE_FOUND_RETRY": {"batch_criteria": {"limit": 10, "sort_by": "updated_at"}},
+    # retry_of("HOMEPAGE_READY"): prefilter parsing-failure holding (AST-1839); prefilter claims it via dispatch_claim_states.
     "HOMEPAGE_READY": {
         "batch_criteria": {"limit": 10, "sort_by": "updated_at"},
-        "retry_state": "WEBSITE_FOUND_RETRY",
+        "retry_state": retry_of("HOMEPAGE_READY"),
     },
-    "NO_WEBSITE": {},
     # AST-1672: waiting between CSE fetch and resolve_website AI hop — need sort_by for admin defaults.
     "WEBSITE_REVIEW": {"batch_criteria": {"sort_by": "updated_at"}},
     "PREFILTER_PASSED": {"batch_criteria": {"limit": 10, "sort_by": "updated_at"}},
     "PJL_READY": {"batch_criteria": {"limit": 10, "sort_by": "updated_at"}},
     "JOBLIST_IDENTIFIED": {"batch_criteria": {"limit": 10, "sort_by": "updated_at"}},
-    "JOBLIST_IDENTIFIED_RETRY": {"batch_criteria": {"limit": 10, "sort_by": "updated_at"}},
-    "COULD_NOT_PARSE_JOBLIST": {},
-    "PREFILTER_PASSED_RETRY": {"batch_criteria": {"limit": 10, "sort_by": "updated_at"}},
-    "NO_PJL_SELECTED": {},
     "PREFILTER_FAILED": {},
     "VET_FAILED": {},
-    "NO_PREFILTER_JOBLISTS": {},
     "TO_WATCH": {"batch_criteria": {"limit": 10, "sort_by": "updated_at"}},
+    # AST-2054: upshot hops between locate/parse success and WATCH.
+    "GET_UPSHOT": {"batch_criteria": {"limit": 10, "sort_by": "updated_at"}},
+    "UPSHOT_READY": {
+        "batch_criteria": {"limit": 10, "sort_by": "updated_at"},
+        "retry_state": retry_of("UPSHOT_READY"),
+    },
     "WATCH": {"batch_criteria": {"limit": 10, "sort_by": "last_scan_at", "scan_interval_hours": 24}},
     "IGNORE": {},
     "METEORITE": {},  # AST-1493: roster-inert meteorite placeholders (stem-keyed); no batch_criteria
-    "PREFILTER_UNKNOWN": {},
-    "HARD_PARSE": {},
     "NO_OPENINGS": {"batch_criteria": {"limit": 10, "sort_by": "last_scan_at", "scan_interval_hours": 24}},
     "JOBS_FOUND": {"batch_criteria": {"limit": 10, "sort_by": "updated_at"}},
-    "NO_JOBLIST": {},
-    "CANNOT_PARSE_JOB_SITE": {},
-    "CANNOT_READ_WEBSITE": {},
-    "BOT_BLOCK": {},
-    "ERROR_PREFILTER": {},
-    "ERROR_LOCATE_JOB_PAGE": {},
-    "JOBSITE_SCRAPE_ISSUE": {},
-    "ERROR_GAZE": {},
+    # AST-2086 terminal grammar: ERROR_<TASK_KEY>[_<CONDITION>] / BOT_BLOCKED_<TASK_KEY>, by writing task.
+    error_state_for("inflow_resolve_website", "NOT_FOUND"): {},
+    error_state_for("resolve_website", "NOT_FOUND"): {},
+    error_state_for("fetch_website", "UNREADABLE"): {},
+    bot_blocked_state_for("fetch_website"): {},
+    error_state_for("prefilter_company"): {},
+    error_state_for("prefilter_company", "NO_JOBLIST_LINKS"): {},
+    error_state_for("prefilter_company", "UNREADABLE"): {},
+    error_state_for("fetch_job_pages", "UNREADABLE"): {},
+    bot_blocked_state_for("fetch_job_pages"): {},
+    # select_job_page also owns the JOBS_FOUND locate flow (same agent, shared writers).
+    error_state_for("select_job_page"): {},
+    error_state_for("select_job_page", "NO_SELECTION"): {},
+    error_state_for("select_job_page", "NO_JOBLIST"): {},
+    error_state_for("select_job_page", "UNREADABLE"): {},
+    error_state_for("select_job_page", "UNPARSEABLE"): {},
+    bot_blocked_state_for("select_job_page"): {},
+    error_state_for("parse_job_list"): {},
+    error_state_for("parse_job_list", "UNPARSEABLE"): {},
+    error_state_for("gaze"): {},
+    error_state_for("company_upshot"): {},
 }
 
 # ---------------------------------------------------------------------------
-# CANDIDATE_STATES: job-style registry (AST-970). Keys are runtime states;
-# each value has prior_states (list or None), progress_rank, and optional
+# CANDIDATE_STATES: job-style registry (AST-970 + AST-2228 stage). Keys are
+# runtime states; each value has prior_states, progress_rank, stage, and optional
 # stale_after_hours/stale_state, retry_state/error_state, reap_after_hours.
 # PROSPECT = Slack-created candidate (AST-1068); prior_states None (entry state).
+# Stage is registry metadata on state — not a candidate table column (AST-2228).
 # ---------------------------------------------------------------------------
 CANDIDATE_STATES = {
-    "PROSPECT": {"prior_states": None, "progress_rank": -1},
-    "NEW_CANDIDATE": {"prior_states": None, "progress_rank": 0},
-    "INTAKE_INITIATED": {"prior_states": ["NEW_CANDIDATE"], "progress_rank": 1},
-    "REQUIRED_TOPICS_READY": {
-        "prior_states": ["INTAKE_INITIATED", "REQUIRED_TOPICS_READY_STALE"],
-        "stale_after_hours": 72,
-        "stale_state": "REQUIRED_TOPICS_READY_STALE",
+    "PROSPECT": {"prior_states": None, "progress_rank": -1, "stage": 1},
+    "NEW_CANDIDATE": {"prior_states": None, "progress_rank": 0, "stage": 1},
+    "INTAKE_INITIATED": {"prior_states": ["NEW_CANDIDATE"], "progress_rank": 1, "stage": 1},
+    "PROFILE_READY": {
+        "prior_states": ["INTAKE_INITIATED"],
         "progress_rank": 2,
+        "stage": 2,
     },
-    "REQUIRED_TOPICS_READY_STALE": {
-        "prior_states": ["REQUIRED_TOPICS_READY"],
-        "progress_rank": 2,
-    },
-    "ALL_TOPICS_READY": {
-        "prior_states": [
-            "REQUIRED_TOPICS_READY",
-            "REQUIRED_TOPICS_READY_STALE",
-            "ALL_TOPICS_READY_STALE",
-        ],
-        "stale_after_hours": 72,
-        "stale_state": "ALL_TOPICS_READY_STALE",
+    "CONTEXT_READY": {
+        "prior_states": ["PROFILE_READY"],
         "progress_rank": 3,
-    },
-    "ALL_TOPICS_READY_STALE": {
-        "prior_states": ["ALL_TOPICS_READY"],
-        "progress_rank": 3,
+        "stage": 3,
     },
     "REQUESTED_RESUME": {
-        "prior_states": [
-            "ALL_TOPICS_READY",
-            "ALL_TOPICS_READY_STALE",
-            "REQUESTED_RESUME_RETRY",
-        ],
-        "retry_state": "REQUESTED_RESUME_RETRY",
-        "error_state": "REQUESTED_RESUME_ERROR",
+        "prior_states": ["CONTEXT_READY"],
+        "retry_state": retry_of("REQUESTED_RESUME"),
         "progress_rank": 4,
-    },
-    "REQUESTED_RESUME_RETRY": {
-        "prior_states": ["REQUESTED_RESUME"],
-        "progress_rank": 4,
-    },
-    "REQUESTED_RESUME_ERROR": {
-        "prior_states": ["REQUESTED_RESUME", "REQUESTED_RESUME_RETRY"],
-        "progress_rank": 4,
+        "stage": 3,
     },
     "RESUME_READY": {
         "prior_states": [
             "REQUESTED_RESUME",
-            "REQUESTED_RESUME_RETRY",
             "RESUME_READY_STALE",
         ],
         "stale_after_hours": 168,
         "stale_state": "RESUME_READY_STALE",
         "progress_rank": 5,
+        "stage": 4,
     },
     "RESUME_READY_STALE": {
         "prior_states": ["RESUME_READY"],
         "progress_rank": 5,
+        "stage": 4,
     },
     "REQUESTED_ARTIFACTS": {
         "prior_states": [
             "RESUME_READY",
             "RESUME_READY_STALE",
-            "REQUESTED_ARTIFACTS_RETRY",
             # AST-1253: regenerate re-entry from post-chain / search states
             "ARTIFACTS_READY",
             "ARTIFACTS_READY_STALE",
             "ACTIVE_SEARCH",
             "PAUSE_SEARCH",
         ],
-        "retry_state": "REQUESTED_ARTIFACTS_RETRY",
-        "error_state": "REQUESTED_ARTIFACTS_ERROR",
+        "retry_state": retry_of("REQUESTED_ARTIFACTS"),
         "progress_rank": 6,
+        "stage": 4,
     },
-    "REQUESTED_ARTIFACTS_RETRY": {
-        "prior_states": ["REQUESTED_ARTIFACTS"],
-        "progress_rank": 6,
+    # AST-2086: a failing craft hop lands on its own ERROR_<HOP> (TASK_CONFIG error_state).
+    # AST-2228: craft ERROR_* inherit artifact-waiting stage 4.
+    **{
+        s: {
+            "prior_states": ["REQUESTED_RESUME", "REQUESTED_ARTIFACTS"],
+            "progress_rank": 6,
+            "stage": 4,
+        }
+        for s in CANDIDATE_CRAFT_CHAIN_ERROR_STATES
     },
-    "REQUESTED_ARTIFACTS_ERROR": {
-        "prior_states": ["REQUESTED_ARTIFACTS", "REQUESTED_ARTIFACTS_RETRY"],
-        "progress_rank": 6,
+    # AST-2221: base-resume hop failures land on ERROR_<HOP> with REQUESTED_RESUME priors only.
+    # AST-2245: resume-request ERROR_* inherit stage 3 (parent locked band).
+    **{
+        s: {
+            "prior_states": ["REQUESTED_RESUME"],
+            "progress_rank": 4,
+            "stage": 3,
+        }
+        for s in BASE_RESUME_CHAIN_ERROR_STATES
     },
     "ARTIFACTS_READY": {
         "prior_states": [
             "REQUESTED_ARTIFACTS",
-            "REQUESTED_ARTIFACTS_RETRY",
             "ARTIFACTS_READY_STALE",
         ],
         "stale_after_hours": 168,
         "stale_state": "ARTIFACTS_READY_STALE",
         "progress_rank": 7,
+        "stage": 4,
     },
     "ARTIFACTS_READY_STALE": {
         "prior_states": ["ARTIFACTS_READY"],
         "progress_rank": 7,
+        "stage": 4,
     },
     "ACTIVE_SEARCH": {
         "prior_states": ["ARTIFACTS_READY", "ARTIFACTS_READY_STALE", "PAUSE_SEARCH"],
         "progress_rank": 8,
+        "stage": 5,
     },
-    "PAUSE_SEARCH": {"prior_states": ["ACTIVE_SEARCH"], "progress_rank": 8},
-    "INACTIVE": {"prior_states": None, "progress_rank": -1},
-    "DELETED": {"prior_states": None, "progress_rank": -1, "reap_after_hours": 720},
+    "PAUSE_SEARCH": {"prior_states": ["ACTIVE_SEARCH"], "progress_rank": 8, "stage": 5},
+    "INACTIVE": {"prior_states": None, "progress_rank": -1, "stage": 0},
+    "DELETED": {"prior_states": None, "progress_rank": -1, "stage": 0, "reap_after_hours": 720},
 }
 
 CANDIDATE_CONFIG = {
@@ -1362,6 +1702,7 @@ CANDIDATE_LIBRARY_CONFIG = {
         "github", "linkedin_url", "websites", "extra_emails", "timezone",
         "cover_letter_signature", "cover_letter_signature_image",
         "cover_letter_from_block",
+        "resume_title_template", "cover_letter_title_template",
         "title_patterns", "reason_codes",
     ),
     "context_keys": (
@@ -1395,6 +1736,15 @@ assert len(CANDIDATE_LIBRARY_CONFIG["context_completeness_keys"]) == len(
 for _ck in CANDIDATE_LIBRARY_CONFIG["context_completeness_keys"]:
     assert _ck in CANDIDATE_LIBRARY_CONFIG["context_keys"], _ck
 
+# From-block token allowlist: FULL_NAME + every candidate ``contact.*`` data-field token in
+# TOKEN_SOURCES (a test keeps this in sync). Help copy below is generated from it.
+_FROM_BLOCK_TOKEN_IDS = (
+    "FULL_NAME", "LOCATION", "CONTACT_EMAIL", "PHONE",
+    "REPLY_EMAIL", "GITHUB", "LINKEDIN_URL",
+    "TITLE_PATTERNS", "REASON_CODES", "COVER_LETTER_SIGNATURE",
+)
+_FROM_BLOCK_TOKEN_LIST = ", ".join("{$" + t + "}" for t in _FROM_BLOCK_TOKEN_IDS)
+
 # AST-1137 / AST-1147 / AST-1149: from-block field + token template/rewrite + authoring chrome.
 COVER_FROM_BLOCK_CONFIG = {
     "contact_key": "cover_letter_from_block",
@@ -1405,28 +1755,51 @@ COVER_FROM_BLOCK_CONFIG = {
     "line_2_contact_paths": ("contact_email", "phone"),
     "sources": ("candidate", "default"),
     # AST-1147: token template contract for AST-1148 resolve/emit (path keys stay until then).
+    # No {$FULL_NAME}: the cover header prints the name on its own line above the From block.
     "default_template": (
-        "{$FULL_NAME} | {$LOCATION}\n{$CONTACT_EMAIL} | {$PHONE}"
+        "{$LOCATION} | {$CONTACT_EMAIL} | {$PHONE}"
     ),
     # Keep authoring_help token prose in sync when this allowlist changes (AST-1149).
-    "allowed_token_ids": ("FULL_NAME", "LOCATION", "CONTACT_EMAIL", "PHONE"),
+    "allowed_token_ids": _FROM_BLOCK_TOKEN_IDS,
     "authoring_separator": "|",
     "emit_separator": " • ",
     "empty_segment_policy": "drop_with_adjacent_separator",
     # AST-1149: user-facing authoring chrome (UI renders; no resolve math).
     "authoring_help": (
-        "Allowed tokens: {$FULL_NAME}, {$LOCATION}, {$CONTACT_EMAIL}, {$PHONE}. "
+        f"Allowed tokens (type {{$ for a list): {_FROM_BLOCK_TOKEN_LIST}. "
         "Type | between segments; cover print shows •. "
         "Leave empty to use the default template (see placeholder)."
     ),
     "session_authoring_help": (
         "Enter cover-letter field values, then Open HTML to Print → PDF. "
-        "Letter fields come from this form. From block supports "
-        "{$FULL_NAME}, {$LOCATION}, {$CONTACT_EMAIL}, {$PHONE}; type | for • in print. "
+        f"Letter fields come from this form. From block supports {_FROM_BLOCK_TOKEN_LIST}; "
+        "type | for • in print. "
         "When a candidate is selected, leave From empty to use that candidate’s saved "
         "from-block or the default token template. Without a candidate, From is required. "
-        "If a candidate is selected and has a profile signature image, the server may "
-        "include it in the sign-off; otherwise name-only. This tool does not save to the database."
+        "The profile signature image prints where {$SIGNATURE_IMAGE} sits in the Signature "
+        "field; without that token there is no image. This tool does not save to the database."
+    ),
+}
+
+# Printed-page <title> of job documents = the browser's default PDF file name. The candidate may override
+# each template (contact.<contact_key>); blank → the default here. Tokens are substituted at build time.
+PAGE_TITLE_CONFIG = {
+    "tokens": ("FULL_NAME", "JOB_ID"),
+    # {$JOB_ID} = the job's company_job_id; when blank, the first N non-hyphen characters of astral_job_id.
+    "job_id_fallback_chars": 6,
+    "resume": {
+        "contact_key": "resume_title_template",
+        "label": "Resume file name",
+        "default": "{$FULL_NAME} Resume ({$JOB_ID})",
+    },
+    "cover": {
+        "contact_key": "cover_letter_title_template",
+        "label": "Cover letter file name",
+        "default": "{$FULL_NAME} Cover Letter {$JOB_ID}",
+    },
+    "help": (
+        "Default file name when you print to PDF (type {$ for a list). {$JOB_ID} is the job's own ID, "
+        "or the first six characters of the Astral job ID when it has none. Leave empty for the default."
     ),
 }
 
@@ -1819,6 +2192,82 @@ for _mode in CANDIDATE_CONTACT_UNIQUENESS_CONFIG["compare"].values():
     assert _mode in ("casefold", "exact"), _mode
 
 # ---------------------------------------------------------------------------
+# CONTACT_CONTEXT_COMMAND_CONFIG (AST-2206): Contact context commands — /draft-, /save-,
+# /show-<suffix> for six candidate context pieces. Keyed by command suffix (the token after
+# the verb). Each row names the ARTIFACT_CONFIG key the commands act on, the TASK_CONFIG draft
+# task principal Estelle runs, and the label used in command descriptions. The 18
+# CONTACT_CONFIG["commands"] entries are generated from this block x _CONTACT_CONTEXT_COMMAND_VERBS;
+# never hand-list them. The artifact-key assert sits after ARTIFACT_CONFIG (defined later).
+# ---------------------------------------------------------------------------
+CONTACT_CONTEXT_COMMAND_CONFIG = {
+    "strengths": {
+        "artifact_key": "candidate.context.strengths",
+        "draft_task": "draft_context_strengths",
+        "label": "strengths",
+    },
+    "dealbreakers": {
+        "artifact_key": "candidate.context.deal_breakers",
+        "draft_task": "draft_context_deal_breakers",
+        "label": "deal breakers",
+    },
+    "priorities": {
+        "artifact_key": "candidate.context.priorities",
+        "draft_task": "draft_context_priorities",
+        "label": "priorities",
+    },
+    "ideal-day": {
+        "artifact_key": "candidate.context.ideal_day",
+        "draft_task": "draft_context_ideal_day",
+        "label": "ideal day",
+    },
+    "bio-summary": {
+        "artifact_key": "candidate.context.bio_summary",
+        "draft_task": "draft_context_bio_summary",
+        "label": "bio summary",
+    },
+    "backstory": {
+        "artifact_key": "candidate.context.backstory",
+        "draft_task": "draft_context_backstory",
+        "label": "backstory",
+    },
+}
+for _ctx_suffix, _ctx_meta in CONTACT_CONTEXT_COMMAND_CONFIG.items():
+    assert _ctx_suffix.split() == [_ctx_suffix] and not _ctx_suffix.startswith("/"), _ctx_suffix
+    for _field in ("artifact_key", "draft_task", "label"):
+        assert isinstance(_ctx_meta.get(_field), str) and _ctx_meta[_field].strip(), (_ctx_suffix, _field)
+    assert _ctx_meta["draft_task"] in TASK_CONFIG, _ctx_suffix
+# One artifact key per row — the draft handler finds its draft_task by the entry's artifact_key.
+assert len({_m["artifact_key"] for _m in CONTACT_CONTEXT_COMMAND_CONFIG.values()}) == len(
+    CONTACT_CONTEXT_COMMAND_CONFIG
+)
+# Per-verb template for the generated context commands; {label} / {suffix} are filled per row.
+# draft-/show- run on an empty payload (payload_optional); save- keeps the usage reply for one.
+_CONTACT_CONTEXT_COMMAND_VERBS = {
+    "draft": {
+        "handler": "src.core.contact.contact_command_draft_context",
+        "mode": "code",
+        "description": "Draft {label} for this channel's candidate from the channel history, resume, and profile. Nothing is saved.",
+        "usage_reply_text": "Usage: @Estelle /draft-{suffix}",
+        "payload_optional": True,
+        # The draft (and its discussion) always threads under the command message.
+        "reply_placement": "always_no_share",
+    },
+    "save": {
+        "handler": "src.core.candidate.contact_command_save_context",
+        "mode": "code",
+        "description": "Save the text after the command as this channel's candidate's new current {label}.",
+        "usage_reply_text": "Usage: @Estelle /save-{suffix} <text>",
+    },
+    "show": {
+        "handler": "src.core.candidate.contact_command_show_context",
+        "mode": "code",
+        "description": "Show this channel's candidate's currently saved {label}.",
+        "usage_reply_text": "Usage: @Estelle /show-{suffix}",
+        "payload_optional": True,
+    },
+}
+
+# ---------------------------------------------------------------------------
 # CONTACT_CONFIG: Astral Contact / Estelle foundation (AST-1066 / AST-1043).
 # Skills ACL is Contact-only — never dispatch TASK_CONFIG / agent_task catalog rows.
 # Secret *values* live in environ; this block stores env *names* + behavior flags.
@@ -1834,53 +2283,88 @@ CONTACT_CONFIG = {
     "debug_state_filename": "contact_slack_debug.json",
     # Durable @Estelle per–Slack-user activity summary under ASTRAL_CONFIG["db_dir"] (AST-1094).
     "activity_state_filename": "contact_estelle_activity.json",
-    # ASTRAL_DEPLOY_ENV value (case-insensitive) that skips non-prod reply prefix.
+    # ASTRAL_DEPLOY_ENV value (case-insensitive) Manage Slack reports as production.
     "production_deploy_env": "production",
-    # Format with environment= (deploy label). AST-1067 applies when listen is on
-    # and deploy is not production.
-    "non_production_reply_prefix_template": "[{environment}] ",
-    # AST-1101: fallback Slack text when Contact accepts @/DM but Estelle turn posts nothing.
-    "hear_ack_reply_text": "Heard you — Estelle is listening.",
-    # AST-1668: recognition replies after resolve (known bind vs unbound Slack user).
-    "known_recognition_reply_text": "I know who that is",
-    "unknown_recognition_reply_text": "I don't recognize you",
+    # AST-1101 / AST-2072: fallback Slack text when Contact accepts @/DM but Estelle's turn
+    # posts nothing (turn raised, failed, or returned no reply).
+    "hear_ack_reply_text": "That didn't work as planned.  Let's ask @susan.",
+    # AST-1668 / AST-2072: reply to an unbound Slack sender (bound senders get no recognition post).
+    "unknown_recognition_reply_text": "Sorry, I don't recognize you, yet.  Let's check with @susan",
+    # AST-2206: reply to a private_channel_only command posted outside a private channel (a DM,
+    # or an @mention in a public channel). Nothing else runs.
+    "private_channel_only_reply_text": "I can only do that in the candidate's private channel.",
+    # AST-2206: reply to a private_channel_only command in a private channel that no candidate's
+    # contact.slack_channel_id names. No handler runs.
+    "unmapped_channel_reply_text": "This channel isn't linked to a candidate yet.  Let's check with @susan",
+    # AST-2072: where every Estelle reply to an inbound Slack message lands.
+    #   threads_only      — in-thread only when the user posted in a thread; else a new top-level post.
+    #   always_no_share   — always in a thread (the user's thread, or a new one under their message).
+    #   always_with_share — always_no_share + Slack "Also send to channel" (reply_broadcast).
+    # Estelle-initiated posts (meteorite bot-wall notify) are not replies and ignore this.
+    "thread_response": "threads_only",
     # Environ name contracts — readers use os.environ[CONTACT_CONFIG["…_env"]] (no .get).
     "bot_token_env": "SLACK_BOT_TOKEN",
     "signing_secret_env": "SLACK_SIGNING_SECRET",
-    # skill_key → ACL metadata. Contact-only entity-save paths (AST-1071).
-    # Keys must never appear in TASK_CONFIG (assert below).
-    "skills": {
-        "save_candidate_profile": {
-            "entity": "candidate",
-            "write": True,
-            "description": (
-                "Merge allowlisted name columns (first/last/pronouns) "
-                "for Slack Contact intake."
-            ),
-            # AST-1014 name columns — not candidate_data.profile (refused on save).
-            "allowed_paths": (
-                "first",
-                "last",
-                "pronouns",
-            ),
+    # AST-2061: no Estelle write skills — this map stays empty. Contact's only writes are pinhole
+    # command handlers: meteorites, and /save-<context> artifact versions (AST-2206).
+    # Map kept (empty) for contact_skills()/admin routes; keys must never appear in TASK_CONFIG.
+    "skills": {},
+    # AST-2035: Slack commands — `@Estelle /<command id> <payload>`, recognized only as the
+    # first token after leading @mentions. handler: sync src.core.* callable
+    # (candidate_id, payload, *, source_id, thread_ts, debug) -> {ok, meteorite_id, error[, reply_text]}.
+    # mode "code": fixed usage post, no LLM turn; the handler's reply_text when it returns one, else
+    # ack_reply_template on ok (AST-2144). mode "agent": one Estelle turn sees the result.
+    # Optional reply_placement overrides thread_response for this command's replies (AST-2144).
+    # AST-2206 optional fields: payload_optional (an empty payload runs the handler instead of the
+    # usage reply); artifact_key (handed to the handler as the artifact_key= kwarg);
+    # private_channel_only (runs only in a mapped private channel, on that channel's candidate;
+    # anywhere else private_channel_only_reply_text posts and nothing runs).
+    "commands": {
+        "add-job": {
+            "handler": "src.core.meteorite.insert_slack_meteorite",
+            "mode": "code",
+            "description": "Save a job link or pasted job description as a NEW meteorite for staging.",
+            "usage_reply_text": "Usage: @Estelle /add-job <job link or pasted job description>",
+            # Format with meteorite_id=.
+            "ack_reply_template": "Got it. Saved as meteorite {meteorite_id}; I'll stage it from here.",
         },
-        "save_candidate_contact": {
-            "entity": "candidate",
-            "write": True,
-            "description": (
-                "Merge allowlisted contact.* fields into candidate_data "
-                "(not slack_user_id — AST-1068 owns that)."
-            ),
-            "allowed_paths": (
-                "contact.contact_email",
-                "contact.reply_email",
-            ),
+        # AST-2151: read-only status lookup over the sender's own jobs (no LLM turn, no writes).
+        "check-status": {
+            "handler": "src.core.tracker.contact_command_check_status",
+            "mode": "code",
+            "description": "Look up your own job by link, title, company, or job id: its state, dates, and a link to the job page.",
+            "usage_reply_text": "Usage: @Estelle /check-status <job link, title, company, or job id>",
+            # Every reply to this command threads under the sender's message and shares to channel.
+            "reply_placement": "always_with_share",
+            # One match. Format with job_title=, created_at=, state=, state_changed_at= (contact clock), deeplink=.
+            "match_reply_template": "{job_title}\nReceived {created_at}\nState {state} since {state_changed_at}{deeplink}",
+            # Several matches: header (count=) then one line per job (job_title=, company=, state=, deeplink=).
+            "matches_header_template": "{count} jobs matched:",
+            "matches_line_template": "• {job_title} — {company} — {state}{deeplink}",
+            # Appended as {deeplink} only when the origin env is set; "" otherwise. Format with url=.
+            "deeplink_template": "\n{url}",
+            "no_match_reply_text": "Nothing matched that. Try a job link, title, or company.",
+        },
+        # AST-2206: 18 context commands generated from CONTACT_CONTEXT_COMMAND_CONFIG x verbs.
+        **{
+            f"{_verb}-{_suffix}": {
+                **_verb_meta,
+                "description": _verb_meta["description"].format(label=_ctx["label"]),
+                "usage_reply_text": _verb_meta["usage_reply_text"].format(suffix=_suffix),
+                "artifact_key": _ctx["artifact_key"],
+                "private_channel_only": True,
+            }
+            for _suffix, _ctx in CONTACT_CONTEXT_COMMAND_CONFIG.items()
+            for _verb, _verb_meta in _CONTACT_CONTEXT_COMMAND_VERBS.items()
         },
     },
     # AST-1069: Events API Request URL path (Flask route under /api).
     "events_http_path": "/slack/events",
     # Bot events Contact accepts when listen is on (Slack Event Subscriptions must match).
     "bot_event_types": ("app_mention", "message"),
+    # AST-2061: Slack channel_type values where Estelle acts (DM + private channel).
+    # app_mention carries no channel_type — Contact looks it up via conversations.info.
+    "allowed_channel_types": ("im", "group"),
     # Process-local event_id dedupe capacity (single gunicorn worker — AST/Railway).
     "event_id_dedupe_max": 4096,
     # Socket Mode (local/dev only) — app-level token env name (xapp-…).
@@ -1902,8 +2386,12 @@ assert isinstance(CONTACT_CONFIG["debug_state_filename"], str) and CONTACT_CONFI
 assert isinstance(CONTACT_CONFIG["activity_state_filename"], str) and CONTACT_CONFIG["activity_state_filename"].endswith(".json")
 assert isinstance(CONTACT_CONFIG["production_deploy_env"], str) and CONTACT_CONFIG["production_deploy_env"].strip()
 assert isinstance(CONTACT_CONFIG["hear_ack_reply_text"], str) and CONTACT_CONFIG["hear_ack_reply_text"].strip()
-assert isinstance(CONTACT_CONFIG["known_recognition_reply_text"], str) and CONTACT_CONFIG["known_recognition_reply_text"].strip()
 assert isinstance(CONTACT_CONFIG["unknown_recognition_reply_text"], str) and CONTACT_CONFIG["unknown_recognition_reply_text"].strip()
+assert isinstance(CONTACT_CONFIG["private_channel_only_reply_text"], str) and CONTACT_CONFIG["private_channel_only_reply_text"].strip()
+assert isinstance(CONTACT_CONFIG["unmapped_channel_reply_text"], str) and CONTACT_CONFIG["unmapped_channel_reply_text"].strip()
+# AST-2072 / AST-2144: reply-placement vocabulary — global thread_response and per-command reply_placement.
+_CONTACT_THREAD_RESPONSE_MODES = ("threads_only", "always_no_share", "always_with_share")
+assert CONTACT_CONFIG["thread_response"] in _CONTACT_THREAD_RESPONSE_MODES, CONTACT_CONFIG["thread_response"]
 assert isinstance(CONTACT_CONFIG["skills"], dict)
 assert CONTACT_CONFIG["bot_token_env"] == "SLACK_BOT_TOKEN"
 assert CONTACT_CONFIG["signing_secret_env"] == "SLACK_SIGNING_SECRET"
@@ -1911,6 +2399,9 @@ assert str(CONTACT_CONFIG["events_http_path"]).startswith("/")
 assert CONTACT_CONFIG["bot_event_types"] and all(
     isinstance(_t, str) for _t in CONTACT_CONFIG["bot_event_types"]
 )
+assert isinstance(CONTACT_CONFIG["allowed_channel_types"], tuple) and CONTACT_CONFIG["allowed_channel_types"]
+assert set(CONTACT_CONFIG["allowed_channel_types"]) <= {"im", "mpim", "group", "channel"}
+assert "channel" not in CONTACT_CONFIG["allowed_channel_types"]  # public channels never (AST-2061)
 assert isinstance(CONTACT_CONFIG["event_id_dedupe_max"], int)
 assert CONTACT_CONFIG["event_id_dedupe_max"] > 0
 assert CONTACT_CONFIG["app_token_env"] == "SLACK_APP_TOKEN"
@@ -1937,9 +2428,42 @@ for _skill_key, _skill_meta in CONTACT_CONFIG["skills"].items():
         if _p in _name_cols:
             continue
         assert "." in _p, (_skill_key, _p)
-assert set(CONTACT_CONFIG["skills"]["save_candidate_profile"]["allowed_paths"]).issubset(
-    CANDIDATE_LIBRARY_CONFIG["name_columns"]
-)
+# AST-2144: optional reply-text fields → placeholders each must carry when an entry declares it.
+_CONTACT_COMMAND_TEXT_FIELDS = {
+    "ack_reply_template": ("{meteorite_id}",),
+    "match_reply_template": ("{job_title}", "{created_at}", "{state}", "{state_changed_at}", "{deeplink}"),
+    "matches_header_template": ("{count}",),
+    "matches_line_template": ("{job_title}", "{company}", "{state}", "{deeplink}"),
+    "deeplink_template": ("{url}",),
+    "no_match_reply_text": (),
+}
+# Job-lookup reply fields travel together: a handler that formats one formats them all.
+_CONTACT_COMMAND_JOB_LOOKUP_FIELDS = frozenset(_CONTACT_COMMAND_TEXT_FIELDS) - {"ack_reply_template"}
+# AST-2035: command registry shape; ids are the bare token after "/" (no whitespace).
+assert isinstance(CONTACT_CONFIG["commands"], dict)
+for _cmd_id, _cmd_meta in CONTACT_CONFIG["commands"].items():
+    assert isinstance(_cmd_id, str) and _cmd_id.split() == [_cmd_id] and not _cmd_id.startswith("/"), _cmd_id
+    assert isinstance(_cmd_meta, dict), _cmd_id
+    assert _cmd_meta.get("mode") in ("code", "agent"), _cmd_id
+    for _field in ("handler", "description", "usage_reply_text"):
+        assert isinstance(_cmd_meta.get(_field), str) and _cmd_meta[_field].strip(), (_cmd_id, _field)
+    assert _cmd_meta["handler"].startswith("src.core.") and _cmd_meta["handler"].count(".") >= 3, _cmd_id
+    # AST-2144: ack_reply_template is optional; any declared text field is non-empty and carries its placeholders.
+    for _field, _needs in _CONTACT_COMMAND_TEXT_FIELDS.items():
+        if _field in _cmd_meta:
+            assert isinstance(_cmd_meta[_field], str) and _cmd_meta[_field].strip(), (_cmd_id, _field)
+            assert all(_ph in _cmd_meta[_field] for _ph in _needs), (_cmd_id, _field)
+    _lookup = _CONTACT_COMMAND_JOB_LOOKUP_FIELDS & _cmd_meta.keys()
+    assert not _lookup or _lookup == _CONTACT_COMMAND_JOB_LOOKUP_FIELDS, (_cmd_id, sorted(_lookup))
+    if "reply_placement" in _cmd_meta:
+        assert _cmd_meta["reply_placement"] in _CONTACT_THREAD_RESPONSE_MODES, _cmd_id
+    # AST-2206: optional context-command fields.
+    for _flag in ("payload_optional", "private_channel_only"):
+        if _flag in _cmd_meta:
+            assert isinstance(_cmd_meta[_flag], bool), (_cmd_id, _flag)
+    if "artifact_key" in _cmd_meta:
+        assert isinstance(_cmd_meta["artifact_key"], str) and _cmd_meta["artifact_key"].strip(), _cmd_id
+    assert _cmd_id not in CONTACT_CONFIG["skills"], _cmd_id
 
 # AST-1049: Manage Email Create — strip/extract email HTML + subject inclusion before meteorite job create.
 INBOX_CREATE_JOB_CONFIG = {
@@ -1968,34 +2492,59 @@ assert "PROSPECT" in CANDIDATE_STATES
 for _name, _cfg in CANDIDATE_STATES.items():
     assert "progress_rank" in _cfg, _name
     assert "prior_states" in _cfg, _name
+    assert "stage" in _cfg, _name
     _stale = _cfg.get("stale_state")
     if _stale is not None:
         assert _stale in CANDIDATE_STATES and "stale_after_hours" in _cfg, _name
     _retry = _cfg.get("retry_state")
     if _retry is not None:
-        assert _retry in CANDIDATE_STATES, _name
+        assert is_registered_state(CANDIDATE_STATES, _retry), _name
     _err = _cfg.get("error_state")
     if _err is not None:
         assert _err in CANDIDATE_STATES, _name
 assert CANDIDATE_STATES["DELETED"].get("reap_after_hours", 0) > 0
 assert CANDIDATE_CONFIG["initial_state"] in CANDIDATE_STATES
+# AST-2228: revived path + topic retirement + locked stage bands.
+assert "PROFILE_READY" in CANDIDATE_STATES and "CONTEXT_READY" in CANDIDATE_STATES
+assert not (
+    {
+        "REQUIRED_TOPICS_READY",
+        "REQUIRED_TOPICS_READY_STALE",
+        "ALL_TOPICS_READY",
+        "ALL_TOPICS_READY_STALE",
+    }
+    & set(CANDIDATE_STATES)
+)
+assert CANDIDATE_STATES["PAUSE_SEARCH"]["stage"] == 5
+assert CANDIDATE_STATES["RESUME_READY"]["stage"] == 4
+assert CANDIDATE_STATES["PROFILE_READY"]["stage"] == 2
+assert CANDIDATE_STATES["DELETED"]["stage"] == 0
+assert all(
+    CANDIDATE_STATES[s]["stage"] == 3 for s in BASE_RESUME_CHAIN_ERROR_STATES
+)
 
-# Retired four-step names → AST-970 registry. DELETED is not remapped (hard-deleted).
+# Legacy labels -> live registry (AST-973 + AST-2228 topic remap). DELETED not remapped.
 CANDIDATE_LEGACY_STATE_MAP = {
     "LIVE_PROMPTS": "ACTIVE_SEARCH",
     "NEW": "NEW_CANDIDATE",
-    "PROFILE_READY": "NEW_CANDIDATE",
-    "CONTEXT_READY": "NEW_CANDIDATE",
+    "REQUIRED_TOPICS_READY": "PROFILE_READY",
+    "REQUIRED_TOPICS_READY_STALE": "PROFILE_READY",
+    "ALL_TOPICS_READY": "CONTEXT_READY",
+    "ALL_TOPICS_READY_STALE": "CONTEXT_READY",
 }
 
-# Candidate-only legacy labels (never job/company registry keys).
+# Candidate-only retired labels (never job/company registry keys).
 CANDIDATE_LEGACY_TRIGGER_STATES = frozenset({
-    "LIVE_PROMPTS", "PROFILE_READY", "CONTEXT_READY",
+    "LIVE_PROMPTS",
+    "REQUIRED_TOPICS_READY",
+    "REQUIRED_TOPICS_READY_STALE",
+    "ALL_TOPICS_READY",
+    "ALL_TOPICS_READY_STALE",
 })
 
 
 def remap_legacy_candidate_state(state: str) -> str:
-    """Map a persisted candidate.state onto CANDIDATE_STATES keys (AST-973)."""
+    """Map a persisted candidate state onto CANDIDATE_STATES keys (AST-973 / AST-2228)."""
     if not state:
         return CANDIDATE_CONFIG["initial_state"]
     if state in CANDIDATE_STATES:
@@ -2043,36 +2592,54 @@ ROSTER_CONFIG = {
         "legacy_pass_state": "TO_WATCH",
         "legacy_fail_state": "IGNORE",
         "legacy_pass_states": ["TO_WATCH"],
-        "retry_state": "WEBSITE_FOUND_RETRY",
-        "error_state": "ERROR_PREFILTER",
-        "no_pjl_state": "NO_PREFILTER_JOBLISTS",
+        "retry_state": retry_of("HOMEPAGE_READY"),
+        # Agent-envelope failure (bad source content) → one fetch_website re-scrape (AST-1839)
+        "envelope_retry_state": retry_of("WEBSITE_FOUND"),
+        "error_state": error_state_for("prefilter_company"),
+        "no_pjl_state": error_state_for("prefilter_company", "NO_JOBLIST_LINKS"),
+        # Homepage scrape error / not-ready skip (AST-2086).
+        "unreadable_state": error_state_for("prefilter_company", "UNREADABLE"),
         "pjl_url_data_key": "possible_joblist_links",
     },
     "locate_job_page": {
         "input_state": "TO_WATCH",
         # JOBS_FOUND only — decomposed PJL pipeline uses fetch_job_pages → select_job_page → parse_job_list.
         "dispatch_input_states": ["JOBS_FOUND"],
-        "pass_states": ["WATCH"],
-        "error_state": "ERROR_LOCATE_JOB_PAGE",
-        "scrape_issue_state": "JOBSITE_SCRAPE_ISSUE",
+        "pass_states": ["GET_UPSHOT"],
+        # Runs the select_job_page agent; outcomes carry select_job_page names (AST-2086).
+        "error_state": error_state_for("select_job_page"),
+        "scrape_issue_state": error_state_for("select_job_page", "UNREADABLE"),
+        "no_joblist_state": error_state_for("select_job_page", "NO_JOBLIST"),
+        "unparseable_state": error_state_for("select_job_page", "UNPARSEABLE"),
+        "bot_blocked_state": bot_blocked_state_for("select_job_page"),
         "max_depth": 2,
     },
     "select_job_page": {
         "dispatch_trigger_state": "PJL_READY",
-        "pass_states": ["JOBLIST_IDENTIFIED", "PREFILTER_PASSED_RETRY"],
-        "retry_state": "PREFILTER_PASSED_RETRY",
+        "pass_states": ["JOBLIST_IDENTIFIED", retry_of("PREFILTER_PASSED")],
+        "retry_state": retry_of("PREFILTER_PASSED"),
         "identified_state": "JOBLIST_IDENTIFIED",
-        "exhausted_state": "NO_PJL_SELECTED",
+        "exhausted_state": error_state_for("select_job_page", "NO_SELECTION"),
         "pjl_url_data_key": "possible_joblist_links",
         "selected_pjl_url_key": "selected_pjl_url",
     },
     "parse_job_list": {
         "dispatch_trigger_state": "JOBLIST_IDENTIFIED",
-        "retry_trigger_state": "JOBLIST_IDENTIFIED_RETRY",
-        "pass_state": "WATCH",
-        "retry_state": "JOBLIST_IDENTIFIED_RETRY",
-        "terminal_fail_state": "COULD_NOT_PARSE_JOBLIST",
+        "retry_trigger_state": retry_of("JOBLIST_IDENTIFIED"),
+        "pass_state": "GET_UPSHOT",
+        "retry_state": retry_of("JOBLIST_IDENTIFIED"),
+        "terminal_fail_state": error_state_for("parse_job_list", "UNPARSEABLE"),
+        # Empty-token data defect — bare, never a retry (AST-2000 / AST-2086).
+        "error_state": error_state_for("parse_job_list"),
         "selected_pjl_url_key": "selected_pjl_url",
+    },
+    # AST-2054: Estelle company upshot hop. Retry once via UPSHOT_READY_RETRY, then ERROR_COMPANY_UPSHOT.
+    "company_upshot": {
+        "task_key": "company_upshot",
+        "dispatch_trigger_state": "UPSHOT_READY",
+        "pass_state": "WATCH",
+        "retry_state": retry_of("UPSHOT_READY"),
+        "error_state": error_state_for("company_upshot"),
     },
     "scrape_readiness": {
         "max_wait_ms": 20000,
@@ -2095,7 +2662,7 @@ ROSTER_CONFIG = {
         ],
     },
     "gaze": {
-        "error_state": "ERROR_GAZE",
+        "error_state": error_state_for("gaze"),
     },
     "company_data_keys": {
         "homepage_text": "homepage_text",
@@ -2115,6 +2682,8 @@ ROSTER_CONFIG = {
         "pjl_assembled_content": "pjl_assembled_content",
         "pjl_nav_links": "pjl_nav_links",
         "selected_pjl_url": "selected_pjl_url",
+        # AST-2054: Estelle prose upshot (display-only). No coat-check handler — explicit storage only.
+        "company_upshot": "company_upshot",
     },
     "culture_pages": {
         "max_pages": 6,
@@ -2150,6 +2719,29 @@ def roster_scrape_readiness_config() -> Dict[str, Any]:
     return cfg
 
 
+# AST-2131: scraped Telescope content lives in web_data (owned by gazer); entity blobs hold row ids.
+WEB_DATA_CONFIG = {
+    # data_type values written to web_data.data_type — free text, not validated in code.
+    "data_types": {
+        "VISIBLE_TEXT": "VISIBLE_TEXT",
+        "PAGE_LINKS": "PAGE_LINKS",
+        "DOM_CONTENT": "DOM_CONTENT",  # reserved name only — DOM is not stored
+    },
+    # company_data keys whose values are telescope row ids (or [{url, id}] for multi-page keys).
+    "company_data_id_keys": (
+        "homepage_text",
+        "nav_links",
+        "website_content",
+        "job_list_visible",
+        "pjl_scrape_pages",
+    ),
+}
+# Each id-holding key must still be a declared company_data key.
+assert all(
+    k in ROSTER_CONFIG["company_data_keys"] for k in WEB_DATA_CONFIG["company_data_id_keys"]
+), WEB_DATA_CONFIG["company_data_id_keys"]
+
+
 # Phase 1 roster inflow discovery (AST-505): CSE search limits, vet task keys, weekly cadence.
 # AST-1672: DISCOVERED land/vet; resolve block is CSE-only fetch (no inline AI key).
 INFLOW_CONFIG = {
@@ -2169,7 +2761,7 @@ INFLOW_CONFIG = {
         "dispatch_trigger_state": "DISCOVERED",
         "waiting_state": "WEBSITE_REVIEW",
         "pass_state": "WEBSITE_REVIEW",  # ≥1 CSE hit → waiting
-        "fail_state": "NO_WEBSITE",  # zero CSE hits → terminal
+        "fail_state": error_state_for("inflow_resolve_website", "NOT_FOUND"),  # zero CSE hits → terminal
         "hit_list_data_key": "inflow_resolve_website_hits",
     },
     "vet": {
@@ -2200,7 +2792,7 @@ assert TASK_CONFIG["resolve_website"]["agent_task"] == "find_company_website"
 assert TASK_CONFIG["resolve_website"]["trigger_state"] == "WEBSITE_REVIEW"
 assert TASK_CONFIG["vet_inflow_discovery"]["trigger_state"] == "DISCOVERED"
 
-# AST-1252: REQUESTED_ARTIFACTS opens at craft_get_rubric; succession via agent_task.run_next.
+# AST-1252 / AST-2221: candidate stages open at entry hop; succession via agent_task.run_next.
 # task_key is the entry hop (no parallel craft_task_key). Resume wrapper stage removed.
 CANDIDATE_STAGE_DISPATCH = {
     "requested_artifacts": {
@@ -2209,8 +2801,14 @@ CANDIDATE_STAGE_DISPATCH = {
         "pass_state": "ARTIFACTS_READY",
         "auto_mode": False,
     },
+    "requested_resume": {
+        "task_key": "shape_the_story",
+        "trigger_state": "REQUESTED_RESUME",
+        "pass_state": "RESUME_READY",
+        "auto_mode": False,
+    },
 }
-assert CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["task_key"] in TASK_CONFIG
+assert all(e["task_key"] in TASK_CONFIG for e in CANDIDATE_STAGE_DISPATCH.values())
 
 # Google Custom Search HTTP pacing (AST-837). Units: seconds (float/int) and count (int).
 GOOGLE_CSE_CONFIG = {
@@ -2238,36 +2836,61 @@ GAZER_CONFIG = {
     "fetch_jd": {
         "fallback_batch_size": 10,
         "pass_state": "JD_READY",
-        "fail_state": "JD_SCRAPE_FAIL",
-        "error_states": [
-            "JD_SCRAPE_FAIL_COOKIE",
-            "BOT_BLOCKED",
-            "JD_SCRAPE_FAIL_MISSING",
-            "JD_SCRAPE_FAIL_CLOSED",
-        ],
+        "fail_state": error_state_for("fetch_jd", "UNREADABLE"),
+        # _classify_jd() result → state; expired-link names are shared with fetch_relative_jd.
+        "classified_states": {
+            "cookie": error_state_for("fetch_jd", "COOKIE"),
+            "bot": bot_blocked_state_for("fetch_jd"),
+            "missing": "JD_SCRAPE_FAIL_MISSING",
+            "closed": "JD_SCRAPE_FAIL_CLOSED",
+        },
+    },
+    # AST-2022: click-through fetch for relative-link jobs (runner is AST-2025).
+    # Click reached a page → same JD gates/outcomes as fetch_jd; click failed → fail_state.
+    "fetch_relative_jd": {
+        "fallback_batch_size": 10,   # config default only; dispatch_task.batch_size wins
+        "trigger_state": "RELATIVE_JOB_LINK",
+        "pass_state": "JD_READY",
+        "fail_state": error_state_for("fetch_relative_jd", "CLICK"),
+        "unreadable_state": error_state_for("fetch_relative_jd", "UNREADABLE"),
+        "classified_states": {
+            "cookie": error_state_for("fetch_relative_jd", "COOKIE"),
+            "bot": bot_blocked_state_for("fetch_relative_jd"),
+            "missing": "JD_SCRAPE_FAIL_MISSING",
+            "closed": "JD_SCRAPE_FAIL_CLOSED",
+        },
     },
     "fetch_culture_pages": {
         "fallback_batch_size": 10,
         "pass_state": "CULTURE_READY",
-        "fail_state": "NEED_CULTURE_CONTENT",
-        "no_links_state": "NO_CULTURE_LINKS",
+        "fail_state": error_state_for("fetch_culture_pages", "UNREADABLE"),
+        "no_links_state": error_state_for("fetch_culture_pages", "NO_CULTURE_LINKS"),
+        "bot_blocked_state": bot_blocked_state_for("fetch_culture_pages"),
     },
     "fetch_website": {
         "fallback_batch_size": 10,
         "pass_state": "HOMEPAGE_READY",
-        "fail_state": "CANNOT_READ_WEBSITE",
-        # Shared with prefilter; subset ownership via homepage_text (AST-892).
-        "retry_state": "WEBSITE_FOUND_RETRY",
+        "fail_state": error_state_for("fetch_website", "UNREADABLE"),
+        "bot_blocked_state": bot_blocked_state_for("fetch_website"),
+        # Shared retry holding; fetch_website claims all of it (AST-1810).
+        "retry_state": retry_of("WEBSITE_FOUND"),
     },
     "fetch_job_pages": {
         "fallback_batch_size": 10,
         "pass_state": "PJL_READY",
-        "fail_state": "JOBSITE_SCRAPE_ISSUE",
-        "fetch_job_pages_trigger_states": ["PREFILTER_PASSED", "PREFILTER_PASSED_RETRY"],
+        "fail_state": error_state_for("fetch_job_pages", "UNREADABLE"),
+        "bot_blocked_state": bot_blocked_state_for("fetch_job_pages"),
+        "fetch_job_pages_trigger_states": ["PREFILTER_PASSED", retry_of("PREFILTER_PASSED")],
     },
-    # Same string as ROSTER_CONFIG["gaze"]["error_state"] ("ERROR_GAZE").
+    # AST-2054: company culture-page fetch before the Estelle upshot. Always advances to pass_state.
+    "fetch_company_culture_pages": {
+        "fallback_batch_size": 10,   # config default only; dispatch_task.batch_size wins
+        "trigger_state": "GET_UPSHOT",
+        "pass_state": "UPSHOT_READY",
+    },
+    # Same name as ROSTER_CONFIG["gaze"]["error_state"].
     "gaze": {
-        "error_state": "ERROR_GAZE",
+        "error_state": error_state_for("gaze"),
     },
 }
 
@@ -2319,9 +2942,6 @@ CRAFT_ARTIFACTS_CHAIN_TASK_TO_NAV_PATH: Dict[str, str] = {
     "craft_prefilter_rubric": "/artifacts/company_watch_criteria",
     "craft_company_search_terms": "/artifacts/company_search_terms",
 }
-# Output budget floor for craft_*_rubric UI generate (long per-criterion content).
-# Applied in do_task when the agent/model default is lower (AST-903).
-CRAFT_RUBRIC_MAX_TOKENS = 32000
 _RUBRIC_OWNER_TASK_BY_CONSUMER_TASK_KEY = frozenset(RUBRIC_OWNER_TASK_BY_ARTIFACT_KEY.values())
 
 
@@ -2355,29 +2975,43 @@ def rubric_owner_task_key_choices() -> tuple[str, ...]:
     return tuple(sorted(RUBRIC_OWNER_TASK_BY_ARTIFACT_KEY.values()))
 
 
-# AST-707: embedded company_prefilter vectors — merged before candidate artifact criteria (embedded wins on code).
+# AST-707 / AST-1881: default company_prefilter vector — merged on save / craft persist /
+# craft generate / read (embedded wins on code) and stored in rubric_vector, like QC/GC.
 EMBEDDED_COMPANY_PREFILTER_CRITERIA: tuple[dict, ...] = (
     {
         "code": "RC",
         "label": "Reality Check",
         "importance": 8,
         "content": (
-            "Reality Check — assess whether the company is real and operating as represented.\n"
-            "A == clearly real and verifiable\n"
-            "B == appears real with minor gaps\n"
-            "C == mixed signals; legitimacy uncertain\n"
-            "D == significant doubt about reality or representation\n"
-            "E == strong evidence of misrepresentation\n"
-            "F == not a real company or clearly fraudulent\n"
+            "Reality Check — Is this the website for a company that the candidate might work at?\n"
+            "A == It is a typical website with content about products or services, a link to a careers page, etc.\n"
+            "B == It is an elaborate website that isn't clearly a company website, but at least it's about the company, such as a VC portfolio page.\n"
+            "C == It is a social media site for the company, but not their website. Links might still be found to job openings from here.\n"
+            "D == This is a company website, but it doesn't look like the expected website for this company.\n"
+            "F == This is obviously not a company website, someone got confused in their previous research identifying the company.\n"
             "X == could not read the page (bot blocked or other network issue)"
         ),
         "grade_descriptions": [
-            {"grade": "A", "description": "clearly real and verifiable"},
-            {"grade": "B", "description": "appears real with minor gaps"},
-            {"grade": "C", "description": "mixed signals; legitimacy uncertain"},
-            {"grade": "D", "description": "significant doubt about reality or representation"},
-            {"grade": "E", "description": "strong evidence of misrepresentation"},
-            {"grade": "F", "description": "not a real company or clearly fraudulent"},
+            {
+                "grade": "A",
+                "description": "It is a typical website with content about products or services, a link to a careers page, etc.",
+            },
+            {
+                "grade": "B",
+                "description": "It is an elaborate website that isn't clearly a company website, but at least it's about the company, such as a VC portfolio page.",
+            },
+            {
+                "grade": "C",
+                "description": "It is a social media site for the company, but not their website. Links might still be found to job openings from here.",
+            },
+            {
+                "grade": "D",
+                "description": "This is a company website, but it doesn't look like the expected website for this company.",
+            },
+            {
+                "grade": "F",
+                "description": "This is obviously not a company website, someone got confused in their previous research identifying the company.",
+            },
             {
                 "grade": "X",
                 "description": "could not read the page (bot blocked or other network issue)",
@@ -2395,6 +3029,8 @@ EMBEDDED_EVALUATE_JD_CRITERIA: tuple[dict, ...] = (
         "importance": 1,
         "content": (
             "Quality Check — is this enough of a JD to analyze?\n"
+            # Must precede the A row and not start "<grade> =": hydrate's trailing-table fallback would read it as a grade.
+            "Never grade Quality Check X — X is not a valid grade for this vector. If there is not enough to analyze, grade it F (confidence 1–5, never 0).\n"
             "A = This is a valid job description with full details of the role and requirements and information about the company the candidate would be working for.\n"
             "B = This is a valid job description with full details of the role and requirements, but limited information about the company the candidate would be working for.\n"
             "C = This content references a job with enough detail about the role and requirements to perform fit analysis for the candidate.\n"
@@ -2473,86 +3109,108 @@ def _legacy_build_artifacts_compound_state_for_hop(task_key: str) -> str:
 #   retry_state:  state to hold jobs with invalid/missing output for a second attempt (batch tasks only)
 # ---------------------------------------------------------------------------
 JOB_STATES = {
-    "NEW":                    {"prior_states": None,                   "retry_state": "NEW_RETRY"},  # unrestricted — ingested from job board scans
-    "VALID_TITLE":            {"prior_states": ["NEW"],                "retry_state": "NEW_RETRY"},  # post–title-screen; retry → NEW_RETRY (AST-898)
+    "NEW":                    {"prior_states": None,                   "retry_state": retry_of("NEW")},  # unrestricted — ingested from job board scans; retry_of: qualify_job_listings retry holding (post-AST-898)
+    "VALID_TITLE":            {"prior_states": ["NEW"],                "retry_state": retry_of("NEW")},  # post–title-screen; retry → NEW_RETRY (AST-898); retry_of: drain-only; no new writes from NEW qualify path
     "INVALID_TITLE":          {"prior_states": ["NEW"]},
-    "VALID_TITLE_RETRY":      {"prior_states": ["VALID_TITLE"]},                                 # drain-only; no new writes from NEW qualify path
-    "NEW_RETRY":              {"prior_states": ["NEW", "VALID_TITLE"]},                          # qualify_job_listings retry holding (post-AST-898)
-    "PASSED_JOBLIST":         {"prior_states": ["NEW", "VALID_TITLE", "VALID_TITLE_RETRY", "NEW_RETRY", "JD_READY", "JD_READY_RETRY", "JD_SCRAPE_FAIL", "JD_SCRAPE_FAIL_COOKIE", "BOT_BLOCKED", "JD_SCRAPE_FAIL_MISSING", "JD_SCRAPE_FAIL_CLOSED"]},
-    "FAILED_JOBLIST":         {"prior_states": ["VALID_TITLE", "VALID_TITLE_RETRY", "NEW_RETRY"]},
-    "FAILED_TECHNICAL":       {"prior_states": None},                                            # generic technical failure
-    "JD_READY":               {"prior_states": ["PASSED_JOBLIST", "FAILED_JD", "ERROR_EVALUATE_JD"],    "retry_state": "JD_READY_RETRY"},
-    "JD_SCRAPE_FAIL":         {"prior_states": ["PASSED_JOBLIST"]},
-    "JD_SCRAPE_FAIL_COOKIE":  {"prior_states": ["PASSED_JOBLIST"]},
-    "BOT_BLOCKED":            {"prior_states": ["PASSED_JOBLIST", "METEORITE_NEW", "METEORITE_NEW_RETRY"]},  # AST-1195: universal bot/challenge
-    "JD_SCRAPE_FAIL_MISSING": {"prior_states": ["PASSED_JOBLIST"]},
-    "JD_SCRAPE_FAIL_CLOSED":  {"prior_states": ["PASSED_JOBLIST"]},
-    "JD_READY_RETRY":         {"prior_states": ["JD_READY"]},                                   # evaluate_jd retry holding state
-    "PASSED_JD":              {"prior_states": ["JD_READY", "JD_READY_RETRY", "FAILED_DO", "FAILED_TECHNICAL_DO"], "retry_state": "PASSED_JD_RETRY"},
-    "PASSED_JD_RETRY":        {"prior_states": ["PASSED_JD"]},                                   # grade_do incomplete-grade holding (AST-1155)
-    "FAILED_JD":              {"prior_states": ["JD_READY", "JD_READY_RETRY"]},
-    "PASSED_DO":              {"prior_states": ["PASSED_JD", "PASSED_JD_RETRY", "FAILED_GET", "FAILED_TECHNICAL_GET"], "retry_state": "PASSED_DO_RETRY"},
-    "PASSED_DO_RETRY":        {"prior_states": ["PASSED_DO"]},                                   # grade_get incomplete-grade holding (AST-1155)
-    "FAILED_DO":              {"prior_states": ["PASSED_JD", "PASSED_JD_RETRY"]},
-    "FAILED_TECHNICAL_DO":    {"prior_states": ["PASSED_JD", "PASSED_JD_RETRY"]},
-    "PASSED_GET":             {"prior_states": ["PASSED_DO", "PASSED_DO_RETRY", "NEED_CULTURE_CONTENT", "NO_CULTURE_LINKS"]},
-    "FAILED_GET":             {"prior_states": ["PASSED_DO", "PASSED_DO_RETRY"]},
-    "FAILED_TECHNICAL_GET":   {"prior_states": ["PASSED_DO", "PASSED_DO_RETRY"]},
+    # AST-2022: relative-link qualify passes park here for the click-through fetch (fetch_relative_jd).
+    "RELATIVE_JOB_LINK":      {"prior_states": ["NEW", error_state_for("fetch_relative_jd", "CLICK")]},  # NEW_RETRY resolves through its base; CLICK = Skipped bulk retry
+    error_state_for("fetch_relative_jd", "CLICK"): {"prior_states": ["RELATIVE_JOB_LINK"]},  # click target missing / Telescope error; job_link still relative
+    "PASSED_JOBLIST":         {"prior_states": [
+        "NEW", "VALID_TITLE", "JD_READY",
+        error_state_for("fetch_jd", "UNREADABLE"), error_state_for("fetch_relative_jd", "UNREADABLE"),
+        error_state_for("fetch_jd", "COOKIE"), error_state_for("fetch_relative_jd", "COOKIE"),
+        bot_blocked_state_for("fetch_jd"), bot_blocked_state_for("fetch_relative_jd"), bot_blocked_state_for("qualify_meteorite"),
+        "JD_SCRAPE_FAIL_MISSING", "JD_SCRAPE_FAIL_CLOSED",
+    ]},
+    "FAILED_JOBLIST":         {"prior_states": ["VALID_TITLE"]},
+    # Upshot second failure (from its _RETRY holding) — origin hop known, so no generic catch-all.
+    error_state_for("analysis_upshot"): {"prior_states": None},
+    error_state_for("meteorite_upshot"): {"prior_states": None},
+    "JD_READY":               {"prior_states": ["PASSED_JOBLIST", "FAILED_JD", error_state_for("evaluate_jd"), "RELATIVE_JOB_LINK"],    "retry_state": retry_of("JD_READY")},  # retry_of: evaluate_jd retry holding state
+    error_state_for("fetch_jd", "UNREADABLE"): {"prior_states": ["PASSED_JOBLIST", "RELATIVE_JOB_LINK"]},
+    error_state_for("fetch_relative_jd", "UNREADABLE"): {"prior_states": ["PASSED_JOBLIST", "RELATIVE_JOB_LINK"]},
+    error_state_for("fetch_jd", "COOKIE"): {"prior_states": ["PASSED_JOBLIST", "RELATIVE_JOB_LINK"]},
+    error_state_for("fetch_relative_jd", "COOKIE"): {"prior_states": ["PASSED_JOBLIST", "RELATIVE_JOB_LINK"]},
+    # AST-1195 / AST-2086: bot / challenge walls, one per writing task.
+    bot_blocked_state_for("fetch_jd"): {"prior_states": ["PASSED_JOBLIST", "METEORITE_NEW", "RELATIVE_JOB_LINK"]},
+    bot_blocked_state_for("fetch_relative_jd"): {"prior_states": ["PASSED_JOBLIST", "METEORITE_NEW", "RELATIVE_JOB_LINK"]},
+    bot_blocked_state_for("qualify_meteorite"): {"prior_states": ["PASSED_JOBLIST", "METEORITE_NEW", "RELATIVE_JOB_LINK"]},
+    "JD_SCRAPE_FAIL_MISSING": {"prior_states": ["PASSED_JOBLIST", "RELATIVE_JOB_LINK"]},
+    "JD_SCRAPE_FAIL_CLOSED":  {"prior_states": ["PASSED_JOBLIST", "RELATIVE_JOB_LINK"]},
+    "PASSED_JD":              {"prior_states": ["JD_READY", "FAILED_DO", error_state_for("grade_do")], "retry_state": retry_of("PASSED_JD")},  # retry_of: grade_do incomplete-grade holding (AST-1155)
+    "FAILED_JD":              {"prior_states": ["JD_READY"]},
+    "PASSED_DO":              {"prior_states": ["PASSED_JD", "FAILED_GET", error_state_for("grade_get")], "retry_state": retry_of("PASSED_DO")},  # retry_of: grade_get incomplete-grade holding (AST-1155)
+    "FAILED_DO":              {"prior_states": ["PASSED_JD"]},
+    error_state_for("grade_do"): {"prior_states": ["PASSED_JD"]},
+    "PASSED_GET":             {"prior_states": [
+        "PASSED_DO",
+        error_state_for("fetch_culture_pages", "UNREADABLE"),
+        bot_blocked_state_for("fetch_culture_pages"),
+        error_state_for("fetch_culture_pages", "NO_CULTURE_LINKS"),
+    ]},
+    "FAILED_GET":             {"prior_states": ["PASSED_DO"]},
+    error_state_for("grade_get"): {"prior_states": ["PASSED_DO"]},
     # AST-874: culture fetch gate between GET and LIKE.
-    "CULTURE_READY":          {"prior_states": ["PASSED_GET", "FAILED_LIKE", "FAILED_TECHNICAL_LIKE", "NEED_WEBSITE_CONTENT"], "retry_state": "CULTURE_READY_RETRY"},
-    "CULTURE_READY_RETRY":    {"prior_states": ["CULTURE_READY"]},                               # grade_like incomplete-grade holding (AST-1155)
-    "NEED_CULTURE_CONTENT":   {"prior_states": ["PASSED_GET"]},
-    "NO_CULTURE_LINKS":       {"prior_states": ["PASSED_GET"]},
+    "CULTURE_READY":          {"prior_states": [
+        "PASSED_GET", "FAILED_LIKE", error_state_for("grade_like"),
+        error_state_for("grade_like", "NO_WEBSITE_CONTENT"), error_state_for("analysis_upshot", "NO_WEBSITE_CONTENT"),
+    ], "retry_state": retry_of("CULTURE_READY")},  # retry_of: grade_like incomplete-grade holding (AST-1155)
+    error_state_for("fetch_culture_pages", "UNREADABLE"): {"prior_states": ["PASSED_GET"]},
+    bot_blocked_state_for("fetch_culture_pages"): {"prior_states": ["PASSED_GET"]},
+    error_state_for("fetch_culture_pages", "NO_CULTURE_LINKS"): {"prior_states": ["PASSED_GET"]},
     # LIKE needs company website; scrape can fail after GET / CULTURE_READY (not only from DO).
-    "NEED_WEBSITE_CONTENT":   {"prior_states": ["PASSED_DO", "PASSED_DO_RETRY", "PASSED_GET", "CULTURE_READY", "CULTURE_READY_RETRY"]},
+    # Only requires_company tasks (grade_like, analysis_upshot) write ERROR_<TASK_KEY>_NO_WEBSITE_CONTENT.
+    error_state_for("grade_like", "NO_WEBSITE_CONTENT"): {"prior_states": ["PASSED_DO", "PASSED_GET", "CULTURE_READY"]},
+    error_state_for("analysis_upshot", "NO_WEBSITE_CONTENT"): {"prior_states": ["PASSED_DO", "PASSED_GET", "CULTURE_READY"]},
     # AST-479: consult_like success queues here for analysis_upshot (sibling); not auto-promoted to BUILD_ARTIFACTS.
-    "PASSED_LIKE":            {"prior_states": ["CULTURE_READY", "CULTURE_READY_RETRY"]},
-    # Holding state after a post-LIKE synthesis technical failure (sibling batch); consult_like API errors stay FAILED_TECHNICAL_LIKE.
-    "PASSED_LIKE_RETRY":      {"prior_states": ["PASSED_LIKE"]},
+    "PASSED_LIKE":            {"prior_states": ["CULTURE_READY"]},
+    # Holding state after a post-LIKE synthesis technical failure (sibling batch); grade_like API errors land on ERROR_GRADE_LIKE.
     # Upshot succeeded — candidate-facing "recommended" until UI moves job into artifact build (separate epic).
-    "RECOMMENDED":            {"prior_states": ["PASSED_LIKE", "PASSED_LIKE_RETRY", "METEORITE_PASSED_LIKE", "METEORITE_PASSED_LIKE_RETRY", BUILD_ARTIFACTS_BASE_STATE, ERROR_BUILD_ARTIFACTS_STATE]},
+    "RECOMMENDED":            {"prior_states": ["PASSED_LIKE", "METEORITE_PASSED_LIKE", BUILD_ARTIFACTS_BASE_STATE, *BUILD_ARTIFACTS_CHAIN_ERROR_STATES]},
     BUILD_ARTIFACTS_BASE_STATE: {"prior_states": ["RECOMMENDED"]},
-    ERROR_BUILD_ARTIFACTS_STATE: {"prior_states": [BUILD_ARTIFACTS_BASE_STATE]},
-    "BUILD_FAILED":           {"prior_states": [BUILD_ARTIFACTS_BASE_STATE]},
+    # One failure per artifact-chain hop (ERROR_<HOP>).
+    **{s: {"prior_states": [BUILD_ARTIFACTS_BASE_STATE]} for s in BUILD_ARTIFACTS_CHAIN_ERROR_STATES},
     # AST-311/312: return-to-review from skipped and post-outcome states
-    "CANDIDATE_REVIEW":       {"prior_states": ["RECOMMENDED", BUILD_ARTIFACTS_BASE_STATE, "BUILD_FAILED", "CANDIDATE_SKIPPED", "CANDIDATE_APPLIED", "CANDIDATE_INTERVIEW", "CANDIDATE_REJECTED", "CANDIDATE_GHOSTED"]},
+    "CANDIDATE_REVIEW":       {"prior_states": ["RECOMMENDED", BUILD_ARTIFACTS_BASE_STATE, "CANDIDATE_SKIPPED", "CANDIDATE_APPLIED", "CANDIDATE_INTERVIEW", "CANDIDATE_REJECTED", "CANDIDATE_GHOSTED"]},
     "CANDIDATE_APPLIED":      {"prior_states": ["CANDIDATE_REVIEW", "CANDIDATE_APPLIED", "CANDIDATE_INTERVIEW", "CANDIDATE_REJECTED", "CANDIDATE_GHOSTED", BUILD_ARTIFACTS_BASE_STATE, "RECOMMENDED"]},
     "CANDIDATE_INTERVIEW":    {"prior_states": ["CANDIDATE_REVIEW", "CANDIDATE_APPLIED", "CANDIDATE_INTERVIEW", "CANDIDATE_REJECTED", "CANDIDATE_GHOSTED"]},
     "CANDIDATE_REJECTED":     {"prior_states": ["CANDIDATE_REVIEW", "CANDIDATE_APPLIED", "CANDIDATE_INTERVIEW", "CANDIDATE_REJECTED", "CANDIDATE_GHOSTED"]},
     "CANDIDATE_GHOSTED":      {"prior_states": ["CANDIDATE_REVIEW", "CANDIDATE_APPLIED", "CANDIDATE_INTERVIEW", "CANDIDATE_REJECTED", "CANDIDATE_GHOSTED"]},
-    "FAILED_LIKE":            {"prior_states": ["CULTURE_READY", "CULTURE_READY_RETRY"]},
-    "FAILED_TECHNICAL_LIKE":  {"prior_states": ["CULTURE_READY", "CULTURE_READY_RETRY"]},
+    "FAILED_LIKE":            {"prior_states": ["CULTURE_READY"]},
+    error_state_for("grade_like"): {"prior_states": ["CULTURE_READY"]},
     # AST-1052 / AST-1053 / AST-1058: parallel meteorite track (no CULTURE_READY hop).
     # METEORITE_NEW = pre-AI landing (create / gazer ingest). Ruth qualify_meteorite →
     # METEORITE_QUALIFIED (GDL entry). evaluate_meteorite claims METEORITE_QUALIFIED only (AST-1060).
-    "METEORITE_NEW":                  {"prior_states": None, "retry_state": "METEORITE_NEW_RETRY"},
-    "METEORITE_NEW_RETRY":            {"prior_states": ["METEORITE_NEW"]},  # qualify_meteorite retry holding (AST-1338)
-    "METEORITE_QUALIFIED":            {"prior_states": ["METEORITE_NEW", "METEORITE_NEW_RETRY", "METEORITE_FAILED_JD", "METEORITE_ERROR_EVALUATE_JD"], "retry_state": "METEORITE_QUALIFIED_RETRY"},
-    "METEORITE_QUALIFIED_RETRY":      {"prior_states": ["METEORITE_QUALIFIED"]},                 # meteorite evaluate_meteorite incomplete-grade holding (AST-1155)
-    "METEORITE_FAILED_QUALIFY":       {"prior_states": ["METEORITE_NEW", "METEORITE_NEW_RETRY"]},
-    "METEORITE_ERROR_QUALIFY":        {"prior_states": ["METEORITE_NEW", "METEORITE_NEW_RETRY"]},
-    "METEORITE_PASSED_JD":            {"prior_states": ["METEORITE_QUALIFIED", "METEORITE_QUALIFIED_RETRY", "METEORITE_FAILED_DO", "METEORITE_FAILED_TECHNICAL_DO"], "retry_state": "METEORITE_PASSED_JD_RETRY"},
-    "METEORITE_PASSED_JD_RETRY":      {"prior_states": ["METEORITE_PASSED_JD"]},                 # meteorite grade_do incomplete-grade holding (AST-1155)
-    "METEORITE_FAILED_JD":            {"prior_states": ["METEORITE_QUALIFIED", "METEORITE_QUALIFIED_RETRY"]},
-    "METEORITE_ERROR_EVALUATE_JD":    {"prior_states": ["METEORITE_QUALIFIED", "METEORITE_QUALIFIED_RETRY"]},
-    "METEORITE_PASSED_DO":            {"prior_states": ["METEORITE_PASSED_JD", "METEORITE_PASSED_JD_RETRY", "METEORITE_FAILED_GET", "METEORITE_FAILED_TECHNICAL_GET"], "retry_state": "METEORITE_PASSED_DO_RETRY"},
-    "METEORITE_PASSED_DO_RETRY":      {"prior_states": ["METEORITE_PASSED_DO"]},                 # meteorite grade_get incomplete-grade holding (AST-1155)
-    "METEORITE_FAILED_DO":            {"prior_states": ["METEORITE_PASSED_JD", "METEORITE_PASSED_JD_RETRY"]},
-    "METEORITE_FAILED_TECHNICAL_DO":  {"prior_states": ["METEORITE_PASSED_JD", "METEORITE_PASSED_JD_RETRY"]},
-    "METEORITE_PASSED_GET":           {"prior_states": ["METEORITE_PASSED_DO", "METEORITE_PASSED_DO_RETRY", "METEORITE_FAILED_LIKE", "METEORITE_FAILED_TECHNICAL_LIKE"], "retry_state": "METEORITE_PASSED_GET_RETRY"},
-    "METEORITE_PASSED_GET_RETRY":     {"prior_states": ["METEORITE_PASSED_GET"]},                # meteorite_like incomplete-grade holding (AST-1155)
-    "METEORITE_FAILED_GET":           {"prior_states": ["METEORITE_PASSED_DO", "METEORITE_PASSED_DO_RETRY"]},
-    "METEORITE_FAILED_TECHNICAL_GET": {"prior_states": ["METEORITE_PASSED_DO", "METEORITE_PASSED_DO_RETRY"]},
+    "METEORITE_NEW":                  {"prior_states": None, "retry_state": retry_of("METEORITE_NEW")},  # retry_of: qualify_meteorite retry holding (AST-1338)
+    "METEORITE_QUALIFIED":            {"prior_states": ["METEORITE_NEW", "METEORITE_FAILED_JD", error_state_for("evaluate_meteorite")], "retry_state": retry_of("METEORITE_QUALIFIED")},  # retry_of: meteorite evaluate_meteorite incomplete-grade holding (AST-1155)
+    "METEORITE_FAILED_QUALIFY":       {"prior_states": ["METEORITE_NEW"]},
+    error_state_for("qualify_meteorite"): {"prior_states": ["METEORITE_NEW"]},
+    "METEORITE_PASSED_JD":            {"prior_states": ["METEORITE_QUALIFIED", "METEORITE_FAILED_DO", error_state_for("meteorite_grade_do")], "retry_state": retry_of("METEORITE_PASSED_JD")},  # retry_of: meteorite grade_do incomplete-grade holding (AST-1155)
+    "METEORITE_FAILED_JD":            {"prior_states": ["METEORITE_QUALIFIED"]},
+    error_state_for("evaluate_meteorite"): {"prior_states": ["METEORITE_QUALIFIED"]},
+    "METEORITE_PASSED_DO":            {"prior_states": ["METEORITE_PASSED_JD", "METEORITE_FAILED_GET", error_state_for("meteorite_grade_get")], "retry_state": retry_of("METEORITE_PASSED_DO")},  # retry_of: meteorite grade_get incomplete-grade holding (AST-1155)
+    "METEORITE_FAILED_DO":            {"prior_states": ["METEORITE_PASSED_JD"]},
+    error_state_for("meteorite_grade_do"): {"prior_states": ["METEORITE_PASSED_JD"]},
+    "METEORITE_PASSED_GET":           {"prior_states": ["METEORITE_PASSED_DO", "METEORITE_FAILED_LIKE", error_state_for("meteorite_like")], "retry_state": retry_of("METEORITE_PASSED_GET")},  # retry_of: meteorite_like incomplete-grade holding (AST-1155)
+    "METEORITE_FAILED_GET":           {"prior_states": ["METEORITE_PASSED_DO"]},
+    error_state_for("meteorite_grade_get"): {"prior_states": ["METEORITE_PASSED_DO"]},
     # LIKE claimed from METEORITE_PASSED_GET (no CULTURE_READY) — sibling AST-1054/1055.
-    "METEORITE_PASSED_LIKE":          {"prior_states": ["METEORITE_PASSED_GET", "METEORITE_PASSED_GET_RETRY"]},
-    "METEORITE_FAILED_LIKE":          {"prior_states": ["METEORITE_PASSED_GET", "METEORITE_PASSED_GET_RETRY"]},
-    "METEORITE_FAILED_TECHNICAL_LIKE":{"prior_states": ["METEORITE_PASSED_GET", "METEORITE_PASSED_GET_RETRY"]},
+    "METEORITE_PASSED_LIKE":          {"prior_states": ["METEORITE_PASSED_GET"]},
+    "METEORITE_FAILED_LIKE":          {"prior_states": ["METEORITE_PASSED_GET"]},
+    error_state_for("meteorite_like"): {"prior_states": ["METEORITE_PASSED_GET"]},
     # Upshot technical-hold after meteorite LIKE (mirrors PASSED_LIKE_RETRY) — sibling AST-1055.
-    "METEORITE_PASSED_LIKE_RETRY":    {"prior_states": ["METEORITE_PASSED_LIKE"]},
-    "ERROR_QUALIFY_JOB_LISTINGS": {"prior_states": None},
-    "ERROR_EVALUATE_JD":      {"prior_states": None},
-    "CANDIDATE_SKIPPED":      {"prior_states": ["CANDIDATE_REVIEW", BUILD_ARTIFACTS_BASE_STATE, "RECOMMENDED"]},
+    error_state_for("qualify_job_listings"): {"prior_states": None},
+    error_state_for("evaluate_jd"): {"prior_states": None},
+    "CANDIDATE_SKIPPED":      {"prior_states": []},  # AST-1974: derived after SKIPPED_STATES (Applied/Skipped complement)
 }
+
+# AST-2096: second-strike all-literal-X terminal per scored grading task — explicit rows (no validator
+# changes); priors copied from the base fail_state so {trigger}_RETRY is admitted via state_prior_states.
+_ALL_X_BASES = list(dict.fromkeys(
+    tc["fail_state"] for tc in TASK_CONFIG.values() if tc.get("grading_mode") == "scored"
+))
+JOB_STATES.update({all_x_of(b): {"prior_states": list(JOB_STATES[b]["prior_states"])} for b in _ALL_X_BASES})
+ALL_X_FAIL_STATES = [all_x_of(b) for b in _ALL_X_BASES]
 
 # ---------------------------------------------------------------------------
 # AST-1701: job ingest parent + analysis track SoT (repurposed job.source column).
@@ -2643,17 +3301,28 @@ assert isinstance(METEORITE_CONFIG["land_outcome_created"], str) and METEORITE_C
 assert isinstance(METEORITE_CONFIG["land_outcome_duplicate_skip"], str) and METEORITE_CONFIG["land_outcome_duplicate_skip"]
 assert isinstance(METEORITE_CONFIG["land_outcome_superseded"], str) and METEORITE_CONFIG["land_outcome_superseded"]
 assert isinstance(METEORITE_CONFIG["land_outcome_error"], str) and METEORITE_CONFIG["land_outcome_error"]
-assert "BOT_BLOCKED" in JOB_STATES  # AST-1197: qualify process destination
-assert "METEORITE_NEW" in JOB_STATES["BOT_BLOCKED"]["prior_states"]
+assert bot_blocked_state_for("qualify_meteorite") in JOB_STATES  # AST-1197: qualify process destination
+assert "METEORITE_NEW" in JOB_STATES[bot_blocked_state_for("qualify_meteorite")]["prior_states"]
 
 # AST-1557: flat meteorite staging-row states (table spine). Keys are NOT JOB_STATES
 # METEORITE_* job lifecycle labels — core transitions decide targets; data accepts state as param.
 METEORITE_STATES = {
     "NEW": {
-        "prior_states": ["NEW_EMAIL_ERROR"],  # human reset from stage failure
+        "prior_states": [error_state_for("stage_meteorite")],  # human reset from stage failure
     },
     "SCRAPE_LINK": {
-        "prior_states": ["NEW", "SCRAPE_ERROR"],  # link outcomes; retry from SCRAPE_ERROR
+        # link outcomes; human retry from any scrape / stage-unparseable / land failure
+        "prior_states": [
+            "NEW", retry_of("SCRAPE_LINK"), error_state_for("stage_meteorite", "UNPARSEABLE"),
+            error_state_for("land_meteorite"), error_state_for("scrape_meteorite"),
+        ],
+    },
+    # Explicit key (not only the implicit companion): update_meteorite accepts registry keys only.
+    retry_of("SCRAPE_LINK"): {
+        "prior_states": ["SCRAPE_LINK"],  # first scrape failure; scrape_meteorite claims it with SCRAPE_LINK
+    },
+    error_state_for("scrape_meteorite"): {
+        "prior_states": [retry_of("SCRAPE_LINK")],  # failure from the retry companion is terminal
     },
     # AST-1773: uniqueness gate before land (stage/scrape landable success → CHECK_UNIQUE)
     "CHECK_UNIQUE": {
@@ -2661,21 +3330,28 @@ METEORITE_STATES = {
     },
     "READY": {
         # uniqueness hop promote; Estelle paste recovery (not stage/scrape success)
-        "prior_states": ["CHECK_UNIQUE", "BOT_BLOCKED"],
+        "prior_states": ["CHECK_UNIQUE", bot_blocked_state_for("scrape_meteorite")],
     },
-    "BOT_BLOCKED": {
+    bot_blocked_state_for("scrape_meteorite"): {
         "prior_states": ["SCRAPE_LINK"],
     },
-    "LINK_EXPIRED": {
-        "prior_states": ["SCRAPE_LINK"],  # closed/missing content; not a scrape retry
+    # Expired link by page status (job track's names); not a scrape retry.
+    "JD_SCRAPE_FAIL_CLOSED": {
+        "prior_states": ["SCRAPE_LINK"],
     },
-    "SCRAPE_ERROR": {
-        "prior_states": ["SCRAPE_LINK"],  # retry-holding after Playwright / scrape miss
+    "JD_SCRAPE_FAIL_MISSING": {
+        "prior_states": ["SCRAPE_LINK"],
+    },
+    error_state_for("stage_meteorite", "UNPARSEABLE"): {
+        "prior_states": ["NEW"],  # classified row can't be acted on (skip / missing link or content)
+    },
+    error_state_for("land_meteorite"): {
+        "prior_states": ["READY", bot_blocked_state_for("scrape_meteorite")],
     },
     "NOT_A_JOB": {
         "prior_states": None,  # insert-legal; scheduled cleanup; not a dispatch trigger; not stale
     },
-    "NEW_EMAIL_ERROR": {
+    error_state_for("stage_meteorite"): {
         "prior_states": None,  # insert-legal; not a dispatch trigger; human resets via NEW
     },
     # AST-1773: terminal duplicate hold (from CHECK_UNIQUE only; scheduled cleanup later)
@@ -2686,22 +3362,54 @@ METEORITE_STATES = {
         "prior_states": ["READY"],
     },
     "ABANDONED": {
-        "prior_states": ["BOT_BLOCKED", "SCRAPE_ERROR"],  # nag limit / terminal stale
+        # nag limit / terminal stale
+        "prior_states": [
+            bot_blocked_state_for("scrape_meteorite"), retry_of("SCRAPE_LINK"),
+            error_state_for("stage_meteorite", "UNPARSEABLE"), error_state_for("land_meteorite"),
+        ],
     },
 }
 
 assert set(METEORITE_STATES) == {
-    "NEW", "SCRAPE_LINK", "CHECK_UNIQUE", "READY", "BOT_BLOCKED", "SCRAPE_ERROR",
-    "LINK_EXPIRED", "NOT_A_JOB", "NEW_EMAIL_ERROR", "DUPLICATE", "LANDED", "ABANDONED",
+    "NEW", "SCRAPE_LINK", retry_of("SCRAPE_LINK"), error_state_for("scrape_meteorite"), "CHECK_UNIQUE",
+    "READY", bot_blocked_state_for("scrape_meteorite"), "JD_SCRAPE_FAIL_CLOSED", "JD_SCRAPE_FAIL_MISSING",
+    error_state_for("stage_meteorite", "UNPARSEABLE"), error_state_for("land_meteorite"), "NOT_A_JOB",
+    error_state_for("stage_meteorite"), "DUPLICATE", "LANDED", "ABANDONED",
 }
 assert all("prior_states" in cfg for cfg in METEORITE_STATES.values())
-assert METEORITE_STATES["NEW"]["prior_states"] == ["NEW_EMAIL_ERROR"]
+assert METEORITE_STATES["NEW"]["prior_states"] == [error_state_for("stage_meteorite")]
 assert METEORITE_STATES["NOT_A_JOB"]["prior_states"] is None
-assert METEORITE_STATES["NEW_EMAIL_ERROR"]["prior_states"] is None
+assert METEORITE_STATES[error_state_for("stage_meteorite")]["prior_states"] is None
 for _ms, _mcfg in METEORITE_STATES.items():
     _priors = _mcfg["prior_states"]
     if _priors is not None:
         assert all(p in METEORITE_STATES for p in _priors), _ms
+
+# AST-2223: candidate overwrite edit on non-landed meteorite rows (Jobs → Meteorites modal).
+# Not versioned — plain update_meteorite; pick-list is every registry key minus locked.
+CANDIDATE_METEORITE_EDIT_CONFIG = {
+    "locked_states": ("LANDED",),
+    "editable_fields": (
+        "state",
+        "content",
+        "link",
+        "job_title",
+        "employer_name",
+        METEORITE_CONFIG["electronic_contact_column"],
+    ),
+    "state_options": tuple(
+        s for s in METEORITE_STATES if s not in ("LANDED",)
+    ),
+    "default_save_state": "CHECK_UNIQUE",
+}
+_cme = CANDIDATE_METEORITE_EDIT_CONFIG
+assert all(s in METEORITE_STATES for s in _cme["locked_states"])
+assert all(s in METEORITE_STATES for s in _cme["state_options"])
+assert _cme["default_save_state"] in _cme["state_options"]
+assert set(_cme["locked_states"]).isdisjoint(_cme["state_options"])
+assert set(_cme["state_options"]) == set(METEORITE_STATES) - set(_cme["locked_states"])
+assert "state" in _cme["editable_fields"] and "content" in _cme["editable_fields"]
+assert METEORITE_CONFIG["electronic_contact_column"] in _cme["editable_fields"]
 
 # AST-1560: dispatcher-driven meteorite row transitions (not Ruth classify — inline in check_inbox).
 # AST-1773: check_unique hop between stage/scrape success and land (land stays READY).
@@ -2716,11 +3424,17 @@ METEORITE_INGRESS_DISPATCH_CONFIG = {
     "land_trigger_state": "READY",
     "batch_size": 10,
     "scrape_page_status_states": {
-        "blocked": "BOT_BLOCKED",
+        "blocked": bot_blocked_state_for("scrape_meteorite"),
         "ok": "CHECK_UNIQUE",
-        "closed": "LINK_EXPIRED",
-        "missing": "LINK_EXPIRED",
+        "closed": "JD_SCRAPE_FAIL_CLOSED",
+        "missing": "JD_SCRAPE_FAIL_MISSING",
     },
+    # patt.task.dispatch-retry: first scrape failure → retry companion; failure from it → terminal.
+    "scrape_retry_state": retry_of("SCRAPE_LINK"),
+    "scrape_error_state": error_state_for("scrape_meteorite"),
+    "stage_error_state": error_state_for("stage_meteorite"),
+    "stage_unparseable_state": error_state_for("stage_meteorite", "UNPARSEABLE"),
+    "land_error_state": error_state_for("land_meteorite"),
 }
 _mid_ingress = METEORITE_INGRESS_DISPATCH_CONFIG
 assert len({
@@ -2739,13 +3453,16 @@ for _tr in (
 ):
     assert _mid_ingress[_tr] in METEORITE_STATES
 assert set(_mid_ingress["scrape_page_status_states"].values()) <= {
-    "CHECK_UNIQUE", "BOT_BLOCKED", "SCRAPE_ERROR", "LINK_EXPIRED",
+    "CHECK_UNIQUE", bot_blocked_state_for("scrape_meteorite"), "JD_SCRAPE_FAIL_CLOSED", "JD_SCRAPE_FAIL_MISSING",
 }
+assert all(_mid_ingress[k] in METEORITE_STATES for k in (
+    "scrape_retry_state", "scrape_error_state", "stage_error_state", "stage_unparseable_state", "land_error_state",
+))
 
-# AST-1561: scheduled BOT_BLOCKED → Estelle DM + nag → ABANDONED (no scrape/Slack in scrape path).
+# AST-1561: scheduled BOT_BLOCKED_SCRAPE_METEORITE → Estelle DM + nag → ABANDONED (no scrape/Slack in scrape path).
 METEORITE_BOT_BLOCKED_NOTIFY_CONFIG = {
     "task_key": "meteorite_bot_blocked_notify",
-    "trigger_state": "BOT_BLOCKED",
+    "trigger_state": bot_blocked_state_for("scrape_meteorite"),
     "batch_size": 10,
     "nag_limit": 3,
     "dm_first_template": (
@@ -2759,7 +3476,7 @@ METEORITE_BOT_BLOCKED_NOTIFY_CONFIG = {
 }
 _mid_notify = METEORITE_BOT_BLOCKED_NOTIFY_CONFIG
 assert isinstance(_mid_notify["task_key"], str) and _mid_notify["task_key"]
-assert _mid_notify["trigger_state"] == "BOT_BLOCKED"
+assert _mid_notify["trigger_state"] == bot_blocked_state_for("scrape_meteorite")
 assert _mid_notify["trigger_state"] in METEORITE_STATES
 assert isinstance(_mid_notify["batch_size"], int) and _mid_notify["batch_size"] >= 1
 assert isinstance(_mid_notify["nag_limit"], int) and _mid_notify["nag_limit"] >= 1
@@ -2844,8 +3561,6 @@ METEORITE_EMAIL_INGEST_CONFIG = {
         "xml schema",
         "svg namespace",
     ),
-    # Max concurrent Playwright fetches for a link list (same idea as gazer JD scrape caps).
-    "playwright_concurrency": 3,
     # Skip create when visible/body text length is below this after strip/fetch.
     "min_jd_chars": 40,
     # AST-1146: inverted company_job_id match ignores null/empty (already) and values
@@ -2925,6 +3640,24 @@ assert METEORITE_EMAIL_MAILBOX_CONFIG["task_key"] == "stage_email_meteorite"
 assert set(METEORITE_EMAIL_MAILBOX_CONFIG["subject_url_schemes"]) == {"http", "https"}
 assert METEORITE_EMAIL_MAILBOX_CONFIG["debug_func"] == "inbox.check_email"
 assert METEORITE_EMAIL_MAILBOX_CONFIG["auto_mode"] is False
+
+# AST-2217 / AST-2215: candidate-bound fetch_timesheet dispatch-row defaults.
+# entity_type / trigger_state None — poller, not ENTITY_TYPES claim (stat.dispatch.entity-state-bound).
+# freq_hrs None, auto_mode False — Susan 2026-10-15. Provision/due path is AST-2218.
+FETCH_TIMESHEET_CONFIG = {
+    "task_key": "fetch_timesheet",
+    "entity_type": None,
+    "trigger_state": None,
+    "freq_hrs": None,
+    "auto_mode": False,
+    "min_count": 1,
+    "batch_size": 1,
+}
+assert FETCH_TIMESHEET_CONFIG["task_key"] == "fetch_timesheet"
+assert FETCH_TIMESHEET_CONFIG["entity_type"] is None
+assert FETCH_TIMESHEET_CONFIG["trigger_state"] is None
+assert FETCH_TIMESHEET_CONFIG["freq_hrs"] is None
+assert FETCH_TIMESHEET_CONFIG["auto_mode"] is False
 
 # AST-1559: inbox already-ingested outcome (row/classify line templates retired).
 METEORITE_MONITORING_CONFIG = {
@@ -3090,6 +3823,11 @@ def is_meteorite_email_mailbox_task_key(task_key: str) -> bool:
     tk = (task_key or "").strip()
     cfg = METEORITE_EMAIL_PARSE_CONFIG
     return tk == cfg["task_key"] or tk == cfg["legacy_agent_task_key"]
+
+
+def is_fetch_timesheet_task_key(task_key: str) -> bool:
+    """True for the candidate-bound fetch_timesheet poller (AST-2218)."""
+    return (task_key or "").strip() == FETCH_TIMESHEET_CONFIG["task_key"]
 
 # AST-1054: meteorite dispatch_task row specs (unique per candidate on task_key+trigger_state).
 # score_floor 0 on score-gated triggers — claim never excludes for low latest_score.
@@ -3297,20 +4035,21 @@ SEED_CONFIG = {
         "    AND d.trigger_state = 'CHECK_UNIQUE'"
         ")",
     ),
-    # stat.dispatch.entity-state-bound: per-candidate BOT_BLOCKED Estelle notify runner
+    # stat.dispatch.entity-state-bound: per-candidate bot-blocked Estelle notify runner
     # (was NULL candidate_id global pool pre-remediation).
     "dispatch_task-meteorite-bot-blocked-notify": (
         "INSERT INTO dispatch_task ("
         "candidate_id, task_key, entity_type, trigger_state, sort_by, "
         "batch_call_mode, freq_hrs, min_count, batch_size, auto_mode, score_floor"
-        ") SELECT c.candidate_id, 'meteorite_bot_blocked_notify', 'meteorite', 'BOT_BLOCKED', 'updated_at', "
+        f") SELECT c.candidate_id, 'meteorite_bot_blocked_notify', 'meteorite', "
+        f"'{METEORITE_BOT_BLOCKED_NOTIFY_CONFIG['trigger_state']}', 'updated_at', "
         "0, 0.1, 1, 10, 0, NULL "
         "FROM candidate c "
         "WHERE NOT EXISTS ("
         "  SELECT 1 FROM dispatch_task d "
         "  WHERE d.candidate_id = c.candidate_id "
         "    AND d.task_key = 'meteorite_bot_blocked_notify' "
-        "    AND d.trigger_state = 'BOT_BLOCKED'"
+        f"    AND d.trigger_state = '{METEORITE_BOT_BLOCKED_NOTIFY_CONFIG['trigger_state']}'"
         ")",
     ),
     # stat.dispatch.entity-state-bound: one-time operator cleanup for legacy NULL-candidate_id
@@ -3326,8 +4065,9 @@ SEED_CONFIG = {
     ),
 }
 
-# Recommended jobs list + nav counts — post-synthesis / review surfaces (AST-479); not pre-upshot PASSED_LIKE.
-RECOMMENDED_JOB_STATES = ["RECOMMENDED", BUILD_ARTIFACTS_BASE_STATE, "CANDIDATE_REVIEW"]
+# AST-1974: Jobs → Ready / Review lists (two of the four explicit lists; Processing is their complement).
+READY_JOB_STATES = ["CANDIDATE_REVIEW"]
+REVIEW_JOB_STATES = ["RECOMMENDED"]
 
 # Applied jobs list + nav — post-applied candidate outcomes (AST-1488 re-land of AST-1479).
 APPLIED_JOB_STATES = [
@@ -3397,12 +4137,17 @@ JOBS_RECOMMENDED_PRIMARY_ACTIONS = {
     ],
 }
 
-assert all(state in RECOMMENDED_JOB_STATES for state in JOBS_RECOMMENDED_PRIMARY_ACTIONS)
+# BUILD_ARTIFACTS Cancel stays — the report modal still offers it on a running build.
+assert all(
+    state in (*READY_JOB_STATES, *REVIEW_JOB_STATES, BUILD_ARTIFACTS_BASE_STATE)
+    for state in JOBS_RECOMMENDED_PRIMARY_ACTIONS
+)
 
-# AST-948 / AST-1550 / AST-1691: top-level Recommended report tabs (Meteorite after Discussion).
+# AST-948 / AST-1550 / AST-1691 / AST-1872 / AST-2232: top-level Recommended report tabs — first entry is the default tab (Job Description between Analysis and Summary; Meteorite after Discussion).
 JOBS_RECOMMENDED_REPORT_TOP_TABS = [
-    {"tab_id": "summary", "nav_label": "Summary"},
     {"tab_id": "analysis", "nav_label": "Analysis"},
+    {"tab_id": "job_description", "nav_label": "Job Description"},
+    {"tab_id": "summary", "nav_label": "Summary"},
     {"tab_id": "artifacts", "nav_label": "Artifacts"},
     {"tab_id": "discussion", "nav_label": "Discussion"},
     {"tab_id": "meteorite", "nav_label": "Meteorite"},
@@ -3413,7 +4158,6 @@ JOBS_RECOMMENDED_REPORT_SUMMARY_SECTIONS = [
     {"section_id": "company_upshot", "nav_label": "Company Upshot", "default_expanded": True},
     {"section_id": "caveats", "nav_label": "Noteworthy Caveats", "default_expanded": True},
     {"section_id": "questions", "nav_label": "Questions to Ask", "default_expanded": True},
-    {"section_id": "raw_jd", "nav_label": "Raw Job Description", "default_expanded": False},
 ]
 
 # AST-1691: Recommended report Meteorite pane sections (config → manifest; React must not invent order).
@@ -3436,6 +4180,8 @@ JOBS_METEORITES_LIST_COLUMNS = [
     {"key": "classify_outcome", "label": "Classify", "sortable": True},
     {"key": "link", "label": "Link", "sortable": True},
     {"key": "astral_job_id", "label": "Job", "sortable": True},
+    {"key": "job_state", "label": "Job State", "sortable": True},
+    {"key": "job_created_at", "label": "Created", "sortable": True, "type": "datetime"},
     {
         "key": "state_changed_at",
         "label": "State Changed",
@@ -3469,6 +4215,7 @@ JOBS_RECOMMENDED_REPORT_PHASE_TABS = [
     {"tab_id": "phase_like", "nav_label": "LIKE Analysis", "grades_field": "like_grades", "take_key": "take_like"},
 ]
 
+# AST-2081: preview_thumbnail — tab shows a print-preview thumbnail (instead of an inline editor) once generated.
 # AST-1100: tab keys = AST-1099 pin slots (hydrate resolves id → body on job GET).
 JOBS_RECOMMENDED_ARTIFACT_TABS = [
     {
@@ -3477,6 +4224,7 @@ JOBS_RECOMMENDED_ARTIFACT_TABS = [
         "artifact_key": "job_resume",
         "shapes_key": None,
         "use_resume_structure": True,
+        "preview_thumbnail": True,
     },
     {
         "tab_id": "artifact_cover",
@@ -3484,6 +4232,7 @@ JOBS_RECOMMENDED_ARTIFACT_TABS = [
         "artifact_key": "cover_letter",
         "shapes_key": "cover_letter",
         "use_resume_structure": False,
+        "preview_thumbnail": True,
     },
     {
         "tab_id": "artifact_application",
@@ -3491,22 +4240,13 @@ JOBS_RECOMMENDED_ARTIFACT_TABS = [
         "artifact_key": "proposed_answers",
         "shapes_key": None,
         "use_resume_structure": False,
+        "preview_thumbnail": False,
     },
 ]
 
-# Ordered state lists for Jobs UI views (single source of truth for API, nav counts, frontend).
-IN_REVIEW_STATES = [
-    "NEW", "VALID_TITLE", "VALID_TITLE_RETRY", "NEW_RETRY", "PASSED_JOBLIST", "JD_READY", "JD_READY_RETRY",
-    "PASSED_JD", "PASSED_JD_RETRY", "PASSED_DO", "PASSED_DO_RETRY", "PASSED_GET", "CULTURE_READY",
-    "CULTURE_READY_RETRY", "PASSED_LIKE", "PASSED_LIKE_RETRY",
-    "METEORITE_NEW", "METEORITE_NEW_RETRY", "METEORITE_QUALIFIED", "METEORITE_QUALIFIED_RETRY",
-    "METEORITE_PASSED_JD", "METEORITE_PASSED_JD_RETRY", "METEORITE_PASSED_DO", "METEORITE_PASSED_DO_RETRY",
-    "METEORITE_PASSED_GET", "METEORITE_PASSED_GET_RETRY",
-    "METEORITE_PASSED_LIKE", "METEORITE_PASSED_LIKE_RETRY",
-]
 # Consult PASSED_* / CULTURE_READY set for claim-sort (_dispatch_sort_by_for) and related helpers.
 # Claim uses latest_score >= score_floor on these states; UI treats misses as Skipped while DB
-# state stays PASSED (see api_jobs skipped / in_review). CULTURE_READY is score-gated so
+# state stays PASSED (see api_jobs skipped / processing). CULTURE_READY is score-gated so
 # grade_like keeps a floor after the culture hop (AST-874).
 # Jobs UI below-floor membership (score_floor_by_trigger_for_candidate) uses
 # dispatch_claim_uses_score_floor — which also returns True for transition outcomes such as
@@ -3556,10 +4296,12 @@ def dispatch_claim_uses_score_floor(trigger_state: Optional[str]) -> bool:
 
 
 def dispatch_claim_states(trigger_state: Optional[str], entity_type: str) -> List[str]:
-    """States a dispatch row claims and counts (primary + companion *_RETRY when configured).
+    """States a dispatch row claims and counts: primary + literal ``{ts}_RETRY``.
 
-    Prefer registry ``retry_state`` on the primary state (e.g. HOMEPAGE_READY →
-    WEBSITE_FOUND_RETRY for prefilter) over the ``{ts}_RETRY`` name convention.
+    Always pairs non-``_RETRY`` triggers with the suffix companion whether or not
+    that key exists in the entity registry. Registry ``retry_state`` is for
+    failure routing only — not claim grouping. ``entity_type`` is unused here
+    (kept for call-site compatibility).
     """
     if trigger_state is None:
         return []
@@ -3568,33 +4310,7 @@ def dispatch_claim_states(trigger_state: Optional[str], entity_type: str) -> Lis
         return []
     if ts.endswith("_RETRY"):
         return [ts]
-    registry = JOB_STATES if entity_type == "job" else (
-        COMPANY_STATES if entity_type == "company" else (
-            CANDIDATE_STATES if entity_type == "candidate" else (
-                METEORITE_STATES if entity_type == "meteorite" else None
-            )
-        )
-    )
-    if registry is not None:
-        retry = (registry.get(ts) or {}).get("retry_state")
-        if isinstance(retry, str) and retry.strip() and retry.strip() in registry:
-            return [ts, retry.strip()]
-        companion = f"{ts}_RETRY"
-        if companion in registry:
-            return [ts, companion]
-    return [ts]
-
-
-def fetch_website_prefilter_second_strike_filter() -> tuple[str, str]:
-    """(retry_state, homepage_text_company_data_key) for AST-892 claim/count exclusion.
-
-    ``WEBSITE_FOUND_RETRY`` is shared: rows with non-empty homepage_text are owned by
-    prefilter second strike; rows without are owned by fetch_website infra retry.
-    """
-    return (
-        GAZER_CONFIG["fetch_website"]["retry_state"],
-        ROSTER_CONFIG["company_data_keys"]["homepage_text"],
-    )
+    return [ts, f"{ts}_RETRY"]
 
 
 DISPATCH_RETIRED_TASK_KEYS = frozenset({
@@ -3606,13 +4322,13 @@ DISPATCH_RETIRED_TASK_KEYS = frozenset({
 _DISPATCH_BATCH_CALL_MODE_ONE = frozenset({
     "prefilter_company", "qualify_job_listings", "qualify_meteorite", "evaluate_jd", "evaluate_meteorite",
     "grade_do", "grade_get", "meteorite_grade_do", "meteorite_grade_get", "grade_like",
-    "meteorite_like", "vet_inflow_discovery",
+    "meteorite_like", "vet_inflow_discovery", "parse_job_list", "company_upshot",
 })
 
 _DISPATCH_COMPANY_ENTITY_TASK_KEYS = frozenset({
     "prefilter_company", "fetch_website", "fetch_job_pages", "select_job_page", "parse_job_list",
     "recheck_no_openings", "gaze", "inflow_resolve_website", "vet_inflow_discovery",
-    "resolve_website",
+    "resolve_website", "fetch_company_culture_pages", "company_upshot",
 })
 
 def resolve_dispatch_task_config_key(task_key: str) -> str:
@@ -3627,14 +4343,19 @@ def _dispatch_trigger_state_for_task_key(task_key: str) -> str:
         return ROSTER_CONFIG["parse_job_list"]["dispatch_trigger_state"]
     if task_key == "select_job_page":
         return ROSTER_CONFIG["select_job_page"]["dispatch_trigger_state"]
+    if task_key == "company_upshot":
+        return ROSTER_CONFIG["company_upshot"]["dispatch_trigger_state"]
+    if task_key == "fetch_company_culture_pages":
+        return GAZER_CONFIG["fetch_company_culture_pages"]["trigger_state"]
     if task_key == "recheck_no_openings":
         return "NO_OPENINGS"
     if task_key == "gaze":
         return "WATCH"
     if task_key == "inflow_discovery":
         return INFLOW_CONFIG["discovery"]["dispatch_trigger_state"]
-    if task_key == CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["task_key"]:
-        return CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["trigger_state"]
+    for _stage in CANDIDATE_STAGE_DISPATCH.values():
+        if task_key == _stage["task_key"]:
+            return _stage["trigger_state"]
     if task_key == "inflow_resolve_website":
         return INFLOW_CONFIG["resolve"]["dispatch_trigger_state"]
     if task_key == "resolve_website":
@@ -3647,6 +4368,8 @@ def _dispatch_trigger_state_for_task_key(task_key: str) -> str:
         return "METEORITE_NEW"
     if task_key == "fetch_jd":
         return "PASSED_JOBLIST"
+    if task_key == "fetch_relative_jd":
+        return GAZER_CONFIG["fetch_relative_jd"]["trigger_state"]
     if task_key == "fetch_culture_pages":
         return "PASSED_GET"
     if task_key == "fetch_job_pages":
@@ -3680,17 +4403,9 @@ def _dispatch_trigger_state_for_task_key(task_key: str) -> str:
         return "PASSED_LIKE"
     if task_key == "meteorite_upshot":
         return "METEORITE_PASSED_LIKE"
-    _tc = TASK_CONFIG.get(task_key) or {}
-    if _tc.get("task_type") == "CHAIN" and _tc.get("error_state") == ERROR_BUILD_ARTIFACTS_STATE:
-        return BUILD_ARTIFACTS_BASE_STATE
-    # Cover-letter hops share the artifact chain's claim surface. CANDIDATE_REVIEW is the
-    # graduation *output* (DISPATCH_CHAIN_TERMINAL_GRADUATION), never the input.
-    if task_key in (
-        "draft_cover_letter",
-        "check_cover_letter",
-        "finalize_cover_letter",
-        "propose_application_responses",
-    ):
+    # Every artifact-chain hop (cover-letter hops included) claims BUILD_ARTIFACTS. CANDIDATE_REVIEW
+    # is the graduation *output* (DISPATCH_CHAIN_TERMINAL_GRADUATION), never the input.
+    if task_key in BUILD_ARTIFACTS_CHAIN_TASK_KEYS:
         return BUILD_ARTIFACTS_BASE_STATE
     cfg = TASK_CONFIG.get(task_key)
     if cfg and cfg.get("trigger_state") is not None:
@@ -3705,7 +4420,9 @@ def _dispatch_trigger_state_for_task_key(task_key: str) -> str:
 def _dispatch_entity_type_for_task_key(task_key: str) -> str:
     if task_key in _DISPATCH_COMPANY_ENTITY_TASK_KEYS:
         return "company"
-    if task_key == "inflow_discovery" or task_key == CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["task_key"]:
+    if task_key == "inflow_discovery" or any(
+        task_key == _stage["task_key"] for _stage in CANDIDATE_STAGE_DISPATCH.values()
+    ):
         return "candidate"
     # stat.dispatch.entity-state-bound: ingress/notify rows now per-candidate meteorite (was global NULL pool).
     if task_key in (
@@ -3721,7 +4438,7 @@ def _dispatch_entity_type_for_task_key(task_key: str) -> str:
     if isinstance(et, str) and et.strip():
         return et.strip()
     if task_key in (
-        "fetch_jd", "fetch_culture_pages", "qualify_job_listings", "qualify_meteorite", "evaluate_jd",
+        "fetch_jd", "fetch_relative_jd", "fetch_culture_pages", "qualify_job_listings", "qualify_meteorite", "evaluate_jd",
         "grade_do", "grade_get", "grade_like", "analysis_upshot",
         "contemplate_job", "draft_cover_letter",
     ):
@@ -3737,11 +4454,12 @@ def _dispatch_sort_by_for(entity_type: str, trigger_state: str) -> str:
             isinstance(trigger_state, str) and trigger_state.startswith(LEGACY_BUILD_ARTIFACTS_PREFIX)
         ):
             return "state_changed_at"
-        if trigger_state not in JOB_STATES:
+        if not is_registered_state(JOB_STATES, trigger_state):
             raise KeyError(f"dispatch sort_by: unknown job trigger_state {trigger_state!r}")
         return "updated_at"
     if entity_type == "company":
-        bc = (COMPANY_STATES.get(trigger_state) or {}).get("batch_criteria") or {}
+        # Implicit {base}_RETRY shares the base's batch_criteria.
+        bc = (COMPANY_STATES.get(registered_base(COMPANY_STATES, trigger_state) or trigger_state) or {}).get("batch_criteria") or {}
         sort_by = bc.get("sort_by")
         if not sort_by:
             raise KeyError(f"dispatch sort_by: company state {trigger_state!r} missing batch_criteria.sort_by")
@@ -3836,6 +4554,14 @@ def dispatch_task_admin_defaults(
             "sort_by": None,
             "batch_call_mode": 0,
         }
+    # AST-2218: fetch_timesheet poller — entity/trigger null (stat.dispatch.entity-state-bound).
+    if tk == FETCH_TIMESHEET_CONFIG["task_key"]:
+        return {
+            "entity_type": FETCH_TIMESHEET_CONFIG["entity_type"],
+            "trigger_state": FETCH_TIMESHEET_CONFIG["trigger_state"],
+            "sort_by": None,
+            "batch_call_mode": 0,
+        }
     # Helper-resolvable agent_task-only hops (fetch_*, gaze, inflow_discovery, …).
     if tk not in TASK_CONFIG:
         try:
@@ -3912,21 +4638,88 @@ def trigger_state_used_by_scored_dispatch_task(trigger_state: Optional[str]) -> 
 
 SKIPPED_STATES = [
     "INVALID_TITLE",
-    "FAILED_JOBLIST", "JD_SCRAPE_FAIL",
-    "JD_SCRAPE_FAIL_COOKIE", "BOT_BLOCKED", "JD_SCRAPE_FAIL_MISSING", "JD_SCRAPE_FAIL_CLOSED",
-    "FAILED_JD", "FAILED_TECHNICAL",
-    "FAILED_DO", "FAILED_TECHNICAL_DO",
-    "FAILED_GET", "FAILED_TECHNICAL_GET",
-    "NEED_WEBSITE_CONTENT",
-    "NEED_CULTURE_CONTENT", "NO_CULTURE_LINKS",
-    "FAILED_LIKE", "FAILED_TECHNICAL_LIKE",
-    "METEORITE_FAILED_QUALIFY", "METEORITE_ERROR_QUALIFY",
-    "METEORITE_FAILED_JD", "METEORITE_ERROR_EVALUATE_JD",
-    "METEORITE_FAILED_DO", "METEORITE_FAILED_TECHNICAL_DO",
-    "METEORITE_FAILED_GET", "METEORITE_FAILED_TECHNICAL_GET",
-    "METEORITE_FAILED_LIKE", "METEORITE_FAILED_TECHNICAL_LIKE",
-    "ERROR_QUALIFY_JOB_LISTINGS", "ERROR_EVALUATE_JD",
+    "FAILED_JOBLIST",
+    error_state_for("fetch_jd", "UNREADABLE"), error_state_for("fetch_relative_jd", "UNREADABLE"),
+    error_state_for("fetch_jd", "COOKIE"), error_state_for("fetch_relative_jd", "COOKIE"),
+    bot_blocked_state_for("fetch_jd"), bot_blocked_state_for("fetch_relative_jd"), bot_blocked_state_for("qualify_meteorite"),
+    "JD_SCRAPE_FAIL_MISSING", "JD_SCRAPE_FAIL_CLOSED", error_state_for("fetch_relative_jd", "CLICK"),
+    "FAILED_JD", error_state_for("analysis_upshot"), error_state_for("meteorite_upshot"),
+    "FAILED_DO", error_state_for("grade_do"),
+    "FAILED_GET", error_state_for("grade_get"),
+    error_state_for("grade_like", "NO_WEBSITE_CONTENT"), error_state_for("analysis_upshot", "NO_WEBSITE_CONTENT"),
+    error_state_for("fetch_culture_pages", "UNREADABLE"), error_state_for("fetch_culture_pages", "NO_CULTURE_LINKS"),
+    bot_blocked_state_for("fetch_culture_pages"),
+    "FAILED_LIKE", error_state_for("grade_like"),
+    "METEORITE_FAILED_QUALIFY", error_state_for("qualify_meteorite"),
+    "METEORITE_FAILED_JD", error_state_for("evaluate_meteorite"),
+    "METEORITE_FAILED_DO", error_state_for("meteorite_grade_do"),
+    "METEORITE_FAILED_GET", error_state_for("meteorite_grade_get"),
+    "METEORITE_FAILED_LIKE", error_state_for("meteorite_like"),
+    *ALL_X_FAIL_STATES,  # AST-2096: terminal all-X fails list Skipped, not Processing
+    error_state_for("qualify_job_listings"), error_state_for("evaluate_jd"),
+    *BUILD_ARTIFACTS_CHAIN_ERROR_STATES,
     "CANDIDATE_SKIPPED",
+]
+
+# AST-1974: Ready + Review + Applied + Skipped — Processing = every job state NOT IN this list.
+# Derived, never typed out; the assert keeps the four lists pairwise disjoint (each job on exactly one list).
+JOBS_PROCESSING_EXCLUDED_STATES = [*READY_JOB_STATES, *REVIEW_JOB_STATES, *APPLIED_JOB_STATES, *SKIPPED_STATES]
+assert len(JOBS_PROCESSING_EXCLUDED_STATES) == len(set(JOBS_PROCESSING_EXCLUDED_STATES)), "Jobs lists overlap"
+
+# AST-2173: Universal search — per entity type (keys double as table names), the columns searched
+# by case-insensitive literal substring. A hit on any base field ranks the entity in the base tier;
+# payload-only hits rank after. id_field keys the result; name_fields join (non-empty, " — ") into
+# its display name. Field names live here only — database/core read them from this registry.
+SEARCH_ENTITY_CONFIG = {
+    "job": {
+        "label": "Jobs",
+        "id_field": "astral_job_id",
+        "name_fields": ["job_title", "company_id"],
+        "base_fields": [
+            "astral_job_id", "company_job_id", "job_title", "job_link",
+            "company_id", "source_entity_id", "state", "batch_id",
+        ],
+        "payload_fields": ["job_data"],
+    },
+    "company": {
+        "label": "Companies",
+        "id_field": "short_name",
+        "name_fields": ["company_name"],
+        "base_fields": [
+            "short_name", "company_name", "company_website", "job_site",
+            "originating_search_term", "state", "batch_id",
+        ],
+        "payload_fields": ["company_data"],
+    },
+    "meteorite": {
+        "label": "Meteorites",
+        "id_field": "id",
+        "name_fields": ["job_title", "employer_name"],
+        "base_fields": [
+            "id", "astral_job_id", "job_title", "employer_name", "link",
+            METEORITE_CONFIG["electronic_contact_column"], "source_id", "source_ref", "state", "batch_id",
+        ],
+        "payload_fields": ["content", "classify_outcome", "error"],
+    },
+}
+
+# AST-2173: which modal a job search result opens, by the Jobs list it sits on (list rules = the
+# Jobs pages': READY/REVIEW/APPLIED/SKIPPED_STATES, Processing = complement, below-floor = Skipped).
+SEARCH_JOB_MODAL_BY_LIST = {
+    "ready": "report",
+    "review": "report",
+    "applied": "report",
+    "processing": "detail",
+    "skipped": "detail",
+}
+assert set(SEARCH_JOB_MODAL_BY_LIST) == {"ready", "review", "applied", "processing", "skipped"} and set(
+    SEARCH_JOB_MODAL_BY_LIST.values()
+) <= {"report", "detail"}, "every Jobs list needs exactly one search modal kind (report|detail)"
+
+# AST-1974: Skip is legal from every job state not already Applied or Skipped (hop labels / _RETRY
+# resolve through their base in _job_state_matches_prior / state_prior_states).
+JOB_STATES["CANDIDATE_SKIPPED"]["prior_states"] = [
+    s for s in JOB_STATES if s not in APPLIED_JOB_STATES and s not in SKIPPED_STATES
 ]
 
 # ---------------------------------------------------------------------------
@@ -3936,57 +4729,45 @@ SKIPPED_STATES = [
 JOBS_SKIPPED_BELOW_DISPATCH_KEY = "__BELOW_DISPATCH_FLOOR__"
 JOBS_SKIPPED_BELOW_DISPATCH_LABEL = "Below dispatch score floor"
 
-JOBS_IN_REVIEW_UI_SECTIONS = [
+JOBS_PROCESSING_UI_SECTIONS = [
     {"state": "NEW", "label": "New"},
     {"state": "VALID_TITLE", "label": "Valid Title"},
-    {"state": "VALID_TITLE_RETRY", "label": "Valid Title (retry)"},
-    {"state": "NEW_RETRY", "label": "New (retry)"},
+    {"state": retry_of("VALID_TITLE"), "label": "Valid Title (retry)"},
+    {"state": retry_of("NEW"), "label": "New (retry)"},
     {"state": "PASSED_JOBLIST", "label": "Passed Job List"},
+    {"state": "RELATIVE_JOB_LINK", "label": "Relative Job Link"},
     {"state": "JD_READY", "label": "JD Ready"},
-    {"state": "JD_READY_RETRY", "label": "JD Ready (retry)"},
+    {"state": retry_of("JD_READY"), "label": "JD Ready (retry)"},
     {"state": "PASSED_JD", "label": "Passed Job Description"},
-    {"state": "PASSED_JD_RETRY", "label": "Passed JD (retry)"},
+    {"state": retry_of("PASSED_JD"), "label": "Passed JD (retry)"},
     {"state": "PASSED_DO", "label": "Passed DO"},
-    {"state": "PASSED_DO_RETRY", "label": "Passed DO (retry)"},
+    {"state": retry_of("PASSED_DO"), "label": "Passed DO (retry)"},
     {"state": "PASSED_GET", "label": "Passed GET"},
     {"state": "CULTURE_READY", "label": "Culture Ready"},
-    {"state": "CULTURE_READY_RETRY", "label": "Culture Ready (retry)"},
+    {"state": retry_of("CULTURE_READY"), "label": "Culture Ready (retry)"},
     {"state": "PASSED_LIKE", "label": "Passed LIKE"},
-    {"state": "PASSED_LIKE_RETRY", "label": "LIKE upshot (retry)"},
+    {"state": retry_of("PASSED_LIKE"), "label": "LIKE upshot (retry)"},
     {"state": "METEORITE_NEW", "label": "Meteorite New (pre-AI)"},
-    {"state": "METEORITE_NEW_RETRY", "label": "Meteorite New (retry)"},
+    {"state": retry_of("METEORITE_NEW"), "label": "Meteorite New (retry)"},
     {"state": "METEORITE_QUALIFIED", "label": "Meteorite Qualified"},
-    {"state": "METEORITE_QUALIFIED_RETRY", "label": "Meteorite Qualified (retry)"},
+    {"state": retry_of("METEORITE_QUALIFIED"), "label": "Meteorite Qualified (retry)"},
     {"state": "METEORITE_PASSED_JD", "label": "Meteorite Passed JD"},
-    {"state": "METEORITE_PASSED_JD_RETRY", "label": "Meteorite Passed JD (retry)"},
+    {"state": retry_of("METEORITE_PASSED_JD"), "label": "Meteorite Passed JD (retry)"},
     {"state": "METEORITE_PASSED_DO", "label": "Meteorite Passed DO"},
-    {"state": "METEORITE_PASSED_DO_RETRY", "label": "Meteorite Passed DO (retry)"},
+    {"state": retry_of("METEORITE_PASSED_DO"), "label": "Meteorite Passed DO (retry)"},
     {"state": "METEORITE_PASSED_GET", "label": "Meteorite Passed GET"},
-    {"state": "METEORITE_PASSED_GET_RETRY", "label": "Meteorite Passed GET (retry)"},
+    {"state": retry_of("METEORITE_PASSED_GET"), "label": "Meteorite Passed GET (retry)"},
     {"state": "METEORITE_PASSED_LIKE", "label": "Meteorite Passed LIKE"},
-    {"state": "METEORITE_PASSED_LIKE_RETRY", "label": "Meteorite LIKE upshot (retry)"},
+    {"state": retry_of("METEORITE_PASSED_LIKE"), "label": "Meteorite LIKE upshot (retry)"},
+    {"state": BUILD_ARTIFACTS_BASE_STATE, "label": "Building Artifacts"},
 ]
+# Processing rows must never name a state that lives on one of the four explicit lists.
+assert not any(row["state"] in JOBS_PROCESSING_EXCLUDED_STATES for row in JOBS_PROCESSING_UI_SECTIONS)
 
 JOBS_RECOMMENDED_UI_SECTIONS = [
-    {"state": "RECOMMENDED", "label": "Recommended"},
-    {"state": BUILD_ARTIFACTS_BASE_STATE, "label": "In Progress"},
+    {"state": "RECOMMENDED", "label": "Review"},
     {"state": "CANDIDATE_REVIEW", "label": "Ready"},
 ]
-
-# AST-1052 / AST-1057: Recommended page — distinct Meteorites section membership.
-# Jobs already land in RECOMMENDED / BUILD_ARTIFACTS / CANDIDATE_REVIEW after meteorite_upshot
-# (AST-1055); partition by company short_name prefix, not by a new job state.
-JOBS_RECOMMENDED_METEORITE_SECTION = {
-    "section_id": "meteorites",
-    "label": "Meteorites",
-    "company_prefix": METEORITE_CONFIG["short_name_prefix"],  # "meteorite-"
-}
-assert isinstance(JOBS_RECOMMENDED_METEORITE_SECTION["company_prefix"], str)
-assert JOBS_RECOMMENDED_METEORITE_SECTION["company_prefix"]
-assert (
-    JOBS_RECOMMENDED_METEORITE_SECTION["company_prefix"]
-    == METEORITE_CONFIG["short_name_prefix"]
-)
 
 JOBS_RECOMMENDED_PHASE_SCORE_COLUMNS = [
     {"field": "jd_score", "label": "JD"},
@@ -3995,89 +4776,137 @@ JOBS_RECOMMENDED_PHASE_SCORE_COLUMNS = [
     {"field": "like_score", "label": "LIKE"},
 ]
 
-assert all(row["state"] in RECOMMENDED_JOB_STATES for row in JOBS_RECOMMENDED_UI_SECTIONS)
+assert all(row["state"] in (*READY_JOB_STATES, *REVIEW_JOB_STATES) for row in JOBS_RECOMMENDED_UI_SECTIONS)
 
+# AST-2086: a split retired key's new names sit where it sat, expanded in place.
 JOBS_SKIPPED_SECTION_ORDER = [
+    *BUILD_ARTIFACTS_CHAIN_ERROR_STATES,
     "FAILED_LIKE",
-    "FAILED_TECHNICAL_LIKE",
+    error_state_for("grade_like"),
     "METEORITE_FAILED_LIKE",
-    "METEORITE_FAILED_TECHNICAL_LIKE",
+    error_state_for("meteorite_like"),
     "FAILED_GET",
-    "FAILED_TECHNICAL_GET",
+    error_state_for("grade_get"),
     "METEORITE_FAILED_GET",
-    "METEORITE_FAILED_TECHNICAL_GET",
+    error_state_for("meteorite_grade_get"),
     "FAILED_DO",
-    "FAILED_TECHNICAL_DO",
+    error_state_for("grade_do"),
     "METEORITE_FAILED_DO",
-    "METEORITE_FAILED_TECHNICAL_DO",
-    "NEED_WEBSITE_CONTENT",
-    "NEED_CULTURE_CONTENT",
-    "NO_CULTURE_LINKS",
+    error_state_for("meteorite_grade_do"),
+    error_state_for("grade_like", "NO_WEBSITE_CONTENT"),
+    error_state_for("analysis_upshot", "NO_WEBSITE_CONTENT"),
+    error_state_for("fetch_culture_pages", "UNREADABLE"),
+    error_state_for("fetch_culture_pages", "NO_CULTURE_LINKS"),
+    bot_blocked_state_for("fetch_culture_pages"),
     "FAILED_JD",
-    "FAILED_TECHNICAL",
+    error_state_for("analysis_upshot"),
+    error_state_for("meteorite_upshot"),
     "METEORITE_FAILED_JD",
-    "METEORITE_ERROR_EVALUATE_JD",
+    error_state_for("evaluate_meteorite"),
     "METEORITE_FAILED_QUALIFY",
-    "METEORITE_ERROR_QUALIFY",
+    error_state_for("qualify_meteorite"),
     "FAILED_JOBLIST",
     "INVALID_TITLE",
-    "JD_SCRAPE_FAIL",
-    "JD_SCRAPE_FAIL_COOKIE",
-    "BOT_BLOCKED",
+    error_state_for("fetch_jd", "UNREADABLE"),
+    error_state_for("fetch_relative_jd", "UNREADABLE"),
+    error_state_for("fetch_jd", "COOKIE"),
+    error_state_for("fetch_relative_jd", "COOKIE"),
+    bot_blocked_state_for("fetch_jd"),
+    bot_blocked_state_for("fetch_relative_jd"),
+    bot_blocked_state_for("qualify_meteorite"),
     "JD_SCRAPE_FAIL_MISSING",
     "JD_SCRAPE_FAIL_CLOSED",
-    "ERROR_QUALIFY_JOB_LISTINGS",
-    "ERROR_EVALUATE_JD",
+    error_state_for("fetch_relative_jd", "CLICK"),
+    error_state_for("qualify_job_listings"),
+    error_state_for("evaluate_jd"),
     "CANDIDATE_SKIPPED",
 ]
 
+# AST-2086: renamed keys keep the retired name's effective label (explicit or title-case fallback).
 JOBS_SKIPPED_SECTION_LABELS = {
+    **{s: "Error Build Artifacts" for s in BUILD_ARTIFACTS_CHAIN_ERROR_STATES},
     "FAILED_JOBLIST": "Failed Job List",
     "FAILED_JD": "Failed Job Description",
-    "FAILED_TECHNICAL": "Failed Technical",
+    error_state_for("analysis_upshot"): "Failed Technical",
+    error_state_for("meteorite_upshot"): "Failed Technical",
     "FAILED_GET": "Failed GET",
-    "FAILED_TECHNICAL_GET": "Failed Technical GET",
+    error_state_for("grade_get"): "Failed Technical GET",
     "FAILED_DO": "Failed DO",
-    "FAILED_TECHNICAL_DO": "Failed Technical DO",
-    "NEED_WEBSITE_CONTENT": "Need Website Content",
-    "NEED_CULTURE_CONTENT": "Need Culture Content",
-    "NO_CULTURE_LINKS": "No Culture Links",
+    error_state_for("grade_do"): "Failed Technical DO",
+    error_state_for("grade_like", "NO_WEBSITE_CONTENT"): "Need Website Content",
+    error_state_for("analysis_upshot", "NO_WEBSITE_CONTENT"): "Need Website Content",
+    error_state_for("fetch_culture_pages", "UNREADABLE"): "Need Culture Content",
+    error_state_for("fetch_culture_pages", "NO_CULTURE_LINKS"): "No Culture Links",
+    bot_blocked_state_for("fetch_culture_pages"): "Bot Blocked",
     "FAILED_LIKE": "Failed LIKE",
-    "FAILED_TECHNICAL_LIKE": "Failed Technical LIKE",
+    error_state_for("grade_like"): "Failed Technical LIKE",
     "METEORITE_FAILED_QUALIFY": "Meteorite Failed Qualify",
-    "METEORITE_ERROR_QUALIFY": "Meteorite Error Qualify",
+    error_state_for("qualify_meteorite"): "Meteorite Error Qualify",
     "METEORITE_FAILED_JD": "Meteorite Failed JD",
-    "METEORITE_ERROR_EVALUATE_JD": "Meteorite Error Evaluate JD",
+    error_state_for("evaluate_meteorite"): "Meteorite Error Evaluate JD",
     "METEORITE_FAILED_DO": "Meteorite Failed DO",
-    "METEORITE_FAILED_TECHNICAL_DO": "Meteorite Failed Technical DO",
+    error_state_for("meteorite_grade_do"): "Meteorite Failed Technical DO",
     "METEORITE_FAILED_GET": "Meteorite Failed GET",
-    "METEORITE_FAILED_TECHNICAL_GET": "Meteorite Failed Technical GET",
+    error_state_for("meteorite_grade_get"): "Meteorite Failed Technical GET",
     "METEORITE_FAILED_LIKE": "Meteorite Failed LIKE",
-    "METEORITE_FAILED_TECHNICAL_LIKE": "Meteorite Failed Technical LIKE",
+    error_state_for("meteorite_like"): "Meteorite Failed Technical LIKE",
+    error_state_for("fetch_relative_jd", "CLICK"): "Relative Link Fail",
+    error_state_for("fetch_jd", "UNREADABLE"): "Jd Scrape Fail",
+    error_state_for("fetch_relative_jd", "UNREADABLE"): "Jd Scrape Fail",
+    error_state_for("fetch_jd", "COOKIE"): "Jd Scrape Fail Cookie",
+    error_state_for("fetch_relative_jd", "COOKIE"): "Jd Scrape Fail Cookie",
+    bot_blocked_state_for("fetch_jd"): "Bot Blocked",
+    bot_blocked_state_for("fetch_relative_jd"): "Bot Blocked",
+    bot_blocked_state_for("qualify_meteorite"): "Bot Blocked",
 }
+
+# AST-2105: Skipped page groups, in display order, keyed by group id. A row's group is the
+# first whose members list its state, else the first whose prefixes match it, else the last
+# group — the catch-all, with neither prefixes nor members. Prefixes and members live here only;
+# the React page reads them from build_state_ui_manifest()["jobs"]["skipped"]["groups"].
+JOBS_SKIPPED_GROUPS = {
+    "error": {"label": "Error", "prefixes": [ERROR_STATE_PREFIX], "members": []},
+    "bot_block": {"label": "Bot block", "prefixes": [BOT_BLOCKED_STATE_PREFIX], "members": []},
+    "fail": {
+        "label": "Fail",
+        "prefixes": ["FAILED_", "METEORITE_FAILED_", "JD_SCRAPE_FAIL_"],
+        # Resurrect-only manual skip + the below-floor virtual section (not a JOB_STATES key).
+        "members": ["CANDIDATE_SKIPPED", JOBS_SKIPPED_BELOW_DISPATCH_KEY],
+    },
+    "other": {"label": "Other", "prefixes": [], "members": []},
+}
+# Explicit members must be real Skipped states (or the below-floor key), so a rename can't orphan one.
+assert all(
+    m in SKIPPED_STATES or m == JOBS_SKIPPED_BELOW_DISPATCH_KEY
+    for g in JOBS_SKIPPED_GROUPS.values() for m in g["members"]
+), "JOBS_SKIPPED_GROUPS: member is not a Skipped state"
+# Exactly one catch-all, and it is last — anything after it would be unreachable.
+assert [not (g["prefixes"] or g["members"]) for g in JOBS_SKIPPED_GROUPS.values()] == (
+    [False] * (len(JOBS_SKIPPED_GROUPS) - 1) + [True]
+), "JOBS_SKIPPED_GROUPS: only the last group may be the catch-all"
 
 # Which `job[...]` grade blob to read for rubric columns (keys ⊆ JOB_STATES).
 JOBS_IN_REVIEW_GRADE_FIELD = {
-    "VALID_TITLE_RETRY": "joblist_grades",
-    "NEW_RETRY": "joblist_grades",
+    retry_of("VALID_TITLE"): "joblist_grades",
+    retry_of("NEW"): "joblist_grades",
     "PASSED_JOBLIST": "joblist_grades",
     "JD_READY": "jd_grades",
-    "JD_READY_RETRY": "jd_grades",
+    retry_of("JD_READY"): "jd_grades",
     "PASSED_JD": "jd_grades",
-    "PASSED_JD_RETRY": "jd_grades",
+    retry_of("PASSED_JD"): "jd_grades",
     "PASSED_DO": "do_grades",
-    "PASSED_DO_RETRY": "do_grades",
+    retry_of("PASSED_DO"): "do_grades",
     "PASSED_GET": "get_grades",
     "PASSED_LIKE": "like_grades",
-    "PASSED_LIKE_RETRY": "like_grades",
+    retry_of("PASSED_LIKE"): "like_grades",
     "METEORITE_PASSED_JD": "jd_grades",
-    "METEORITE_PASSED_JD_RETRY": "jd_grades",
+    retry_of("METEORITE_PASSED_JD"): "jd_grades",
     "METEORITE_PASSED_DO": "do_grades",
-    "METEORITE_PASSED_DO_RETRY": "do_grades",
+    retry_of("METEORITE_PASSED_DO"): "do_grades",
     "METEORITE_PASSED_GET": "get_grades",
-    "METEORITE_PASSED_GET_RETRY": "get_grades",
+    retry_of("METEORITE_PASSED_GET"): "get_grades",
     "METEORITE_PASSED_LIKE": "like_grades",
-    "METEORITE_PASSED_LIKE_RETRY": "like_grades",
+    retry_of("METEORITE_PASSED_LIKE"): "like_grades",
 }
 JOBS_SKIPPED_GRADE_FIELD = {
     "FAILED_JOBLIST": "joblist_grades",
@@ -4102,7 +4931,7 @@ JOBS_UI_GRADE_RUBRIC = {
 # grades_key alone can't disambiguate which rubric produced a given job's grades.
 JOBS_UI_STATE_RUBRIC_OVERRIDE = {
     "METEORITE_PASSED_JD": "meteorite_jobdesc_rubric",
-    "METEORITE_PASSED_JD_RETRY": "meteorite_jobdesc_rubric",
+    retry_of("METEORITE_PASSED_JD"): "meteorite_jobdesc_rubric",
     "METEORITE_FAILED_JD": "meteorite_jobdesc_rubric",
 }
 
@@ -4127,40 +4956,50 @@ for _row in JOBS_RECOMMENDED_REPORT_PHASE_TABS:
 # AST-1156: Skipped Retry — from Skipped section state → claimable primary trigger.
 # Keys ⊆ JOBS_SKIPPED_SECTION_ORDER except CANDIDATE_SKIPPED (Resurrect-only).
 JOBS_SKIPPED_BULK_RETRY_TO_STATE = {
+    # AST-1974: artifact build failures — each state's only legal successor.
+    **{s: "RECOMMENDED" for s in BUILD_ARTIFACTS_CHAIN_ERROR_STATES},
     # Regular rubric / qualify / JD
     "FAILED_JOBLIST": "NEW",
-    "ERROR_QUALIFY_JOB_LISTINGS": "NEW",
+    error_state_for("qualify_job_listings"): "NEW",
     "INVALID_TITLE": "NEW",
     "FAILED_JD": "JD_READY",
-    "ERROR_EVALUATE_JD": "JD_READY",
-    # Full restart: origin hop unknowable (prior_states None / upshot-path generic).
-    "FAILED_TECHNICAL": "NEW",
+    error_state_for("evaluate_jd"): "JD_READY",
+    # Upshot second failure: full restart, as before the per-task split.
+    error_state_for("analysis_upshot"): "NEW",
+    error_state_for("meteorite_upshot"): "NEW",
     "FAILED_DO": "PASSED_JD",
-    "FAILED_TECHNICAL_DO": "PASSED_JD",
+    error_state_for("grade_do"): "PASSED_JD",
     "FAILED_GET": "PASSED_DO",
-    "FAILED_TECHNICAL_GET": "PASSED_DO",
+    error_state_for("grade_get"): "PASSED_DO",
     "FAILED_LIKE": "CULTURE_READY",
-    "FAILED_TECHNICAL_LIKE": "CULTURE_READY",
+    error_state_for("grade_like"): "CULTURE_READY",
     # Meteorite rubric / qualify / JD
     "METEORITE_FAILED_QUALIFY": "METEORITE_NEW",
-    "METEORITE_ERROR_QUALIFY": "METEORITE_NEW",
+    error_state_for("qualify_meteorite"): "METEORITE_NEW",
     "METEORITE_FAILED_JD": "METEORITE_QUALIFIED",
-    "METEORITE_ERROR_EVALUATE_JD": "METEORITE_QUALIFIED",
+    error_state_for("evaluate_meteorite"): "METEORITE_QUALIFIED",
     "METEORITE_FAILED_DO": "METEORITE_PASSED_JD",
-    "METEORITE_FAILED_TECHNICAL_DO": "METEORITE_PASSED_JD",
+    error_state_for("meteorite_grade_do"): "METEORITE_PASSED_JD",
     "METEORITE_FAILED_GET": "METEORITE_PASSED_DO",
-    "METEORITE_FAILED_TECHNICAL_GET": "METEORITE_PASSED_DO",
+    error_state_for("meteorite_grade_get"): "METEORITE_PASSED_DO",
     "METEORITE_FAILED_LIKE": "METEORITE_PASSED_GET",
-    "METEORITE_FAILED_TECHNICAL_LIKE": "METEORITE_PASSED_GET",
+    error_state_for("meteorite_like"): "METEORITE_PASSED_GET",
     # Non-rubric hop re-entry (replace hard-coded NEW; not AC-critical but map-complete)
-    "JD_SCRAPE_FAIL": "PASSED_JOBLIST",
-    "JD_SCRAPE_FAIL_COOKIE": "PASSED_JOBLIST",
-    "BOT_BLOCKED": "PASSED_JOBLIST",
+    error_state_for("fetch_jd", "UNREADABLE"): "PASSED_JOBLIST",
+    error_state_for("fetch_relative_jd", "UNREADABLE"): "PASSED_JOBLIST",
+    error_state_for("fetch_jd", "COOKIE"): "PASSED_JOBLIST",
+    error_state_for("fetch_relative_jd", "COOKIE"): "PASSED_JOBLIST",
+    bot_blocked_state_for("fetch_jd"): "PASSED_JOBLIST",
+    bot_blocked_state_for("fetch_relative_jd"): "PASSED_JOBLIST",
+    bot_blocked_state_for("qualify_meteorite"): "PASSED_JOBLIST",
     "JD_SCRAPE_FAIL_MISSING": "PASSED_JOBLIST",
     "JD_SCRAPE_FAIL_CLOSED": "PASSED_JOBLIST",
-    "NEED_CULTURE_CONTENT": "PASSED_GET",
-    "NO_CULTURE_LINKS": "PASSED_GET",
-    "NEED_WEBSITE_CONTENT": "CULTURE_READY",
+    error_state_for("fetch_relative_jd", "CLICK"): "RELATIVE_JOB_LINK",  # AST-2022: back to the click-through fetch
+    error_state_for("fetch_culture_pages", "UNREADABLE"): "PASSED_GET",
+    error_state_for("fetch_culture_pages", "NO_CULTURE_LINKS"): "PASSED_GET",
+    bot_blocked_state_for("fetch_culture_pages"): "PASSED_GET",
+    error_state_for("grade_like", "NO_WEBSITE_CONTENT"): "CULTURE_READY",
+    error_state_for("analysis_upshot", "NO_WEBSITE_CONTENT"): "CULTURE_READY",
 }
 assert "CANDIDATE_SKIPPED" not in JOBS_SKIPPED_BULK_RETRY_TO_STATE
 assert all(k in JOB_STATES and v in JOB_STATES for k, v in JOBS_SKIPPED_BULK_RETRY_TO_STATE.items())
@@ -4168,12 +5007,105 @@ assert all(k in JOBS_SKIPPED_SECTION_ORDER for k in JOBS_SKIPPED_BULK_RETRY_TO_S
 _skipped_retryable = [s for s in JOBS_SKIPPED_SECTION_ORDER if s != "CANDIDATE_SKIPPED"]
 assert set(JOBS_SKIPPED_BULK_RETRY_TO_STATE) == set(_skipped_retryable)
 
+# AST-2086: entity -> retired terminal name -> {writing task_key: new name}; read by the AST-2087
+# migration. The only place retired names survive. A FAILED_TECHNICAL row whose history names any
+# other task_key resolves to error_state_for(task_key). Meteorite LINK_EXPIRED keys on page status.
+RETIRED_TERMINAL_STATE_MAP: Dict[str, Dict[str, Dict[str, str]]] = {
+    "job": {
+        "FAILED_TECHNICAL": {k: error_state_for(k) for k in ("analysis_upshot", "meteorite_upshot")},
+        "FAILED_TECHNICAL_DO": {"grade_do": error_state_for("grade_do")},
+        "FAILED_TECHNICAL_GET": {"grade_get": error_state_for("grade_get")},
+        "FAILED_TECHNICAL_LIKE": {"grade_like": error_state_for("grade_like")},
+        "METEORITE_FAILED_TECHNICAL_DO": {"meteorite_grade_do": error_state_for("meteorite_grade_do")},
+        "METEORITE_FAILED_TECHNICAL_GET": {"meteorite_grade_get": error_state_for("meteorite_grade_get")},
+        "METEORITE_FAILED_TECHNICAL_LIKE": {"meteorite_like": error_state_for("meteorite_like")},
+        "METEORITE_ERROR_QUALIFY": {"qualify_meteorite": error_state_for("qualify_meteorite")},
+        "METEORITE_ERROR_EVALUATE_JD": {"evaluate_meteorite": error_state_for("evaluate_meteorite")},
+        "JD_SCRAPE_FAIL": {k: error_state_for(k, "UNREADABLE") for k in ("fetch_jd", "fetch_relative_jd")},
+        "JD_SCRAPE_FAIL_COOKIE": {k: error_state_for(k, "COOKIE") for k in ("fetch_jd", "fetch_relative_jd")},
+        "BOT_BLOCKED": {k: bot_blocked_state_for(k) for k in ("fetch_jd", "fetch_relative_jd", "qualify_meteorite")},
+        "RELATIVE_LINK_FAIL": {"fetch_relative_jd": error_state_for("fetch_relative_jd", "CLICK")},
+        "NEED_CULTURE_CONTENT": {"fetch_culture_pages": error_state_for("fetch_culture_pages", "UNREADABLE")},
+        "NO_CULTURE_LINKS": {"fetch_culture_pages": error_state_for("fetch_culture_pages", "NO_CULTURE_LINKS")},
+        "NEED_WEBSITE_CONTENT": {k: error_state_for(k, "NO_WEBSITE_CONTENT") for k in ("grade_like", "analysis_upshot")},
+        "ERROR_BUILD_ARTIFACTS": dict(zip(BUILD_ARTIFACTS_CHAIN_TASK_KEYS, BUILD_ARTIFACTS_CHAIN_ERROR_STATES)),
+    },
+    "company": {
+        "NO_WEBSITE": {k: error_state_for(k, "NOT_FOUND") for k in ("inflow_resolve_website", "resolve_website")},
+        "CANNOT_READ_WEBSITE": {
+            "fetch_website": error_state_for("fetch_website", "UNREADABLE"),
+            "prefilter_company": error_state_for("prefilter_company", "UNREADABLE"),
+        },
+        "ERROR_PREFILTER": {"prefilter_company": error_state_for("prefilter_company")},
+        "NO_PREFILTER_JOBLISTS": {"prefilter_company": error_state_for("prefilter_company", "NO_JOBLIST_LINKS")},
+        "JOBSITE_SCRAPE_ISSUE": {k: error_state_for(k, "UNREADABLE") for k in ("select_job_page", "fetch_job_pages")},
+        "ERROR_LOCATE_JOB_PAGE": {"select_job_page": error_state_for("select_job_page")},
+        "CANNOT_PARSE_JOB_SITE": {"select_job_page": error_state_for("select_job_page", "UNPARSEABLE")},
+        "NO_JOBLIST": {"select_job_page": error_state_for("select_job_page", "NO_JOBLIST")},
+        "NO_PJL_SELECTED": {"select_job_page": error_state_for("select_job_page", "NO_SELECTION")},
+        "BOT_BLOCKED": {"select_job_page": bot_blocked_state_for("select_job_page")},
+        "COULD_NOT_PARSE_JOBLIST": {"parse_job_list": error_state_for("parse_job_list", "UNPARSEABLE")},
+        "ERROR_UPSHOT": {"company_upshot": error_state_for("company_upshot")},
+    },
+    "candidate": {
+        old: dict(zip(CANDIDATE_CRAFT_CHAIN_TASK_KEYS, CANDIDATE_CRAFT_CHAIN_ERROR_STATES))
+        for old in ("REQUESTED_RESUME_ERROR", "REQUESTED_ARTIFACTS_ERROR")
+    },
+    "meteorite": {
+        "BOT_BLOCKED": {"scrape_meteorite": bot_blocked_state_for("scrape_meteorite")},
+        "LINK_EXPIRED": {"closed": "JD_SCRAPE_FAIL_CLOSED", "missing": "JD_SCRAPE_FAIL_MISSING"},
+        "SCRAPE_ERROR": {
+            "stage_meteorite": error_state_for("stage_meteorite", "UNPARSEABLE"),
+            "scrape_meteorite": error_state_for("scrape_meteorite"),
+            "land_meteorite": error_state_for("land_meteorite"),
+        },
+        "NEW_EMAIL_ERROR": {"stage_meteorite": error_state_for("stage_meteorite")},
+    },
+}
+_TERMINAL_REGISTRIES = {"job": JOB_STATES, "company": COMPANY_STATES, "candidate": CANDIDATE_STATES, "meteorite": METEORITE_STATES}
+for _ent, _olds in RETIRED_TERMINAL_STATE_MAP.items():
+    for _old, _by_task in _olds.items():
+        assert _old not in _TERMINAL_REGISTRIES[_ent], (_ent, _old)
+        assert all(_new in _TERMINAL_REGISTRIES[_ent] for _new in _by_task.values()), (_ent, _old)
+
+# Pre-AST-2086 (bulk-retry target, effective Skipped label) per retired job key; every new name inherits both (AC 7).
+_RETIRED_JOB_SKIPPED_SNAPSHOT = {
+    "ERROR_BUILD_ARTIFACTS": ("RECOMMENDED", "Error Build Artifacts"),
+    "FAILED_TECHNICAL": ("NEW", "Failed Technical"),
+    "FAILED_TECHNICAL_DO": ("PASSED_JD", "Failed Technical DO"),
+    "FAILED_TECHNICAL_GET": ("PASSED_DO", "Failed Technical GET"),
+    "FAILED_TECHNICAL_LIKE": ("CULTURE_READY", "Failed Technical LIKE"),
+    "METEORITE_ERROR_QUALIFY": ("METEORITE_NEW", "Meteorite Error Qualify"),
+    "METEORITE_ERROR_EVALUATE_JD": ("METEORITE_QUALIFIED", "Meteorite Error Evaluate JD"),
+    "METEORITE_FAILED_TECHNICAL_DO": ("METEORITE_PASSED_JD", "Meteorite Failed Technical DO"),
+    "METEORITE_FAILED_TECHNICAL_GET": ("METEORITE_PASSED_DO", "Meteorite Failed Technical GET"),
+    "METEORITE_FAILED_TECHNICAL_LIKE": ("METEORITE_PASSED_GET", "Meteorite Failed Technical LIKE"),
+    "JD_SCRAPE_FAIL": ("PASSED_JOBLIST", "Jd Scrape Fail"),
+    "JD_SCRAPE_FAIL_COOKIE": ("PASSED_JOBLIST", "Jd Scrape Fail Cookie"),
+    "BOT_BLOCKED": ("PASSED_JOBLIST", "Bot Blocked"),
+    "RELATIVE_LINK_FAIL": ("RELATIVE_JOB_LINK", "Relative Link Fail"),
+    "NEED_CULTURE_CONTENT": ("PASSED_GET", "Need Culture Content"),
+    "NO_CULTURE_LINKS": ("PASSED_GET", "No Culture Links"),
+    "NEED_WEBSITE_CONTENT": ("CULTURE_READY", "Need Website Content"),
+}
+for _old, (_target, _label) in _RETIRED_JOB_SKIPPED_SNAPSHOT.items():
+    for _new in RETIRED_TERMINAL_STATE_MAP["job"][_old].values():
+        assert JOBS_SKIPPED_BULK_RETRY_TO_STATE.get(_new) == _target, (_old, _new)
+        assert JOBS_SKIPPED_SECTION_LABELS.get(_new, _new.replace("_", " ").title()) == _label, (_old, _new)
+
+# Grammar: every ERROR_ / BOT_BLOCKED_ registry key round-trips through parse_terminal_state + its helper.
+for _reg in _TERMINAL_REGISTRIES.values():
+    for _key in _reg:
+        if not _key.startswith((ERROR_STATE_PREFIX, BOT_BLOCKED_STATE_PREFIX)):
+            continue
+        _parsed = parse_terminal_state(_key)
+        assert _parsed is not None, _key
+        _kind, _tk, _cond = _parsed
+        assert (bot_blocked_state_for(_tk) if _kind == "bot_blocked" else error_state_for(_tk, _cond)) == _key, _key
+
 
 def build_state_ui_manifest() -> Dict[str, Any]:
     """Single JSON blob for GET /api/state_ui_manifest (G1 — no parallel TS state vocabulary)."""
-    in_review_allowed = set(IN_REVIEW_STATES)
-    in_review_sections = [row for row in JOBS_IN_REVIEW_UI_SECTIONS if row["state"] in in_review_allowed]
-
     skipped_order = [s for s in JOBS_SKIPPED_SECTION_ORDER if s in JOB_STATES]
     skipped_labels = {
         s: JOBS_SKIPPED_SECTION_LABELS.get(s, s.replace("_", " ").title()) for s in skipped_order
@@ -4193,9 +5125,9 @@ def build_state_ui_manifest() -> Dict[str, Any]:
     # experience is unsupported (AST-1253 in-flight chain claim).
     inflight_hide_states = [
         "REQUESTED_ARTIFACTS",
-        "REQUESTED_ARTIFACTS_RETRY",
+        retry_of("REQUESTED_ARTIFACTS"),
     ]
-    assert all(s in CANDIDATE_STATES for s in inflight_hide_states)
+    assert all(is_registered_state(CANDIDATE_STATES, s) for s in inflight_hide_states)
 
     bulk_company = {
         "inactive_list_to_state": "WEBSITE_FOUND",
@@ -4206,15 +5138,11 @@ def build_state_ui_manifest() -> Dict[str, Any]:
     assert all(v in COMPANY_STATES for v in bulk_company.values())
 
     grade_field = {**JOBS_IN_REVIEW_GRADE_FIELD, **JOBS_SKIPPED_GRADE_FIELD}
-    assert all(k in JOB_STATES for k in grade_field)
-
-    recommended_sections = [
-        row for row in JOBS_RECOMMENDED_UI_SECTIONS if row["state"] in RECOMMENDED_JOB_STATES
-    ]
+    assert all(is_registered_state(JOB_STATES, k) for k in grade_field)
 
     return {
         "jobs": {
-            "in_review_sections": in_review_sections,
+            "processing_sections": list(JOBS_PROCESSING_UI_SECTIONS),
             "grade_field_by_job_state": grade_field,
             "grade_rubric_by_field": dict(JOBS_UI_GRADE_RUBRIC),
             "skipped": {
@@ -4223,10 +5151,15 @@ def build_state_ui_manifest() -> Dict[str, Any]:
                 "section_order": skipped_order,
                 "section_labels": skipped_labels,
                 "bulk_retry_to_state_by_from_state": dict(JOBS_SKIPPED_BULK_RETRY_TO_STATE),
+                # AST-2105: ordered group rules (key, label, prefixes, members) — catch-all last.
+                "groups": [
+                    {"key": k, "label": g["label"], "prefixes": list(g["prefixes"]), "members": list(g["members"])}
+                    for k, g in JOBS_SKIPPED_GROUPS.items()
+                ],
             },
             "detail": {"already_skipped_state": "CANDIDATE_SKIPPED"},
             "recommended": {
-                "sections": recommended_sections,
+                "sections": list(JOBS_RECOMMENDED_UI_SECTIONS),
                 "phase_score_columns": list(JOBS_RECOMMENDED_PHASE_SCORE_COLUMNS),
                 "primary_actions_by_state": {
                     state: list(actions)
@@ -4237,11 +5170,6 @@ def build_state_ui_manifest() -> Dict[str, Any]:
                 "report_top_tabs": list(JOBS_RECOMMENDED_REPORT_TOP_TABS),
                 "report_summary_sections": list(JOBS_RECOMMENDED_REPORT_SUMMARY_SECTIONS),
                 "phase_score_header_title_template": PHASE_SCORE_HEADER_TITLE_TEMPLATE,
-                "meteorite_section": {
-                    "section_id": JOBS_RECOMMENDED_METEORITE_SECTION["section_id"],
-                    "label": JOBS_RECOMMENDED_METEORITE_SECTION["label"],
-                    "company_prefix": JOBS_RECOMMENDED_METEORITE_SECTION["company_prefix"],
-                },
             },
         },
         "candidate": {
@@ -4264,6 +5192,7 @@ TRACKER_CONFIG = {
     },
     "job_data_keys": {
         "job_description": "job_description",  # coat-check: fetch via playwright if missing
+        "jd_web_data_id": "jd_web_data_id",  # AST-2130: web_data row id of the scraped JD; no coat-check handler
     },
     "jd_min_chars": 200,  # scraped JDs shorter than this are discarded (not saved) as junk
     # AST-1120: full path-segment match for UUID-shaped external job ids in job_link.
@@ -4362,10 +5291,18 @@ REPO_ADMIN_JSON_CONFIG = {
             "repo_relative_path": "data/admin/agent.json",
             "columns": (
                 "agent_id",
+                "agent_name",  # AST-2232: display name for Discussion headers
                 "content",
-                "brain_setting",
-                "temperature",
+                "model_id",
                 "max_tokens",
+                "quantization",
+                "temperature",
+                "reasoning_effort",
+                "provider_allow_fallbacks",
+                "provider_only",
+                "provider_ignore",
+                "provider_sort",
+                "requires_structured_output",
                 "updated_at",
             ),
         },
@@ -4390,14 +5327,37 @@ def get_repo_admin_json_table_keys() -> tuple[str, ...]:
     """Apply order: agent personas before agent_task rows that reference agent_id."""
     return ("agent", "agent_task")
 
-# AST-1154: injected into multi-vector grades_encoded* payload_instructions (not vet / grades_json).
-_ENCODED_GRADE_SET_COMPLETENESS = (
-    "GRADE SET COMPLETENESS (AST-1154) — mandatory:\n"
-    "Emit exactly one grade segment for every rubric vector code listed in the grading "
-    "instructions for this run. Omitting a code is invalid.\n"
-    "When there is no signal for a vector, emit {code}X0 — never skip that segment.\n"
-    "Do not invent extra codes beyond the rubric. Do not invent letter grades to fill gaps — "
-    "use X with confidence 0 when the source is silent."
+# agent_performance rules shared by every call (AST-1839). prompt_prefix wraps them in the two-key envelope
+# sentence; structured-output calls (AST-2172) report agent_performance inside the tool input, so they get the
+# rules alone via prompt_prefix_structured.
+_PROMPT_PERFORMANCE_RULES = (
+    "agent_performance refers ONLY "
+    "to your ability to perform your task.  It has nothing to do with the payload at all, "
+    "just whether or not you were prevented for some reason to perform your task.  NEVER "
+    "use \"failed\" because everything in your payload did not pass for some reason, "
+    "the software will think your prompt is broken and we will wastefully replicate "
+    "the prompt to troubleshoot a non-existent issue.  If the status is truly \"failure\", use "
+    "\"failure_note\" to explain the legitimate issue."
+)
+
+# Confidence scale for rubric grader instructions (stat.agent.confidence-bounds): 1-5 with a letter, 0 only with X.
+_CONFIDENCE_SCALE_LINES = (
+    "    - 5: The source explicitly states it.\n"
+    "    - 4: The source strongly suggests it.\n"
+    "    - 3: The source hints about it.\n"
+    "    - 2: The source makes a vague reference.\n"
+    "    - 1: The source doesn't say it out loud, but it's possible.\n"
+)
+# Grade semantics shared by every multi-vector grader output type; the tool schema enforces the shape (AST-2172).
+_GRADE_SEMANTICS = (
+    "Report your grades through the provided tool. Each row in the content is identified by its index "
+    "(for example 024); report that row under its index, with one entry per rubric vector code.\n"
+    "  grade: one letter — A B C D F X. Each vector's rubric defines what A–F mean for that vector; "
+    "X means not applicable / no signal.\n"
+    "  confidence: an integer for that vector's grade:\n"
+    + _CONFIDENCE_SCALE_LINES +
+    "    - 0: Use only with grade X (not applicable / no signal).\n"
+    "When the source is silent on a vector, grade it X with confidence 0 — never leave a vector out."
 )
 
 # ---------------------------------------------------------------------------
@@ -4423,6 +5383,8 @@ ASTRAL_CONFIG = {
         "hidden_class_patterns": ['hide', 'hidden', 'd-none', 'visually-hidden', 'sr-only'],
         "strip_attributes": ['style', 'srcset'],
         "strip_on_attrs": True,
+        "max_html_tag_length": 500,            # AST-1840: attribute values longer than this are snipped
+        "max_length_placeholder": "(snipped)", # AST-1840: replacement text, so snipped spots stay visible
     },
     "cookie_dismiss_selectors": [
         'button:has-text("Accept All")',
@@ -4442,9 +5404,15 @@ ASTRAL_CONFIG = {
 
     # --- DB (database) ---
     "db_retry": {
-        "max_attempts": 3,
+        "max_attempts": 5,
         "base_delay_seconds": 0.5,
         "max_delay_seconds": 5.0,
+    },
+    # sqlite connection settings (AST-1842): busy wait on locked writes + WAL so readers
+    # never block a writer's commit. journal_mode is persistent in the db file once set.
+    "db_connection": {
+        "busy_timeout_seconds": 10.0,
+        "journal_mode": "WAL",
     },
 
     # --- Gazer (gazer) ---
@@ -4456,111 +5424,135 @@ ASTRAL_CONFIG = {
     # --- Dispatcher (dispatcher) ---
     "tick_rate_minutes": 3,           # how often the scheduler wakes to check which AUTO tasks are due
     "max_auto_threads": 3,            # max concurrent AUTO task threads; CLICK threads are excluded from this limit
+    "max_auto_threads_min": 1,        # lowest runtime override accepted for max_auto_threads (admin API / Scheduled Actions)
+    "max_auto_threads_max": 100,      # highest runtime override accepted for max_auto_threads (admin API / Scheduled Actions)
     "dispatch_timeout_seconds": 3600, # AUTO task timeout (60 min); CLICK tasks run unbounded
     # Outbound probe before batch claim (stdlib HTTP in src.utils.network — not Playwright).
     "dispatch_network_check_url": "https://www.anthropic.com/",
     "dispatch_network_check_timeout_seconds": 30,
     "cache_warm_delay_seconds": 1.0,  # seconds to wait after first concurrent call before firing the rest, allowing cache to commit
+    "gather_stagger_seconds": 1.0,    # seconds between call starts in _warm_then_gather (each mode); calls still overlap; 0 = all at once (AST-2149)
     # Candidate whose live dispatch_task rows are the default schedule template
     # for Manage Candidates "Set dispatch tasks" (AST-873 / AST-875).
     "template_candidate_id": "somerset",
 
     # --- Monitor (monitor) ---
-    "support_email": "susan+astral@susansomerset.com",
+    "support_email": "runtime-dispatch-error-498a58685f26@intake.linear.app",
 
     # --- Prompt prefix (anthropic) ---
-    # Prepended to the user prompt on every API call. Tells agents the date/time
-    # and instructs them on the response envelope format.
+    # Prepended to the user prompt after the date/time line. prompt_prefix: the two-key envelope sentence around
+    # the agent_performance rules. prompt_prefix_structured: the rules alone, for structured-output (forced tool)
+    # calls that have no agent_payload (AST-2172).
     "prompt_prefix": (
         "Your JSON response must use the two-key envelope, one is the agent_performance, the "
-        "other is the agent_payload.  This is very important.  agent_performance refers ONLY "
-        "to your ability to perform your task.  It has nothing to do with the payload at all, "
-        "just whether or not you were prevented for some reason to perform your task.  NEVER "
-        "use \"failed\" because everything in your payload did not pass for some reason, "
-        "the software will think your prompt is broken and we will wastefully replicate "
-        "the prompt to troubleshoot a non-existent issue.  If the status is truly \"failure\", use "
-        "\"failure_note\" to explain the legitimate issue.\n\nThe agent_payload is the complete "
+        "other is the agent_payload.  This is very important.  " + _PROMPT_PERFORMANCE_RULES + "\n\nThe agent_payload is the complete "
         "response that the software can parse per the required output schema."
     ),
+    "prompt_prefix_structured": _PROMPT_PERFORMANCE_RULES,
 
     # --- Company state machine (gazer, database, roster) ---
     # State list lives in COMPANY_STATES; transitions here.
     "company_state_transitions": [
         ("IMPORTED", "WEBSITE_FOUND"),
-        ("IMPORTED", "NO_WEBSITE"),
+        ("IMPORTED", error_state_for("inflow_resolve_website", "NOT_FOUND")),
         ("IMPORTED", "WEBSITE_REVIEW"),
         # AST-1672: inflow leaves NEW; DISCOVERED owns vet + CSE; WEBSITE_REVIEW owns AI apply.
         ("DISCOVERED", "WEBSITE_FOUND"),
         ("DISCOVERED", "VET_FAILED"),
         ("DISCOVERED", "WEBSITE_REVIEW"),
-        ("DISCOVERED", "NO_WEBSITE"),
+        ("DISCOVERED", error_state_for("inflow_resolve_website", "NOT_FOUND")),
         ("WEBSITE_REVIEW", "WEBSITE_FOUND"),
-        ("WEBSITE_REVIEW", "NO_WEBSITE"),
+        ("WEBSITE_REVIEW", error_state_for("resolve_website", "NOT_FOUND")),
         ("WEBSITE_FOUND", "TO_WATCH"),
         ("WEBSITE_FOUND", "IGNORE"),
         ("WEBSITE_FOUND", "PREFILTER_PASSED"),
         ("WEBSITE_FOUND", "PREFILTER_FAILED"),
-        ("WEBSITE_FOUND", "NO_PREFILTER_JOBLISTS"),
-        ("WEBSITE_FOUND", "WEBSITE_FOUND_RETRY"),
-        ("WEBSITE_FOUND", "ERROR_PREFILTER"),
+        ("WEBSITE_FOUND", error_state_for("prefilter_company", "NO_JOBLIST_LINKS")),
+        ("WEBSITE_FOUND", retry_of("WEBSITE_FOUND")),
+        ("WEBSITE_FOUND", error_state_for("prefilter_company")),
         ("WEBSITE_FOUND", "HOMEPAGE_READY"),
-        ("WEBSITE_FOUND", "CANNOT_READ_WEBSITE"),
-        ("WEBSITE_FOUND_RETRY", "HOMEPAGE_READY"),
-        ("WEBSITE_FOUND_RETRY", "CANNOT_READ_WEBSITE"),
-        ("WEBSITE_FOUND_RETRY", "TO_WATCH"),
-        ("WEBSITE_FOUND_RETRY", "IGNORE"),
-        ("WEBSITE_FOUND_RETRY", "PREFILTER_PASSED"),
-        ("WEBSITE_FOUND_RETRY", "PREFILTER_FAILED"),
-        ("WEBSITE_FOUND_RETRY", "NO_PREFILTER_JOBLISTS"),
-        ("WEBSITE_FOUND_RETRY", "WEBSITE_FOUND_RETRY"),
-        ("WEBSITE_FOUND_RETRY", "ERROR_PREFILTER"),
+        ("WEBSITE_FOUND", error_state_for("fetch_website", "UNREADABLE")),
+        ("WEBSITE_FOUND", bot_blocked_state_for("fetch_website")),
+        (retry_of("WEBSITE_FOUND"), "HOMEPAGE_READY"),
+        (retry_of("WEBSITE_FOUND"), error_state_for("fetch_website", "UNREADABLE")),
+        (retry_of("WEBSITE_FOUND"), bot_blocked_state_for("fetch_website")),
+        (retry_of("WEBSITE_FOUND"), "TO_WATCH"),
+        (retry_of("WEBSITE_FOUND"), "IGNORE"),
+        (retry_of("WEBSITE_FOUND"), "PREFILTER_PASSED"),
+        (retry_of("WEBSITE_FOUND"), "PREFILTER_FAILED"),
+        (retry_of("WEBSITE_FOUND"), error_state_for("prefilter_company", "NO_JOBLIST_LINKS")),
+        (retry_of("WEBSITE_FOUND"), retry_of("WEBSITE_FOUND")),
+        (retry_of("WEBSITE_FOUND"), error_state_for("prefilter_company")),
         ("HOMEPAGE_READY", "PREFILTER_PASSED"),
         ("HOMEPAGE_READY", "PREFILTER_FAILED"),
-        ("HOMEPAGE_READY", "NO_PREFILTER_JOBLISTS"),
+        ("HOMEPAGE_READY", error_state_for("prefilter_company", "NO_JOBLIST_LINKS")),
         ("HOMEPAGE_READY", "TO_WATCH"),
         ("HOMEPAGE_READY", "IGNORE"),
-        ("HOMEPAGE_READY", "WEBSITE_FOUND_RETRY"),
-        ("HOMEPAGE_READY", "ERROR_PREFILTER"),
-        ("HOMEPAGE_READY", "CANNOT_READ_WEBSITE"),
-        ("TO_WATCH", "WATCH"),
-        ("TO_WATCH", "HARD_PARSE"),
-        ("TO_WATCH", "CANNOT_PARSE_JOB_SITE"),
+        ("HOMEPAGE_READY", retry_of("WEBSITE_FOUND")),
+        ("HOMEPAGE_READY", retry_of("HOMEPAGE_READY")),
+        ("HOMEPAGE_READY", error_state_for("prefilter_company")),
+        ("HOMEPAGE_READY", error_state_for("prefilter_company", "UNREADABLE")),
+        # AST-1839: prefilter parsing-failure holding → pass/fail/error
+        (retry_of("HOMEPAGE_READY"), "PREFILTER_PASSED"),
+        (retry_of("HOMEPAGE_READY"), "PREFILTER_FAILED"),
+        (retry_of("HOMEPAGE_READY"), error_state_for("prefilter_company", "NO_JOBLIST_LINKS")),
+        (retry_of("HOMEPAGE_READY"), "TO_WATCH"),
+        (retry_of("HOMEPAGE_READY"), "IGNORE"),
+        (retry_of("HOMEPAGE_READY"), error_state_for("prefilter_company")),
+        (retry_of("HOMEPAGE_READY"), error_state_for("prefilter_company", "UNREADABLE")),
+        ("TO_WATCH", "GET_UPSHOT"),
+        ("TO_WATCH", error_state_for("select_job_page", "UNPARSEABLE")),
         ("TO_WATCH", "NO_OPENINGS"),
-        ("TO_WATCH", "NO_JOBLIST"),
-        ("TO_WATCH", "BOT_BLOCK"),
+        ("TO_WATCH", error_state_for("select_job_page", "NO_JOBLIST")),
+        ("TO_WATCH", bot_blocked_state_for("select_job_page")),
         # NO_OPENINGS: Playwright-only recheck (recheck_no_openings batch); JOBS_FOUND is landing until AST-461 parse routing.
         ("NO_OPENINGS", "JOBS_FOUND"),
         # JOBS_FOUND: same locate/parse terminal set as TO_WATCH (AST-469).
-        ("JOBS_FOUND", "WATCH"),
-        ("JOBS_FOUND", "HARD_PARSE"),
-        ("JOBS_FOUND", "CANNOT_PARSE_JOB_SITE"),
+        ("JOBS_FOUND", "GET_UPSHOT"),
+        ("JOBS_FOUND", error_state_for("select_job_page", "UNPARSEABLE")),
         ("JOBS_FOUND", "NO_OPENINGS"),
-        ("JOBS_FOUND", "NO_JOBLIST"),
-        ("JOBS_FOUND", "BOT_BLOCK"),
+        ("JOBS_FOUND", error_state_for("select_job_page", "NO_JOBLIST")),
+        ("JOBS_FOUND", bot_blocked_state_for("select_job_page")),
+        ("JOBS_FOUND", error_state_for("select_job_page")),
         # PREFILTER_PASSED: same locate/parse terminal set as TO_WATCH / JOBS_FOUND (AST-508).
-        ("PREFILTER_PASSED", "WATCH"),
-        ("PREFILTER_PASSED", "HARD_PARSE"),
-        ("PREFILTER_PASSED", "CANNOT_PARSE_JOB_SITE"),
+        ("PREFILTER_PASSED", "GET_UPSHOT"),
+        ("PREFILTER_PASSED", error_state_for("select_job_page", "UNPARSEABLE")),
         ("PREFILTER_PASSED", "NO_OPENINGS"),
-        ("PREFILTER_PASSED", "NO_JOBLIST"),
-        ("PREFILTER_PASSED", "BOT_BLOCK"),
+        ("PREFILTER_PASSED", error_state_for("select_job_page", "NO_JOBLIST")),
+        ("PREFILTER_PASSED", bot_blocked_state_for("select_job_page")),
         ("PREFILTER_PASSED", "PJL_READY"),
-        ("TO_WATCH", "JOBSITE_SCRAPE_ISSUE"),
-        ("JOBS_FOUND", "JOBSITE_SCRAPE_ISSUE"),
-        ("PREFILTER_PASSED", "JOBSITE_SCRAPE_ISSUE"),
+        ("TO_WATCH", error_state_for("select_job_page", "UNREADABLE")),
+        ("JOBS_FOUND", error_state_for("select_job_page", "UNREADABLE")),
+        ("PREFILTER_PASSED", error_state_for("select_job_page", "UNREADABLE")),
+        ("PREFILTER_PASSED", error_state_for("fetch_job_pages", "UNREADABLE")),
+        ("PREFILTER_PASSED", bot_blocked_state_for("fetch_job_pages")),
         ("PJL_READY", "JOBLIST_IDENTIFIED"),
-        ("PJL_READY", "PREFILTER_PASSED_RETRY"),
-        ("PJL_READY", "NO_PJL_SELECTED"),
+        ("PJL_READY", retry_of("PREFILTER_PASSED")),
+        ("PJL_READY", error_state_for("select_job_page", "NO_SELECTION")),
         ("PJL_READY", "NO_OPENINGS"),
-        ("PJL_READY", "JOBSITE_SCRAPE_ISSUE"),
-        ("PJL_READY", "NO_JOBLIST"),
-        ("PREFILTER_PASSED_RETRY", "PJL_READY"),
-        ("PREFILTER_PASSED_RETRY", "JOBSITE_SCRAPE_ISSUE"),
-        ("JOBLIST_IDENTIFIED", "WATCH"),
-        ("JOBLIST_IDENTIFIED", "JOBLIST_IDENTIFIED_RETRY"),
-        ("JOBLIST_IDENTIFIED", "COULD_NOT_PARSE_JOBLIST"),
-        ("JOBLIST_IDENTIFIED_RETRY", "WATCH"),
-        ("JOBLIST_IDENTIFIED_RETRY", "COULD_NOT_PARSE_JOBLIST"),
+        ("PJL_READY", error_state_for("select_job_page", "UNREADABLE")),
+        ("PJL_READY", error_state_for("select_job_page", "NO_JOBLIST")),
+        ("PJL_READY", error_state_for("select_job_page")),
+        ("PJL_READY", error_state_for("select_job_page", "UNPARSEABLE")),
+        ("PJL_READY", bot_blocked_state_for("select_job_page")),  # AST-2004: shown page is a bot wall at the no-joblist fall-through
+        (retry_of("PREFILTER_PASSED"), "PJL_READY"),
+        (retry_of("PREFILTER_PASSED"), error_state_for("fetch_job_pages", "UNREADABLE")),
+        (retry_of("PREFILTER_PASSED"), bot_blocked_state_for("fetch_job_pages")),
+        ("JOBLIST_IDENTIFIED", "GET_UPSHOT"),
+        ("JOBLIST_IDENTIFIED", retry_of("JOBLIST_IDENTIFIED")),
+        ("JOBLIST_IDENTIFIED", error_state_for("parse_job_list", "UNPARSEABLE")),
+        ("JOBLIST_IDENTIFIED", error_state_for("parse_job_list")),
+        (retry_of("JOBLIST_IDENTIFIED"), "GET_UPSHOT"),
+        (retry_of("JOBLIST_IDENTIFIED"), error_state_for("parse_job_list", "UNPARSEABLE")),
+        (retry_of("JOBLIST_IDENTIFIED"), error_state_for("parse_job_list")),
+        # AST-2054: upshot hops. WATCH → GET_UPSHOT is Susan's manual re-run via company state controls.
+        ("WATCH", "GET_UPSHOT"),
+        ("GET_UPSHOT", "UPSHOT_READY"),
+        ("UPSHOT_READY", "WATCH"),
+        ("UPSHOT_READY", retry_of("UPSHOT_READY")),
+        ("UPSHOT_READY", error_state_for("company_upshot")),
+        (retry_of("UPSHOT_READY"), "WATCH"),
+        (retry_of("UPSHOT_READY"), error_state_for("company_upshot")),
     ],
 
     # Candidate transitions: prior_states on CANDIDATE_STATES (AST-970); no parallel list.
@@ -4568,10 +5560,12 @@ ASTRAL_CONFIG = {
     # Valid grade letters — used by agent.py to build the grade-segment regex and for UI display.
     "valid_grades": ["A", "B", "C", "D", "F", "X"],
 
-    # Output type registry — each entry drives {$OUTPUT_INSTRUCTIONS} token resolution and
-    # determines how agent.py handles the agent_payload after receiving the AI response.
-    # Entries with "_encoded" in their key are decoded by _decode_payload; "_meta" additionally
-    # accepts listing metadata after grade segments; "grades_encoded_notes" maps tail to job["notes"].
+    # Output type registry — each entry drives {$OUTPUT_INSTRUCTIONS} token resolution.
+    # "structured_output": True marks a rubric grader type: its calls carry a call-time forced-tool schema (AST-2172).
+    # This marker is the only grader-type signal; no module keeps its own list of grader types or task keys.
+    # "extra_fields": per-row fields beyond the rubric codes, as JSON Schema fragments; the schema builder makes
+    # each one required and nullable. "grade_letters" / "confidence_range" override the defaults
+    # (ASTRAL_CONFIG["valid_grades"] / (0, 5)) — vet only.
     "output_types": {
         # Standard JSON grades — reserved for future use when grade_do and similar tasks
         # adopt output_type-driven instructions. No task uses this key today.
@@ -4581,130 +5575,64 @@ ASTRAL_CONFIG = {
                 "This output is parsed by software — any deviation will cause a processing failure."
             ),
         },
-        # Compact encoded — grades only, no metadata fields after grade segments.
+        # Grades only, no extra per-row fields.
         "grades_encoded": {
-            "payload_instructions": (
-                "Return one JSON object with top-level keys exactly: \"agent_performance\" and \"agent_payload\".\n"
-                "Put the multi-line encoded grading block inside \"agent_payload\" as a single string "
-                "(newlines separate jobs). Never respond with bare pipe-lines only; never put a JSON array "
-                'of jobs inside "agent_payload" — only the compact line format below.\n\n'
-                "Inside agent_payload — one line per item. Format: {pos}|{code}{grade}{conf}|{code}{grade}{conf}|...\n"
-                "  {pos}: 0-based input position, zero-padded to 3 digits\n"
-                "  {code}: 2-char rubric vector code from the grading instructions\n"
-                "  {grade}: one letter — A B C D F X\n"
-                "  {conf}: one digit — confidence for that vector's grade:\n"
-                "    - 5: The source explicitly states it.\n"
-                "    - 4: The source strongly suggests it.\n"
-                "    - 3: The source hints about it.\n"
-                "    - 2: The source makes a vague reference.\n"
-                "    - 1: The source doesn't say it out loud, but it's possible.\n"
-                "    - 0: Use only with grade X (not applicable / no signal).\n"
-                "Each grade segment is exactly 4 characters: {code}{grade}{conf}.\n"
-                "\nExample:\n"
-                "000|ERF1|MEF2|PGX0|WAF1|MWF1|KOF1|QCF1\n"
-                "001|ERA3|MEF2|PGA4|WAA4|MWA5|KOA3|QCA1\n"
-                "002|ERA5|MEA3|PGA3|WAA1|MWX0|KOF2|QCF2"
-            ) + "\n\n" + _ENCODED_GRADE_SET_COMPLETENESS,
+            "structured_output": True,
+            "extra_fields": {},
+            "payload_instructions": _GRADE_SEMANTICS,
         },
-        # Same grade segments as grades_encoded; optional tail → job["notes"] (do/get/like), not listing meta.
+        # Grades plus an optional note → job["notes"] (do/get/like).
         "grades_encoded_notes": {
-            "payload_instructions": (
-                "Return one JSON object with top-level keys exactly: \"agent_performance\" and \"agent_payload\". "
-                "Place the newline-separated compact grading lines inside \"agent_payload\" as one string "
-                '(do/get/like use this shape; envelope is mandatory — not "lines only").\n'
-                "Format inside agent_payload — one line per item: "
-                "{pos}|{code}{grade}{conf}|{code}{grade}{conf}|...[|optional notes tail]\n"
-                "  {pos}: 0-based input position, zero-padded to 3 digits\n"
-                "  {code}: 2-char rubric vector code from the grading instructions\n"
-                "  {grade}: one letter — A B C D F X\n"
-                "  {conf}: one digit — confidence for that vector's grade:\n"
-                "    - 5: The source explicitly states it.\n"
-                "    - 4: The source strongly suggests it.\n"
-                "    - 3: The source hints about it.\n"
-                "    - 2: The source makes a vague reference.\n"
-                "    - 1: The source doesn't say it out loud, but it's possible.\n"
-                "    - 0: Use only with grade X (not applicable / no signal).\n"
-                "Each grade segment is exactly 4 characters: {code}{grade}{conf}.\n"
-                "After all segments you may append one optional notes field (pipe-separated from the last segment).\n"
-                "Omit the tail entirely if you have nothing to add — that is valid.\n"
-                "\nExamples (value of agent_payload):\n"
-                "000|ERF1|MEF2|PGX0|WAF1|MWF1|KOF1|QCF1\n"
-                "000|ERA3|MEF2|PGA4|WAA4|MWA5|KOA3|QCA1|Short optional note for the job"
-            ) + "\n\n" + _ENCODED_GRADE_SET_COMPLETENESS,
-        },
-        # Compact encoded with optional metadata fields after grade segments.
-        "grades_encoded_meta": {
-            "payload_instructions": (
-                "Return one JSON object with top-level keys exactly: \"agent_performance\" and \"agent_payload\".\n"
-                "Pack the newline-separated qualification lines inside \"agent_payload\" as one string "
-                '(outer envelope required — not bare lines).\n'
-                "Format per line inside agent_payload: "
-                "{pos}|{code}{grade}{conf}|{code}{grade}{conf}|...|{company_job_id}[|{job_title}|{job_link}[|{key}:{value}...]]\n"
-                "  {pos}: 0-based input position, zero-padded to 3 digits\n"
-                "  {code}: 2-char rubric vector code from the grading instructions\n"
-                "  {grade}: one letter — A B C D F X\n"
-                "  {conf}: one digit — confidence for that vector's grade:\n"
-                "    - 5: The source explicitly states it.\n"
-                "    - 4: The source strongly suggests it.\n"
-                "    - 3: The source hints about it.\n"
-                "    - 2: The source makes a vague reference.\n"
-                "    - 1: The source doesn't say it out loud, but it's possible.\n"
-                "    - 0: Use only with grade X (not applicable / no signal).\n"
-                "Each grade segment is exactly 4 characters: {code}{grade}{conf}.\n"
-                "Metadata fields follow all grade segments when your instructions say to include them.\n"
-                "\nExample:\n"
-                "000|ERC3|MEC4|PGA5|WAX0|MWC3|KOB5|QCB3|2983982372|Mediocre Job Title|https://www.workheredummy.com/jobs/2983982372|location:Remote|salary_range:$140-160k\n"
-                "001|ERA2|MEA4|PGF5|WAA4|MWX0|KOA5|QCA2|8398237461\n"
-                "002|ERB3|MEB4|PGB5|WAB5|MWA4|KOA5|QCB1|9823975238|Fine Job Title|https://www.workheredummy.com/jobs/9823975238|location:Remote|salary_range:$140-160k"
-            ) + "\n\n" + _ENCODED_GRADE_SET_COMPLETENESS,
-        },
-        # Vet inflow discovery: one LT{grade}{conf} segment + required website meta (AST-880).
-        "grades_encoded_vet_meta": {
-            "payload_instructions": (
-                "Return one JSON object with top-level keys exactly: \"agent_performance\" and \"agent_payload\".\n"
-                "Put the newline-separated encoded vet lines inside \"agent_payload\" as a single string "
-                "(not a JSON results array). Never respond with bare pipe-lines only.\n\n"
-                "Inside agent_payload — one line per input hit. Format: {pos}|LT{grade}{conf}|{website}\n"
-                "  {pos}: 0-based input position, zero-padded to 3 digits (matches live-content 000/001/…)\n"
-                "  LT: fixed vector code for link-type Result Finding\n"
-                "  {grade}: exactly one letter — A B C D F\n"
-                "  {conf}: one digit 1–5 (use 5 when the page type is clear)\n"
-                "  {website}: absolute company homepage URL — required on every grade including F\n"
-                "Each grade segment is exactly 4 characters: LT{grade}{conf}.\n"
-                "\nExample:\n"
-                "000|LTA5|https://www.acme.com\n"
-                "001|LTF5|https://www.otherco.com"
+            "structured_output": True,
+            "extra_fields": {"notes": {"type": "string"}},
+            "payload_instructions": _GRADE_SEMANTICS + (
+                "\n  notes: one optional short note for the row; null when you have nothing to add."
             ),
         },
-        # Prefilter company: grades_encoded plus JOB:/CULT: link index tails (AST-603).
-        "grades_encoded_prefilter_links": {
+        # Grades plus listing metadata (qualify_job_listings).
+        "grades_encoded_meta": {
+            "structured_output": True,
+            "extra_fields": {
+                "company_job_id": {"type": "string"},
+                "job_title": {"type": "string"},
+                "job_link": {"type": "string"},
+                "job_data": {"type": "object", "additionalProperties": {"type": "string"}},
+            },
+            "payload_instructions": _GRADE_SEMANTICS + (
+                "\n  company_job_id: the listing's company job identifier; null when none is found.\n"
+                "  job_title, job_link: the listing's title and link as found; job_data: other key/value details "
+                "the listing states (e.g. location, salary_range). Fill these when your instructions say to include "
+                "them; otherwise null."
+            ),
+        },
+        # Vet inflow discovery: one LT grade per hit + website (AST-880).
+        "grades_encoded_vet_meta": {
+            "structured_output": True,
+            "extra_fields": {"website": {"type": "string"}},
+            "grade_letters": sorted(INFLOW_CONFIG["vet"]["pass_grades"] | INFLOW_CONFIG["vet"]["fail_grades"]),
+            "confidence_range": (1, 5),
             "payload_instructions": (
-                "Return one JSON object with top-level keys exactly: \"agent_performance\" and \"agent_payload\".\n"
-                "Put the multi-line encoded grading block inside \"agent_payload\" as a single string "
-                "(newlines separate jobs). Never respond with bare pipe-lines only; never put a JSON array "
-                'of jobs inside "agent_payload" — only the compact line format below.\n\n'
-                "Inside agent_payload — one line per item. Format: {pos}|{code}{grade}{conf}|{code}{grade}{conf}|...\n"
-                "  {pos}: 0-based input position, zero-padded to 3 digits\n"
-                "  {code}: 2-char rubric vector code from the grading instructions\n"
-                "  {grade}: one letter — A B C D F X\n"
-                "  {conf}: one digit — confidence for that vector's grade:\n"
-                "    - 5: The source explicitly states it.\n"
-                "    - 4: The source strongly suggests it.\n"
-                "    - 3: The source hints about it.\n"
-                "    - 2: The source makes a vague reference.\n"
-                "    - 1: The source doesn't say it out loud, but it's possible.\n"
-                "    - 0: Use only with grade X (not applicable / no signal).\n"
-                "Each grade segment is exactly 4 characters: {code}{grade}{conf}.\n"
-                "After all grade segments, append two optional link_set bracket fields (positional): "
-                "first tail → possible job page indices (1–5 ints from the enumerated nav list); "
-                "second tail → culture link indices (1–5 ints). "
-                "Alternate shapes: JOB:<indices> and CULT:<indices> prefixes, or JSON keys "
-                "possible_job_links / culture_links_to_explore. Software normalizes all listed shapes.\n"
-                "\nExamples:\n"
-                "000|ERC2|MEA3|PGA2|[13]|[3,6,19]\n"
-                "000|RCA3|MPB3|USA3|[59,60]|[51,46,53]\n"
-                "000|RCA3|MPB3|USA3|JOB:59,60|CULT:51,46,53"
-            ) + "\n\n" + _ENCODED_GRADE_SET_COMPLETENESS,
+                "Report one result per hit through the provided tool. Each hit in the content is identified by its "
+                "index (for example 000); report that hit under its index, graded on the fixed link-type vector code "
+                f"{INFLOW_CONFIG['vet']['grade_vector_code']}.\n"
+                "  grade: exactly one of A B C D F, as defined in your instructions.\n"
+                "  confidence: an integer 1–5 for that grade (use 5 when the page type is clear):\n"
+                + _CONFIDENCE_SCALE_LINES +
+                "  website: absolute company homepage URL — required on every grade including F."
+            ),
+        },
+        # Prefilter company: grades plus job / culture link indices (AST-603).
+        "grades_encoded_prefilter_links": {
+            "structured_output": True,
+            "extra_fields": {
+                "possible_job_links": {"type": "array", "items": {"type": "integer"}},
+                "culture_links_to_explore": {"type": "array", "items": {"type": "integer"}},
+            },
+            "payload_instructions": _GRADE_SEMANTICS + (
+                "\n  possible_job_links: 1–5 integer indices from the enumerated nav list that may lead to job "
+                "pages; null when none.\n"
+                "  culture_links_to_explore: 1–5 integer indices from the same list for culture pages; null when none."
+            ),
         },
     },
     # --- Consult (consult): per-vector importance (1–10); multipliers for AST-358 scoring ---
@@ -4725,7 +5653,18 @@ ASTRAL_CONFIG = {
             10: 2.00,
         },
     },
+    # --- UI chrome: sidebar logo background by ASTRAL_DEPLOY_ENV (AST-2040) ---
+    # Keys are lowercase ASTRAL_DEPLOY_ENV values. Production is intentionally absent:
+    # any env not listed here (production / unset / unknown) keeps the stylesheet color.
+    "logo_background_by_deploy_env": {
+        "staging": "#a651f1",
+        "local": "#ed22bb",
+    },
 }
+assert all(
+    k == k.strip().lower() and re.fullmatch(r"#[0-9a-fA-F]{6}", v)
+    for k, v in ASTRAL_CONFIG["logo_background_by_deploy_env"].items()
+)
 
 # Rubric vector feedback type/value codes (AST-722 / AST-378). AST-724 validates envelope against this.
 RUBRIC_FEEDBACK_CONFIG = {
@@ -4798,57 +5737,59 @@ def importance_multiplier(n: int) -> float:
 # Single worker required — the in-process scheduler thread runs per-worker.
 # ---------------------------------------------------------------------------
 RAILWAY_CONFIG = {
+    # One process: the dispatcher/scheduler runs in-process, so more workers would
+    # start duplicate schedulers. Threads let requests run concurrently instead of
+    # queueing behind each other on a single sync worker (gthread worker class).
     "workers": 1,
+    "threads": 8,
     "timeout": 300,
+    # Exact request paths (gunicorn atom `U`, no query string) whose gunicorn.access
+    # lines are dropped — background polls (AST-2078). Read by src/utils/logging.py.
+    "access_log_quiet_paths": ("/api/deploy_status",),
 }
 
 # ---------------------------------------------------------------------------
-# PLAYWRIGHT_CONFIG: batch session recover retries (client-side); scrape timeouts
-# live in TELESCOPE_CONFIG.request_timeout_seconds (AST-1726 HTTP client).
+# PLAYWRIGHT_CONFIG: batch session recover retries (client-side); scrape deadlines
+# live in TELESCOPE_CONFIG.job_deadline_seconds.
 # ---------------------------------------------------------------------------
 PLAYWRIGHT_CONFIG = {
     "context_recovery_max_attempts": 2,
 }
 
 # ---------------------------------------------------------------------------
-# TELESCOPE_CONFIG: platform HTTP client to Astral Telescope (AST-1726).
-# Bearer is env-only (never a code default secret).
-# request_timeout_seconds: platform HTTP client round-trip (queue + scrape + retries).
-# Server scrape timeout after slot acquire: service/telescope/telescope_config.py
-# REQUEST_TIMEOUT_SECONDS (120). Client must allow queue wait on top of that.
+# TELESCOPE_CONFIG: platform side of the Telescope Postgres job queue.
+# Scrapes are rows in telescope_job (schema owned by service/telescope/jobqueue.py);
+# the platform inserts a job and waits for the worker to write the result.
+# database_url is env-only (ASTRAL_DATABASE_URL — never a code default).
+# job_deadline_seconds: queue wait + every attempt; past it the job is cancelled.
+# max_attempts: claims per job (mirror: service telescope_config retry comments).
 # ---------------------------------------------------------------------------
 TELESCOPE_CONFIG = {
-    "base_urls": [],  # filled below from TELESCOPE_BASE_URLS or TELESCOPE_BASE_URL
-    "bearer_env": "TELESCOPE_BEARER_TOKEN",
-    "request_timeout_seconds": 600,
-    "retry_other_node": True,
-    "max_node_attempts": 2,
-    "healthz_path": "/healthz",
-    "telescope_path": "/telescope",
-    "telescope_html_path": "/telescope/html",
+    "database_url_env": "ASTRAL_DATABASE_URL",
+    "job_deadline_seconds": 600,
+    "max_attempts": 4,
+    "poll_interval_seconds": 1.0,
+    "db_pool_max_size": 10,
+    "default_priority": 0,
+    "admin_priority": 10,
+    "worker_stale_seconds": 60,
+    # Serverless Telescope: when no worker is live, GET <base url>/wake to wake it.
+    # Base url is Telescope's private address (…railway.internal:8080) from
+    # TELESCOPE_BASE_URL, else the first of TELESCOPE_BASE_URLS. Unset → no wake pings.
+    "base_url_envs": ("TELESCOPE_BASE_URL", "TELESCOPE_BASE_URLS"),
+    "wake_path": "/wake",
+    "wake_throttle_seconds": 30,
+    "wake_timeout_seconds": 60,  # /wake answers after Firefox is up (~20s cold)
     "cull_html_default": True,
     "default_expand": True,
     "default_wait_ready": False,
 }
 
-_urls_csv = (os.environ.get("TELESCOPE_BASE_URLS") or "").strip()
-if _urls_csv:
-    TELESCOPE_CONFIG["base_urls"] = [u.strip() for u in _urls_csv.split(",") if u.strip()]
-else:
-    _single = (os.environ.get("TELESCOPE_BASE_URL") or "").strip()
-    if _single:
-        TELESCOPE_CONFIG["base_urls"] = [_single]
-
-# ---------------------------------------------------------------------------
-# Timesheet rows (database ledgers): provider string validated on insert.
-# ---------------------------------------------------------------------------
-ALLOWED_TIMESHEET_PROVIDERS = ("anthropic", "deepseek")
-
 
 # ---------------------------------------------------------------------------
 # AGENT_CONFIG: Anthropic model catalog. Keyed by model_code (alias form — auto-upgrades
 # with Anthropic releases). Each entry carries pricing and call defaults.
-# cpm_* = cost per million tokens. temperature/max_tokens = defaults for new agents.
+# cpm_* = cost per million tokens. default_max_tokens = that Claude size's output default (LLM_MODEL_CONFIG reads it).
 # cache_min_tokens = minimum prompt tokens required for Anthropic prompt caching to activate.
 # Pricing as-of: 2026-03-07 — https://docs.anthropic.com/en/docs/about-claude/pricing
 # Cache thresholds: https://docs.anthropic.com/en/docs/build-with-claude/prompt-caching
@@ -4860,7 +5801,6 @@ AGENT_CONFIG = {
         "cpm_output": 5.00,
         "cpm_cache_write": 1.25,
         "cpm_cache_read": 0.10,
-        "default_temperature": 0.3,
         "default_max_tokens": 8192,
         "cache_min_tokens": 4096,
     },
@@ -4870,7 +5810,6 @@ AGENT_CONFIG = {
         "cpm_output": 15.00,
         "cpm_cache_write": 3.75,
         "cpm_cache_read": 0.30,
-        "default_temperature": 0.3,
         "default_max_tokens": 16000,
         "cache_min_tokens": 2048,
     },
@@ -4880,7 +5819,6 @@ AGENT_CONFIG = {
         "cpm_output": 25.00,
         "cpm_cache_write": 6.25,
         "cpm_cache_read": 0.50,
-        "default_temperature": 0.3,
         "default_max_tokens": 16000,
         "cache_min_tokens": 4096,
     },
@@ -4898,28 +5836,24 @@ def get_model(model_code: str) -> dict:
     return m
 
 
-# ---------------------------------------------------------------------------
-# LLM_PROVIDER_CONFIG — global active vendor (literal v1); brain tiers Little/Medium/Big;
-# tier → Anthropic AGENT_CONFIG key or DeepSeek SKU + reasoning flags (AST-492).
-# DeepSeek pricing USD/M tokens — https://api-docs.deepseek.com/quick_start/pricing
-# Standard listed rates snapshot 2026-06-03 (vendor may adjust promos).
-# Manage Agents UI catalog (AST-495) uses tier_map["anthropic"] + AGENT_CONFIG defaults.
-# ---------------------------------------------------------------------------
-BRAIN_LITTLE = "Little"
-BRAIN_MEDIUM = "Medium"
 CONTACT_ESTELLE_CONFIG = {
-    "default_brain_setting": "Medium",
     "task_key": "contact_estelle_turn",
     # Max Slack messages included in live_content (trim from oldest).
     "turn_context_message_limit": 40,
     # Max chars per message text in live_content (truncate with …).
     "turn_context_text_max_chars": 500,
 }
-assert CONTACT_ESTELLE_CONFIG["default_brain_setting"] == BRAIN_MEDIUM
 assert isinstance(CONTACT_ESTELLE_CONFIG["turn_context_message_limit"], int)
 assert CONTACT_ESTELLE_CONFIG["turn_context_message_limit"] > 0
 assert isinstance(CONTACT_ESTELLE_CONFIG["turn_context_text_max_chars"], int)
 assert CONTACT_ESTELLE_CONFIG["turn_context_text_max_chars"] > 0
+
+# AST-2206: Contact draft thread — an @mention reply in a thread rooted at a /draft-<context>
+# command runs this task (contact Estelle) instead of CONTACT_ESTELLE_CONFIG["task_key"].
+CONTACT_DRAFT_THREAD_CONFIG = {
+    "revise_task_key": "contact_draft_revise",
+}
+assert CONTACT_DRAFT_THREAD_CONFIG["revise_task_key"] in TASK_CONFIG
 
 # CONTACT_TASK_CONFIG: allowlisted Contact task keys (AST-1515 / AST-1414).
 # Distinct from CONTACT_CONFIG skills ACL and TASK_CONFIG dispatch catalog.
@@ -4930,14 +5864,6 @@ CONTACT_TASK_CONFIG = {
             "Fetch visible text, links, and blocked/ok/closed/missing for one job URL."
         ),
         "param_hint": "Single URL — remainder of the markup line after the task key.",
-        "requires_candidate": True,
-    },
-    "create_contact_meteorite": {
-        "handler": "src.core.meteorite.create_contact_meteorite",
-        "description": (
-            "Land a meteorite from link (scrape-first) or pasted page text."
-        ),
-        "param_hint": "URL or page text (rest of line).",
         "requires_candidate": True,
     },
     "get_job_by_pattern": {
@@ -4984,55 +5910,509 @@ for _ct_key, _ct_meta in CONTACT_TASK_CONFIG.items():
     _module_path, _, _attr_name = _handler.rpartition(".")
     assert _module_path and _attr_name, _ct_key
     assert _module_path.startswith("src.core."), _ct_key
+# AST-2035: Contact command ids must not collide with contact-task keys.
+for _cmd_id in CONTACT_CONFIG["commands"]:
+    assert _cmd_id not in CONTACT_TASK_CONFIG, _cmd_id
+# AST-2061 pinhole: every Contact command/task handler must be listed here, keyed by dotted path.
+# Contact writes only meteorites ("write meteorite", src.core.meteorite.*) and artifact versions
+# ("write artifact", AST-2206) — never create_meteorite_job / job / candidate rows; the rest reads.
+_CONTACT_PINHOLE_HANDLERS = {
+    "src.core.meteorite.insert_slack_meteorite": "write meteorite (NEW)",
+    "src.core.gazer.contact_task_gazer_scrape": "read (external fetch, no platform write)",
+    "src.core.tracker.contact_task_get_job_by_pattern": "read job",
+    "src.core.tracker.contact_command_check_status": "read job",
+    "src.core.tracker.contact_task_get_job_data": "read job",
+    "src.core.tracker.contact_task_get_company_data": "read company",
+    "src.core.tracker.contact_task_get_candidate_data": "read candidate",
+    "src.core.candidate.contact_command_show_context": "read artifact",
+    "src.core.candidate.contact_command_save_context": "write artifact",
+    "src.core.contact.contact_command_draft_context": "read artifact (LLM draft, no artifact write)",
+}
+assert all(
+    (_kind.startswith("write meteorite") and _h.startswith("src.core.meteorite."))
+    or _kind.startswith("write artifact")
+    for _h, _kind in _CONTACT_PINHOLE_HANDLERS.items()
+    if _kind.startswith("write")
+)
+for _h in [m["handler"] for m in CONTACT_TASK_CONFIG.values()] + [
+    m["handler"] for m in CONTACT_CONFIG["commands"].values()
+]:
+    assert _h in _CONTACT_PINHOLE_HANDLERS, f"Contact handler outside pinhole: {_h}"
 
-BRAIN_BIG = "Big"
-BRAIN_SETTINGS: tuple[str, str, str] = (BRAIN_LITTLE, BRAIN_MEDIUM, BRAIN_BIG)
 
-
-def infer_brain_setting_from_legacy_model_code(model_code: Optional[str]) -> str:
-    """Map historical AGENT_CONFIG model_code aliases to tiers (admin shim until UI sends tiers)."""
-    if not model_code:
-        return BRAIN_MEDIUM
-    if model_code == "claude-haiku-4-5":
-        return BRAIN_LITTLE
-    if model_code == "claude-sonnet-4-6":
-        return BRAIN_MEDIUM
-    if model_code == "claude-opus-4-6":
-        return BRAIN_BIG
-    return BRAIN_MEDIUM
-
-
-LLM_PROVIDER_CONFIG = {
-    "active_provider": "deepseek",
-    # anthropic | deepseek — literals only until multi-vendor UI exists
-    "brain_settings": BRAIN_SETTINGS,
-    "tier_map": {
-        "anthropic": {
-            BRAIN_LITTLE: {"agent_config_key": "claude-haiku-4-5"},
-            BRAIN_MEDIUM: {"agent_config_key": "claude-sonnet-4-6"},
-            BRAIN_BIG: {"agent_config_key": "claude-opus-4-6"},
+# ---------------------------------------------------------------------------
+# LLM_SERVER_CONFIG — the platform/protocol behind a model (AST-1851). Operators never pick a
+# server; an agent picks a model and LLM_MODEL_CONFIG names its server. Adding a server is a
+# config edit only — no server name appears in code outside this file.
+#   protocol           — "anthropic" (src.external.anthropic) | "anthropic_compat" (src.external.llm_compat)
+#   base_url           — Anthropic SDK base_url (SDK appends /v1/messages); None = SDK default
+#   auth               — "x-api-key" | "bearer" (how the candidate's platform key is sent)
+#   thinking_off_params — body fields that turn thinking off on this server
+#   request_extras     — body fields sent on every request (e.g. OpenRouter provider.zdr —
+#                        NOT set in this release; ZDR enforcement is future scope)
+#   concurrency        — None, or 429 retry for this server: rate_limit_retries + backoff_base_seconds
+#                        (delay doubles per retry); optional max_concurrent (process-wide in-flight cap),
+#                        backoff_max_seconds (delay ceiling), exhausted_stops_batch (True: a 429 still
+#                        refused after the retries stops the dispatch batch, ledger FAILED — AST-2010)
+#   probe              — True: one host-discovery probe per batch, then the batch is pinned to the
+#                        probe's host (src.external.openrouter, AST-1959). Only OpenRouter routes per call.
+#   structured_output_capability — "enforced" | "advisory" | None: forced-tool schema support (AST-2172); a model entry's own key overrides it
+# ---------------------------------------------------------------------------
+# structured_output_capability values: AST-2177 provider spike not run (Susan, 2026-10-13: no provider calls from
+# the build host). Every server is None until checked; grader-model overrides below are provisional.
+LLM_SERVER_CONFIG = {
+    "anthropic": {
+        "label": "Anthropic",
+        "protocol": "anthropic",
+        "base_url": None,
+        "auth": "x-api-key",
+        "thinking_off_params": {},
+        "request_extras": {},
+        "concurrency": None,
+        "probe": False,
+        "structured_output_capability": None,
+    },
+    "kimi": {
+        "label": "Kimi",
+        "protocol": "anthropic_compat",
+        "base_url": "https://api.moonshot.ai/anthropic",
+        "auth": "bearer",
+        "thinking_off_params": {"thinking": {"type": "disabled"}},
+        "request_extras": {},
+        "concurrency": None,
+        "probe": False,
+        "structured_output_capability": None,
+    },
+    "openrouter": {
+        "label": "OpenRouter",
+        "protocol": "anthropic_compat",
+        "base_url": "https://openrouter.ai/api",
+        "auth": "bearer",
+        "thinking_off_params": {"thinking": {"type": "disabled"}},
+        "request_extras": {},
+        # AST-2010 (Susan): 5 retries, doubling; no in-flight cap and no delay ceiling.
+        # 10s base: sleeps 10/20/40/80/160s nominal, jittered 0.5-1.0x → roughly 2.5-5 min before the batch stops.
+        "concurrency": {"rate_limit_retries": 5, "backoff_base_seconds": 10.0, "exhausted_stops_batch": True},
+        "probe": True,
+        # 93 of 95 slugs unchecked → None; checked slugs get OPENROUTER_STRUCTURED_OUTPUT_OVERRIDES.
+        "structured_output_capability": None,
+    },
+    "deepseek": {
+        "label": "DeepSeek",
+        "protocol": "anthropic_compat",
+        "base_url": "https://api.deepseek.com/anthropic",
+        "auth": "x-api-key",
+        "thinking_off_params": {"thinking": {"type": "disabled"}},
+        "request_extras": {},
+        # DeepSeek's real limit follows account balance (observed 25-26); keep max_concurrent below it.
+        "concurrency": {
+            "max_concurrent": 20,
+            "rate_limit_retries": 4,
+            "backoff_base_seconds": 2.0,
+            "backoff_max_seconds": 30.0,
         },
-        "deepseek": {
-            # AST-694: Little = v4-flash non-thinking; Medium = v4-pro non-thinking; Big = v4-pro thinking.
-            BRAIN_LITTLE: {
-                "vendor_model": "deepseek-v4-flash",
-                "thinking": False,
-                "reasoning_effort": None,
+        "probe": False,
+        "structured_output_capability": None,
+    },
+}
+LLM_SERVER_PROTOCOLS = ("anthropic", "anthropic_compat")
+LLM_SERVER_AUTH_STYLES = ("x-api-key", "bearer")
+# Allowed structured_output_capability values (AST-2172).
+LLM_STRUCTURED_OUTPUT_CAPABILITIES = ("enforced", "advisory", None)
+# Probe user turn only (AST-1959): tiny text so the host pin is cheap on *input*; max_tokens / effort / thinking
+# match the real hop — do not try to disable reasoning here (that breaks host parity and mandatory-thinking slugs).
+LLM_PROBE_MESSAGE = "Respond with 1."
+
+# Timesheet rows (database ledgers): provider string validated on insert = a server id.
+ALLOWED_TIMESHEET_PROVIDERS = tuple(LLM_SERVER_CONFIG)
+# Search timesheet rows (AST-2219 writer); not an LLM_SERVER_CONFIG id.
+TIMESHEET_SEARCH_SERVER_ID = "google_cse"
+
+TIMESHEET_REQUEST_TYPES = (
+    "DISPATCH_AGENT",
+    "DISPATCH_SEARCH",
+    "CONTACT_AGENT",
+)
+# Vendor half filled by get_receipt; Astral half (request_type, candidate_id, entity_*)
+# comes from the recorded call. Shared shape for every billing external (AST-2215 AC5).
+TIMESHEET_RECEIPT_FIELDS = (
+    "request_type",
+    "call_start",
+    "call_stop",
+    "platform_cost",
+    "candidate_id",
+    "entity_type",
+    "entity_id",
+    "native_tokens_prompt",
+    "native_tokens_completion",
+    "native_tokens_cached",  # cache read
+    "cache_write_tokens",
+    "response_item_count",
+    "response_char_length",
+    "completion_status",
+)
+LEDGER_TIMESHEET_STATES = (
+    "NEW",
+    "FETCHING",
+    "RECEIPTED",
+)
+assert set(TIMESHEET_REQUEST_TYPES) == {"DISPATCH_AGENT", "DISPATCH_SEARCH", "CONTACT_AGENT"}
+assert set(LEDGER_TIMESHEET_STATES) == {"NEW", "FETCHING", "RECEIPTED"}
+assert "platform_cost" in TIMESHEET_RECEIPT_FIELDS
+
+# Platform cost reconcile for openrouter-routed timesheet rows (AST-1963). OpenRouter 404s the
+# generation record for about 30s after the call, so the first lookup waits INITIAL_WAIT. A not-ready
+# or failed lookup is tried RETRIES times in total; the wait before the 2nd try is the base, doubled
+# before each later try (2, 4, 8, 16 s). No cap — the retry count bounds it.
+# Per-call background reconcile (AST-1966) — off; batch-end reconcile below replaces it.
+TIMESHEET_RECONCILE_ENABLED = False
+TIMESHEET_RECONCILE_RETRIES = 5
+TIMESHEET_RECONCILE_INITIAL_WAIT_SECONDS = 30.0
+TIMESHEET_RECONCILE_BACKOFF_BASE_SECONDS = 2.0
+# After a dispatch batch completes: passive OpenRouter /generation lookups for gen-* rows missing platform_cost.
+TIMESHEET_BATCH_RECONCILE_ENABLED = True
+# Seconds from batch close to each reconcile pass (6 pings); early exit when nothing is pending.
+TIMESHEET_BATCH_RECONCILE_PING_AT_SECONDS = (30, 60, 90, 120, 150, 180)
+
+# ---------------------------------------------------------------------------
+# OPENROUTER_MODEL_TABLE — the OpenRouter catalog (AST-1946 brief, 95 slugs). slug → (cpm_input,
+#   cpm_output, cpm_cache_read, host max output tokens).
+# Prices: Susan's brief (AST-1946, 2026-10). Max output:
+#   https://openrouter.ai/api/v1/models/<slug>/endpoints snapshot 2026-10-03 — the endpoint whose
+#   provider_name AND quantization equal the brief's PROVIDER and QUANT.
+# _build_openrouter_models() turns each row into one LLM_MODEL_CONFIG entry (model id = slug).
+# ---------------------------------------------------------------------------
+OPENROUTER_MODEL_TABLE = {
+    "apodex/apodex-1.1-mini:free": (0.0, 0.0, 0.0, 235929),
+    "bytedance-seed/seed-1.6": (0.25, 2.0, 0.0, 32768),
+    "bytedance-seed/seed-1.6-flash": (0.08, 0.3, 0.0, 32768),
+    "bytedance-seed/seed-2-1-turbo": (0.5, 2.5, 0.0, 235929),
+    "bytedance-seed/seed-2.0-code": (0.5, 3.0, 0.0, 131072),
+    "bytedance-seed/seed-2.0-lite": (0.25, 2.0, 0.0, 131072),
+    "bytedance-seed/seed-2.0-mini": (0.1, 0.4, 0.0, 131072),
+    "bytedance/ui-tars-1.5-7b": (0.1, 0.2, 0.1, 2048),
+    "deepseek/deepseek-chat": (0.32, 0.89, 0.0, 16384),
+    "deepseek/deepseek-chat-v3-0324": (0.25, 1.0, 0.0, 147456),
+    "deepseek/deepseek-chat-v3.1": (0.25, 0.95, 0.13, 32768),
+    "deepseek/deepseek-r1-0528": (0.5, 2.18, 0.0, 147456),
+    "deepseek/deepseek-v3.1-terminus": (0.27, 1.0, 0.0, 147456),
+    "deepseek/deepseek-v3.2": (0.26, 0.42, 0.14, 147456),
+    "deepseek/deepseek-v3.2-exp": (0.27, 0.41, 0.0, 147456),
+    "deepseek/deepseek-v4-flash": (0.0, 1.22, 0.0, 943718),
+    "deepseek/deepseek-v4-flash-0731": (0.01, 0.95, 0.0, 943718),
+    "deepseek/deepseek-v4-flash-vision-exp": (0.22, 0.65, 0.01, 262144),
+    "deepseek/deepseek-v4.1-flash": (0.02, 0.68, 0.0, 943718),
+    "google/gemma-2-27b-it": (0.65, 0.65, 0.0, 2048),
+    "google/gemma-3-12b-it": (0.05, 0.15, 0.0, 16384),
+    "google/gemma-3-27b-it": (0.08, 0.45, 0.04, 117964),
+    "google/gemma-3-4b-it": (0.05, 0.1, 0.0, 16384),
+    "google/gemma-4-26b-a4b-it": (0.07, 0.34, 0.0, 16384),
+    "google/gemma-4-31b-it": (0.09, 0.34, 0.05, 16384),
+    "gryphe/mythomax-l2-13b": (0.08, 0.11, 0.0, 3686),
+    "ibm-granite/granite-4.2-8b": (0.1, 0.15, 0.05, 117964),
+    "inclusionai/ling-3.0-flash-fin": (0.06, 0.18, 0.01, 235929),
+    "inclusionai/ling-3.0-flash-vl": (0.06, 0.18, 0.01, 32768),
+    "meta-llama/llama-3.1-70b-instruct": (0.4, 0.4, 0.0, 16384),
+    "meta-llama/llama-3.1-8b-instruct": (0.22, 0.22, 0.22, 117964),
+    "meta-llama/llama-3.2-3b-instruct": (0.05, 0.33, 0.0, 117964),
+    "meta-llama/llama-3.3-70b-instruct": (0.1, 0.32, 0.0, 16384),
+    "meta-llama/llama-4-maverick": (0.27, 0.85, 0.0, 8192),
+    "meta-llama/llama-4-scout": (0.1, 0.3, 0.0, 16384),
+    "meta/muse-glimmer-30b": (0.3, 1.2, 0.04, 16384),
+    "microsoft/phi-4": (0.07, 0.14, 0.0, 14745),
+    "minimax/minimax-m3": (0.23, 0.96, 0.05, 235929),
+    "mistralai/mistral-nemo": (0.02, 0.03, 0.0, 16384),
+    "mistralai/mistral-small-24b-instruct-2501": (0.05, 0.08, 0.0, 16384),
+    "mistralai/mistral-small-3.2-24b-instruct": (0.08, 0.2, 0.0, 16384),
+    "moonshotai/kimi-k2-0905": (0.6, 2.5, 0.0, 98304),
+    "moonshotai/kimi-k2-thinking": (0.6, 2.5, 0.15, 98304),
+    "moonshotai/kimi-k2.5": (0.45, 2.25, 0.07, 235929),
+    "moonshotai/kimi-k2.6": (0.43, 2.45, 0.12, 235929),
+    "moonshotai/kimi-k2.7-code": (0.67, 3.35, 0.18, 235929),
+    "nousresearch/hermes-3-llama-3.1-70b": (0.7, 0.7, 0.0, 16384),
+    "nvidia/nemotron-3-nano-30b-a3b": (0.05, 0.2, 0.03, 235929),
+    "nvidia/nemotron-3-super-120b-a12b": (0.08, 0.45, 0.0, 235929),
+    "nvidia/nemotron-3-ultra-550b-a55b": (0.5, 2.2, 0.1, 16384),
+    "nvidia/nemotron-3.5-lightning": (0.06, 0.16, 0.03, 32768),
+    "openai/gpt-oss-120b": (0.03, 0.18, 0.03, 117964),
+    "openai/gpt-oss-20b": (0.02, 0.1, 0.0, 117964),
+    "qwen/qwen-2.5-72b-instruct": (0.36, 0.4, 0.0, 16384),
+    "qwen/qwen3-14b": (0.1, 0.22, 0.0, 36864),
+    "qwen/qwen3-235b-a22b-2507": (0.09, 0.58, 0.0, 16384),
+    "qwen/qwen3-30b-a3b": (0.12, 0.5, 0.0, 16384),
+    "qwen/qwen3-30b-a3b-instruct-2507": (0.09, 0.3, 0.0, 235929),
+    "qwen/qwen3-32b": (0.08, 0.28, 0.0, 16384),
+    "qwen/qwen3-coder": (0.3, 1.0, 0.1, 65536),
+    "qwen/qwen3-coder-30b-a3b-instruct": (0.07, 0.28, 0.0, 235929),
+    "qwen/qwen3-coder-next": (0.12, 0.8, 0.07, 235929),
+    "qwen/qwen3-next-80b-a3b-instruct": (0.09, 1.1, 0.0, 16384),
+    "qwen/qwen3-vl-235b-a22b-instruct": (0.2, 0.88, 0.11, 16384),
+    "qwen/qwen3-vl-30b-a3b-instruct": (0.15, 0.6, 0.0, 16384),
+    "qwen/qwen3-vl-30b-a3b-thinking": (0.29, 1.0, 0.0, 235929),
+    "qwen/qwen3-vl-8b-instruct": (0.25, 0.75, 0.12, 235929),
+    "qwen/qwen3.5-27b": (0.25, 2.0, 0.0, 235929),
+    "qwen/qwen3.5-35b-a3b": (0.14, 1.0, 0.05, 81920),
+    "qwen/qwen3.5-397b-a17b": (0.45, 3.0, 0.22, 81920),
+    "qwen/qwen3.5-9b": (0.1, 0.15, 0.0, 81920),
+    "qwen/qwen3.6-27b": (0.3, 3.2, 0.0, 235929),
+    "qwen/qwen3.6-35b-a3b": (0.1, 0.95, 0.1, 65536),
+    "qwen/qwen3.8-27b": (0.09, 2.2, 0.09, 65536),
+    "qwen/qwen3.8-27b:free": (0.0, 0.0, 0.0, 235929),
+    "sao10k/l3-lunaris-8b": (0.04, 0.05, 0.0, 7372),
+    "sao10k/l3.3-euryale-70b": (0.65, 0.75, 0.0, 16384),
+    "stepfun/step-3.7-flash": (0.2, 1.15, 0.04, 256000),
+    "tencent/hunyuan-a13b-instruct": (0.14, 0.57, 0.0, 117964),
+    "tencent/hy-mt2-30b-a3b": (0.07, 0.3, 0.0, 4096),
+    "tencent/hy-mt2-7b": (0.07, 0.3, 0.0, 4096),
+    "tencent/hy3": (0.13, 0.53, 0.03, 131072),
+    "thedrummer/cydonia-24b-v4.1": (0.3, 0.5, 0.15, 117964),
+    "thedrummer/skyfall-36b-v2": (0.55, 0.8, 0.25, 29491),
+    "thedrummer/unslopnemo-12b": (0.4, 0.4, 0.0, 819200),
+    "undi95/remm-slerp-l2-13b": (0.35, 0.65, 0.0, 5529),
+    "xiaomi/mimo-v2.5": (0.4, 2.0, 0.08, 65536),
+    "xiaomi/mimo-v2.6-flash": (0.12, 0.28, 0.01, 943718),
+    "xiaomi/mimo-v2.6-pro": (0.43, 0.87, 0.0, 943718),
+    "z-ai/glm-4.6": (0.43, 1.75, 0.08, 16384),
+    "z-ai/glm-4.7": (0.4, 1.75, 0.08, 131072),
+    "z-ai/glm-4.7-flash": (0.06, 0.4, 0.01, 16384),
+    "z-ai/glm-5.2": (0.17, 3.07, 0.2, 943718),
+    "z-ai/glm-5.3": (0.13, 2.99, 0.15, 943718),
+    "z-ai/glm-5.3-flash": (0.03, 0.93, 0.01, 943718),
+}
+# Output default for an OpenRouter agent that leaves max_tokens empty, capped at the slug's max output (AST-1955).
+OPENROUTER_DEFAULT_MAX_TOKENS = 16000
+# Allowed LLM_MODEL_CONFIG `routing` values (AST-1963). The model's routing — not its server id — decides
+# whether a call goes through OpenRouter (provider object, platform cost lookup).
+LLM_MODEL_ROUTING_TYPES = ("direct", "openrouter")
+
+
+# ---------------------------------------------------------------------------
+# LLM_MODEL_CONFIG — what an agent row picks (AST-1851). One model id per vendor SKU (AST-1955);
+# dict order = UI order. Adding a model is a config edit only.
+#   label               — picker label
+#   server              — LLM_SERVER_CONFIG id
+#   routing             — LLM_MODEL_ROUTING_TYPES value: "openrouter" = billed cost is looked up on the
+#                         platform per call (AST-1963); "direct" = catalog price only
+#   sku                 — vendor model string sent as `model`
+#   max_tokens_floor    — int | None; optional catalog minimum merged in resolve_agent_settings
+#   default_max_tokens  — used when the agent row leaves max_tokens empty
+#   tier.max_tokens     — resolved wire budget (agent row or default, then catalog floor if any)
+#   pricing[<sku>]: model_label, cpm_input, cpm_output, cpm_cache_read, cpm_cache_write,
+#     cache_min_tokens (USD per million tokens; cache_write 0 where the vendor does not bill it)
+#   structured_output_capability — optional; overrides the server's value (AST-2172)
+# ---------------------------------------------------------------------------
+LLM_MODEL_CONFIG = {
+    "kimi-k2.6": {
+        "label": "Kimi K2.6",
+        "server": "kimi",
+        "routing": "direct",
+        "sku": "kimi-k2.6",
+        "max_tokens_floor": None,
+        "default_max_tokens": 16000,
+        # Moonshot list price 2026-09 — https://platform.kimi.ai (K2.6: $0.95 in / $4.00 out / $0.16 cache hit)
+        "pricing": {
+            "kimi-k2.6": {
+                "model_label": "Kimi K2.6",
+                "cpm_input": 0.95,
+                "cpm_output": 4.00,
+                "cpm_cache_read": 0.16,
+                "cpm_cache_write": 0.0,
+                "cache_min_tokens": 0,
             },
-            BRAIN_MEDIUM: {
-                "vendor_model": "deepseek-v4-pro",
-                "thinking": False,
-                "reasoning_effort": None,
+        },
+    },
+    # AGENT_CONFIG stays the Anthropic pricing source (send_to_anthropic prices by alias key).
+    "claude-haiku-4-5": {
+        "label": "Claude Haiku 4.5",
+        "server": "anthropic",
+        "routing": "direct",
+        "sku": "claude-haiku-4-5",
+        "max_tokens_floor": None,
+        "default_max_tokens": AGENT_CONFIG["claude-haiku-4-5"]["default_max_tokens"],
+        "pricing": {"claude-haiku-4-5": AGENT_CONFIG["claude-haiku-4-5"]},
+    },
+    "claude-sonnet-4-6": {
+        "label": "Claude Sonnet 4.6",
+        "server": "anthropic",
+        "routing": "direct",
+        "sku": "claude-sonnet-4-6",
+        "max_tokens_floor": None,
+        "default_max_tokens": AGENT_CONFIG["claude-sonnet-4-6"]["default_max_tokens"],
+        "pricing": {"claude-sonnet-4-6": AGENT_CONFIG["claude-sonnet-4-6"]},
+    },
+    "claude-opus-4-6": {
+        "label": "Claude Opus 4.6",
+        "server": "anthropic",
+        "routing": "direct",
+        "sku": "claude-opus-4-6",
+        "max_tokens_floor": None,
+        "default_max_tokens": AGENT_CONFIG["claude-opus-4-6"]["default_max_tokens"],
+        "pricing": {"claude-opus-4-6": AGENT_CONFIG["claude-opus-4-6"]},
+    },
+    # https://api-docs.deepseek.com/quick_start/pricing — snapshot 2026-06-03
+    "deepseek-v4-flash": {
+        "label": "DeepSeek V4 Flash",
+        "server": "deepseek",
+        "routing": "direct",
+        "sku": "deepseek-v4-flash",
+        "max_tokens_floor": None,
+        "default_max_tokens": 8192,
+        "pricing": {
+            "deepseek-v4-flash": {
+                "model_label": "DeepSeek V4 Flash",
+                "cpm_input": 0.14,
+                "cpm_output": 0.28,
+                "cpm_cache_read": 0.0028,
+                "cpm_cache_write": 0.0,
+                "cache_min_tokens": 0,
             },
-            BRAIN_BIG: {
-                "vendor_model": "deepseek-v4-pro",
-                "thinking": False,
-                "reasoning_effort": "max",
-                "max_tokens": 384000,  # AST-1391: hop output floor; not the shared v4-pro SKU default
+        },
+    },
+    "deepseek-v4-pro": {
+        "label": "DeepSeek V4 Pro",
+        "server": "deepseek",
+        "routing": "direct",
+        "sku": "deepseek-v4-pro",
+        "max_tokens_floor": None,
+        "default_max_tokens": 16000,
+        "pricing": {
+            "deepseek-v4-pro": {
+                "model_label": "DeepSeek V4 Pro",
+                "cpm_input": 0.435,
+                "cpm_output": 0.87,
+                "cpm_cache_read": 3.625,
+                "cpm_cache_write": 0.0,
+                "cache_min_tokens": 0,
             },
         },
     },
 }
+
+
+# Per-slug structured-output capability; slugs not listed inherit the server's None.
+# Provisional — unverified, Susan checks on staging (AST-2177: spike not run). These are the models the
+# three graders run on (Grace / Lucy: qwen, Kent: gpt-oss), kept selectable while "requires structured output" is on.
+OPENROUTER_STRUCTURED_OUTPUT_OVERRIDES: Dict[str, Optional[str]] = {
+    "openai/gpt-oss-120b": "advisory",
+    "qwen/qwen3-235b-a22b-2507": "advisory",
+}
+
+
+def _build_openrouter_models() -> None:
+    """Append one LLM_MODEL_CONFIG entry per OPENROUTER_MODEL_TABLE row (AST-1938, AST-1955). Model id,
+    label, SKU and pricing key are all the slug; the output default is min(16000, the slug's max output)."""
+    for slug, (cpm_in, cpm_out, cpm_cache, max_out) in OPENROUTER_MODEL_TABLE.items():
+        LLM_MODEL_CONFIG[slug] = {
+            "label": slug,
+            "server": "openrouter",
+            "routing": "openrouter",
+            "sku": slug,
+            "max_tokens_floor": None,
+            "default_max_tokens": min(OPENROUTER_DEFAULT_MAX_TOKENS, max_out),
+            "pricing": {
+                slug: {
+                    "model_label": slug,
+                    "cpm_input": cpm_in,
+                    "cpm_output": cpm_out,
+                    "cpm_cache_read": cpm_cache,
+                    "cpm_cache_write": 0.0,
+                    "cache_min_tokens": 0,
+                },
+            },
+            **({"structured_output_capability": OPENROUTER_STRUCTURED_OUTPUT_OVERRIDES[slug]} if slug in OPENROUTER_STRUCTURED_OUTPUT_OVERRIDES else {}),
+        }
+
+
+_build_openrouter_models()
+
+
+def get_llm_server(server_id: str) -> Dict[str, Any]:
+    """Server catalog entry. Raises ValueError if unknown."""
+    s = LLM_SERVER_CONFIG.get(server_id)
+    if not s:
+        raise ValueError(f"Unknown LLM server {server_id!r}. Valid: {list(LLM_SERVER_CONFIG)}")
+    return s
+
+
+def get_llm_model(model_id: str) -> Dict[str, Any]:
+    """Model catalog entry. Raises ValueError if unknown."""
+    m = LLM_MODEL_CONFIG.get(model_id)
+    if not m:
+        raise ValueError(f"Unknown LLM model {model_id!r}. Valid: {list(LLM_MODEL_CONFIG)}")
+    return m
+
+
+def get_structured_output_capability(model_id: str) -> Optional[str]:
+    """Forced-tool schema support for a model: its own override, else its server's (AST-2172).
+    "enforced" | "advisory" | None. Raises ValueError on an unknown model."""
+    m = get_llm_model(model_id)
+    if "structured_output_capability" in m:
+        return m["structured_output_capability"]
+    return get_llm_server(m["server"])["structured_output_capability"]
+
+
+def get_model_routing(server_id: str, sku: str) -> str:
+    """Routing type for a timesheet row's (server id, SKU) — the two values the row carries (AST-1963).
+    Raises ValueError when no model has that server and SKU."""
+    for m in LLM_MODEL_CONFIG.values():
+        if m["server"] == server_id and m["sku"] == sku:
+            return m["routing"]
+    raise ValueError(f"No LLM model for server {server_id!r} and SKU {sku!r}")
+
+
+def get_sku_pricing(sku: str, server_id: Optional[str] = None) -> Dict[str, Any]:
+    """Pricing row for a vendor SKU; server_id narrows the search. Raises on unknown or ambiguous SKU."""
+    hits = [
+        m["pricing"][sku]
+        for m in LLM_MODEL_CONFIG.values()
+        if sku in m["pricing"] and (server_id is None or m["server"] == server_id)
+    ]
+    if not hits:
+        raise ValueError(f"Unknown SKU {sku!r} for pricing (server={server_id!r})")
+    if len(hits) > 1:
+        raise ValueError(f"SKU {sku!r} is priced on more than one server — pass server_id")
+    return hits[0]
+
+
+def resolve_agent_settings(model_id: str, agent: Dict[str, Any]) -> Dict[str, Any]:
+    """model id + the agent row's plain settings → server, SKU, pricing and the tier a call sends (AST-1955).
+    Settings pass through as stored; an empty one comes back None and is not sent. Nothing is derived or checked."""
+    m = get_llm_model(model_id)
+    provider = None
+    if m["routing"] == "openrouter":
+        # Provider routing object from the agent row; empty keys omitted, no host pin.
+        provider = {k: v for k, v in (
+            ("quantizations", [agent["quantization"]] if agent.get("quantization") else None),
+            ("allow_fallbacks", agent.get("provider_allow_fallbacks")),
+            ("only", agent.get("provider_only") or None),
+            ("ignore", agent.get("provider_ignore") or None),
+            ("sort", agent.get("provider_sort") or None),
+        ) if v is not None} or None
+    row_max = agent.get("max_tokens")
+    max_tokens = (
+        int(row_max) if row_max is not None else int(m["default_max_tokens"])
+    )
+    floor = m.get("max_tokens_floor")
+    if floor is not None:
+        max_tokens = max(max_tokens, int(floor))
+    tier = {
+        "sku": m["sku"],
+        "max_tokens": max_tokens,
+        "max_tokens_floor": m["max_tokens_floor"],
+        "default_max_tokens": m["default_max_tokens"],
+        "temperature": agent.get("temperature"),
+        "reasoning_effort": agent.get("reasoning_effort") or None,
+        "provider": provider,
+    }
+    return {
+        "model_id": model_id,
+        "server_id": m["server"],
+        "server": get_llm_server(m["server"]),
+        "sku": m["sku"],
+        "tier": tier,
+        "pricing": m["pricing"][m["sku"]],
+    }
+
 
 # PROVIDER_BALANCE_REFUSAL — LLM billing/credit exhaustion (AST-897).
 # Used by utils.llm_external classifiers and core state-hold gates.
@@ -5046,6 +6426,20 @@ PROVIDER_BALANCE_REFUSAL = {
         "out of credit",
         "payment required",
     ),
+}
+
+# PROVIDER_RATE_LIMIT — 429 still refused after the server's retries (AST-2010).
+# Substrings are lower-case; "error code: 429" is the SDK's error prefix, so the host-probe string matches too.
+PROVIDER_RATE_LIMIT = {
+    "failure_class": "provider_rate_limit",
+    "http_status_codes": (429,),
+    "message_substrings": ("error code: 429", "rate_limit_error"),
+}
+
+# PROVIDER_PROBE_FAILURE — per-batch host probe failed for any reason but an exhausted 429 (AST-2098).
+# Entity state is held and the run stops; the next dispatch round mints a new batch id and probes again.
+PROVIDER_PROBE_FAILURE = {
+    "failure_class": "provider_probe_failure",
 }
 
 # PROVIDER_CALL_BUDGET — per-call LLM wall time (AST-1189 / Archie: 10 minutes).
@@ -5080,124 +6474,25 @@ PROVIDER_EMPTY_RESPONSE = {
     ),
 }
 
-# Vendor_model strings aligned with tier_map["deepseek"] (also DEEPSEEK cost_math / AST-493).
-DEEPSEEK_MODEL_PRICING = {
-    "deepseek-v4-flash": {
-        "model_label": "DeepSeek V4 Flash",
-        "cpm_cache_read": 0.0028,
-        "cpm_input": 0.14,
-        "cpm_cache_write": 0.0,
-        "cpm_output": 0.28,
-        "default_temperature": 1.0,
-        "default_max_tokens": 8192,
-        "cache_min_tokens": 0,
-    },
-    "deepseek-v4-pro": {
-        "model_label": "DeepSeek V4 Pro",
-        "cpm_cache_read": 3.625,
-        "cpm_input": 0.435,
-        "cpm_cache_write": 0.0,
-        "cpm_output": 0.87,
-        "default_temperature": 1.0,
-        "default_max_tokens": 16000,
-        "cache_min_tokens": 0,
-    },
-}
-
-
-def get_active_llm_provider() -> str:
-    """Return configured LLM vendor key (literal in LLM_PROVIDER_CONFIG)."""
-    p = LLM_PROVIDER_CONFIG["active_provider"]
-    if not isinstance(p, str) or not p.strip():
-        raise ValueError("LLM_PROVIDER_CONFIG['active_provider'] is invalid")
-    return p.strip()
-
-
-def validate_allowed_brain_setting(value: str) -> None:
-    if value not in LLM_PROVIDER_CONFIG["brain_settings"]:
-        raise ValueError(
-            f"Invalid brain_setting {value!r}. Allowed: {list(LLM_PROVIDER_CONFIG['brain_settings'])}"
-        )
-
-
-def resolve_brain_setting_to_anthropic_agent_key(brain_setting: str) -> str:
-    validate_allowed_brain_setting(brain_setting)
-    key = (
-        LLM_PROVIDER_CONFIG["tier_map"]
-        .get("anthropic", {})
-        .get(brain_setting, {})
-        .get("agent_config_key")
-    )
-    if not key or key not in AGENT_CONFIG:
-        raise ValueError(f"No Anthropic tier mapping for brain_setting {brain_setting!r}")
-    return str(key)
-
-
-def resolve_brain_setting_to_deepseek_tier_meta(brain_setting: str) -> Dict[str, Any]:
-    """Vendor model id + reasoning flags for send_to_deepseek (AST-493)."""
-    validate_allowed_brain_setting(brain_setting)
-    tier = dict(LLM_PROVIDER_CONFIG["tier_map"].get("deepseek", {}).get(brain_setting) or {})
-    if not tier.get("vendor_model"):
-        raise ValueError(f"No DeepSeek tier mapping for brain_setting {brain_setting!r}")
-    return tier
-
-
-def deepseek_brain_max_tokens_floor(brain_setting: str) -> Optional[int]:
-    """AST-1391: DeepSeek tier output-token floor, or None when the tier has none."""
-    validate_allowed_brain_setting(brain_setting)
-    raw = (
-        LLM_PROVIDER_CONFIG["tier_map"]
-        .get("deepseek", {})
-        .get(brain_setting, {})
-        .get("max_tokens")
-    )
-    if raw is None:
-        return None
-    return int(raw)
-
-
 def validate_llm_provider_environment() -> None:
-    """Fatal startup parity: require secrets for whichever vendor config selects (no fallback)."""
-    provider = get_active_llm_provider()
-    if provider == "anthropic":
-        _ = os.environ["ANTHROPIC_API_KEY"]
-    elif provider == "deepseek":
-        _ = os.environ["DEEPSEEK_API_KEY"]
-    else:
-        raise ValueError(f"Unknown LLM active_provider {provider!r}")
-
-
-# --- AST-495 helpers (thin layer on AST-492 tier_map; names kept for Admin UI / plans) ---
-def anthropic_agent_key_for_brain_setting(brain_setting: str) -> str:
-    """Tier → Anthropic AGENT_CONFIG key (delegates to resolve_*)."""
-    return resolve_brain_setting_to_anthropic_agent_key(brain_setting)
-
-
-def brain_setting_for_anthropic_agent_key(agent_key: str | None) -> str | None:
-    """Anthropic AGENT_CONFIG key → tier for legacy rows that only persist model_code."""
-    if not agent_key:
-        return None
-    for tier in BRAIN_SETTINGS:
-        if resolve_brain_setting_to_anthropic_agent_key(tier) == agent_key:
-            return tier
-    return None
-
-
-def admin_brain_setting_catalog() -> list[dict[str, Any]]:
-    """Tier rows for GET /api/admin/agents/brain_settings (defaults from AGENT_CONFIG)."""
-    out: list[dict[str, Any]] = []
-    for tier in BRAIN_SETTINGS:
-        mk = resolve_brain_setting_to_anthropic_agent_key(tier)
-        m = get_model(mk)
-        out.append(
-            {
-                "brain_setting": tier,
-                "label": tier,
-                "default_temperature": m["default_temperature"],
-                "default_max_tokens": m["default_max_tokens"],
-            }
-        )
-    return out
+    """Fatal startup check: LLM catalogs are consistent. No provider key comes from env (AST-1851)."""
+    for sid, s in LLM_SERVER_CONFIG.items():
+        if s["protocol"] not in LLM_SERVER_PROTOCOLS:
+            raise ValueError(f"LLM server {sid!r}: protocol {s['protocol']!r} not in {LLM_SERVER_PROTOCOLS}")
+        if s["auth"] not in LLM_SERVER_AUTH_STYLES:
+            raise ValueError(f"LLM server {sid!r}: auth {s['auth']!r} not in {LLM_SERVER_AUTH_STYLES}")
+        if s["protocol"] == "anthropic_compat" and not s["base_url"]:
+            raise ValueError(f"LLM server {sid!r}: anthropic_compat requires base_url")
+        if not isinstance(s.get("probe"), bool):
+            raise ValueError(f"LLM server {sid!r}: probe must be True or False")
+    for mid, m in LLM_MODEL_CONFIG.items():
+        get_llm_server(m["server"])
+        if m.get("routing") not in LLM_MODEL_ROUTING_TYPES:
+            raise ValueError(f"LLM model {mid!r}: routing {m.get('routing')!r} not in {LLM_MODEL_ROUTING_TYPES}")
+        if m["sku"] not in m["pricing"]:
+            raise ValueError(f"LLM model {mid!r}: SKU {m['sku']!r} has no pricing row")
+        # Raises on an unknown or ambiguous SKU for this server (AST-1938).
+        get_sku_pricing(m["sku"], m["server"])
 
 
 # ---------------------------------------------------------------------------
@@ -5208,8 +6503,9 @@ def admin_brain_setting_catalog() -> list[dict[str, Any]]:
 # the group for non-admin users (resolved via nav_admin_only_group_labels).
 # Omit the key (or False) = visible to every authenticated user.
 #
-# Optional item-level "enabled": a CANDIDATE_STATES key (disabled unless at
-# or past that state) or False (permanently disabled stub). Omit = always enabled.
+# Optional item-level "enabled": minimum candidate registry stage (int) —
+# disabled unless candidate_stage(state) >= that floor — or False (permanently
+# disabled stub). Omit = always enabled. Resolved in api_system.py.
 #
 # Group-level candidate-state "visible" is not a NAV_CONFIG key. Do not add it.
 #
@@ -5305,6 +6601,8 @@ UI_CONFIG = {
     # AST-647: shared list-table layout — default frozen data columns (N) and cell truncate length.
     "list_table_frozen_data_columns": 2,
     "list_table_cell_truncate_chars": 30,
+    # AST-1981: job-title display cut (JobTitleText) — longer titles show the first N chars + "…" with a full-title tooltip.
+    "job_title_truncate_chars": 50,
     # AST-366: client + API validation for contact.cover_letter_signature_image (JPEG data URL).
     "cover_letter_signature_image": {
         "max_width_px": 400,
@@ -5313,72 +6611,92 @@ UI_CONFIG = {
     # AST-1534: Agent Ad Hoc import picker — API list cap + sibling viewport row count.
     "adhoc_import_runs_limit": 10,
     "adhoc_import_picker_visible_rows": 5,
+    # AST-2042: theme registry — palette id -> label + whether the profile Theme select offers it.
+    # Each id needs a [data-theme="<id>"] selector on an App.css token block; a Shapes twin (AST-2129)
+    # shares its sibling's block, so Shapes - Light/Dark can never drift from Light/Dark colours.
+    "themes": {
+        "dark": {"label": "Dark", "profile_selectable": True},
+        "light": {"label": "Light", "profile_selectable": True},
+        "shapes_light": {"label": "Shapes - Light", "profile_selectable": True},
+        "shapes_dark": {"label": "Shapes - Dark", "profile_selectable": True},
+    },
+    # Theme applied when a candidate has none stored (and before candidates load).
+    "default_theme": "dark",
 }
+# Default must be a registered, profile-selectable palette (it is what candidates without a stored theme get).
+assert UI_CONFIG["themes"].get(UI_CONFIG["default_theme"], {}).get("profile_selectable"), (
+    "UI_CONFIG default_theme must be a profile_selectable key of UI_CONFIG themes"
+)
 
 # ---------------------------------------------------------------------------
 # The /api/nav_config endpoint in api_system.py resolves item-level enabled
-# gates against the selected candidate's state and omits admin_only groups
-# for non-admins before serving. The frontend renders the resolved response
-# with no additional visibility logic.
+# gates against the selected candidate's registry stage and omits admin_only
+# groups for non-admins before serving. The frontend renders the resolved
+# response with no additional visibility logic.
 #
-# SYNC: Every path here must have a matching route in src/ui/frontend/src/routes.tsx.
-#       If you add/remove/rename a nav item, update routes.tsx to match.
+# SYNC: Every sidebar path here must have a matching route in
+#       src/ui/frontend/src/routes.tsx. Deeplink-only routes (search,
+#       jobs/detail, dropped sidebar items) are not listed here.
 # ---------------------------------------------------------------------------
 # Deeplink-only — not in NAV_CONFIG (no sidebar item).
 # SYNC: src/ui/frontend/src/routes.tsx path "jobs/detail/:jobId"
 JOBS_DETAIL_ROUTE_PREFIX = "/jobs/detail"
+# AST-2144: backend deeplink origin — https:// + os.environ.get(<this name>) + JOBS_DETAIL_ROUTE_PREFIX
+# + "/" + URL-encoded job id (same path as the job report modal's Copy Link). Unset/empty → no links.
+JOBS_DETAIL_ORIGIN_DOMAIN_ENV = "RAILWAY_PUBLIC_DOMAIN"
+assert isinstance(JOBS_DETAIL_ORIGIN_DOMAIN_ENV, str) and JOBS_DETAIL_ORIGIN_DOMAIN_ENV.strip()
+
+# AST-2230: per-group recent-expand defaults for /api/nav_config (shell #4 consumes `recent`).
+NAV_GROUP_RECENT_DEFAULTS = {
+    "Candidate": {"when": "incomplete_profile"},
+    "Criteria": {"when": "never"},
+    "Company": {"when": "any_item_count"},
+    "Job Opportunities": {"when": "any_item_count"},
+}
 
 NAV_CONFIG = [
     {
-        "label": "Jobs",
-        "items": [
-            {"label": "In Review", "path": "/jobs/in_review"},
-            {"label": "Skipped", "path": "/jobs/skipped"},
-            {"label": "Recommended", "path": "/jobs/recommended"},
-            {"label": "Applied", "path": "/jobs/applied"},
-            {"label": "Meteorites", "path": "/jobs/meteorites"},
-            {"label": "Responded", "path": "/jobs/responded", "enabled": False},
-        ],
-    },
-    {
-        "label": "Companies",
-        "items": [
-            {"label": "Watch List", "path": "/companies/watch_list"},
-            {"label": "New List", "path": "/companies/new_list"},
-            {"label": "Inactive List", "path": "/companies/inactive_list"},
-            {"label": "Ignored", "path": "/companies/ignored"},
-            {"label": "Meteorite", "path": "/companies/meteorite_list"},
-            {"label": "Watch History", "path": "/companies/watch_history"},
-        ],
-    },
-    {
-        "label": "Artifacts",
-        "items": [
-            {"label": "Base Resume Content", "path": "/artifacts/base_resume_content"},
-            {"label": "Company Watch Criteria", "path": "/artifacts/company_watch_criteria"},
-            {"label": "Company Search Terms", "path": "/artifacts/company_search_terms"},
-            {"label": "Job List Criteria", "path": "/artifacts/job_list_criteria"},
-            {"label": "Job Description Criteria", "path": "/artifacts/job_description_criteria"},
-            {"label": "Meteorite Criteria", "path": "/artifacts/meteorite_criteria"},
-            {"label": "Get Job Criteria", "path": "/artifacts/get_job_criteria"},
-            {"label": "Do Job Criteria", "path": "/artifacts/do_job_criteria"},
-            {"label": "Like Job Criteria", "path": "/artifacts/like_job_criteria"},
-        ],
-    },
-    {
         "label": "Candidate",
         "items": [
-            {"label": "Intake", "path": "/candidate/intake"},
-            {"label": "Profile", "path": "/candidate/profile"},
-            {"label": "Surfer", "path": "/candidate/surfer"},
-            {"label": "Strengths", "path": "/candidate/strengths"},
-            {"label": "Bio Summary", "path": "/candidate/bio_summary"},
-            {"label": "Priorities", "path": "/candidate/priorities"},
-            {"label": "Deal Breakers", "path": "/candidate/deal_breakers"},
-            {"label": "Backstory", "path": "/candidate/backstory"},
-            {"label": "Ideal Day", "path": "/candidate/ideal_day"},
-            {"label": "Writing Preferences", "path": "/candidate/writing_preferences"},
-            {"label": "Surfer Consent", "path": "/candidate/surfer_consent"},
+            {"label": "Profile", "path": "/candidate/profile", "enabled": 1},
+            {"label": "Bio Summary", "path": "/candidate/bio_summary", "enabled": 2},
+            {"label": "Back Story", "path": "/candidate/backstory", "enabled": 2},
+            {"label": "Ideal Day", "path": "/candidate/ideal_day", "enabled": 2},
+            {"label": "Strengths", "path": "/candidate/strengths", "enabled": 2},
+            {"label": "Priorities", "path": "/candidate/priorities", "enabled": 2},
+            {"label": "Dealbreakers", "path": "/candidate/deal_breakers", "enabled": 2},
+            {"label": "Writing Preferences", "path": "/candidate/writing_preferences", "enabled": 2},
+            {"label": "Base Resume", "path": "/artifacts/base_resume_content", "enabled": 3},
+        ],
+    },
+    {
+        "label": "Criteria",
+        "items": [
+            {"label": "Job Listing Qualify Criteria", "path": "/artifacts/job_list_criteria", "enabled": 4},
+            {"label": "Meteorite Qualify Criteria", "path": "/artifacts/meteorite_criteria", "enabled": 4},
+            {"label": "Job Description Criteria", "path": "/artifacts/job_description_criteria", "enabled": 4},
+            {"label": "Do the Job Criteria", "path": "/artifacts/do_job_criteria", "enabled": 4},
+            {"label": "Get the Job Criteria", "path": "/artifacts/get_job_criteria", "enabled": 4},
+            {"label": "Like the Job Criteria", "path": "/artifacts/like_job_criteria", "enabled": 4},
+        ],
+    },
+    {
+        "label": "Company",
+        "items": [
+            {"label": "Company Discovery Terms", "path": "/artifacts/company_search_terms", "enabled": 4},
+            {"label": "Company Gazing Criteria", "path": "/artifacts/company_watch_criteria", "enabled": 4},
+            {"label": "Gaze Roster", "path": "/companies/watch_list", "enabled": 5},
+            {"label": "Ignore List", "path": "/companies/ignored", "enabled": 5},
+        ],
+    },
+    {
+        "label": "Job Opportunities",
+        "items": [
+            {"label": "Meteorites", "path": "/jobs/meteorites", "enabled": 5},
+            {"label": "Recommendations", "path": "/jobs/review", "enabled": 5},
+            {"label": "Ready to Apply", "path": "/jobs/ready", "enabled": 5},
+            {"label": "Submitted Applications", "path": "/jobs/applied", "enabled": 5},
+            {"label": "Skipped", "path": "/jobs/skipped", "enabled": 5},
         ],
     },
     {
@@ -5401,6 +6719,7 @@ NAV_CONFIG = [
             {"label": "Manage Tasks", "path": "/admin/task_prompts"},
             {"label": "Scheduled Queries", "path": "/admin/scheduled_queries"},
             {"label": "Agent Timesheets", "path": "/admin/agent_timesheets"},
+            {"label": "Task Performance", "path": "/admin/task_performance"},
         ],
     },
     {
@@ -5498,6 +6817,12 @@ DATA_SHAPES = {
                             {"value": "ze/zir", "label": "ze/zir"},
                             {"value": "e/eir", "label": "e/eir"},
                         ]},
+                        # AST-2042: options come from the registry so there is no second theme list.
+                        {"key": "theme", "label": "Theme", "type": "select", "options": [
+                            {"value": tid, "label": t["label"]}
+                            for tid, t in UI_CONFIG["themes"].items()
+                            if t["profile_selectable"]
+                        ]},
                         {"key": "contact.reason_codes", "label": "Reason Codes", "type": "textarea"},
                     ],
                 },
@@ -5510,7 +6835,13 @@ DATA_SHAPES = {
                 {
                     "label": "Cover Letter Signature",
                     "fields": [
-                        {"key": "contact.cover_letter_signature", "label": "Signature text", "type": "textarea"},
+                        {
+                            "key": "contact.cover_letter_signature",
+                            "label": "Signature text",
+                            "type": "textarea",
+                            "help": "Put {$SIGNATURE_IMAGE} on its own line where the signature image should print "
+                                    "(type {$ for a list). Without it, no image appears.",
+                        },
                     ],
                 },
                 {
@@ -5523,6 +6854,31 @@ DATA_SHAPES = {
                             "type": "textarea",
                             "placeholder": COVER_FROM_BLOCK_CONFIG["default_template"],
                             "help": COVER_FROM_BLOCK_CONFIG["authoring_help"],
+                        },
+                    ],
+                },
+                {
+                    # Own sections so each shows as a profile tab with the {$ lookup (tabs use fields[0] only).
+                    "label": "Resume File Name",
+                    "fields": [
+                        {
+                            "key": f"contact.{PAGE_TITLE_CONFIG['resume']['contact_key']}",
+                            "label": PAGE_TITLE_CONFIG["resume"]["label"],
+                            "type": "textarea",
+                            "placeholder": PAGE_TITLE_CONFIG["resume"]["default"],
+                            "help": PAGE_TITLE_CONFIG["help"],
+                        },
+                    ],
+                },
+                {
+                    "label": "Cover Letter File Name",
+                    "fields": [
+                        {
+                            "key": f"contact.{PAGE_TITLE_CONFIG['cover']['contact_key']}",
+                            "label": PAGE_TITLE_CONFIG["cover"]["label"],
+                            "type": "textarea",
+                            "placeholder": PAGE_TITLE_CONFIG["cover"]["default"],
+                            "help": PAGE_TITLE_CONFIG["help"],
                         },
                     ],
                 },
@@ -5572,6 +6928,7 @@ DATA_SHAPES = {
             # Keys match BUILD_CONFIG["artifact_shapes"]["cover_letter"] + normalize_cover_letter_artifact.
             "cover_letter": [
                 {"key": "Subject", "label": "Subject", "type": "str"},
+                {"key": "Salutation", "label": "Salutation", "type": "str"},
                 {"key": "Letter", "label": "Letter", "type": "str"},
                 {"key": "signature", "label": "Signature", "type": "str"},
             ],
@@ -5758,6 +7115,19 @@ BUILD_CONFIG = {
         "#2b2b2b",
         "#111111",
     ],
+    # Display names for the swatch tooltips ("Name (#hex)"); keyed by the palette hex, same case.
+    "accent_palette_names": {
+        "#1a1a2e": "Midnight",
+        "#16213e": "Navy Ink",
+        "#0f3460": "Deep Cobalt",
+        "#1e3a5f": "Denim",
+        "#2d4a3e": "Pine",
+        "#3c2c6e": "Indigo",
+        "#4a3728": "Espresso",
+        "#3d2b3d": "Aubergine",
+        "#2b2b2b": "Charcoal",
+        "#111111": "Onyx",
+    },
     # Keys align to DATA_SHAPES["candidates"]["detail"]["base_resume_structure"]
     # keys and TASK_CONFIG["craft_resume_base"] field names (professional_summary
     # not "summary"; core_competencies not "competencies"). Cover keys mirror
@@ -5872,6 +7242,7 @@ BUILD_CONFIG = {
         },
         "cover_letter": {
             "Subject": {"type": "str", "required": True},
+            "Salutation": {"type": "str", "required": False},
             "Letter": {"type": "str", "required": True},
             "signature": {"type": "str", "required": False},
         },
@@ -5896,6 +7267,23 @@ BUILD_CONFIG = {
     "cover_letter_artifact_chain": {
         "first_task_key": "draft_cover_letter",
     },
+    # SomersetCover body layout (session + job cover HTML). Read by builder._emit_somerset_cover_html_document.
+    "cover_letter_layout": {
+        "body_line_height": 1.4,  # body, .cover-letter, letter paragraphs, lists
+        "signoff_line_height": 1.5,  # closing + signature block
+        "paragraph_indent_em": 0,  # first-line indent (0 = none)
+        # Space after each paragraph / list / salutation = one blank line: 15px text x 1.4 line height = 21px.
+        "paragraph_gap_pt": 15.75,
+        "list_indent_em": 3.5,  # bullet / numbered list left padding
+        # Header = candidate name, rule, From block. Values mirror the resume header (h1 name / .contact line).
+        "name_font_size_px": 33,
+        "name_letter_spacing_px": -0.5,
+        "name_line_height": 1.1,
+        "from_font_size_px": 13,
+        "from_line_height": 1.5,
+        "name_rule_gap_px": 2,  # name text -> rule
+        "from_gap_px": 3,  # rule -> contact line
+    },
     # AST-1024: session cover field spine (Admin API + form); not job artifact_shapes.
     "session_cover_letter": {
         "document_title": "SomersetCover",
@@ -5906,6 +7294,7 @@ BUILD_CONFIG = {
             "letter_date": {"required": True},
             "to_block": {"required": False},
             "subject": {"required": False},
+            "salutation": {"required": False},
             "letter": {"required": True},
             "signoff_closing": {"required": True},
             "signature": {"required": True},
@@ -5917,11 +7306,13 @@ BUILD_CONFIG = {
         # Normalized job cover keys → session_cover_letter field keys
         "artifact_to_fields": {
             "re_line": "subject",
+            "salutation": "salutation",
             "body": "letter",
             "signature": "signature",
         },
-        # Session fields job artifacts do not store — always "" for job Print Cover Letter
-        "unset_fields": ("from_block", "letter_date", "to_block", "signoff_closing"),
+        # Session fields job artifacts do not store — always "" for job Print Cover Letter.
+        # (letter_date is not stored either, but the builder fills it with the print-day date.)
+        "unset_fields": ("from_block", "to_block", "signoff_closing"),
     },
     # AST-1125: cover HTML render tokens (NOT TOKEN_SOURCES / resolve_tokens).
     # Emit (AST-1126) reads this contract; resume builders must ignore it.
@@ -5939,6 +7330,20 @@ BUILD_CONFIG = {
     },
 }
 
+
+# Per-field `{$` lookup lists for the profile / artifact / session edit screens (served on /api/ui_config).
+# Key = field id the UI derives: profile field path, "<shapes_key>.<field key>", or "session_cover_letter.<field>".
+# Only tokens that actually resolve in that field belong here (prompt tokens do NOT resolve on these screens).
+_COVER_RENDER_TOKEN_IDS = tuple(BUILD_CONFIG["cover_letter_render_tokens"])
+FIELD_TOKEN_LOOKUP = {
+    "contact.cover_letter_from_block": COVER_FROM_BLOCK_CONFIG["allowed_token_ids"],
+    "contact.cover_letter_signature": _COVER_RENDER_TOKEN_IDS,
+    "cover_letter.signature": _COVER_RENDER_TOKEN_IDS,
+    "session_cover_letter.from_block": COVER_FROM_BLOCK_CONFIG["allowed_token_ids"],
+    "session_cover_letter.signature": _COVER_RENDER_TOKEN_IDS,
+    "contact.resume_title_template": PAGE_TITLE_CONFIG["tokens"],
+    "contact.cover_letter_title_template": PAGE_TITLE_CONFIG["tokens"],
+}
 
 # AST-1573 / AST-1575 / AST-1590: authoritative artifact registry (patt.artifact.manage-catalog register half).
 # Key = entity._data path. Pilot + job editable keys.
@@ -5972,6 +7377,14 @@ ARTIFACT_CONFIG = {
         "candidate_scoped": True,
         # Name into BUILD_CONFIG["artifact_shapes"]["cover_letter"] (JAR shapes_key).
         "body_shape": "cover_letter",
+        "ingestion_owner": "tracker",
+    },
+    "job.artifacts.job_resume_structure": {
+        "entity_type": "job",
+        "candidate_scoped": True,
+        # AST-2081: per-job resume structure; same structure dict contract as candidate.artifacts.resume_structure.
+        "body_shape": "resume_structure",
+        # Tracker owns first-row ingestion (job resume editor PUT); absent row → job inherits the candidate's.
         "ingestion_owner": "tracker",
     },
     "candidate.context.strengths": {
@@ -6037,6 +7450,7 @@ assert set(ARTIFACT_CONFIG.keys()) == {
     "candidate.artifacts.resume_structure",
     "job.artifacts.job_resume",
     "job.artifacts.cover_letter",
+    "job.artifacts.job_resume_structure",
     "candidate.context.strengths",
     "candidate.context.priorities",
     "candidate.context.deal_breakers",
@@ -6045,6 +7459,9 @@ assert set(ARTIFACT_CONFIG.keys()) == {
     "candidate.context.ideal_day",
     "candidate.context.writing_preferences",
 }
+# AST-2206: every context command acts on a registered artifact (registry defined above CONTACT_CONFIG).
+for _ctx_suffix, _ctx_meta in CONTACT_CONTEXT_COMMAND_CONFIG.items():
+    assert _ctx_meta["artifact_key"] in ARTIFACT_CONFIG, _ctx_suffix
 # Sibling job blob keys stay out of the catalog (parent AC / AST-1590 AC2 / AST-1678 AC3).
 for _sibling in (
     "notes",
@@ -6124,6 +7541,20 @@ assert _cl["body_shape"] == "cover_letter"
 assert _cl["body_shape"] in BUILD_CONFIG["artifact_shapes"]
 assert _cl["ingestion_owner"] == "tracker"
 assert set(_cl.keys()) == {
+    "entity_type",
+    "candidate_scoped",
+    "body_shape",
+    "ingestion_owner",
+}
+
+_jrs = ARTIFACT_CONFIG["job.artifacts.job_resume_structure"]
+assert _jrs["entity_type"] == "job"
+assert _jrs["entity_type"] in ENTITY_TYPES
+assert _jrs["candidate_scoped"] is True
+assert _jrs["body_shape"] == "resume_structure"
+assert _jrs["body_shape"] in BUILD_CONFIG["artifact_shapes"]
+assert _jrs["ingestion_owner"] == "tracker"
+assert set(_jrs.keys()) == {
     "entity_type",
     "candidate_scoped",
     "body_shape",
@@ -6297,7 +7728,7 @@ def is_valid_job_batch_claim_state(state: str) -> bool:
     s = (state or "").strip()
     if not s:
         return False
-    if s in JOB_STATES:
+    if is_registered_state(JOB_STATES, s):
         return True
     if legacy_build_artifacts_hop(s) is not None:
         return True
@@ -6308,17 +7739,17 @@ def is_valid_job_batch_claim_state(state: str) -> bool:
 
 
 def is_valid_candidate_batch_claim_state(state: str) -> bool:
-    """True for CANDIDATE_STATES keys and REQUESTED_ARTIFACTS.<hop> runtime labels (claim + persist)."""
+    """True for CANDIDATE_STATES keys and <stage_trigger>.<hop> runtime labels (claim + persist)."""
     s = (state or "").strip()
     if not s:
         return False
-    if s in CANDIDATE_STATES:
+    if is_registered_state(CANDIDATE_STATES, s):
         return True
     parsed = parse_dispatch_hop_label(s)
     if parsed is None:
         return False
-    stage_trigger = CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["trigger_state"]
-    return parsed[0] == stage_trigger
+    stage_triggers = {e["trigger_state"] for e in CANDIDATE_STAGE_DISPATCH.values()}
+    return parsed[0] in stage_triggers
 
 
 def dispatch_hop_label(trigger_state: str, completed_task_key: str) -> str:
@@ -6431,7 +7862,7 @@ parse_resume_artifact_hop = legacy_build_artifacts_hop
 
 def is_build_artifacts_in_progress(state: str) -> bool:
     st = (state or "").strip()
-    if st in (BUILD_ARTIFACTS_BASE_STATE, ERROR_BUILD_ARTIFACTS_STATE):
+    if st == BUILD_ARTIFACTS_BASE_STATE or st in BUILD_ARTIFACTS_CHAIN_ERROR_STATES:
         return True
     return st.startswith(LEGACY_BUILD_ARTIFACTS_PREFIX)
 
@@ -6503,7 +7934,7 @@ for _alias_key, _alias_cfg in TASK_CONFIG.items():
         for _outcome_key in ("pass_state", "fail_state", "error_state"):
             _outcome = (_alias_cfg or {}).get(_outcome_key)
             if isinstance(_outcome, str) and _outcome.strip():
-                assert _outcome.strip() in JOB_STATES, (
+                assert is_registered_state(JOB_STATES, _outcome.strip()), (
                     f"TASK_CONFIG[{_alias_key!r}].{_outcome_key}={_outcome!r} "
                     f"is not a JOB_STATES key"
                 )
@@ -6545,7 +7976,85 @@ RESUME_STRUCTURE_BODY_FORMATS = (
     "dual_column",
     "indented_bold_single",
     "experience_detail",
+    "line",
 )
+# AST-2081: editor metadata per body format — display label, tooltip description (settings + rules),
+# and the BUILD_CONFIG["default_style"]["fonts"] stack key the builder prints that format in.
+# Single SoT for format text/fonts; the frontend reads these from the structure catalog payload.
+RESUME_STRUCTURE_BODY_FORMAT_DETAILS = {
+    "free_prose": {
+        "label": "Prose",
+        "description": (
+            "Paragraphs of body text. A blank line starts a new paragraph; with no blank lines, "
+            "each line prints as its own paragraph. <i> and <b> emphasis allowed."
+        ),
+        "font_stack": "body_stack",
+    },
+    "bullet_list": {
+        "label": "Bullet List",
+        "description": "One bullet per line. Blank lines are skipped. <i> and <b> emphasis allowed.",
+        "font_stack": "body_stack",
+    },
+    "word_cloud": {
+        "label": "Word Cloud",
+        "description": (
+            "Terms print uppercase in the list font and wrap between terms. "
+            "Separate terms with | (prints as •)."
+        ),
+        "font_stack": "list_stack",
+    },
+    "dual_column": {
+        "label": "Dual Column",
+        "description": (
+            "Skills grid in the list font. One category per line as \"Category: items\"; "
+            "a line without \": \" prints as items only."
+        ),
+        "font_stack": "list_stack",
+    },
+    "indented_bold_single": {
+        "label": "Indented Bold",
+        "description": (
+            "One entry per line. Text before the first | prints bold and the rest follows after •; "
+            "a line without | prints fully bold."
+        ),
+        "font_stack": "body_stack",
+    },
+    "experience_detail": {
+        "label": "Experience",
+        "description": (
+            "Roles edited as job entries (company, title, dates, location, accomplishments). "
+            "Experience section only; its format cannot change."
+        ),
+        "font_stack": "body_stack",
+    },
+    "line": {
+        "label": "Line",
+        "description": "A single line of text. Line breaks are collapsed into spaces.",
+        "font_stack": "body_stack",
+    },
+}
+assert set(RESUME_STRUCTURE_BODY_FORMAT_DETAILS) == set(RESUME_STRUCTURE_BODY_FORMATS)
+assert all(
+    d["font_stack"] in BUILD_CONFIG["default_style"]["fonts"]
+    for d in RESUME_STRUCTURE_BODY_FORMAT_DETAILS.values()
+)
+# Resume header layout: stored as the `format` of the four contact sections (the editor keeps them in
+# sync; the builder reads candidate_name). Unset reads as the default. Separate from the body formats above.
+RESUME_STRUCTURE_HEADER_FORMATS = ("one_line", "two_line")
+RESUME_STRUCTURE_HEADER_FORMAT_DEFAULT = "one_line"
+RESUME_STRUCTURE_HEADER_FORMAT_DETAILS = {
+    "one_line": {
+        "label": "One line",
+        "description": "Name and title share the first line (Name • Title); long titles wrap.",
+        "font_stack": "heading_stack",
+    },
+    "two_line": {
+        "label": "Two line",
+        "description": "Name on the first line; the job title on its own second line in the section-header style.",
+        "font_stack": "heading_stack",
+    },
+}
+assert set(RESUME_STRUCTURE_HEADER_FORMAT_DETAILS) == set(RESUME_STRUCTURE_HEADER_FORMATS)
 # AST-1474: operator page-break policies on structure sections (print CSS is AST-1475).
 RESUME_STRUCTURE_PAGE_BREAK_POLICIES = (
     "normal",
@@ -6558,6 +8067,8 @@ RESUME_STRUCTURE_PAGE_BREAK_POLICY_LABELS = {
     "page_break_before": "New page before",
     "avoid_split": "Keep block together",
 }
+# AST-2081: flow-state label for enabled=False (shown alongside the page-break policy labels).
+RESUME_STRUCTURE_HIDDEN_FLOW_LABEL = "Hidden"
 RESUME_STRUCTURE_PAGE_BREAK_DEFAULT_BY_ID = {
     sid: RESUME_STRUCTURE_PAGE_BREAK_POLICY_DEFAULT
     for sid in RESUME_STRUCTURE_KNOWN_SECTION_IDS
@@ -6972,35 +8483,21 @@ CALLER_HOP_TOKEN_NAMES: tuple[str, ...] = tuple(
 
 def stringify_response_schema(task_key: str) -> str:
     """Return the response_schema as a nested envelope for prompt insertion.
-    For encoded output types, agent_payload is shown as a compact string example.
+    Structured-output (grader) types show agent_performance only — rows go through the forced tool (AST-2172).
     For all others: { agent_performance: {...}, agent_payload: {...task fields...} }"""
     task_cfg = TASK_CONFIG.get(task_key, {})
     schema = task_cfg.get("response_schema")
     if not schema:
         return ""
-    output_type = task_cfg.get("output_type", "")
-    if "_encoded" in output_type:
-        if output_type == "grades_encoded_notes":
-            example = "000|ERC3|MEA4|PGA4|optional notes after grades"
-        elif output_type == "grades_encoded_prefilter_links":
-            example = "000|ERC2|MEA3|PGA2|[13]|[3,6,19]"
-        elif "_meta" in output_type:
-            example = "000|ERC3|MEA4|PGA5|2983982372|Job Title|https://example.com/jobs/123"
-        else:
-            example = "000|ERC2|MEA3|PGA2"
-        payload: object = example
-    else:
-        payload = _schema_to_example(schema)
     # CHAT tasks use concern-capable performance schema; others keep BASE_SCHEMA.
     perf_schema = (
         CONVERSATIONAL_PERFORMANCE_SCHEMA
         if is_conversational_task(task_key)
         else BASE_SCHEMA
     )
-    envelope = {
-        "agent_performance": _schema_to_example(perf_schema),
-        "agent_payload": payload,
-    }
+    envelope = {"agent_performance": _schema_to_example(perf_schema)}
+    if not ASTRAL_CONFIG["output_types"].get(task_cfg.get("output_type", ""), {}).get("structured_output"):
+        envelope["agent_payload"] = _schema_to_example(schema)
     return json.dumps(envelope, indent=2)
 
 
@@ -7085,13 +8582,19 @@ def resolve_tokens(
     parent_task_key: Optional[str] = None,
     parent_caller_summary: Optional[Dict[str, str]] = None,
     warn_on_empty: bool = True,
+    empty_tokens: Optional[list] = None,
 ) -> str:
     """Replace {$TOKEN_NAME} patterns in text using TOKEN_SOURCES registry.
     candidate_data: the parsed candidate_data dict (not the full DB row).
     chain_context: optional str values for tokens with source \"chain\" (e.g. SELECTED_AGENT, CALLER_RESPONSE).
     job_context: optional str values for tokens with source \"job\" (AST-513 artifact prompts).
     warn_on_empty: when False, suppress empty/unresolved token WARNINGs (AST-1779 empty-render probe).
+    empty_tokens: when a list, append each recognized token name whose substituted value is blank
+        (str.strip() == ""), ordered-unique, and suppress the per-token WARNINGs (AST-2000 runtime guard).
     Unrecognized token names (absent from TOKEN_SOURCES) are left as-is for forward-compatibility."""
+    if empty_tokens is not None:
+        warn_on_empty = False
+
     def _replace(match: re.Match) -> str:
         name = match.group(1)
         spec = TOKEN_SOURCES.get(name)
@@ -7163,7 +8666,16 @@ def resolve_tokens(
                 return ""
             return _value_to_str(rubric_criteria_for_token(cid, owner))
         return match.group(0)
-    return _TOKEN_RE.sub(_replace, text)
+
+    def _collect(match: re.Match) -> str:
+        out = _replace(match)
+        name = match.group(1)
+        # Unrecognized names stay literal — not "empty" (forward-compat contract above).
+        if name in TOKEN_SOURCES and not out.strip() and name not in empty_tokens:
+            empty_tokens.append(name)
+        return out
+
+    return _TOKEN_RE.sub(_collect if empty_tokens is not None else _replace, text)
 
 
 def empty_render_for_prompts(
@@ -7180,7 +8692,8 @@ def empty_render_for_prompts(
     ``{"empty_render": bool, "empty_tokens": list[str]}`` — siblings map ``empty_render``
     onto each ``dispatch_task`` list row / AUTO-Run gate (AST-1779 / AST-1766).
 
-    Scores ``source: candidate`` always; scores other ``TOKEN_SOURCES`` ``source`` values
+    Scores ``source: candidate`` and ``source: rubric`` always (rubric rows are
+    candidate-keyed — AST-2092); scores other ``TOKEN_SOURCES`` ``source`` values
     only when that key is present in ``entity_contexts`` (extension seam). Never scores
     ``source: chain``. Non-job entity sources in ``entity_contexts`` resolve without a
     matching ``resolve_tokens`` kwarg today (only ``job_context`` exists) — blank until a
@@ -7204,8 +8717,10 @@ def empty_render_for_prompts(
             source = spec.get("source")
             if source == "chain":
                 continue
-            # Score candidate always; other sources only via entity_contexts seam.
-            if source != "candidate" and source not in contexts:
+            # Score candidate + rubric always (rubric_vector rows are keyed per candidate +
+            # owner task; resolve_tokens reads them off the candidate view's
+            # _astral_candidate_id — AST-2092); other sources only via entity_contexts seam.
+            if source not in ("candidate", "rubric") and source not in contexts:
                 continue
             seen.add(name)
             job_context = contexts.get("job") if source == "job" else None

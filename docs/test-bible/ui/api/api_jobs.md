@@ -139,13 +139,13 @@ After stored-trio lift, `_flatten_grades` derives missing `{jd,do,get,like}_scor
 
 **Parent:** [AST-1446 — When a job is in a Skipped state, make all fields editable](https://linear.app/astralcareermatch/issue/AST-1446/when-a-job-is-in-a-skipped-state-make-all-fields-editable). **Publish:** `origin/sub/AST-1446/AST-1453-persist-skipped-job-field-and-state-edits`.
 
-GET detail attaches `fields_editable` + `legal_next_states` (empty when not skipped). Authenticated `PUT /api/jobs/<id>` persists via `persist_skipped_job_edits` (409 not-skipped / illegal hop / identity collision; 400 empty title/link/state/body; 404 missing). Core contract: **`docs/test-bible/core/tracker.md`**. Form chrome: AST-1454.
+GET detail attaches `fields_editable` + `legal_next_states` (empty when not skipped). Authenticated `PUT /api/jobs/<id>` persists via `persist_skipped_job_edits` (409 not-skipped / unregistered non-`JOB_STATES` target — "not in allowed list" (**AST-1811**: registry keys no longer 409 on this path; see core § AST-1812) / identity collision; 400 empty title/link/state/body; 404 missing). Core contract: **`docs/test-bible/core/tracker.md`**. Form chrome: AST-1454.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
 | GET meta + PUT status map | `src/ui/api/api_jobs.py` | **`TestAst1453SkippedEditMetaAndPut`** |
 
-**Broken / obsolete:** none — additive keys on GET detail; existing story/hydrate suites still hold.
+**Broken / obsolete:** none — additive keys on GET detail; existing story/hydrate suites still hold. **AST-1812:** `test_put_illegal_transition_409` → `test_put_unregistered_state_409`; `_detail_wire` hydrate mock accepts `astral_job_id=` (pre-existing drift vs `origin/dev` `detail()`).
 
 **Integration:** none — no existing jobs detail/persist scenario to revise.
 
@@ -341,5 +341,141 @@ Job detail `related_meteorite`: when reverse `astral_job_id` miss, fall back to 
 | Detail parent + job_link | `src/ui/api/api_jobs.py` | **`TestAst1704JobsDetailParentFields`** |
 
 **Broken / obsolete this pass:** none.
+
+**Integration:** none.
+
+**AST-1872 (pointer):** `GET /api/jobs/<id>` always includes boolean **`can_skip`** from core `job_state_admits_transition(state, "CANDIDATE_SKIPPED")` — **`TestAst1872DetailCanSkip`**. Manifest: **`docs/test-bible/core/tracker.md`** § AST-1872.
+
+---
+
+### AST-1974 · AST-1970
+
+**Parent:** [AST-1970 — Jobs Navigation changes](https://linear.app/astralcareermatch/issue/AST-1970). **Publish:** `origin/sub/AST-1970/AST-1974-jobs-nav`. Backend half of the Jobs re-cut: six lists (Ready, Review, Applied, Processing, Skipped, Meteorites). Processing = complement of `JOBS_PROCESSING_EXCLUDED_STATES` (Ready + Review + Applied + Skipped, import-time disjoint guard). `view=ready|review|processing` replace `in_review|recommended|responded` (default `ready`). Applied repair-on-read loop deleted (single `job.candidate_id`-scoped read). Skip route delegates to core `candidate_skip_job` (releases a held batch claim) and logs one completion info line.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Views + default + retired views | `src/ui/api/api_jobs.py` | `TestJobsRoutes::test_list_ready_review_and_default`, `test_retired_in_review_view_falls_through`, `test_list_processing_*` (3) |
+| Applied single read (supersedes AST-1498 repair) | `src/ui/api/api_jobs.py` | `TestJobsRoutes::test_list_applied_single_scoped_read_no_repair_ast1974` |
+| Skip route → core + one info line / 409 silent | `src/ui/api/api_jobs.py` | `TestJobsRoutes::test_skip_job_*` (4) |
+| Real-SQLite partition / nav counts / skip / AC 5 detail | api_jobs + api_system + tracker + database | **`TestAst1974JobsPartitionRealDb`** |
+| Config state model, nav, manifest, columns | `src/utils/config.py` | [`utils/config.md`](../../utils/config.md) § AST-1974 |
+| Six nav counts | `src/ui/api/api_system.py` | [`api_system.md`](api_system.md) § AST-1974 |
+| Core skip + facades | `src/core/tracker.py` | [`core/tracker.md`](../../core/tracker.md) § AST-1974 |
+| exclude_states + meteorite `job_state` join | `src/data/database.py` | [`data/database/jobs.md`](../../data/database/jobs.md) § AST-1974 |
+| Meteorites list `job_state` | `src/ui/api/api_meteorite.py` | [`api_meteorite.md`](api_meteorite.md) § AST-1974 |
+
+**Broken / obsolete revised this pass:** `test_list_in_review_*` → processing; `test_list_recommended_and_default` → ready/review/default; `test_list_applied_includes_stem_job_null_company_candidate_id_ast1498` → single-read (AC 4 removes the repair by design); skip tests mock `candidate_skip_job`; 13 `test_config.py` tests (`IN_REVIEW_STATES` / `JOBS_IN_REVIEW_UI_SECTIONS` / `RECOMMENDED_JOB_STATES` / meteorite_section / Responded / AST-1808 snapshot exemption for `CANDIDATE_SKIPPED`); `test_api_system.py` nav count path + Jobs stub test; integration `test_candidate_nav_api.py`. Fixture: `_meteorite_schema_ensured` added to `tests/component/ui/conftest.py` + `tests/integration/conftest.py` flag resets.
+
+**Frontend:** none here — `stateUiManifestFixture.ts`, `test_JobsInReview`, `test_JobsRecommended`, `test_StateUiContext`, `test_routes` follow **AST-1975** / **AST-1976**.
+
+## QA test manifest
+
+Pass criterion: every node below green. Narrowed runs only (zero-arg harness carries unrelated pre-existing reds on this tree).
+
+1. **API views / skip / real-DB partition (AC 1–6, 8–10):**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_jobs.py::TestJobsRoutes \
+  tests/component/ui/api/test_api_jobs.py::TestAst1974JobsPartitionRealDb \
+  -q
+```
+
+   Expect only `TestJobsRoutes::test_put_resume_content_persists_via_tracker` red — pre-existing on `origin/dev`, unrelated.
+
+2. **Config (AC 1, 5, 7, manifest contract):**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1974JobsListPartition \
+  tests/component/utils/test_config.py::TestAst479LikePassStates \
+  tests/component/utils/test_config.py::TestAst803FlatBuildArtifactsChainDispatch \
+  tests/component/utils/test_config.py::TestAst874FetchCulturePagesConfig::test_score_gate_and_ui_manifests \
+  tests/component/utils/test_config.py::TestAst898NewRetryQualifyHolding \
+  tests/component/utils/test_config.py::TestAst1339MeteoriteNewRetryQualifyHolding::test_ui_sections_label_no_grade_field \
+  tests/component/utils/test_config.py::TestAst1053MeteoriteGdlJobStates \
+  tests/component/utils/test_config.py::TestAst1057MeteoriteRecommendedSection \
+  tests/component/utils/test_config.py::TestAst1155GradedRetryHoldings \
+  tests/component/utils/test_config.py::TestAst1749JobsMeteoritesNav \
+  tests/component/utils/test_config.py::TestAst1808RetryRegistryPurge::test_prior_snapshot_pinned \
+  tests/component/utils/test_config.py::TestBuildStateUiManifest \
+  -q
+```
+
+3. **Nav counts (AC 1, 10):**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_system.py::TestSystemAuthRoutes \
+  tests/component/ui/api/test_api_system.py::TestSystemNavHelpers \
+  -q
+```
+
+4. **Core skip + data + meteorite list (AC 6, 8, Meteorites `job_state`):**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_tracker.py::TestAst1974CandidateSkipJob \
+  tests/component/data/database/test_jobs.py::TestAst1974ExcludeStatesAndMeteoriteJobState \
+  tests/component/ui/api/test_api_meteorite.py \
+  -q
+```
+
+5. **Integration (revised existing scenario):**
+
+```bash
+./scripts/testing/run_integration_tests.sh tests/integration -q
+```
+
+6. **Greps / builds (AC 4, 7, 9, 11, 12 — backend half):**
+
+```bash
+rg -n "candidate_id=None" src/ui/api/api_jobs.py                                   # expect nothing
+rg -n "jobs/in_review|jobs/recommended|jobs/responded" src/utils/config.py src/ui/api  # expect nothing
+git diff origin/dev -- src/ui/api | rg "^\+.*logger\.info"                         # expect exactly the skip line
+git diff origin/dev -- src/core/tracker.py | rg "^\+.*logger\.info"                # expect nothing
+python -c "import src.utils.config"                                                # exit 0
+```
+
+   AC 11 frontend paths / `npm run build` / `npm run lint` are **AST-1975**.
+
+**Branch locks:** every added line/branch in `tracker.py`, `config.py`, `api_jobs.py`, `api_system.py` covered by the nodes above (checked with `--cov-branch` on the merged tree).
+
+**Known pre-existing (not this ticket):** `tests/component/data/database/test_meteorites.py` fails collection on `origin/dev` (imports `METEORITE_STATES_RETENTION`, removed 2026-09-20) — hence the meteorite join test lives in `test_jobs.py`.
+
+**Bible shasum (after publish):** `git show origin/sub/AST-1970/AST-1974-jobs-nav:docs/test-bible/ui/api/api_jobs.md | shasum` (same command for `utils/config.md`, `ui/api/api_system.md`, `ui/api/api_meteorite.md`, `core/tracker.md`, `data/database/jobs.md`, `integration/README.md`).
+
+### AST-2067 · AST-2043
+
+`GET|PUT /api/jobs/<jid>/artifacts/<job_catalog_key>/{versions,current}`: 404 `{"error": "Not found"}` for a missing job; PUT body 400; a candidate key on the job route → 400 `not job-scoped`; AC7 (a `job_resume` uuid or another job's uuid on the `cover_letter` route → 400, current unchanged); an unexpected error logs one ERROR line (prefixed by the job's `candidate_id`, or `-`) and returns the 500 payload; a 200 PUT logs one completion line.
+
+**New:** **`TestAst2067JobVersionRoutes`** (14; real tracker/data on `sqlite_in_memory`, only `get_job` stubbed; new route lines fully branch-covered). Manifest: [`api_candidate.md`](api_candidate.md) § AST-2067 item 2.
+
+### AST-2081 · AST-2046
+
+`GET /api/jobs/<jid>/resume_structure` returns the shared editor payload for the job's effective structure (hydrated, read-only). `PUT /api/jobs/<jid>/artifacts/job_resume_structure` with body `{"job_resume_structure": {...}}` writes it through `save_job_artifact`. Both return 404 `{"error": "Not found"}` for a missing job. PUT returns 400 when the body is not a dict, and returns 400 with the `ValueError` text and no log for an invalid structure. An unexpected error logs one ERROR line (prefixed by the job's `candidate_id`, or `-`) and returns the 500 payload. Only the PUT logs a completion INFO line (Joan revision: no GET info).
+
+**New:** **`TestAst2081JobResumeStructureRoutes`** (13; real tracker/data on `sqlite_in_memory`; `get_job`, `_candidate_id_for_job`, and `_candidate_data_for_job` stubbed). Covers AC16 (GET equals the candidate payload and writes no row) and AC15/AC18 (PUT on job A shows on A; job B and the candidate are unchanged). New route lines are fully branch-covered. Manifest: [`../../core/tracker.md`](../../core/tracker.md) § AST-2081.
+
+### AST-2133 · AST-2130 (composed read-only JD)
+
+Every list row (`ready` / `review` / `applied` / `processing`) and `GET /api/jobs/<id>` return `job_data.job_description` = `tracker.compose_job_description(job)` on a new dict (stored `job_data` never written). `PUT /api/jobs/<id>` drops `job_description` from the accepted fields: JD-only body → 400 "No valid fields"; title + JD → title persists, `job_data` unchanged.
+
+**New:** **`TestAst2133ComposedJdResponses`** (9; real `web_data` rows on ui `sqlite_in_memory`), **`TestAst2133PutJdReadOnlyE2E`** (1; `seeded_db`, real tracker / data). **Revised:** `TestJobsRoutes::test_list_processing_filters_score_floor`. Manifest: [`../../core/tracker.md`](../../core/tracker.md) § AST-2133.
+
+**Amendment (PR #301, skipped view):** `skipped` rows, real and virtual, drop `job_data` and `state_history` after `_flatten_grades` (`_slim_list_row`), so they carry no composed JD and make no `web_data` read; lifted grades, scores and `virtual_skip` stay. **Revised:** `test_ac7_list_rows_compose_referenced_capture` drops the `skipped` param; `test_ac7_virtual_skip_rows_compose` → `test_skipped_rows_drop_job_data_and_skip_compose` (count unchanged at 9; parametrized cases 4 → 3).
+
+### AST-2232 · AST-2226 (detail enrichment: company, lifecycle, can_apply)
+
+**Parent:** [AST-2226](https://linear.app/astralcareermatch/issue/AST-2226). **Publish:** `origin/sub/AST-2226/AST-2232-agent-name-detail-enrichment-tab-config`.
+
+`GET /api/jobs/<id>` adds `can_apply` (core `job_state_admits_transition` → `CANDIDATE_APPLIED`), `company_name` / `company_website` from `get_company` (null when missing — never short_name fallback), and `discovered_at` / `recommended_at` / `applied_at` via tracker helpers. Keeps `can_skip`. Primary manifest: **`docs/test-bible/core/tracker.md`** § AST-2232.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| AC9–12 detail fields | `src/ui/api/api_jobs.py` `detail` | **`TestAst2232DetailEnrichment`** |
+| Regression can_skip | same | **`TestAst1872DetailCanSkip`** |
+
+**Broken / obsolete:** none beyond config tab asserts owned under tracker/config § AST-2232.
 
 **Integration:** none.

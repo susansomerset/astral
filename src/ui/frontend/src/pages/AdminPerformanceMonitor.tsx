@@ -3,12 +3,10 @@ import { useSearchParams } from "react-router-dom"
 import api from "../lib/api"
 import Time from "../components/Time"
 import { useCandidate } from "../contexts/CandidateContext"
+import { sortCandidatesForSelect } from "../lib/candidateLabel"
 import AdminCandidateFilterControl from "../components/AdminCandidateFilterControl"
 import BatchAgentDataModal from "../components/BatchAgentDataModal"
-import {
-  type AdminCandidateFilterValue,
-  useAdminCandidateFilter,
-} from "../hooks/useAdminCandidateFilter"
+import BatchLogViewer, { type LogEntry } from "../components/BatchLogViewer"
 import { useInPlaceLiveRefresh } from "../hooks/useInPlaceLiveRefresh"
 
 interface LedgerRow {
@@ -26,21 +24,12 @@ interface LedgerRow {
   [key: string]: unknown
 }
 
-interface LogEntry {
-  id: number
-  level: string
-  logger_name: string
-  message: string
-  batch_id: string | null
-  created_at: string
-}
-
 type SortDir = "asc" | "desc"
 const FILTER_KEYS = ["task_key", "candidate_id", "status", "date_from", "date_to"] as const
 const STATUSES = ["RUNNING", "COMPLETED", "FAILED", "INTERRUPTED"]
 const LOG_LEVELS = ["DEBUG", "INFO", "WARNING", "ERROR"] as const
 
-function candidateIdFromParams(sp: URLSearchParams): AdminCandidateFilterValue {
+function candidateIdFromParams(sp: URLSearchParams): string {
   return sp.get("candidate_id") || ""
 }
 
@@ -91,7 +80,7 @@ const COLUMNS = [
 
 
 export default function PerformanceMonitor() {
-  const { selectedId } = useCandidate()
+  const { selectedId, candidates: navCandidates } = useCandidate()
   const [searchParams, setSearchParams] = useSearchParams()
   const [rows, setRows] = useState<LedgerRow[]>([])
   const { loading, beginRefresh, endRefresh } = useInPlaceLiveRefresh()
@@ -106,9 +95,8 @@ export default function PerformanceMonitor() {
   const [agentDataCandidateId, setAgentDataCandidateId] = useState<string | null>(null)
   const userSetDateFrom = useRef(false)
   const userSetDateTo = useRef(false)
-  const initialCandidateDefaultApplied = useRef(false)
 
-  const setCandidateParam = useCallback((next: AdminCandidateFilterValue) => {
+  const setCandidateParam = useCallback((next: string) => {
     setSearchParams(prev => {
       const nextParams = new URLSearchParams(prev)
       if (next) nextParams.set("candidate_id", next)
@@ -117,15 +105,10 @@ export default function PerformanceMonitor() {
     }, { replace: true })
   }, [setSearchParams])
 
-  const urlCandidate = candidateIdFromParams(searchParams)
-  const urlBacked = useMemo(
-    () => ({ value: urlCandidate, setValue: setCandidateParam }),
-    [urlCandidate, setCandidateParam],
-  )
-  const { candidateFilter, setCandidateFilter, syncWithNav, candidates } = useAdminCandidateFilter({
-    urlBacked,
-    urlPresentDisablesSync: true,
-  })
+  // AST-2150: the URL is the only source of the Candidate filter — absent = All; the left nav never writes it.
+  const candidateFilter = candidateIdFromParams(searchParams)
+  const setCandidateFilter = setCandidateParam
+  const candidates = useMemo(() => sortCandidatesForSelect(navCandidates), [navCandidates])
 
   const tz = useMemo(() => {
     const c = candidates.find(x => x.astral_candidate_id === selectedId)
@@ -165,14 +148,6 @@ export default function PerformanceMonitor() {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tz])
-
-  useEffect(() => {
-    if (initialCandidateDefaultApplied.current) return
-    if (searchParams.get("candidate_id")) return
-    if (!syncWithNav || !selectedId) return
-    initialCandidateDefaultApplied.current = true
-    setCandidateParam(selectedId)
-  }, [searchParams, syncWithNav, selectedId, setCandidateParam])
 
   // Distinct values for dropdowns (derived from loaded data)
   const taskOptions = useMemo(() => {
@@ -408,7 +383,7 @@ export default function PerformanceMonitor() {
                             {row.batch_id}
                           </button>
                         </div>
-                        <LogViewer logs={logs} loading={logsLoading} logLevelFilter={logLevelFilter} />
+                        <BatchLogViewer logs={logs} loading={logsLoading} logLevelFilter={logLevelFilter} />
                       </td>
                     </tr>
                   )}
@@ -427,78 +402,6 @@ export default function PerformanceMonitor() {
           setAgentDataCandidateId(null)
         }}
       />
-    </div>
-  )
-}
-
-
-function LogViewer({
-  logs,
-  loading,
-  logLevelFilter,
-}: {
-  logs: LogEntry[]
-  loading: boolean
-  logLevelFilter: string
-}) {
-  const [copied, setCopied] = useState(false)
-
-  const visibleLogs = useMemo(() => {
-    const filtered = !logLevelFilter ? logs : logs.filter(entry => entry.level === logLevelFilter)
-    return [...filtered].sort((a, b) => {
-      const byTime = a.created_at.localeCompare(b.created_at)
-      if (byTime !== 0) return byTime
-      return a.id - b.id
-    })
-  }, [logs, logLevelFilter])
-
-  if (loading) return <div className="dispatch-log-panel"><p className="list-page-status">Loading logs...</p></div>
-  if (logs.length === 0) {
-    return <div className="dispatch-log-panel"><p className="list-page-status">No log entries for this batch.</p></div>
-  }
-  if (visibleLogs.length === 0) {
-    return (
-      <div className="dispatch-log-panel">
-        <p className="list-page-status">{`No '${logLevelFilter}' type log entries for this batch.`}</p>
-      </div>
-    )
-  }
-
-  function copyLogs() {
-    const text = visibleLogs.map(e => `[${e.created_at}] ${e.level} ${e.logger_name}: ${e.message}`).join("\n")
-    navigator.clipboard.writeText(text).then(() => {
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-    })
-  }
-
-  return (
-    <div className="dispatch-log-panel">
-      <div className="dispatch-log-toolbar">
-        <button className="btn secondary" onClick={copyLogs} title="Copy logs to clipboard">
-          {copied ? "✓ Copied" : "⎘ Copy"}
-        </button>
-      </div>
-      <table className="dispatch-log-table">
-        <thead>
-          <tr>
-            <th>Time</th>
-            <th>Level</th>
-            <th>Logger</th>
-            <th>Message</th>
-          </tr>
-        </thead>
-        <tbody>
-          {visibleLogs.map(entry => (
-            <tr key={entry.id} className={entry.level === "ERROR" ? "dispatch-log-error" : entry.level === "WARNING" ? "dispatch-log-warn" : ""}>
-              <td className="dispatch-log-time"><Time value={entry.created_at} /></td>
-              <td className={`dispatch-log-level dispatch-log-level-${entry.level.toLowerCase()}`}>{entry.level}</td>
-              <td className="dispatch-log-logger">{entry.logger_name}</td>
-              <td className="dispatch-log-msg">{entry.message}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
     </div>
   )
 }

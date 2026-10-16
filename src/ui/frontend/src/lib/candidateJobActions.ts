@@ -25,3 +25,12 @@ export async function postSkipJob(astralJobId: string): Promise<void> {
     throw new Error((body as { error?: string }).error || "Skip failed")
   }
 }
+
+/** Start a job's artifact build (RECOMMENDED → BUILD_ARTIFACTS); server enforces legality (409). */
+export async function postGenerateArtifacts(astralJobId: string): Promise<void> {
+  const res = await api(`/api/jobs/${encodeURIComponent(astralJobId)}/generate_artifacts`, { method: "POST" })
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}))
+    throw new Error((body as { error?: string }).error || "Generate failed")
+  }
+}

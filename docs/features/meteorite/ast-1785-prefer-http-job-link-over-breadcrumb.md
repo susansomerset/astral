@@ -1,3 +1,71 @@
+<!-- linear-archive: AST-1785 archived 2026-10-07 -->
+
+## Linear archive (AST-1785)
+
+**Archived:** 2026-10-07  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1785/prefer-http-job-link-over-breadcrumb-at-stage-map-parsing-emails-with  
+**Status at archive:** Archive  
+**Project:** Astral Meteorite  
+**Assignee:** hedy  
+**Priority / estimate:** None / 3  
+**Parent:** AST-1783 — Parsing emails with linked job titles  
+**Blocked by / blocks / related:** parent: AST-1783
+
+### Description
+
+## What this implements
+
+When a classify jobs item carries http(s) `job_link`, write that URL onto `meteorite.link` even if the outcome string was text landable; breadcrumb only when no http job_link. Put http-linked rows on the scrape state path. Keeps staged `job_title` mapping as today. Does not edit agent_task prompts (sibling #1). after #1 for full UAT of the linked-title story.
+
+## Citations
+
+`patt.task.daisy-chain` (staged `link` / title ride the row; do not invent a parallel HTML harvester); `stat.logging.debug`; `stat.logging.info.entity` id-only.
+
+## Scope
+
+`src/core/meteorite.py` — **modified** — stage map / post-map wiring prefers http(s) `job_link` on `meteorite.link` over email breadcrumb when present; keeps staged `job_title` on the row as today. Technical: in the classify→row mapper (and/or the immediate post-map wiring in `stage_meteorite`), when a jobs item has an http(s) `job_link`, set the meteorite row `link` to that URL even if the classify outcome was a text landable; only call the email-breadcrumb helper when no http(s) `job_link` is present. Keep copying optional `job_title` / `employer_name` onto the row as today. When the row `link` is http(s), use the URL/scrape state path (`SCRAPE_LINK`) so scrape still runs; do not leave an http link stranded under READY solely because the outcome string was text. Do not invent a parallel HTML link harvester outside Ruth + this map preference.
+
+## Acceptance criteria
+
+- [X] 4\. After staging an email whose body is essentially `<a href="https://example.com/jobs/1">Senior Widget Engineer</a>` (and Ruth returns a landable URL jobs item with that `job_link` / `job_title`), the meteorite row has `link` exactly `https://example.com/jobs/1` and `job_title` `Senior Widget Engineer`. Fail if `link` is a non-http breadcrumb or NULL while that `job_link` was returned.
+- [X] 5\. After staging the same shape when Ruth returns a **text** landable outcome but still includes http(s) `job_link` on the jobs item, the meteorite row `link` is that http URL (not a breadcrumb) and the row is on the scrape path (`state` `SCRAPE_LINK` or equivalent URL partition). Fail if `link` is still a `From:`/`To:` breadcrumb while `job_link` was http(s).
+- [X] 6\. After staging a text landable with **no** http(s) `job_link` (classic single JD in body), `meteorite.link` remains the email breadcrumb. Fail if breadcrumb emails lose their breadcrumb.
+- [X] 7\. Bare URL-list and Dice-style HTML paste shapes that already yield URL outcomes still produce http(s) `meteorite.link` (no regression). Fail if a previously working `link_list` / `single_jd_with_more` fixture now breadcrumb-links.
+
+## Boundaries
+
+- [X] Does not edit agent_task prompts (sibling #1). Does not invent a parallel HTML harvester.
+
+## Notes for planning
+
+after #1 for full UAT. Citations: `patt.task.daisy-chain`; `stat.logging.debug`; `stat.logging.info.entity` id-only. Estimate: 3.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/AST-1783-parsing-emails-with-linked-job-titles`, child `sub/AST-1783/AST-1785-prefer-http-job-link-over-breadcrumb`. Created at dispatch-parent.
+
+### Comments
+
+#### chuckles — 2026-09-24T18:27:24.772Z
+[merge-child] blocked: sub not stacked on ftr after refresh-ftr — @Hedy Lamarr run sync-child.sh sub/AST-1783/AST-1785-prefer-http-job-link-over-breadcrumb --ftr AST-1783 --worktree epic; push origin/sub tip; Chuckles retries merge-child.
+
+#### chuckles — 2026-09-24T18:24:27.447Z
+[merge-child] blocked: validate-sub-log — git pull merge subjects in sub--not-ftr range because origin/ftr lags origin/dev (sync(dev) absorbed archive merges). refresh-ftr CONFLICT in data/admin/agent_task.json — @Ada Lovelace resolve on ftr (AST-1784 catalog); then Chuckles retries refresh-ftr + merge-child for AST-1785.
+
+#### radia — 2026-09-24T18:22:56.940Z
+[code-rubric] PROCEED (Commit: 00951bdd) http job_link prefer clean
+
+#### betty — 2026-09-24T18:18:30.793Z
+`origin/sub/AST-1783/AST-1785-prefer-http-job-link-over-breadcrumb` @ `ce8d411b` · http-over-breadcrumb manifest ready
+
+#### joan — 2026-09-24T18:12:10.095Z
+[plan-rubric] PROCEED (Commit: 515b58421b077bbb9d62261bdb43692bf23a4db1) http job_link at map
+
+#### hedy — 2026-09-24T18:10:01.577Z
+`origin/sub/AST-1783/AST-1785-prefer-http-job-link-over-breadcrumb` @ `515b58421b077bbb9d62261bdb43692bf23a4db1` · plan ready
+
+---
+
 # AST-1785 — Prefer http job_link over breadcrumb at stage map
 
 **Linear:** [AST-1785](https://linear.app/astralcareermatch/issue/AST-1785/prefer-http-job-link-over-breadcrumb-at-stage-map-parsing-emails-with)  

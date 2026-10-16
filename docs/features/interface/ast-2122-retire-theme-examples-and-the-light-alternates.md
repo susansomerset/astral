@@ -1,0 +1,287 @@
+# AST-2122 — Retire Theme Examples and the Light alternates
+
+- **Parent:** [AST-2100](https://linear.app/astralcareermatch/issue/AST-2100) — Light theme: replace grade colours with "Bright + ring" palette
+- **Ticket:** [AST-2122](https://linear.app/astralcareermatch/issue/AST-2122)
+- **Publish ref:** `origin/sub/AST-2100/AST-2122-retire-theme-examples`
+- **Canon Scope:** none (locked at Discussion). No directive applies to these files.
+
+The Bright + ring palette has been picked, so the comparison scaffolding goes. This ticket removes the Tools → Theme Examples screen end to end: its `NAV_CONFIG` item, its route, the page, the `theme_example_grade_sets` candidate rows, and the UI config type that described them. It also removes the examples-only `light_parchment` and `light_slate` registry entries, which leaves `dark` and `light` as the only palettes. `App.css` is not touched. The alternate theme blocks, the §16 `.theme-examples*` rules and their comments belong to [AST-2123](https://linear.app/astralcareermatch/issue/AST-2123). Tests and the test bible belong to Betty (`qa-child`).
+
+## Codebase facts the plan relies on (verified at branch tip `266642874`)
+
+- `sync-child.sh` exited 0. `origin/ftr/AST-2100` is not on origin yet, so the script skipped it.
+- `UI_CONFIG["themes"]` is at `src/utils/config.py:6043–6051`. Its comment (`:6043–6045`) says that ids that are not `profile_selectable` "only appear on Tools -> Theme Examples".
+- `UI_CONFIG["theme_example_grade_sets"]` is at `config.py:6054–6073`: a 3-line comment (`:6054–6056`) and then the `deep` / `soft` / `classic` dict, which closes at `:6073` just before `UI_CONFIG`'s closing `}` at `:6074`.
+- The `default_theme` assert (`config.py:6075–6078`) needs `dark` to stay registered and `profile_selectable`. It does, so the assert holds unchanged.
+- `NAV_CONFIG` Tools group (`config.py:6169–6181`): the Theme Examples item is the last item (`:6179`). The other six items stay unchanged.
+- `src/ui/frontend/src/lib/uiConfig.ts`: `GradeSetEntry` and its doc comment are on lines 6–7. `UiConfig.theme_example_grade_sets?` and its doc comment are on lines 19–20. `GradeSetEntry` is referenced nowhere else in `src` (`git grep GradeSetEntry -- src` only hits `uiConfig.ts`).
+- `src/ui/frontend/src/routes.tsx`: the import is on line 71 and the route on line 150. With the route gone, `/admin/theme_examples` falls through to the catch-all `{ path: "*", element: <JobsHomeRedirect /> }`, so the page no longer renders (AC 8).
+- `src/ui/frontend/src/pages/AdminThemeExamples.tsx` is the only `src` consumer of `theme_example_grade_sets`.
+- `tsconfig.app.json` has `"include": ["src"]`, so deleting the page does **not** break `tsc` even though `tests/component/frontend/pages/test_AdminThemeExamples.test.tsx` still imports it. That test fails under vitest until Betty deletes it at Code Complete. This is expected.
+- `GET /api/ui_config` returns `{**UI_CONFIG, ...}` and `GET /api/nav_config` serves `NAV_CONFIG`, so removing the keys and the item needs no API change.
+- After this ticket, `git grep` for the AC 8 / AC 9 terms over `src` hits only `src/ui/frontend/src/App.css`. Those hits are [AST-2123](https://linear.app/astralcareermatch/issue/AST-2123)'s, as the ticket allows.
+
+## Files Changed (planned)
+
+| File | Change | Layer |
+|------|--------|-------|
+| `src/utils/config.py` | Remove `light_parchment` / `light_slate` from `UI_CONFIG["themes"]`; rewrite the registry comment; delete `UI_CONFIG["theme_example_grade_sets"]` and its comment; remove the Theme Examples item from `NAV_CONFIG` Tools | utils |
+| `src/ui/frontend/src/lib/uiConfig.ts` | Delete `GradeSetEntry` and the `theme_example_grade_sets?` field (with their doc comments) | ui (lib) |
+| `src/ui/frontend/src/routes.tsx` | Delete the `AdminThemeExamples` import and the `admin/theme_examples` route | ui |
+| `src/ui/frontend/src/pages/AdminThemeExamples.tsx` | Delete the file | ui (page) |
+
+**Betty (`qa-child`): in this ticket's Scope, but never edited by the engineer (test-tree ban).** Steps are in **qa-child steps** below.
+
+| File | Change | Owner |
+|------|--------|-------|
+| `tests/component/frontend/pages/test_AdminThemeExamples.test.tsx` | Delete the file | Betty |
+| `tests/component/utils/test_config.py` | Two-id registry; Tools has no Theme Examples item; retire `TestAst2064ThemeExampleGradeSets` | Betty |
+| `tests/component/ui/api/test_api_system.py` | `/api/ui_config` serves exactly `dark` + `light` and no `theme_example_grade_sets` | Betty |
+| `tests/component/core/test_candidate.py` | Swap the retired ids in the rejected-theme parametrize for `"Light"` | Betty |
+| `tests/component/ui/api/test_api_candidate.py` | Swap `light_parchment` in the 400 loop for `"Light"` | Betty |
+| `tests/component/frontend/components/test_NavigationShell.test.tsx` | Swap the second candidate's `light_parchment` theme for `dark` | Betty |
+| `docs/test-bible/frontend/pages.md`, `docs/test-bible/frontend/components.md`, `docs/test-bible/utils/config.md` | Retire or repoint Theme Examples / alternate-palette entries | Betty |
+
+## Stage 1: Retire Theme Examples and the Light alternates
+
+**Done when:** `GET /api/ui_config` lists only `dark` and `light` under `themes` and has no `theme_example_grade_sets` key. `GET /api/nav_config` (admin) shows six Tools items, ending with Cover Letter Paste. `/admin/theme_examples` redirects to the jobs home. The AC 8 / AC 9 greps over `src` hit only `App.css`.
+
+1. In `src/utils/config.py`, replace the three registry comment lines above `"themes": {` (currently `:6043–6045`) with exactly:
+
+   ```python
+       # AST-2042: theme registry — palette id -> label + whether the profile Theme select offers it.
+       # Each id needs a matching [data-theme="<id>"] block in App.css.
+       # Adding/retiring a palette = one entry here + one CSS block.
+   ```
+
+2. In `src/utils/config.py` `UI_CONFIG["themes"]`, delete these two lines and nothing else:
+
+   ```python
+           "light_parchment": {"label": "Light (Parchment)", "profile_selectable": False},
+           "light_slate": {"label": "Light (Slate)", "profile_selectable": False},
+   ```
+
+   `dark` and `light` stay byte-identical, as does the `profile_selectable` flag on both. Leave the `default_theme` line, its comment and the assert after `UI_CONFIG` unchanged.
+
+   ⚠️ **Decision:** Keep `profile_selectable` even though both remaining ids are `True`, per the parent Technical scope ("The `profile_selectable` flag stays"). Do not simplify the profile select generator or the assert.
+
+3. In `src/utils/config.py`, delete the whole `theme_example_grade_sets` block: the three `# AST-2064: …` / `# Each set's tokens …` / `# Retire a candidate …` comment lines, and the `"theme_example_grade_sets": { … },` entry through its closing `},` (currently `:6054–6073`). After the deletion, the line before `UI_CONFIG`'s closing `}` is `"default_theme": "dark",`.
+
+4. In `src/utils/config.py` `NAV_CONFIG`, in the `Tools` group, delete this line and nothing else:
+
+   ```python
+               {"label": "Theme Examples", "path": "/admin/theme_examples"},
+   ```
+
+5. In `src/ui/frontend/src/lib/uiConfig.ts`, delete these two lines (currently 6–7):
+
+   ```ts
+   /** AST-2064: examples-only grade-color candidate; tokens are CSS custom properties (e.g. "--grade-a") -> color. */
+   export interface GradeSetEntry { label: string; tokens: Record<string, string> }
+   ```
+
+   Then delete these two lines from `UiConfig` (currently 19–20):
+
+   ```ts
+     /** AST-2064: grade-color candidates rendered as rows on Theme Examples. */
+     theme_example_grade_sets?: Record<string, GradeSetEntry>
+   ```
+
+   `ThemeEntry`, `themes?` and `default_theme?` stay unchanged.
+
+6. In `src/ui/frontend/src/routes.tsx`, delete line 71, `import AdminThemeExamples from "./pages/AdminThemeExamples"`, and the route line `{ path: "admin/theme_examples", element: <AdminRoute><AdminThemeExamples /></AdminRoute> },` (currently 150). Leave the blank line and the `// Catch-all` comment that follow it in place.
+
+7. Delete `src/ui/frontend/src/pages/AdminThemeExamples.tsx` with `git rm`.
+
+8. Compile and lint (all must pass before commit):
+   - `python3 -m py_compile src/utils/config.py`
+   - `python3 -c "import src.utils.config"` (run from the repo root; the `default_theme` assert runs at import)
+   - `cd src/ui/frontend && npx tsc -b --noEmit && npx tsc --noEmit` (exit 0 each)
+   - `cd src/ui/frontend && npx eslint src/routes.tsx src/lib/uiConfig.ts` (exit 0)
+
+9. Verify the greps (expected: only `src/ui/frontend/src/App.css` lines):
+   - `git grep -n -i -e theme_examples -e ThemeExamples -e theme-examples -e 'Theme Examples' -e theme_example_grade_sets -- src`
+   - `git grep -n -e light_parchment -e light_slate -- src`
+   - `git grep -n GradeSetEntry -- src` → no output.
+
+   Any hit outside `App.css` → stop and comment on the parent (execution contract).
+
+10. Commit only the four files: `git commit -m "code(AST-2122): retire Theme Examples page and Light alternates"`, then `git push origin HEAD:sub/AST-2100/AST-2122-retire-theme-examples`.
+
+## qa-child steps (Betty — not engineer work)
+
+Betty runs these at Code Complete, on top of the engineer's Stage 1 commit, in one `test(AST-2122)` commit on the sub. Line numbers are at tip `266642874`. Together with Stage 1, they make the AC 8 / AC 9 greps over `tests` return nothing and turn `test_api_system.py` green again.
+
+1. **`tests/component/frontend/pages/test_AdminThemeExamples.test.tsx`:** delete the file (`git rm`).
+2. **`tests/component/utils/test_config.py`**, `TestAst2047ThemeRegistry`:
+   - In `test_registry_ids_selectable_and_default` (line 7912), assert `list(themes) == ["dark", "light"]`.
+   - Replace `test_tools_nav_theme_examples_admin_only` (lines 7928–7931) with a test that asserts that the Tools group is `admin_only` and that its item labels are exactly `["Data Management", "Agent Ad Hoc", "Telescope", "Cost Reconciliation", "Resume Paste", "Cover Letter Paste"]` (AC 8).
+   - Leave `test_every_registry_id_has_an_app_css_block` unchanged. It stays green because the `dark` / `light` blocks remain.
+   - Delete the whole `TestAst2064ThemeExampleGradeSets` class (lines 7942–7971) and add an assertion that `"theme_example_grade_sets" not in cfg.UI_CONFIG` (AC 9).
+3. **`tests/component/ui/api/test_api_system.py`**, `test_ui_config_serves_theme_registry` (lines 75–76): replace the two assertions with:
+   - `assert set(payload["themes"]) == {"dark", "light"}`
+   - `assert payload["themes"]["light"] == {"label": "Light", "profile_selectable": True}`
+   - `assert "theme_example_grade_sets" not in payload`
+
+   Keep the `default_theme` assertion.
+4. **`tests/component/core/test_candidate.py`** (lines 351–352): change the parametrize to `["neon", "Light", "", None, ["light"]]` and the comment above it to `# Unknown id, wrong-case near-miss, blank, null, unhashable.` `"Light"` is rejected because `src/core/candidate.py:964–966` checks exact membership in the selectable ids.
+5. **`tests/component/ui/api/test_api_candidate.py`** (line 290): change the loop to `for bad in ("neon", "Light"):`.
+6. **`tests/component/frontend/components/test_NavigationShell.test.tsx`** (line 390): change the second candidate's `candidate_data: { theme: "light_parchment" }` to `{ theme: "dark" }`. The test still proves that only `theme === "light"` (`NavigationShell.tsx:125`) swaps in `logo-light.png`, and that `c2` shows `logo.png`.
+7. **Bible:** in `docs/test-bible/frontend/pages.md`, `docs/test-bible/frontend/components.md` and `docs/test-bible/utils/config.md`, retire or repoint every entry that runs `test_AdminThemeExamples.test.tsx` or lists `light_parchment` / `light_slate` / `theme_example_grade_sets` as live coverage, and record the changes above under an AST-2122 entry. Betty decides the exact wording.
+8. **Verify:**
+   - `git grep -n -i -e theme_examples -e ThemeExamples -e theme-examples -e 'Theme Examples' -e theme_example_grade_sets -- src tests` and `git grep -n -e light_parchment -e light_slate -- src tests` hit only `src/ui/frontend/src/App.css` ([AST-2123](https://linear.app/astralcareermatch/issue/AST-2123)'s carve-out).
+   - The edited pytest files and `test_NavigationShell.test.tsx` pass.
+
+## Estimate
+
+Confirm Chuckles estimate: 2 — agree
+
+## Joan validate — round 1
+
+[plan-rubric]
+**Ticket:** AST-2122
+**Overall:** REVISE
+**Corpus:** c04b07deda8f5a750afd473ec847d06ed2207065
+**Publish ref:** `origin/sub/AST-2100/AST-2122-retire-theme-examples` @ `033044a705c05ca051ad9d11f552dae0b59b8793`
+
+## Canon scores
+
+_(empty — parent and child Canon Scope locked **none** at Discussion; no directive ids to score.)_
+
+## Traceability
+
+AC8→Stage 1 (steps 1–7, 9) + Betty in-scope tests/bible; AC9→Stage 1 (config/ui_config) + Betty `test_config.py` only — **four other test files still violate AC9 grep and `test_api_system.py` fails runtime** (not in Scope); AC10→Stage 1 step 8.
+
+## Findings
+
+### fix-now
+
+- **Location:** Child AC 9; plan `## Notes for qa-child (Betty)`; ticket `## Scope` (tests)
+- **Finding:** AC 9 requires `git grep -n -e light_parchment -e light_slate -- src tests` with **no** hits (App.css carve-out applies only under `src`, not `tests`). After engineer Stage 1, grep still hits `tests/component/ui/api/test_api_system.py`, `tests/component/core/test_candidate.py`, `tests/component/ui/api/test_api_candidate.py`, and `tests/component/frontend/components/test_NavigationShell.test.tsx`. `test_api_system.py` also **fails** asserting the four-theme registry. Ticket Scope names only `test_AdminThemeExamples.test.tsx` (delete) and `test_config.py` (modify); the plan flags the gap but leaves Betty/Chuckles to “decide” without adding those files to Scope or Betty stages—so the frozen child AC cannot be met at User Testing.
+- **Recommendation:** Before Plan Approved, extend this child’s `## Scope` and the plan (Files Changed + explicit Betty/`qa-child` steps) to cover all four files—or repartition with a sibling ticket that lands **before** UT on AST-2122. Do not approve a plan whose stated AC 9 grep is known to fail outside `App.css`.
+
+### discuss
+
+- **Location:** Plan `## Notes for qa-child` vs workflow
+- **Finding:** Honest gap documentation is good; approval still needs a **committed** test footprint, not an open decision.
+- **Recommendation:** Chuckles closes the decision in the plan doc (same publish ref) when Scope is amended.
+
+### acceptable
+
+- **Location:** Boundaries (`App.css` → AST-2123); engineer-only four product files; `test_every_registry_id_has_an_app_css_block` interim green
+- **Finding:** Matches parent partition and ticket boundaries; interim CSS/registry mismatch is documented in parent/child notes.
+- **Recommendation:** None.
+
+- **Location:** Canon Scope none
+- **Finding:** Aligns with parent Architectural definition (“Applicable statutes: none”); not a missing Canon Scope escalate case.
+- **Recommendation:** None.
+
+context_tokens≈18500
+
+## Revisions
+
+Revision 1 — 2026-10-10
+Driven by: Joan validate round 1 fix-now ("extend this child's `## Scope` and the plan (Files Changed + explicit Betty/`qa-child` steps) to cover all four files"); Chuckles amended the Linear `## Scope` to add them.
+Changes: Files Changed gains a Betty table covering every in-scope test and bible file, including `test_api_system.py`, `test_candidate.py`, `test_api_candidate.py` and `test_NavigationShell.test.tsx`. The open "Notes for qa-child" decision is replaced by explicit `qa-child steps` 1–8 with exact replacement values, so the AC 8 / AC 9 greps over `tests` come back clean at User Testing. Engineer Stage 1 is unchanged.
+
+## Joan validate — round 2
+
+[plan-rubric]
+**Ticket:** AST-2122
+**Overall:** APPROVED
+**Corpus:** c04b07deda8f5a750afd473ec847d06ed2207065
+**Publish ref:** `origin/sub/AST-2100/AST-2122-retire-theme-examples` @ `dcd2c21c83184c0d19ff961b14ca22785d2243fb`
+
+## Canon scores
+
+_(empty — parent and child Canon Scope locked **none** at Discussion; no directive ids to score.)_
+
+## Traceability
+
+AC8→Stage 1 (1–7, 9–10) + qa-child 1–2, 7–8; AC9→Stage 1 (2–3, 5) + qa-child 2–6, 8; AC10→Stage 1 step 8 (+ Betty suite green per qa-child 8).
+
+## Findings
+
+### acceptable
+
+- **Location:** Plan Discuss round 1; Linear `## Scope`; `## qa-child steps`
+- **Finding:** Prior fix-now (four test files outside Scope) is closed: Scope lists all six test touchpoints; Betty table and steps 1–8 give concrete edits and grep verification aligned with AC 8/9 carve-out (`App.css` only in `src`).
+- **Recommendation:** None.
+
+- **Location:** Parent functional scope 6–7; boundaries (`App.css` → AST-2123)
+- **Finding:** Engineer four-file Stage 1 matches ticket Scope; no sibling creep.
+- **Recommendation:** None.
+
+- **Location:** `## Codebase facts` (tip `266642874`) vs publish `dcd2c21`
+- **Finding:** Line anchors may drift slightly; qa-child steps cite the same tip — low risk for Betty.
+- **Recommendation:** None.
+
+context_tokens≈24000
+
+## Review
+
+- **Build commit:** `c52758bbc` on `origin/sub/AST-2100/AST-2122-retire-theme-examples` (Stage 1).
+- **Checks:** `py_compile`, `import src.utils.config`, `tsc -b --noEmit`, `tsc --noEmit`, `eslint` on `routes.tsx` / `uiConfig.ts`: all exit 0. The AC 8 / AC 9 greps over `src` hit only `App.css`.
+- **Pending (Betty, qa-child steps 1–8):** `test_AdminThemeExamples.test.tsx` and `test_api_system.py` stay red until qa-child lands.
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-2122
+**Publish ref:** `ae5150f83dcc202b306a9476b536d9db6385ddff` (`origin/sub/AST-2100/AST-2122-retire-theme-examples`)
+**Corpus:** `26c4e86a4d08addcefdbc3be68116703fedf6762` (canon tree at publish tip; `docs/canon-index.md` absent on ref — tree SHA from `git rev-parse ae5150f83^{tree}:canon`)
+**Overall:** CLEAN
+
+## Canon scores
+
+Frozen list empty (child **Citations:** none; **Canon Scope:** none — locked at Discussion). No directive rows to score; not §5.3 ESCALATE (explicit empty scope, same pattern as AST-2047 / Joan round 2).
+
+## Column diff vs plan stage
+
+(aligned) — Joan recorded empty canon with no rows; implementation matches round-2 traceability (Stage 1 + qa-child 1–8).
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **Location:** `src/ui/frontend/src/routes.tsx` (import block → `const routes`)
+- **Finding:** Plan Stage 1 step 6 asked to keep a blank line after removing the `AdminThemeExamples` import; the diff removes that blank line (imports run directly into `const routes`). Behavior unchanged.
+- **Recommendation:** Optional cosmetic restore in `resolve-child` if you care about matching the plan verbatim.
+
+- **Location:** `tests/component/frontend/test_AppCss.test.tsx`; manifest in `docs/test-bible/frontend/pages.md` § AST-2122 item 2
+- **Finding:** Two `test_AppCss` cases (`--tp-lvl` / Task Performance `hsla()` outside token blocks) are documented as known red on this sub with `App.css` byte-identical to `origin/dev` — same as before the page test was deleted. Not AST-2122 product scope.
+- **Recommendation:** No action on this ticket; AST-2123 or a separate hygiene pass owns `App.css` / those gates.
+
+- **Location:** `tests/component/utils/test_config.py::TestAst1386ThreeSegmentAdminNav`
+- **Finding:** Betty added `/admin/telescope` to `_TOOLS_PATHS` (stale since Telescope joined Tools). In scope for AC 8 six-item Tools list; not sibling product creep.
+- **Recommendation:** None.
+
+- **Location:** `tests/component/ui/api/test_api_system.py`, `test_config.py::test_no_grade_set_candidates_key`
+- **Finding:** AC 9 “no `theme_example_grade_sets`” in tests is satisfied via `k.endswith("_grade_sets")` suffix assertions instead of spelling the retired key in `tests/` — deliberate grep hygiene; still pins runtime absence of grade-set keys.
+- **Recommendation:** None.
+
+## What's solid
+
+- **Product:** `config.py` drops alternates and `theme_example_grade_sets`, removes Theme Examples from Tools; `uiConfig.ts`, `routes.tsx`, and `AdminThemeExamples.tsx` removal match Scope and boundaries (no `App.css`).
+- **AC greps (tip):** `git grep` over `src tests` for AC 8/9 terms hits only `src/ui/frontend/src/App.css`, per AST-2123 carve-out.
+- **Tests/bible:** Deleted page test; repointed api/core/nav tests; rehomed five `App.css` contract cases to `test_AppCss.test.tsx` with documented superset registry check until AST-2123; bible updates in `pages.md`, `components.md`, `config.md`, and new `root.md` § AST-2122 match manifest intent.
+- **Estimate:** Confirmed **2** — footprint (four product files + test/bible retirement/rehome) still fits.
+
+## Recommended actions (downstream only — not executed here)
+
+- Chuckles: append this artifact to `docs/features/interface/ast-2122-retire-theme-examples-and-the-light-alternates.md`, commit `docs(AST-2122): Radia review — clean`, push sub, post slim upshot `--as radia`, move **Review Posted**; datt **PROCEED** → **User Testing** (no fix-now).
+- Optional: `resolve-child` may restore the blank line in `routes.tsx` (advisory only).
+
+context_tokens≈42000

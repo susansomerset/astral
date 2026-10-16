@@ -27,10 +27,11 @@ from src.data.database import (
 )
 
 from src.data import database
-from src.core.agent import _current_agent_task_run_next, compute_batch_cost
+from src.core.agent import _current_agent_task_run_next, compute_batch_cost, task_llm_server_id_or_none
 from src.utils.deploy_status import is_local_deploy_env
 from src.utils.config import (
     ASTRAL_CONFIG,
+    FETCH_TIMESHEET_CONFIG,
     INFLOW_CONFIG,
     TASK_CONFIG,
     METEORITE_DISPATCH_TASKS,
@@ -44,6 +45,7 @@ from src.utils.config import (
     dispatch_chain_row_matches_job,
     dispatch_task_key_is_scored,
     is_dispatch_chain_trigger,
+    is_fetch_timesheet_task_key,
     is_meteorite_email_mailbox_task_key,
     template_candidate_id,
     parse_dispatch_hop_label,
@@ -51,7 +53,8 @@ from src.utils.config import (
     DISPATCH_RETIRED_TASK_KEYS,
 )
 from src.utils.network import check_internet_reachable
-from src.utils.logging import get_logger, log_batch_id, log_debug, flush_log_buffer
+from src.utils.llm_external import is_provider_balance_refusal, is_provider_probe_failure, is_provider_rate_limit
+from src.utils.logging import get_logger, log_batch_id, log_candidate_id, log_debug, flush_log_buffer
 
 logger = get_logger(__name__)
 
@@ -105,7 +108,7 @@ def _meteorite_ingress_runner(task_key: str):
 
 
 def _is_meteorite_bot_blocked_notify_task_key(task_key: str) -> bool:
-    """True for BOT_BLOCKED Estelle notify runner (AST-1561)."""
+    """True for BOT_BLOCKED_SCRAPE_METEORITE Estelle notify runner (AST-1561)."""
     return (task_key or "").strip() == METEORITE_BOT_BLOCKED_NOTIFY_CONFIG["task_key"]
 
 
@@ -119,7 +122,9 @@ def _trigger_state_scored(trigger_state: Optional[str], task_key: str) -> bool:
 
 async def _warm_then_gather(one_fn, entities: list, zero: dict) -> list:
     """Run the first entity sequentially to warm the cache, wait for cache_warm_delay_seconds,
-    then fire the rest concurrently. Gives Anthropic time to commit the cache entry."""
+    then fire the rest concurrently with starts spaced gather_stagger_seconds apart (AST-2149).
+    Gives Anthropic time to commit the cache entry; the stagger keeps N-1 calls from hitting a
+    provider in the same instant."""
     n = len(entities)
     logger.debug("Beginning gather loop on %s items", n)
     if not entities:
@@ -132,7 +137,14 @@ async def _warm_then_gather(one_fn, entities: list, zero: dict) -> list:
     delay = ASTRAL_CONFIG.get("cache_warm_delay_seconds", 1.0)
     if delay > 0:
         await asyncio.sleep(delay)
-    rest = await asyncio.gather(*[one_fn(e) for e in entities[1:]], return_exceptions=True)
+    stagger = float(ASTRAL_CONFIG["gather_stagger_seconds"])
+
+    async def _staggered(i, e):
+        # AST-2149: space call starts, not calls — once started, they all overlap
+        if stagger > 0 and i:
+            await asyncio.sleep(i * stagger)
+        return await one_fn(e)
+    rest = await asyncio.gather(*[_staggered(i, e) for i, e in enumerate(entities[1:])], return_exceptions=True)
     cleaned = [first]
     for i, r in enumerate(rest):
         if isinstance(r, BaseException):
@@ -143,7 +155,7 @@ async def _warm_then_gather(one_fn, entities: list, zero: dict) -> list:
                  or ent.get("id") or "?")
                 if isinstance(ent, dict) else str(ent)
             )
-            logger.exception(
+            logger.error_exc(
                 "%s\n  %s: %s\n  Continuing to the next entity",
                 ident,
                 type(r).__name__,
@@ -573,6 +585,71 @@ def provision_meteorite_email_dispatch_tasks() -> Dict[str, Any]:
     }
 
 
+def ensure_fetch_timesheet_dispatch_task(candidate_id: str) -> Dict[str, Any]:
+    """Idempotent insert of candidate-bound fetch_timesheet dispatch_task (AST-2218)."""
+    cid = str(candidate_id or "").strip()
+    if not cid:
+        raise ValueError("candidate_id is required")
+    tk = str(FETCH_TIMESHEET_CONFIG["task_key"]).strip()
+    existing = None
+    for row in database.list_dispatch_tasks_for_candidate(cid):
+        if (row.get("task_key") or "").strip() == tk:
+            existing = row
+            break
+    if existing is not None:
+        return {
+            "candidate_id": cid,
+            "task_key": tk,
+            "added": 0,
+            "skipped": 1,
+            "id": existing.get("id"),
+        }
+    new_id = database.save_dispatch_task(
+        candidate_id=cid,
+        task_key=tk,
+        min_count=int(FETCH_TIMESHEET_CONFIG["min_count"]),
+        auto_mode=bool(FETCH_TIMESHEET_CONFIG["auto_mode"]),
+        entity_type=FETCH_TIMESHEET_CONFIG["entity_type"],
+        trigger_state=FETCH_TIMESHEET_CONFIG["trigger_state"],
+        batch_size=int(FETCH_TIMESHEET_CONFIG["batch_size"]),
+        freq_hrs=FETCH_TIMESHEET_CONFIG["freq_hrs"],  # None → SQL NULL (AC3)
+    )
+    return {
+        "candidate_id": cid,
+        "task_key": tk,
+        "added": 1,
+        "skipped": 0,
+        "id": new_id,
+    }
+
+
+def provision_fetch_timesheet_dispatch_tasks() -> Dict[str, Any]:
+    """Ensure template + every candidate has a fetch_timesheet row (AST-2218)."""
+    template_id = template_candidate_id()
+    if not template_id:
+        raise ValueError("ASTRAL_CONFIG template_candidate_id is empty")
+    tk = str(FETCH_TIMESHEET_CONFIG["task_key"]).strip()
+    added = skipped = candidates_touched = 0
+    # Template first, then every candidate (template may appear twice — ensure is idempotent).
+    for cid in [template_id] + [
+        str((c or {}).get("astral_candidate_id") or "").strip()
+        for c in database.list_candidates()
+    ]:
+        if not cid:
+            continue
+        stats = ensure_fetch_timesheet_dispatch_task(cid)
+        added += int(stats.get("added") or 0)
+        skipped += int(stats.get("skipped") or 0)
+        candidates_touched += 1
+    return {
+        "task_key": tk,
+        "template_candidate_id": template_id,
+        "candidates_touched": candidates_touched,
+        "added": added,
+        "skipped": skipped,
+    }
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # Batch runners call `database` directly (not via _db_ wrappers) because
@@ -606,6 +683,53 @@ def _now_iso() -> str:
 # Unified batch runner
 # ---------------------------------------------------------------------------
 
+def _note_provider_balance_outage(ctx: Dict, task: Dict, result: Dict) -> None:
+    """AST-1867: first balance refusal in a run sets ctx["provider_balance_outage"] and logs one WARNING;
+    later refusals only add to the held tally."""
+    outage = ctx.get("provider_balance_outage")
+    if outage is None:
+        outage = ctx["provider_balance_outage"] = {"error": result.get("error") or "", "held": 0}
+        logger.warning(
+            "%s | dispatch %s %s\n  LLM provider refused: insufficient balance (%s)\n  The batch is stopping; entity state is held",
+            ctx.get("astral_candidate_id") or task.get("candidate_id") or "-",
+            task.get("entity_type") or "-",
+            task.get("task_key") or "-",
+            outage["error"],
+        )
+    outage["held"] += int(result.get("total_held", 0) or 0)
+
+
+def _note_provider_rate_limit_outage(ctx: Dict, task: Dict, result: Dict) -> None:
+    """AST-2010: first exhausted-429 result in a run sets ctx["provider_rate_limit_outage"] and logs one
+    WARNING; the batch stops and the run finishes FAILED."""
+    if ctx.get("provider_rate_limit_outage") is not None:
+        return
+    outage = ctx["provider_rate_limit_outage"] = {"error": result.get("error") or ""}
+    logger.warning(
+        "%s | dispatch %s %s\n  LLM provider rate limit: still 429 after retries (%s)\n  The batch is stopping",
+        ctx.get("astral_candidate_id") or task.get("candidate_id") or "-",
+        task.get("entity_type") or "-",
+        task.get("task_key") or "-",
+        outage["error"],
+    )
+
+
+def _note_provider_probe_outage(ctx: Dict, task: Dict, result: Dict) -> None:
+    """AST-2098: first failed-host-probe result in a run sets ctx["provider_probe_outage"] and logs one
+    WARNING; later results only add to the held tally. The run stops and the next round probes again."""
+    outage = ctx.get("provider_probe_outage")
+    if outage is None:
+        outage = ctx["provider_probe_outage"] = {"error": result.get("error") or "", "held": 0}
+        logger.warning(
+            "%s | dispatch %s %s\n  LLM host probe failed (%s)\n  The batch is stopping; entity state is held for the next round",
+            ctx.get("astral_candidate_id") or task.get("candidate_id") or "-",
+            task.get("entity_type") or "-",
+            task.get("task_key") or "-",
+            outage["error"],
+        )
+    outage["held"] += int(result.get("total_held", 0) or 0)
+
+
 async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
     """Claim a batch for the given task and dispatch to consult.run_consult_task.
     Reads entity_type, trigger_state, sort_by, batch_call_mode from the DB task row.
@@ -635,13 +759,13 @@ async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
     input_state     = task.get("trigger_state", "")
     sort_by         = task.get("sort_by") or "updated_at"
     limit           = int(task["batch_size"]) if task.get("batch_size") is not None else None
-    # Sole split between one consult call for all entities vs per-job _warm_then_gather; DB wins (dispatch_tasks.batch_call_mode).
-    # AST-891: parse_job_list always full-list consult — production rows stay batch_call_mode=0.
+    # Sole split between one consult call for all entities vs per-job _warm_then_gather;
+    # the row decides (dispatch_tasks.batch_call_mode) — no per-task_key overrides here.
     batch_call_mode = bool(task.get("batch_call_mode", 0))
     candidate_id    = ctx.get("astral_candidate_id")
     bid             = ctx.get("entity_batch_id") or log_batch_id.get()
     dispatch_task_key = (task.get("task_key") or "").strip()
-    use_full_batch = batch_call_mode or (dispatch_task_key == "parse_job_list")
+    use_full_batch = batch_call_mode
     # Candidate consult reads entities[0] only — force per-row gather.
     if entity_type == "candidate":
         use_full_batch = False
@@ -651,14 +775,14 @@ async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
     claim_states: Optional[List[str]] = None
     if entity_type == "candidate":
         claim_states = dispatch_claim_states(input_state, "candidate")
-        stage = CANDIDATE_STAGE_DISPATCH["requested_artifacts"]
-        # AST-1388 / AST-1434: reclaim mid-chain REQUESTED_ARTIFACTS.<hop> for any hop's dispatch row.
+        # AST-1388 / AST-1434 / AST-2222: reclaim mid-chain hop labels for any stage trigger.
         raw_in = (input_state or "").strip()
         parsed_in = parse_dispatch_hop_label(raw_in)
-        stage_trigger = stage["trigger_state"]
-        if raw_in == stage_trigger or (parsed_in and parsed_in[0] == stage_trigger):
-            from src.core.candidate import requested_artifacts_dispatch_claim_states
-            claim_states = requested_artifacts_dispatch_claim_states()
+        bare = parsed_in[0] if parsed_in else raw_in
+        stage_triggers = {e["trigger_state"] for e in CANDIDATE_STAGE_DISPATCH.values()}
+        if bare in stage_triggers:
+            from src.core.candidate import candidate_stage_dispatch_claim_states
+            claim_states = candidate_stage_dispatch_claim_states(bare)
         logger.debug(
             "Calling get_new_candidate_batch: [state=%s, limit=%s, sort_by=%s, candidate_id=%s, batch_id=%s, states=%s]",
             input_state, limit, sort_by, candidate_id, bid, claim_states,
@@ -746,7 +870,6 @@ async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
             ),
             score_floor=floor,
             states=claim_states,
-            exclude_prefilter_second_strike=(dispatch_task_key == "fetch_website"),
         )
         logger.debug(
             "Response from get_new_company_batch: %s entities batch=%s",
@@ -780,6 +903,14 @@ async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
             clear_candidate_batch(bid)
         return s
 
+    # AST-2093: entities re-claimed by a later run of this dispatch (retry holdings) are not new work.
+    ids = [e.get("astral_job_id") or e.get("company_id") or e.get("astral_candidate_id") for e in entities]
+    seen = ctx.setdefault("dispatch_seen_ids", set())
+    repeats = sum(1 for i in ids if i and i in seen)
+    seen.update(i for i in ids if i)
+    # AST-1847: in-flight run's running summary; batch runners tally into it in place so a
+    # dispatch-timeout cancel can still record partial counts (_dispatch_one_body timeout branch).
+    ctx["dispatch_partial"] = dict(_SUMMARY_ZERO)
     try:
         if use_full_batch:
             job_tk = task.get("task_key", "") if entity_type == "job" else ""
@@ -796,6 +927,9 @@ async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
                 logger.debug("Beginning consult chunk loop on %s items", len(chunks))
 
                 async def _consult_chunk(ci: int, chunk_rows: List[Dict[str, Any]]) -> Dict[str, Any]:
+                    # AST-1867 / AST-2010 / AST-2098: balance refusal, rate limit or failed host probe — no further calls this run
+                    if ctx.get("provider_balance_outage") or ctx.get("provider_rate_limit_outage") or ctx.get("provider_probe_outage"):
+                        return dict(_SUMMARY_ZERO)
                     logger.debug(
                         "Calling consult.run_consult_task: [entity_type=%s, state=%s, n=%s, batch=%s, task_key=%s]",
                         entity_type, input_state, len(chunk_rows), bid, dispatch_task_key,
@@ -809,8 +943,16 @@ async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
                         debug,
                         batch_chunk_index=ci,
                         dispatch_task_key=dispatch_task_key,
+                        # AST-2093: chunk keeps batch-global row indexes instead of restarting at 000.
+                        batch_index_offset=ci * chunk_sz,
                     )
                     logger.debug("Response from consult.run_consult_task: %s", result)
+                    if is_provider_balance_refusal(result):
+                        _note_provider_balance_outage(ctx, task, result)
+                    if is_provider_rate_limit(result):
+                        _note_provider_rate_limit_outage(ctx, task, result)
+                    if is_provider_probe_failure(result):
+                        _note_provider_probe_outage(ctx, task, result)
                     return result
 
                 head = await _consult_chunk(0, chunks[0])
@@ -834,10 +976,22 @@ async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
                     dispatch_task_key=dispatch_task_key,
                 )
                 logger.debug("Response from consult.run_consult_task: %s", result)
+                if is_provider_balance_refusal(result):
+                    _note_provider_balance_outage(ctx, task, result)
+                if is_provider_rate_limit(result):
+                    _note_provider_rate_limit_outage(ctx, task, result)
+                if is_provider_probe_failure(result):
+                    _note_provider_probe_outage(ctx, task, result)
                 for k in s:
                     s[k] += result.get(k, 0)
         else:
+            # AST-2093: a lone call still sends the entity's claimed position, not 000.
+            idx_of = {id(e): i for i, e in enumerate(entities)}
+
             async def _one(e):
+                # AST-1867 / AST-2010 / AST-2098: balance refusal, rate limit or failed host probe — skip (not processed); finally releases the claim
+                if ctx.get("provider_balance_outage") or ctx.get("provider_rate_limit_outage") or ctx.get("provider_probe_outage"):
+                    return dict(_SUMMARY_ZERO)
                 logger.debug(
                     "Calling consult.run_consult_task: [entity_type=%s, state=%s, n=1, batch=%s, task_key=%s]",
                     entity_type, input_state, bid, dispatch_task_key,
@@ -845,8 +999,15 @@ async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
                 result = await consult.run_consult_task(
                     entity_type, input_state, [e], bid, ctx, debug,
                     dispatch_task_key=dispatch_task_key,
+                    batch_index_offset=idx_of[id(e)],
                 )
                 logger.debug("Response from consult.run_consult_task: %s", result)
+                if is_provider_balance_refusal(result):
+                    _note_provider_balance_outage(ctx, task, result)
+                if is_provider_rate_limit(result):
+                    _note_provider_rate_limit_outage(ctx, task, result)
+                if is_provider_probe_failure(result):
+                    _note_provider_probe_outage(ctx, task, result)
                 return result
             results = await _warm_then_gather(_one, entities, _SUMMARY_ZERO)
             for r in results:
@@ -859,6 +1020,11 @@ async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
             clear_candidate_batch(bid)
         else:
             clear_company_batch(bid)
+    # Normal return only: counts travel via s now, so drop the partial to avoid double counting.
+    ctx.pop("dispatch_partial", None)
+    # Outside _SUMMARY_ZERO so per-run merges and the ledger write skip it; min() only keeps an
+    # outage-zeroed run from going negative in _run_dispatch_loop.
+    s["repeat_processed"] = min(repeats, s["total_processed"])
     return s
 
 
@@ -944,6 +1110,39 @@ def _log_dispatch_task_completed(
         suffix,
     )
 
+
+def _persist_dispatch_ledger_close(
+    dispatch_ledger_id: str,
+    final_status: str,
+    accumulated: Dict[str, Any],
+    candidate_id: Any,
+    task: Dict[str, Any],
+    task_key: str,
+) -> None:
+    total_cost = compute_batch_cost(dispatch_ledger_id)
+    total_processed = accumulated.get("total_processed", 0)
+    entity_cost = total_cost / total_processed if total_processed > 0 else total_cost
+    database.update_dispatch_ledger(
+        dispatch_ledger_id,
+        status=final_status,
+        completed_at=_now_iso(),
+        total_cost=total_cost,
+        entity_cost=round(entity_cost, 7),
+        **accumulated,
+        timesheet_state="NEW",  # after deploy closes only; historical null rows untouched
+    )
+    if final_status == "COMPLETED":
+        _log_dispatch_task_completed(
+            candidate_id,
+            task.get("entity_type"),
+            task_key,
+            accumulated.get("total_passed", 0),
+            accumulated.get("total_failed", 0),
+            accumulated.get("total_errors", 0),
+            dispatch_ledger_id,
+        )
+
+
 # Registry: task_id -> {thread, loop, asyncio_task, task_key, candidate_id, is_auto}
 _task_registry: Dict[int, Dict[str, Any]] = {}
 _registry_lock = threading.Lock()
@@ -951,6 +1150,11 @@ _registry_lock = threading.Lock()
 # Tick thread (wakes every tick_rate_minutes to spawn due AUTO tasks)
 _tick_thread: Optional[threading.Thread] = None
 _tick_event = threading.Event()
+
+# Runtime override for the AUTO thread cap (None = use ASTRAL_CONFIG["max_auto_threads"]).
+# In-memory only — a restart/deploy returns to the config default. Coherent only because
+# production runs a single gunicorn worker (one scheduler, one registry per deploy).
+_auto_thread_cap_override: Optional[int] = None
 
 
 async def _dispatch_one(task: Dict) -> None:
@@ -991,6 +1195,7 @@ async def _dispatch_one_body(task: Dict, debug: bool) -> None:
             entity_type="meteorite",
         )
         log_batch_id.set(entity_batch_id)
+        log_candidate_id.set(ledger_cid)
         dispatch_ledger_id = entity_batch_id
         task["entity_batch_id"] = entity_batch_id
         with _registry_lock:
@@ -1013,7 +1218,7 @@ async def _dispatch_one_body(task: Dict, debug: bool) -> None:
             accumulated["total_errors"] = accumulated.get("total_errors", 0) + 1
         except Exception as exc:
             final_status = "FAILED"
-            logger.exception(
+            logger.error_exc(
                 "%s | dispatch %s %s\n  %s: %s\n  Truncating the batch",
                 candidate_id or "-",
                 task.get("entity_type") or "-",
@@ -1025,29 +1230,11 @@ async def _dispatch_one_body(task: Dict, debug: bool) -> None:
         finally:
             if dispatch_ledger_id:
                 try:
-                    total_cost = compute_batch_cost(dispatch_ledger_id)
-                    total_processed = accumulated.get("total_processed", 0)
-                    entity_cost = total_cost / total_processed if total_processed > 0 else total_cost
-                    database.update_dispatch_ledger(
-                        dispatch_ledger_id,
-                        status=final_status,
-                        completed_at=_now_iso(),
-                        total_cost=total_cost,
-                        entity_cost=round(entity_cost, 7),
-                        **accumulated,
+                    _persist_dispatch_ledger_close(
+                        dispatch_ledger_id, final_status, accumulated, candidate_id, task, task_key,
                     )
-                    if final_status == "COMPLETED":
-                        _log_dispatch_task_completed(
-                            candidate_id,
-                            task.get("entity_type"),
-                            task_key,
-                            accumulated.get("total_passed", 0),
-                            accumulated.get("total_failed", 0),
-                            accumulated.get("total_errors", 0),
-                            dispatch_ledger_id,
-                        )
                 except Exception as e:
-                    logger.exception(
+                    logger.error_exc(
                         "%s | dispatch %s %s ledger=%s\n  %s: %s\n  The run is over; this batch was not recorded as finished.",
                         candidate_id or "-",
                         task.get("entity_type") or "-",
@@ -1058,10 +1245,11 @@ async def _dispatch_one_body(task: Dict, debug: bool) -> None:
                     )
             flush_log_buffer()
             log_batch_id.set(None)
+            log_candidate_id.set(None)
             try:
                 _db_update_dispatch_task(task_id, last_run_at=_now_iso())
             except Exception as e:
-                logger.exception(
+                logger.error_exc(
                     "%s | dispatch %s %s task_id=%s\n  %s: %s\n  The run is over; this task's last-run time was not saved.",
                     candidate_id or "-",
                     task.get("entity_type") or "-",
@@ -1072,7 +1260,7 @@ async def _dispatch_one_body(task: Dict, debug: bool) -> None:
                 )
         return
 
-    # AST-1561: BOT_BLOCKED Estelle notify — custom branch before mailbox / check_email.
+    # AST-1561: BOT_BLOCKED_SCRAPE_METEORITE Estelle notify — custom branch before mailbox / check_email.
     if _is_meteorite_bot_blocked_notify_task_key(task_key):
         from src.core.meteorite import run_notify_meteorite_bot_blocked
 
@@ -1091,6 +1279,7 @@ async def _dispatch_one_body(task: Dict, debug: bool) -> None:
             entity_type="meteorite",
         )
         log_batch_id.set(entity_batch_id)
+        log_candidate_id.set(ledger_cid)
         dispatch_ledger_id = entity_batch_id
         task["entity_batch_id"] = entity_batch_id
         with _registry_lock:
@@ -1115,7 +1304,7 @@ async def _dispatch_one_body(task: Dict, debug: bool) -> None:
             accumulated["total_errors"] = accumulated.get("total_errors", 0) + 1
         except Exception as exc:
             final_status = "FAILED"
-            logger.exception(
+            logger.error_exc(
                 "%s | dispatch %s %s\n  %s: %s\n  Truncating the batch",
                 candidate_id or "-",
                 task.get("entity_type") or "-",
@@ -1127,29 +1316,11 @@ async def _dispatch_one_body(task: Dict, debug: bool) -> None:
         finally:
             if dispatch_ledger_id:
                 try:
-                    total_cost = compute_batch_cost(dispatch_ledger_id)
-                    total_processed = accumulated.get("total_processed", 0)
-                    entity_cost = total_cost / total_processed if total_processed > 0 else total_cost
-                    database.update_dispatch_ledger(
-                        dispatch_ledger_id,
-                        status=final_status,
-                        completed_at=_now_iso(),
-                        total_cost=total_cost,
-                        entity_cost=round(entity_cost, 7),
-                        **accumulated,
+                    _persist_dispatch_ledger_close(
+                        dispatch_ledger_id, final_status, accumulated, candidate_id, task, task_key,
                     )
-                    if final_status == "COMPLETED":
-                        _log_dispatch_task_completed(
-                            candidate_id,
-                            task.get("entity_type"),
-                            task_key,
-                            accumulated.get("total_passed", 0),
-                            accumulated.get("total_failed", 0),
-                            accumulated.get("total_errors", 0),
-                            dispatch_ledger_id,
-                        )
                 except Exception as e:
-                    logger.exception(
+                    logger.error_exc(
                         "%s | dispatch %s %s ledger=%s\n  %s: %s\n  The run is over; this batch was not recorded as finished.",
                         candidate_id or "-",
                         task.get("entity_type") or "-",
@@ -1160,11 +1331,108 @@ async def _dispatch_one_body(task: Dict, debug: bool) -> None:
                     )
             flush_log_buffer()
             log_batch_id.set(None)
+            log_candidate_id.set(None)
             try:
                 _db_update_dispatch_task(task_id, last_run_at=_now_iso())
             except Exception as e:
-                logger.exception(
+                logger.error_exc(
                     "%s | dispatch %s %s task_id=%s\n  %s: %s\n  The run is over; this task's last-run time was not saved.",
+                    candidate_id or "-",
+                    task.get("entity_type") or "-",
+                    task_key,
+                    task_id,
+                    type(e).__name__,
+                    e,
+                )
+        return
+
+    # AST-2218: candidate-bound fetch_timesheet — receipt runner, no entity claim.
+    if is_fetch_timesheet_task_key(task_key):
+        from src.core.timesheets import run_fetch_timesheet
+
+        entity_batch_id = f"{task_key}-{uuid.uuid4()}"
+        ledger_cid = str(candidate_id or "").strip()
+        if not ledger_cid:
+            logger.debug(
+                "skipped — fetch_timesheet requires bound candidate_id task_key=%s candidate_id=%s",
+                task_key, candidate_id,
+            )
+            logger.warning(
+                "%s | dispatch %s skipped — fetch_timesheet requires bound candidate_id\n  This task is not starting",
+                candidate_id or "-",
+                task_key,
+            )
+            return
+        database.save_dispatch_ledger(
+            entity_batch_id,
+            task_key,
+            ledger_cid,
+            _now_iso(),
+            "RUNNING",
+            entity_type=None,
+        )
+        log_batch_id.set(entity_batch_id)
+        log_candidate_id.set(ledger_cid)
+        dispatch_ledger_id = entity_batch_id
+        with _registry_lock:
+            entry = _task_registry.get(task_id)
+            if entry:
+                entry["asyncio_task"] = asyncio.current_task()
+        accumulated = dict(_SUMMARY_ZERO)
+        final_status = "COMPLETED"
+        try:
+            logger.debug(
+                "Calling run_fetch_timesheet: [task_key=%s, entity_batch_id=%s, candidate_id=%s]",
+                task_key, entity_batch_id, ledger_cid,
+            )
+            summary = await asyncio.to_thread(run_fetch_timesheet, ledger_cid)
+            logger.debug("Response from run_fetch_timesheet: %s", summary)
+            for k in ("total_processed", "total_passed", "total_failed", "total_errors"):
+                accumulated[k] = int(summary.get(k, 0) or 0)
+        except asyncio.CancelledError:
+            final_status = "INTERRUPTED"
+            logger.warning(
+                "%s | dispatch %s %s\n  Killed by admin\n  The batch is stopping",
+                candidate_id or "-",
+                task.get("entity_type") or "-",
+                task_key,
+            )
+            accumulated["total_errors"] = accumulated.get("total_errors", 0) + 1
+        except Exception as exc:
+            final_status = "FAILED"
+            logger.error_exc(
+                "%s | dispatch %s %s\n  %s: %s\n  Truncating the batch",
+                candidate_id or "-",
+                task.get("entity_type") or "-",
+                task_key,
+                type(exc).__name__,
+                exc,
+            )
+            accumulated["total_errors"] = accumulated.get("total_errors", 0) + 1
+        finally:
+            if dispatch_ledger_id:
+                try:
+                    _persist_dispatch_ledger_close(
+                        dispatch_ledger_id, final_status, accumulated, candidate_id, task, task_key,
+                    )
+                except Exception as e:
+                    logger.error_exc(
+                        "%s | dispatch %s %s ledger=%s\n  %s: %s\n  The run is over; this batch was not recorded as finished.",
+                        candidate_id or "-",
+                        task.get("entity_type") or "-",
+                        task_key,
+                        dispatch_ledger_id,
+                        type(e).__name__,
+                        e,
+                    )
+            flush_log_buffer()
+            log_batch_id.set(None)
+            log_candidate_id.set(None)
+            try:
+                _db_update_dispatch_task(task_id, last_run_at=_now_iso())
+            except Exception as e:
+                logger.error_exc(
+                    "%s | dispatch %s %s task_id=%s\n  %s: %s\n  last_run_at was not updated",
                     candidate_id or "-",
                     task.get("entity_type") or "-",
                     task_key,
@@ -1213,6 +1481,7 @@ async def _dispatch_one_body(task: Dict, debug: bool) -> None:
             entity_type=None,
         )
         log_batch_id.set(entity_batch_id)
+        log_candidate_id.set(ledger_cid)
         dispatch_ledger_id = entity_batch_id
         with _registry_lock:
             entry = _task_registry.get(task_id)
@@ -1240,7 +1509,7 @@ async def _dispatch_one_body(task: Dict, debug: bool) -> None:
             accumulated["total_errors"] = accumulated.get("total_errors", 0) + 1
         except Exception as exc:
             final_status = "FAILED"
-            logger.exception(
+            logger.error_exc(
                 "%s | dispatch %s %s\n  %s: %s\n  Truncating the batch",
                 candidate_id or "-",
                 task.get("entity_type") or "-",
@@ -1252,29 +1521,11 @@ async def _dispatch_one_body(task: Dict, debug: bool) -> None:
         finally:
             if dispatch_ledger_id:
                 try:
-                    total_cost = compute_batch_cost(dispatch_ledger_id)
-                    total_processed = accumulated.get("total_processed", 0)
-                    entity_cost = total_cost / total_processed if total_processed > 0 else total_cost
-                    database.update_dispatch_ledger(
-                        dispatch_ledger_id,
-                        status=final_status,
-                        completed_at=_now_iso(),
-                        total_cost=total_cost,
-                        entity_cost=round(entity_cost, 7),
-                        **accumulated,
+                    _persist_dispatch_ledger_close(
+                        dispatch_ledger_id, final_status, accumulated, candidate_id, task, task_key,
                     )
-                    if final_status == "COMPLETED":
-                        _log_dispatch_task_completed(
-                            candidate_id,
-                            task.get("entity_type"),
-                            task_key,
-                            accumulated.get("total_passed", 0),
-                            accumulated.get("total_failed", 0),
-                            accumulated.get("total_errors", 0),
-                            dispatch_ledger_id,
-                        )
                 except Exception as e:
-                    logger.exception(
+                    logger.error_exc(
                         "%s | dispatch %s %s ledger=%s\n  %s: %s\n  The run is over; this batch was not recorded as finished.",
                         candidate_id or "-",
                         task.get("entity_type") or "-",
@@ -1285,10 +1536,11 @@ async def _dispatch_one_body(task: Dict, debug: bool) -> None:
                     )
             flush_log_buffer()
             log_batch_id.set(None)
+            log_candidate_id.set(None)
             try:
                 _db_update_dispatch_task(task_id, last_run_at=_now_iso())
             except Exception as e:
-                logger.exception(
+                logger.error_exc(
                     "%s | dispatch %s %s task_id=%s\n  %s: %s\n  The run is over; this task's last-run time was not saved.",
                     candidate_id or "-",
                     task.get("entity_type") or "-",
@@ -1300,15 +1552,19 @@ async def _dispatch_one_body(task: Dict, debug: bool) -> None:
         return
 
     ctx = database.get_candidate(candidate_id)
-    if not ctx or not ctx.get("candidate_api_key"):
+    # AST-1879: the key for the task agent's server only — another platform's key does not count.
+    # AST-1944: no LLM agent (telescope / empty / no agent_task row) → no server to gate; candidate check stays.
+    server_id = task_llm_server_id_or_none(task_key)
+    if not ctx or (server_id and not (ctx.get("candidate_api_keys") or {}).get(server_id)):
         logger.debug(
-            "skipped — no candidate or API key task_key=%s candidate_id=%s",
-            task_key, candidate_id,
+            "skipped — no candidate or %s API key task_key=%s candidate_id=%s",
+            server_id, task_key, candidate_id,
         )
         logger.warning(
-            "%s | dispatch %s skipped — no candidate or API key\n  This task is not starting",
+            "%s | dispatch %s skipped — no candidate or %s API key\n  This task is not starting",
             candidate_id or "-",
             task_key,
+            server_id,
         )
         return
     ctx = dict(ctx)
@@ -1335,6 +1591,7 @@ async def _dispatch_one_body(task: Dict, debug: bool) -> None:
             entity_type=task_entity_type,
         )
         log_batch_id.set(entity_batch_id)
+        log_candidate_id.set(candidate_id)
         dispatch_ledger_id = entity_batch_id
     logger.info(
         "%s | dispatch %s starting %s — %d available (batch: %s)",
@@ -1373,18 +1630,34 @@ async def _dispatch_one_body(task: Dict, debug: bool) -> None:
         )
         await _tracked()
         logger.debug("Response from _run_dispatch_loop: %s", accumulated)
+        # AST-1867: run cut short by provider outage — non-COMPLETED keeps it out of the circuit breaker.
+        # AST-2010: an exhausted rate limit errors the whole batch — FAILED wins over balance INTERRUPTED.
+        # AST-2098: a failed host probe is a no-op run — INTERRUPTED, so it stays out of the circuit breaker.
+        if ctx.get("provider_rate_limit_outage"):
+            final_status = "FAILED"
+        elif ctx.get("provider_balance_outage") or ctx.get("provider_probe_outage"):
+            final_status = "INTERRUPTED"
     except asyncio.TimeoutError as exc:
         final_status = "INTERRUPTED"
-        logger.exception(
-            "%s | dispatch %s %s\n  TimeoutError: dispatch timeout after %ss batch=%s\n  Truncating the batch",
+        # AST-1847: fold in the cancelled run's finished entities; accumulated only holds completed runs.
+        for k, v in (ctx.pop("dispatch_partial", None) or {}).items():
+            accumulated[k] = accumulated.get(k, 0) + v
+        # +1 before logging so the log line matches the ledger write in finally.
+        accumulated["total_errors"] = accumulated.get("total_errors", 0) + 1
+        logger.error_exc(
+            "%s | dispatch %s %s\n  TimeoutError: dispatch timeout after %ss batch=%s"
+            " processed=%d passed=%d failed=%d errors=%d\n  Truncating the batch",
             candidate_id or "-",
             task.get("entity_type") or "-",
             task_key,
             timeout,
             entity_batch_id,
+            accumulated.get("total_processed", 0),
+            accumulated.get("total_passed", 0),
+            accumulated.get("total_failed", 0),
+            accumulated.get("total_errors", 0),
             exc_info=exc,
         )
-        accumulated["total_errors"] = accumulated.get("total_errors", 0) + 1
     except asyncio.CancelledError:
         final_status = "INTERRUPTED"
         logger.warning(
@@ -1396,7 +1669,7 @@ async def _dispatch_one_body(task: Dict, debug: bool) -> None:
         accumulated["total_errors"] = accumulated.get("total_errors", 0) + 1
     except Exception as exc:
         final_status = "FAILED"
-        logger.exception(
+        logger.error_exc(
             "%s | dispatch %s %s\n  %s: %s\n  Truncating the batch",
             candidate_id or "-",
             task.get("entity_type") or "-",
@@ -1408,29 +1681,11 @@ async def _dispatch_one_body(task: Dict, debug: bool) -> None:
     finally:
         if dispatch_ledger_id:
             try:
-                total_cost = compute_batch_cost(dispatch_ledger_id)
-                total_processed = accumulated.get("total_processed", 0)
-                entity_cost = total_cost / total_processed if total_processed > 0 else total_cost
-                database.update_dispatch_ledger(
-                    dispatch_ledger_id,
-                    status=final_status,
-                    completed_at=_now_iso(),
-                    total_cost=total_cost,
-                    entity_cost=round(entity_cost, 7),
-                    **accumulated,
+                _persist_dispatch_ledger_close(
+                    dispatch_ledger_id, final_status, accumulated, candidate_id, task, task_key,
                 )
-                if final_status == "COMPLETED":
-                    _log_dispatch_task_completed(
-                        candidate_id,
-                        task.get("entity_type"),
-                        task_key,
-                        accumulated.get("total_passed", 0),
-                        accumulated.get("total_failed", 0),
-                        accumulated.get("total_errors", 0),
-                        dispatch_ledger_id,
-                    )
             except Exception as e:
-                logger.exception(
+                logger.error_exc(
                     "%s | dispatch %s %s ledger=%s\n  %s: %s\n  The run is over; this batch was not recorded as finished.",
                     candidate_id or "-",
                     task.get("entity_type") or "-",
@@ -1441,15 +1696,19 @@ async def _dispatch_one_body(task: Dict, debug: bool) -> None:
                 )
         flush_log_buffer()
         # Alert while log_batch_id still set — monitor logs appear in the batch log view
-        if dispatch_ledger_id and not is_click and accumulated.get("total_errors", 0) > 0:
+        outage = ctx.get("provider_balance_outage")
+        if dispatch_ledger_id and not is_click and outage:
+            monitor.provider_balance_outage(task_key, dispatch_ledger_id, accumulated, outage, candidate_id)
+        elif dispatch_ledger_id and not is_click and accumulated.get("total_errors", 0) > 0:
             monitor.auto_run_error(
                 task_key, dispatch_ledger_id, accumulated, final_status, candidate_id
             )
         log_batch_id.set(None)
+        log_candidate_id.set(None)
         try:
             _db_update_dispatch_task(task_id, last_run_at=_now_iso())
         except Exception as e:
-            logger.exception(
+            logger.error_exc(
                 "%s | dispatch %s %s task_id=%s\n  %s: %s\n  The run is over; this task's last-run time was not saved.",
                 candidate_id or "-",
                 task.get("entity_type") or "-",
@@ -1476,8 +1735,10 @@ async def _run_dispatch_loop(
     max_runs = task.get("max_runs")
     is_auto = bool(task.get("auto_mode"))
     ui_initiated = bool(task.get("_ui_initiated"))
-    # Sweep = UI click on an AUTO row: one batch. Run (CLICK) and AUTO ticks honour row max_runs.
-    if ui_initiated and is_auto:
+    scheduled_sweep = bool(task.get("_scheduled_sweep"))
+    # Sweep = UI click or tick-scheduled sweep (AST-1829) on an AUTO row: one batch, min 1.
+    # Run (CLICK) and normal AUTO ticks honour row max_runs.
+    if (ui_initiated or scheduled_sweep) and is_auto:
         max_runs = 1
     cid = task.get("candidate_id") or ctx.get("astral_candidate_id") or "-"
     run_count = 0
@@ -1485,9 +1746,9 @@ async def _run_dispatch_loop(
         et = task.get("entity_type")
         available = database.count_eligible_for_dispatch_task(task)
         logger.debug("Beginning dispatch loop on %s items", available)
-        # min_count gate only applies to unattended AUTO ticks — CLICK and manual
-        # Sweep (UI-initiated run on an AUTO row) bypass it and run whatever's available.
-        effective_min = (task.get("min_count") or 1) if (is_auto and not ui_initiated) else 1
+        # min_count gate only applies to normal unattended AUTO ticks — CLICK, manual Sweep
+        # (UI-initiated on AUTO) and scheduled sweep (AST-1829) run whatever's available.
+        effective_min = (task.get("min_count") or 1) if (is_auto and not ui_initiated and not scheduled_sweep) else 1
         if available < effective_min:
             reason = ""
             if task_key == INFLOW_CONFIG["discovery"]["task_key"] and run_count == 0:
@@ -1538,10 +1799,26 @@ async def _run_dispatch_loop(
         logger.debug("Response from _run_task: %s", summary)
         for k in accumulated:
             accumulated[k] += summary.get(k, 0)
+        # AST-2093: count each entity once across runs; the 0-processed stop below still reads the raw per-run value.
+        accumulated["total_processed"] -= summary.get("repeat_processed", 0)
         run_count += 1
         # Update ledger mid-run so the execution history reflects live progress
         if dispatch_ledger_id:
             database.update_dispatch_ledger(dispatch_ledger_id, **accumulated)
+        # AST-1867: held entities stay eligible — claiming again would re-hit the refusing provider
+        if ctx.get("provider_balance_outage"):
+            logger.debug("loop stop: provider balance refusal run_count=%s", run_count)
+            logger.debug("End dispatch loop after %s run(s)", run_count)
+            break
+        if ctx.get("provider_rate_limit_outage"):
+            logger.debug("loop stop: provider rate limit run_count=%s", run_count)
+            logger.debug("End dispatch loop after %s run(s)", run_count)
+            break
+        # AST-2098: failed host probe — stop; held entities stay eligible and the next round probes again
+        if ctx.get("provider_probe_outage"):
+            logger.debug("loop stop: provider host probe failed run_count=%s", run_count)
+            logger.debug("End dispatch loop after %s run(s)", run_count)
+            break
         if summary.get("total_processed", 0) == 0:
             logger.debug("loop stop: zero processed this iteration run_count=%s", run_count)
             logger.info(
@@ -1562,6 +1839,18 @@ async def _run_dispatch_loop(
                 break
 
 
+def _cancel_pending_tasks(loop: asyncio.AbstractEventLoop) -> None:
+    """Cancel and drain tasks left on a finished dispatch loop (avoids 'Task was destroyed but it is pending')."""
+    try:
+        pending = [t for t in asyncio.all_tasks(loop) if not t.done()]
+        for t in pending:
+            t.cancel()
+        if pending:
+            loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+    except Exception:
+        logger.debug("pending-task cleanup failed", exc_info=True)
+
+
 def _task_thread_target(task_id: int, task: Dict) -> None:
     """Daemon thread target: owns its asyncio event loop, cleans up registry on exit."""
     loop = asyncio.new_event_loop()
@@ -1570,7 +1859,20 @@ def _task_thread_target(task_id: int, task: Dict) -> None:
             _task_registry[task_id]["loop"] = loop
     try:
         loop.run_until_complete(_dispatch_one(task))
+    except Exception:
+        # Log instead of letting threading print a bare traceback (e.g. transient DB lock).
+        logger.error_exc(
+            "%s | dispatch task %s crashed",
+            task.get("candidate_id") or "-",
+            task.get("task_key", task_id),
+        )
     finally:
+        try:
+            from src.external.telescope import close_loop_resources
+            loop.run_until_complete(close_loop_resources())
+        except Exception:
+            logger.debug("telescope loop cleanup failed", exc_info=True)
+        _cancel_pending_tasks(loop)
         loop.close()
         with _registry_lock:
             _task_registry.pop(task_id, None)
@@ -1581,7 +1883,7 @@ def _task_thread_target(task_id: int, task: Dict) -> None:
         )
 
 
-def run_task(task_id: int, *, ui_initiated: bool = False) -> bool:
+def run_task(task_id: int, *, ui_initiated: bool = False, scheduled_sweep: bool = False) -> bool:
     """Spawn a daemon thread for task_id if not already running. Returns True if started."""
     with _registry_lock:
         if task_id in _task_registry:
@@ -1589,6 +1891,24 @@ def run_task(task_id: int, *, ui_initiated: bool = False) -> bool:
 
     task = database.get_dispatch_task(task_id)
     if not task:
+        return False
+
+    # AST-2091: AUTO rows spawn here without the admin list, so the rubric gate must hold here too.
+    # late: avoid cycle with candidate → dispatcher (module-top import)
+    from src.core.candidate import rubric_dispatch_error
+    rubric_err = rubric_dispatch_error(task.get("candidate_id"), task.get("task_key") or "")
+    if rubric_err:
+        forced = bool(task.get("auto_mode"))
+        if forced:
+            _db_update_dispatch_task(task_id, auto_mode=0)
+        logger.warning(
+            "%s | dispatch_task id=%s task_key=%r %s — not started%s",
+            task.get("candidate_id") or "-",
+            task_id,
+            task.get("task_key"),
+            rubric_err,
+            ", AUTO forced off" if forced else "",
+        )
         return False
 
     # Enrich with available_count for logging
@@ -1601,7 +1921,7 @@ def run_task(task_id: int, *, ui_initiated: bool = False) -> bool:
             from src.core.inbox import count_inbox_messages_bound_to_candidate
             task["available_count"] = count_inbox_messages_bound_to_candidate(str(cid).strip())
         except Exception as exc:
-            logger.exception(
+            logger.error_exc(
                 "%s | dispatch %s %s task_id=%s\n  %s: %s\n  The task is still starting; Avail is 0",
                 cid or "-",
                 et or "-",
@@ -1614,6 +1934,7 @@ def run_task(task_id: int, *, ui_initiated: bool = False) -> bool:
     else:
         task["available_count"] = database.count_eligible_for_dispatch_task(task) if et and ts else 0
     task["_ui_initiated"] = ui_initiated
+    task["_scheduled_sweep"] = scheduled_sweep  # AST-1829: tick-spawned sweep; row is re-read above so the due mark must be passed in
 
     with _registry_lock:
         _task_registry[task_id] = {
@@ -1738,7 +2059,7 @@ def _debug_log_auto_off_stage_skips() -> None:
 
 
 def _meteorite_email_due_tasks() -> List[Dict[str, Any]]:
-    """AUTO candidate-bound inbox mailbox rows with live Avail ≥ min_count and freq allowing."""
+    """AUTO candidate-bound inbox mailbox rows with live Avail ≥ min_count (or a due sweep, AST-1829) and freq allowing."""
     # late: keep inbox/Gmail off module-top load (peer late imports in this file)
     from src.core.inbox import count_inbox_bound_by_candidate
 
@@ -1753,7 +2074,7 @@ def _meteorite_email_due_tasks() -> List[Dict[str, Any]]:
     try:
         bound_counts = count_inbox_bound_by_candidate()
     except Exception as exc:
-        logger.exception(
+        logger.error_exc(
             "AUTO mailbox bind counts\n  %s: %s\n  AUTO mailbox will not start this tick",
             type(exc).__name__,
             exc,
@@ -1765,7 +2086,35 @@ def _meteorite_email_due_tasks() -> List[Dict[str, Any]]:
         if not meteorite_mailbox_trigger_allows(task):
             continue
         avail = int(bound_counts.get(cid, 0))
-        if avail < (task.get("min_count") or 1):
+        min_count = task.get("min_count") or 1
+        sweep = avail < min_count
+        # AST-1829: below min_count only proceeds as a sweep (Avail > 0 and sweep interval elapsed)
+        if sweep and not (avail > 0 and database.dispatch_task_sweep_due(task)):
+            continue
+        # freq_hrs row cadence still gates both the normal and the sweep branch
+        if not database.dispatch_task_freq_allows(task):
+            continue
+        if sweep:
+            task["_scheduled_sweep"] = True  # sweep-due debug line is logged once in _tick_loop
+        task["available_count"] = avail
+        due.append(task)
+    return due
+
+
+def _fetch_timesheet_due_tasks() -> List[Dict[str, Any]]:
+    """AUTO fetch_timesheet rows whose candidate has NEW ledger count ≥ min_count (AST-2218)."""
+    auto_rows = [
+        t for t in database.list_dispatch_tasks()
+        if is_fetch_timesheet_task_key(t.get("task_key") or "")
+        and bool(t.get("auto_mode"))
+        and str(t.get("candidate_id") or "").strip()
+    ]
+    due: List[Dict[str, Any]] = []
+    for task in auto_rows:
+        cid = str(task["candidate_id"]).strip()
+        avail = database.count_ledger_timesheet_state(cid, "NEW")
+        min_count = task.get("min_count") or 1
+        if avail < min_count:
             continue
         if not database.dispatch_task_freq_allows(task):
             continue
@@ -1774,27 +2123,70 @@ def _meteorite_email_due_tasks() -> List[Dict[str, Any]]:
     return due
 
 
+def get_auto_thread_cap() -> int:
+    """Effective cap on concurrent AUTO task threads: runtime override if set, else config default."""
+    # Must NOT be called while holding _registry_lock (threading.Lock is not re-entrant).
+    with _registry_lock:
+        override = _auto_thread_cap_override
+    return override if override is not None else ASTRAL_CONFIG["max_auto_threads"]
+
+
+def set_auto_thread_cap(value: Any) -> int:
+    """Set the runtime AUTO thread cap. Raises ValueError unless value is an int within the
+    config bounds. Never cancels running threads — the tick just stops spawning until
+    running AUTO < cap."""
+    global _auto_thread_cap_override
+    lo = ASTRAL_CONFIG["max_auto_threads_min"]
+    hi = ASTRAL_CONFIG["max_auto_threads_max"]
+    # type() check (not isinstance) so bools, floats like 2.5 and numeric strings are rejected
+    if type(value) is not int or not lo <= value <= hi:
+        raise ValueError(f"max_auto_threads must be a whole number between {lo} and {hi}")
+    with _registry_lock:
+        previous = _auto_thread_cap_override
+        _auto_thread_cap_override = value
+    logger.info(
+        "AUTO thread cap set to %d (was %s; config default %d)",
+        value,
+        previous if previous is not None else "default",
+        ASTRAL_CONFIG["max_auto_threads"],
+    )
+    return value
+
+
 def _tick_loop() -> None:
-    """Global tick: wakes every tick_rate_minutes, spawns due AUTO tasks up to max_auto_threads."""
-    # Captured once at thread start — changes to ASTRAL_CONFIG require a server restart
+    """Global tick: wakes every tick_rate_minutes, spawns due AUTO tasks up to get_auto_thread_cap()."""
+    # Tick rate is captured once at thread start (changes need a restart); the AUTO cap is
+    # re-read every tick via get_auto_thread_cap() so admin overrides apply on the next tick.
     tick_secs = ASTRAL_CONFIG.get("tick_rate_minutes", 1) * 60
-    max_auto = ASTRAL_CONFIG.get("max_auto_threads", 3)
     while True:
         try:
             # late: avoid cycle with candidate → dispatcher (module-top import)
-            from src.core.candidate import age_stale_candidate_states
+            from src.core.candidate import age_stale_candidate_states, advance_candidate_readiness
             age_stale_candidate_states()
+            advance_candidate_readiness()
             # AST-1122: run due admin Scheduled Queries (interval_hours cadence)
             try:
                 database.run_due_scheduled_queries()
             except Exception as exc:
-                logger.exception(
+                logger.error_exc(
                     "Scheduled query tick\n  %s: %s\n  The tick is continuing; due AUTO tasks will still spawn",
                     type(exc).__name__,
                     exc,
                 )
-            # Claim-queue AUTO rows from data; mailbox AUTO merged via live bind Avail (AST-1135).
-            due = list(database.get_due_tasks()) + _meteorite_email_due_tasks()
+            # Claim-queue AUTO rows from data; mailbox + fetch_timesheet merged via live Avail.
+            due = (
+                list(database.get_due_tasks())
+                + _meteorite_email_due_tasks()
+                + _fetch_timesheet_due_tasks()
+            )
+            # AST-1829: one sweep-due debug site for claim-queue and mailbox (no debug in src/data/)
+            for t in due:
+                if t.get("_scheduled_sweep"):
+                    logger.debug(
+                        "sweep due task_id=%s task_key=%s available=%s min_count=%s sweep_hrs=%s last_run_at=%s",
+                        t.get("id"), t.get("task_key"), t.get("available_count"), t.get("min_count"),
+                        t.get("sweep_hrs"), t.get("last_run_at"),
+                    )
             # Note: for claim-queue tasks, freq_hrs is an entity-level filter during batch claim.
             # Mailbox has no claim queue — AUTO cadence uses dispatch_task_freq_allows on the row.
             _debug_log_auto_off_stage_skips()
@@ -1803,7 +2195,7 @@ def _tick_loop() -> None:
             with _registry_lock:
                 running_auto = sum(1 for e in _task_registry.values() if e["is_auto"])
                 running_ids = set(_task_registry.keys())
-            slots = max_auto - running_auto
+            slots = get_auto_thread_cap() - running_auto  # live cap; outside the lock (non-re-entrant)
             if slots > 0:
                 for task in due:
                     if slots <= 0:
@@ -1811,12 +2203,12 @@ def _tick_loop() -> None:
                     tid = task["id"]
                     if tid in running_ids:
                         continue  # already running
-                    if run_task(tid):
+                    if run_task(tid, scheduled_sweep=bool(task.get("_scheduled_sweep"))):
                         spawned += 1
                         slots -= 1
             logger.debug("End AUTO spawn loop after %s items", spawned)
         except Exception as exc:
-            logger.exception(
+            logger.error_exc(
                 "Tick loop\n  %s: %s\n  The scheduler is still running; the next tick will retry",
                 type(exc).__name__,
                 exc,
@@ -1849,7 +2241,7 @@ def start_scheduler() -> None:
             cstats.get("updated"),
         )
     except Exception as exc:
-        logger.exception(
+        logger.error_exc(
             "meteorite ingress/notify entity_type correction\n  %s: %s\n  Scheduler is still starting",
             type(exc).__name__,
             exc,
@@ -1863,7 +2255,7 @@ def start_scheduler() -> None:
             rstats.get("retired"),
         )
     except Exception as exc:
-        logger.exception(
+        logger.error_exc(
             "candidate_requested_* wrapper retire\n  %s: %s\n  Scheduler is still starting",
             type(exc).__name__,
             exc,

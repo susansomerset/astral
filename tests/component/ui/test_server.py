@@ -139,6 +139,14 @@ class TestAst1117CandidateSpaGuard:
         assert b"ok" in resp.data
 
 
+class TestAst2173SearchBlueprint:
+    def test_search_route_registered(self, server_client: FlaskClient) -> None:
+        import ui.server as server_mod
+
+        assert "search" in server_mod.app.blueprints
+        assert "/api/search" in {r.rule for r in server_mod.app.url_map.iter_rules()}
+
+
 class TestAst1117ViteCandidateProxy:
     """AST-1117 / AST-1435: Vite proxies print HTML prefixes only — not candidate SPA routes."""
 

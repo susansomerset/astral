@@ -96,25 +96,46 @@ class TestAst1348FlattenDeriveBreakdown:
 
 
 class TestJobsRoutes:
-    def test_list_in_review_view(self, jobs_client: FlaskClient, auth_headers: dict[str, str]) -> None:
-        resp = jobs_client.get("/api/jobs?view=in_review", headers=auth_headers)
-        assert resp.status_code == 200
-        assert resp.get_json() == []
+    def test_retired_in_review_view_falls_through(self, jobs_client: FlaskClient, auth_headers: dict[str, str]) -> None:
+        # AST-1974: in_review / recommended / responded views removed — unknown view → [].
+        for view in ("in_review", "recommended", "responded"):
+            resp = jobs_client.get(f"/api/jobs?view={view}", headers=auth_headers)
+            assert resp.status_code == 200
+            assert resp.get_json() == []
 
-    def test_list_in_review_filters_score_floor(self, jobs_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_list_processing_filters_score_floor(self, jobs_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:
         rows = [{"astral_job_id": "job-1", "job_data": {}}, {"astral_job_id": "job-2", "job_data": {}}]
-        monkeypatch.setattr(jobs_mod, "list_jobs", lambda **kwargs: rows)
+        captured: dict[str, object] = {}
+
+        def _list_jobs(**kwargs: object) -> list[dict[str, object]]:
+            captured.update(kwargs)
+            return rows
+
+        monkeypatch.setattr(jobs_mod, "list_jobs", _list_jobs)
         monkeypatch.setattr(jobs_mod, "score_floor_by_trigger_for_candidate", lambda candidate_id: {"NEW": 5.0})
         monkeypatch.setattr(jobs_mod, "job_misses_dispatch_score_floor", lambda row, floors: row["astral_job_id"] == "job-2")
-        resp = jobs_client.get("/api/jobs?view=in_review&candidate_id=cand-1", headers=auth_headers)
-        assert resp.get_json() == [{"astral_job_id": "job-1", "job_data": {}}]
+        resp = jobs_client.get("/api/jobs?view=processing&candidate_id=cand-1", headers=auth_headers)
+        # AST-2133 revision: every list row carries the composed JD (empty when nothing stored).
+        assert resp.get_json() == [{"astral_job_id": "job-1", "job_data": {"job_description": ""}}]
+        # AC 7: Processing = exclusion of the four explicit lists, never an include-list.
+        assert captured.get("exclude_states") == list(cfg.JOBS_PROCESSING_EXCLUDED_STATES)
+        assert captured.get("states") is None
 
-    def test_list_in_review_without_score_floors(self, jobs_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_list_processing_without_score_floors(self, jobs_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:
         rows = [{"astral_job_id": "job-1", "job_data": {}}]
         monkeypatch.setattr(jobs_mod, "list_jobs", lambda **kwargs: rows)
         monkeypatch.setattr(jobs_mod, "score_floor_by_trigger_for_candidate", lambda candidate_id: {})
-        resp = jobs_client.get("/api/jobs?view=in_review&candidate_id=cand-1", headers=auth_headers)
+        resp = jobs_client.get("/api/jobs?view=processing&candidate_id=cand-1", headers=auth_headers)
         assert resp.get_json() == rows
+
+    def test_list_processing_without_candidate_skips_floor_read(self, jobs_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:
+        rows = [{"astral_job_id": "job-1", "job_data": {}}]
+        floors = MagicMock(return_value={"NEW": 5.0})
+        monkeypatch.setattr(jobs_mod, "list_jobs", lambda **kwargs: rows)
+        monkeypatch.setattr(jobs_mod, "score_floor_by_trigger_for_candidate", floors)
+        resp = jobs_client.get("/api/jobs?view=processing", headers=auth_headers)
+        assert resp.get_json() == rows
+        floors.assert_not_called()
 
     def test_list_skipped_view_appends_virtual_rows(self, jobs_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(jobs_mod, "list_jobs", lambda **kwargs: [{"astral_job_id": "job-1", "state_changed_at": "2026-01-02", "job_data": {}}])
@@ -134,19 +155,25 @@ class TestJobsRoutes:
         resp = jobs_client.get("/api/jobs?view=skipped", headers=auth_headers)
         assert resp.get_json()[0]["astral_job_id"] == "job-1"
 
-    def test_list_recommended_and_default(self, jobs_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:
-        captured: dict[str, object] = {}
+    def test_list_ready_review_and_default(self, jobs_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:
+        # AST-1974 AC 2 / AC 3: ready → READY_JOB_STATES, review → REVIEW_JOB_STATES; default view = ready.
+        calls: list[dict[str, object]] = []
 
         def _list_jobs(**kwargs: object) -> list[dict[str, object]]:
-            captured.update(kwargs)
+            calls.append(dict(kwargs))
             return [{"astral_job_id": "job-1", "job_data": {"joblist_score": 1}}]
 
         monkeypatch.setattr(jobs_mod, "list_jobs", _list_jobs)
-        recommended = jobs_client.get("/api/jobs?view=recommended", headers=auth_headers)
-        assert recommended.get_json()[0]["latest_score"] == 1
-        states = captured.get("states") or []
-        assert "RECOMMENDED" in states
-        assert cfg.BUILD_ARTIFACTS_BASE_STATE in states
+        ready = jobs_client.get("/api/jobs?view=ready&candidate_id=cand-1", headers=auth_headers)
+        assert ready.get_json()[0]["latest_score"] == 1
+        review = jobs_client.get("/api/jobs?view=review&candidate_id=cand-1", headers=auth_headers)
+        assert review.get_json()[0]["latest_score"] == 1
+        default = jobs_client.get("/api/jobs?candidate_id=cand-1", headers=auth_headers)
+        assert default.status_code == 200
+        assert [c["states"] for c in calls] == [
+            list(cfg.READY_JOB_STATES), list(cfg.REVIEW_JOB_STATES), list(cfg.READY_JOB_STATES),
+        ]
+        assert all(c["candidate_id"] == "cand-1" and c["order_by"] == "state_changed_at" for c in calls)
         # Unknown views still fall through to [].
         other = jobs_client.get("/api/jobs?view=not_a_real_view", headers=auth_headers)
         assert other.get_json() == []
@@ -172,44 +199,26 @@ class TestJobsRoutes:
         assert primary.get("order_by") == "state_changed_at"
         assert list(primary.get("states") or []) == list(cfg.APPLIED_JOB_STATES)
 
-    def test_list_applied_includes_stem_job_null_company_candidate_id_ast1498(
+    def test_list_applied_single_scoped_read_no_repair_ast1974(
         self, jobs_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        # AST-1498 [bug-repro]: stem company with NULL company.candidate_id must still list on view=applied.
-        cid = "cand-a"
-        co_name = "alice@example.com-cand-a"
-        job_row = {
-            "astral_job_id": "job-applied-1",
-            "company": co_name,
-            "state": "CANDIDATE_APPLIED",
-            "state_changed_at": "2026-01-03T00:00:00Z",
-            "job_data": {"job_title": "Role A"},
-        }
+        # AST-1974 AC 4 (supersedes AST-1498 repair-on-read): job.candidate_id scoping (AST-1598) is the
+        # only read — never list_jobs(candidate_id=None) (raises), never company-linkage repair writes.
+        calls: list[dict[str, object]] = []
 
         def _list_jobs(**kwargs: object) -> list[dict[str, object]]:
-            scoped_cid = kwargs.get("candidate_id")
-            if scoped_cid:
-                # database.list_jobs scopes via company.candidate_id — NULL linkage excludes the row.
-                return []
-            return [job_row]
+            calls.append(dict(kwargs))
+            return [{"astral_job_id": "job-applied-1", "state": "CANDIDATE_APPLIED", "job_data": {}}]
 
+        update_company = MagicMock(return_value=1)
         monkeypatch.setattr(jobs_mod, "list_jobs", _list_jobs)
-        monkeypatch.setattr(
-            jobs_mod,
-            "get_company",
-            lambda short_name: {"short_name": short_name, "candidate_id": None, "state": "METEORITE"}
-            if short_name == co_name
-            else None,
-        )
-        monkeypatch.setattr(jobs_mod, "update_company", MagicMock(return_value=1))
-
-        resp = jobs_client.get(
-            f"/api/jobs?view=applied&candidate_id={cid}",
-            headers=auth_headers,
-        )
+        monkeypatch.setattr(jobs_mod, "update_company", update_company)
+        resp = jobs_client.get("/api/jobs?view=applied&candidate_id=cand-a", headers=auth_headers)
         assert resp.status_code == 200
-        ids = [row["astral_job_id"] for row in resp.get_json()]
-        assert "job-applied-1" in ids
+        assert [row["astral_job_id"] for row in resp.get_json()] == ["job-applied-1"]
+        assert len(calls) == 1 and calls[0]["candidate_id"] == "cand-a"
+        update_company.assert_not_called()
+        assert not hasattr(jobs_mod, "_list_applied_jobs_for_candidate")
 
     def test_bulk_state_requires_body(self, jobs_client: FlaskClient, auth_headers: dict[str, str]) -> None:
         resp = jobs_client.post("/api/jobs/bulk_state", json={}, headers=auth_headers)
@@ -392,12 +401,30 @@ class TestJobsRoutes:
 
 
     def test_skip_job_updates_state(self, jobs_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(jobs_mod, "get_job", lambda job_id: {"astral_job_id": job_id, "state": "CANDIDATE_REVIEW", "state_history": []})
-        transition = MagicMock()
-        monkeypatch.setattr(jobs_mod, "transition_job_state", transition)
+        # AST-1974: route delegates to core candidate_skip_job; exactly one completion info line (AC 9).
+        monkeypatch.setattr(
+            jobs_mod, "get_job",
+            lambda job_id: {"astral_job_id": job_id, "state": "CANDIDATE_REVIEW", "candidate_id": "cand-1"},
+        )
+        skip = MagicMock(return_value="CANDIDATE_SKIPPED")
+        logger = MagicMock()
+        monkeypatch.setattr(jobs_mod, "candidate_skip_job", skip)
+        monkeypatch.setattr(jobs_mod, "logger", logger)
         resp = jobs_client.post("/api/jobs/job-1/skip", headers=auth_headers)
         assert resp.status_code == 200
-        transition.assert_called_once_with(["job-1"], "CANDIDATE_SKIPPED")
+        assert resp.get_json() == {"ok": True}
+        skip.assert_called_once_with("job-1")
+        logger.info.assert_called_once_with(
+            "%s | api %s completed: POST %s", "cand-1", "/api/jobs/job-1/skip", 200,
+        )
+
+    def test_skip_job_logs_dash_without_candidate(self, jobs_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(jobs_mod, "get_job", lambda job_id: {"astral_job_id": job_id, "state": "NEW"})
+        monkeypatch.setattr(jobs_mod, "candidate_skip_job", MagicMock(return_value="CANDIDATE_SKIPPED"))
+        logger = MagicMock()
+        monkeypatch.setattr(jobs_mod, "logger", logger)
+        assert jobs_client.post("/api/jobs/job-1/skip", headers=auth_headers).status_code == 200
+        assert logger.info.call_args.args[1] == "-"
 
     def test_skip_job_missing_returns_404(self, jobs_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(jobs_mod, "get_job", lambda job_id: None)
@@ -405,15 +432,19 @@ class TestJobsRoutes:
         assert resp.status_code == 404
 
     def test_skip_job_invalid_transition_returns_409(self, jobs_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(jobs_mod, "get_job", lambda job_id: {"astral_job_id": job_id, "state": "NEW"})
+        monkeypatch.setattr(jobs_mod, "get_job", lambda job_id: {"astral_job_id": job_id, "state": "CANDIDATE_APPLIED"})
         monkeypatch.setattr(
             jobs_mod,
-            "transition_job_state",
-            MagicMock(side_effect=ValueError("Invalid transition: NEW -> CANDIDATE_SKIPPED")),
+            "candidate_skip_job",
+            MagicMock(side_effect=ValueError("Invalid transition: CANDIDATE_APPLIED -> CANDIDATE_SKIPPED")),
         )
+        logger = MagicMock()
+        monkeypatch.setattr(jobs_mod, "logger", logger)
         resp = jobs_client.post("/api/jobs/job-1/skip", headers=auth_headers)
         assert resp.status_code == 409
         assert "Invalid transition" in resp.get_json()["error"]
+        # 409 is not a completion — no info line.
+        logger.info.assert_not_called()
 
     def test_candidate_action_applied_records_result(self, jobs_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(jobs_mod, "get_job", lambda job_id: {"astral_job_id": job_id, "state": "CANDIDATE_REVIEW"})
@@ -864,12 +895,12 @@ class TestAst1453SkippedEditMetaAndPut:
         monkeypatch.setattr(
             jobs_mod,
             "legal_job_successor_states",
-            lambda state: list(successors or ["NEW", "FAILED_TECHNICAL"]),
+            lambda state: list(successors or ["NEW", "ERROR_GRADE_DO"]),
         )
         monkeypatch.setattr(
             jobs_mod,
             "hydrate_job_artifacts_for_display",
-            lambda art, debug=False: art or {},
+            lambda art, debug=False, astral_job_id=None: art or {},
         )
         monkeypatch.setattr(jobs_mod, "get_entity_agent_story", lambda job: [])
         monkeypatch.setattr(jobs_mod, "get_job_artifacts", lambda job: {})
@@ -955,9 +986,10 @@ class TestAst1453SkippedEditMetaAndPut:
         assert resp.status_code == 409
         assert resp.get_json()["error"] == "Job is not in a skipped state"
 
-    def test_put_illegal_transition_409(
+    def test_put_unregistered_state_409(
         self, jobs_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        # AST-1811: registry keys never 409 on the skipped path; non-JOB_STATES targets do.
         monkeypatch.setattr(
             jobs_mod,
             "get_job",
@@ -966,15 +998,15 @@ class TestAst1453SkippedEditMetaAndPut:
         monkeypatch.setattr(
             jobs_mod,
             "persist_skipped_job_edits",
-            MagicMock(side_effect=ValueError("Invalid transition: CANDIDATE_SKIPPED -> PASSED_JD")),
+            MagicMock(side_effect=ValueError("Value 'PASSED_GET_RETRY' not in allowed list: [...]")),
         )
         resp = jobs_client.put(
             "/api/jobs/job-1453",
-            json={"state": "PASSED_JD"},
+            json={"state": "PASSED_GET_RETRY"},
             headers=auth_headers,
         )
         assert resp.status_code == 409
-        assert "Invalid transition" in resp.get_json()["error"]
+        assert "not in allowed list" in resp.get_json()["error"]
 
     def test_put_empty_title_400(
         self, jobs_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
@@ -1045,6 +1077,132 @@ class TestAst1453SkippedEditMetaAndPut:
             "job-1453", {"job_title": "Saved", "state": "NEW"}
         )
 
+# AST-2133: responses carry the composed JD (preamble + telescope capture); PUT never writes the JD.
+class TestAst2133ComposedJdResponses:
+    _RAW = "Nav\n\nEngineer\nBuild things.\nApply for this job\nfooter"
+
+    @pytest.fixture(autouse=True)
+    def _db(self, sqlite_in_memory):
+        return sqlite_in_memory
+
+    def _ref(self) -> str:
+        from src.core import gazer
+        return gazer.keep_web_data(None, "https://jobs.example/1", "VISIBLE_TEXT", self._RAW)
+
+    def _wire_detail(self, monkeypatch: pytest.MonkeyPatch, job: dict) -> None:
+        TestAst1453SkippedEditMetaAndPut()._detail_wire(monkeypatch, job=job, successors=[])
+
+    def test_ac7_detail_composes_referenced_capture_without_writing_back(
+        self, jobs_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        stored = {"job_description": "Email pre", "jd_web_data_id": self._ref(), "note": "n"}
+        job = {"astral_job_id": "job-2133", "state": "NEW", "job_title": "Engineer", "job_data": stored}
+        self._wire_detail(monkeypatch, job)
+        resp = jobs_client.get("/api/jobs/job-2133", headers=auth_headers)
+        assert resp.status_code == 200
+        jd = resp.get_json()["job_data"]
+        assert jd["job_description"] == "Email pre\n\nEngineer\nBuild things."
+        assert jd["note"] == "n"
+        # Response-only: the stored job_data dict (shared via the shallow get_job copy) is untouched
+        assert stored["job_description"] == "Email pre"
+
+    def test_ac7_detail_no_reference_returns_stored_text_exactly(
+        self, jobs_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        pre = "Pasted JD\n\n\n\nverbatim  "
+        self._wire_detail(monkeypatch, {"astral_job_id": "j", "state": "NEW", "job_data": {"job_description": pre}})
+        assert jobs_client.get("/api/jobs/j", headers=auth_headers).get_json()["job_data"]["job_description"] == pre
+
+    # Skipped is excluded: its rows drop job_data entirely (PR #301 amendment below).
+    @pytest.mark.parametrize("view", ["ready", "review", "applied"])
+    def test_ac7_list_rows_compose_referenced_capture(
+        self, jobs_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch, view: str
+    ) -> None:
+        rows = [{"astral_job_id": "j", "job_title": "Engineer", "job_data": {"jd_web_data_id": self._ref()}}]
+        monkeypatch.setattr(jobs_mod, "list_jobs", lambda **kw: [dict(r) for r in rows])
+        resp = jobs_client.get(f"/api/jobs?view={view}", headers=auth_headers)
+        assert resp.get_json()[0]["job_data"]["job_description"] == "Engineer\nBuild things."
+
+    def test_skipped_rows_drop_job_data_and_skip_compose(
+        self, jobs_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # PR #301 amendment: skipped rows (real and virtual) carry no job_data / state_history,
+        # so no composed JD and no web_data read; lifted grades and scores stay.
+        real = {"astral_job_id": "r", "state": "CANDIDATE_SKIPPED", "state_history": [{"s": 1}],
+                "job_data": {"jd_web_data_id": "t-1", "jd_score": 4.2}}
+        virt = {"astral_job_id": "v", "state": "NEW", "state_history": [],
+                "job_data": {"job_description": "pre", "jd_web_data_id": "t-2"}}
+        compose = MagicMock()
+        monkeypatch.setattr(jobs_mod, "compose_job_description", compose)
+        monkeypatch.setattr(jobs_mod, "list_jobs", lambda **kw: [dict(real)])
+        monkeypatch.setattr(jobs_mod, "list_jobs_below_dispatch_score_floor", lambda cid: [dict(virt)])
+        monkeypatch.setattr(jobs_mod, "score_floor_by_trigger_for_candidate", lambda cid: {"NEW": 5.0})
+        out = jobs_client.get("/api/jobs?view=skipped&candidate_id=cand-1", headers=auth_headers).get_json()
+        assert {r["astral_job_id"] for r in out} == {"r", "v"}
+        for r in out:
+            assert "job_data" not in r and "state_history" not in r
+        assert next(r for r in out if r["astral_job_id"] == "r")["jd_score"] == 4.2
+        assert next(r for r in out if r["astral_job_id"] == "v")["virtual_skip"] is True
+        compose.assert_not_called()
+
+    def test_ac9_put_jd_only_400_without_persist(
+        self, jobs_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        persist = MagicMock()
+        monkeypatch.setattr(jobs_mod, "persist_skipped_job_edits", persist)
+        resp = jobs_client.put("/api/jobs/j", json={"job_description": "pasted"}, headers=auth_headers)
+        assert resp.status_code == 400
+        assert "No valid fields" in resp.get_json()["error"]
+        persist.assert_not_called()
+
+    def test_ac9_put_title_and_jd_persists_title_only(
+        self, jobs_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        persist = MagicMock(return_value={"astral_job_id": "j", "state": "CANDIDATE_SKIPPED"})
+        monkeypatch.setattr(jobs_mod, "persist_skipped_job_edits", persist)
+        self._wire_detail(monkeypatch, {"astral_job_id": "j", "state": "CANDIDATE_SKIPPED", "job_data": {}})
+        resp = jobs_client.put(
+            "/api/jobs/j", json={"job_title": "T", "job_description": "pasted"}, headers=auth_headers
+        )
+        assert resp.status_code == 200
+        persist.assert_called_once_with("j", {"job_title": "T"})
+
+
+# AST-2133 AC9 end-to-end: real tmp DB — PUT never changes the stored job_data.
+class TestAst2133PutJdReadOnlyE2E:
+    @pytest.fixture
+    def app_client(self, seeded_db) -> FlaskClient:
+        from flask import Flask
+
+        from ui.api.api_jobs import jobs_bp
+
+        seeded_db.save_company("acme", state="IMPORTED", candidate_id="cand-1")
+        seeded_db.save_job("j-2133", company="acme", state="CANDIDATE_SKIPPED", candidate_id="cand-1",
+                           job_title="Old", job_link="https://old.example",
+                           job_data={"job_description": "stored pre"})
+        app = Flask(__name__)
+        app.register_blueprint(jobs_bp)
+        app.config["TESTING"] = True
+        with app.test_client() as client:
+            yield client
+
+    def test_ac9_jd_only_400_and_title_plus_jd_saves_title_only(
+        self, app_client: FlaskClient, auth_headers: dict[str, str], seeded_db
+    ) -> None:
+        resp = app_client.put("/api/jobs/j-2133", json={"job_description": "x"}, headers=auth_headers)
+        assert resp.status_code == 400
+        assert seeded_db.get_job("j-2133")["job_data"] == {"job_description": "stored pre"}
+
+        resp = app_client.put(
+            "/api/jobs/j-2133", json={"job_title": "New", "job_description": "x"}, headers=auth_headers
+        )
+        assert resp.status_code == 200
+        assert resp.get_json()["job_data"]["job_description"] == "stored pre"
+        row = seeded_db.get_job("j-2133")
+        assert row["job_title"] == "New"
+        assert row["job_data"] == {"job_description": "stored pre"}
+
+
 # Branches: detail exposes parent/track fields + inherited job_link (AST-1704).
 class TestAst1704JobsDetailParentFields:
     def test_detail_exposes_source_entity_and_job_link(
@@ -1077,3 +1235,468 @@ class TestAst1704JobsDetailParentFields:
         assert body["source"] == "meteorite"
         assert body["source_entity_id"] == "mid-1"
         assert body["job_link"] == crumb
+
+
+# Branches: detail can_skip (AST-1872) — real core prior-state rule, not mocked; missing state → False.
+class TestAst1872DetailCanSkip:
+    @pytest.mark.parametrize(
+        ("state", "expected"),
+        [
+            ("RECOMMENDED", True),
+            ("CANDIDATE_REVIEW", True),
+            (f"{cfg.BUILD_ARTIFACTS_BASE_STATE}.draft_job_resume", True),
+            ("CANDIDATE_SKIPPED", False),
+            ("CANDIDATE_APPLIED", False),
+            (None, False),
+        ],
+    )
+    def test_detail_can_skip_by_state(
+        self, jobs_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch,
+        state, expected: bool,
+    ) -> None:
+        job = {"astral_job_id": "job-1872", "job_data": {}}
+        if state is not None:
+            job["state"] = state
+        monkeypatch.setattr(jobs_mod, "get_job", lambda jid: dict(job))
+        monkeypatch.setattr(jobs_mod, "get_entity_agent_story", lambda job: [])
+        monkeypatch.setattr(
+            jobs_mod,
+            "hydrate_job_artifacts_for_display",
+            lambda art, debug=False, astral_job_id=None: art or {},
+        )
+        monkeypatch.setattr(jobs_mod, "get_meteorite_by_astral_job_id", lambda _jid: None)
+        resp = jobs_client.get("/api/jobs/job-1872", headers=auth_headers)
+        assert resp.status_code == 200
+        assert resp.get_json()["can_skip"] is expected
+
+
+# AST-2232: detail enrichment — can_apply, company fields, lifecycle dates (real core helpers; get_company mocked).
+class TestAst2232DetailEnrichment:
+    def _wire(
+        self, monkeypatch: pytest.MonkeyPatch, job: dict, company_row: dict | None = None,
+    ) -> None:
+        monkeypatch.setattr(jobs_mod, "get_job", lambda jid: dict(job))
+        monkeypatch.setattr(jobs_mod, "get_entity_agent_story", lambda _job: [])
+        monkeypatch.setattr(
+            jobs_mod,
+            "hydrate_job_artifacts_for_display",
+            lambda art, debug=False, astral_job_id=None: art or {},
+        )
+        monkeypatch.setattr(jobs_mod, "get_meteorite_by_astral_job_id", lambda _jid: None)
+        monkeypatch.setattr(jobs_mod, "get_company", lambda _key: company_row)
+
+    @pytest.mark.parametrize(
+        ("state", "expected"),
+        [
+            ("RECOMMENDED", True),
+            ("CANDIDATE_REVIEW", True),
+            (f"{cfg.BUILD_ARTIFACTS_BASE_STATE}.draft_job_resume", True),
+            ("CANDIDATE_SKIPPED", False),
+            # CANDIDATE_APPLIED is in its own prior_states — admission stays True (re-apply path).
+            ("CANDIDATE_APPLIED", True),
+            (None, False),
+        ],
+    )
+    def test_detail_can_apply_by_state(
+        self, jobs_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch,
+        state, expected: bool,
+    ) -> None:
+        job = {"astral_job_id": "job-2232-apply", "job_data": {}}
+        if state is not None:
+            job["state"] = state
+        self._wire(monkeypatch, job)
+        resp = jobs_client.get("/api/jobs/job-2232-apply", headers=auth_headers)
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["can_apply"] is expected
+        assert "can_skip" in body
+
+    def test_company_and_lifecycle_fields(
+        self, jobs_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        job = {
+            "astral_job_id": "job-2232-co",
+            "state": "RECOMMENDED",
+            "company_id": "acme",
+            "created_at": "2026-01-15T12:00:00Z",
+            "job_data": {},
+            "state_history": [
+                {"to_state": "NEW", "timestamp": "2026-01-10T00:00:00Z"},
+                {"to_state": "RECOMMENDED", "timestamp": "2026-01-20T08:00:00Z"},
+                {"to_state": "RECOMMENDED", "timestamp": "2026-01-21T00:00:00Z"},
+            ],
+        }
+        self._wire(
+            monkeypatch,
+            job,
+            {"company_name": "Acme Corp", "company_website": "https://acme.example"},
+        )
+        body = jobs_client.get("/api/jobs/job-2232-co", headers=auth_headers).get_json()
+        assert body["company_name"] == "Acme Corp"
+        assert body["company_website"] == "https://acme.example"
+        assert body["discovered_at"] == "2026-01-15T12:00:00Z"
+        assert body["recommended_at"] == "2026-01-20T08:00:00Z"
+        assert body["applied_at"] is None
+        assert body["can_apply"] is True
+        assert body["can_skip"] is True
+
+    def test_missing_company_nulls_not_short_name_fallback(
+        self, jobs_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        job = {
+            "astral_job_id": "job-2232-miss",
+            "state": "RECOMMENDED",
+            "company_id": "ghost",
+            "company": "ghost",
+            "created_at": "2026-02-01T00:00:00Z",
+            "job_data": {},
+            "state_history": [
+                {"to_state": "CANDIDATE_APPLIED", "timestamp": "2026-02-05T10:00:00Z"},
+            ],
+        }
+        self._wire(monkeypatch, job, company_row=None)
+        body = jobs_client.get("/api/jobs/job-2232-miss", headers=auth_headers).get_json()
+        assert body["company_name"] is None
+        assert body["company_website"] is None
+        assert body["discovered_at"] == "2026-02-01T00:00:00Z"
+        assert body["recommended_at"] is None
+        assert body["applied_at"] == "2026-02-05T10:00:00Z"
+
+
+# AST-1974 · AST-1970: real SQLite — five views partition every job once; nav counts == list lengths;
+# skip legal from Processing states (claim released), illegal from Applied; below-floor rows Skipped-only.
+class TestAst1974JobsPartitionRealDb:
+    _VIEWS = ("ready", "review", "applied", "processing", "skipped")
+    _PROCESSING = ("NEW", "PASSED_JD", "METEORITE_QUALIFIED", cfg.BUILD_ARTIFACTS_BASE_STATE,
+                   cfg.resume_artifact_compound_state("anticipate_scan"))
+
+    @pytest.fixture
+    def app_client(self, seeded_db) -> FlaskClient:
+        from flask import Flask
+        from ui.api.api_jobs import jobs_bp
+        from ui.api.api_system import system_bp
+
+        db = seeded_db
+        db.save_company("acme", state="IMPORTED", candidate_id="cand-1")
+        seeds = {
+            "j-ready": "CANDIDATE_REVIEW",
+            "j-review": "RECOMMENDED",
+            "j-applied": "CANDIDATE_APPLIED",
+            # AST-2086: build-chain terminals are per hop (ERROR_<HOP>); BUILD_FAILED is retired.
+            "j-err-build": "ERROR_ANTICIPATE_SCAN",
+            "j-err-cover": "ERROR_DRAFT_COVER_LETTER",
+            "j-skipped": "CANDIDATE_SKIPPED",
+            **{f"j-proc-{i}": s for i, s in enumerate(self._PROCESSING)},
+        }
+        for jid, state in seeds.items():
+            db.save_job(jid, company="acme", state=state, candidate_id="cand-1")
+        # Below-floor virtual skip: PASSED_JD trigger floor 7.0, score 2.0 → Skipped only.
+        db.save_dispatch_task("cand-1", "evaluate_jd", min_count=1, trigger_state="PASSED_JD", score_floor=7.0)
+        db.save_job("j-below", company="acme", state="PASSED_JD", candidate_id="cand-1")
+        db.save_job("j-below", latest_score=2.0)
+        db.save_job("j-proc-1", latest_score=9.0)  # PASSED_JD above floor stays Processing
+        app = Flask(__name__)
+        app.register_blueprint(jobs_bp)
+        app.register_blueprint(system_bp)
+        app.config["TESTING"] = True
+        with app.test_client() as client:
+            yield client
+
+    def _ids(self, client: FlaskClient, headers: dict[str, str], view: str) -> list[str]:
+        resp = client.get(f"/api/jobs?view={view}&candidate_id=cand-1", headers=headers)
+        assert resp.status_code == 200, view
+        return [r["astral_job_id"] for r in resp.get_json()]
+
+    def test_views_partition_every_job_exactly_once(self, app_client: FlaskClient, auth_headers: dict[str, str], seeded_db) -> None:
+        # AC 2 / 3 / 4 / 5 / 6.
+        views = {v: self._ids(app_client, auth_headers, v) for v in self._VIEWS}
+        assert views["ready"] == ["j-ready"]
+        assert views["review"] == ["j-review"]
+        assert views["applied"] == ["j-applied"]
+        assert set(views["skipped"]) == {"j-err-build", "j-err-cover", "j-skipped", "j-below"}
+        assert set(views["processing"]) == {f"j-proc-{i}" for i in range(len(self._PROCESSING))}
+        union = [jid for v in self._VIEWS for jid in views[v]]
+        assert len(union) == len(set(union))
+        with seeded_db._get_connection() as conn:
+            total = conn.execute("SELECT COUNT(*) FROM job WHERE candidate_id='cand-1'").fetchone()[0]
+        assert len(union) == total
+
+    def test_nav_counts_match_list_lengths(self, app_client: FlaskClient, auth_headers: dict[str, str]) -> None:
+        # AST-2230: Job Opportunities sidebar paths (Processing dropped); counts still match lists.
+        nav = app_client.get("/api/nav_config?candidate_id=cand-1", headers=auth_headers).get_json()
+        jobs = next(g for g in nav if g["label"] == "Job Opportunities")
+        counts = {it["path"]: it["count"] for it in jobs["items"]}
+        assert list(counts) == [
+            f"/jobs/{v}" for v in ("meteorites", "review", "ready", "applied", "skipped")
+        ]
+        for v in ("ready", "review", "applied", "skipped"):
+            assert counts[f"/jobs/{v}"] == len(self._ids(app_client, auth_headers, v)), v
+        assert counts["/jobs/meteorites"] == 0
+
+    def test_skip_from_processing_states_releases_claim(self, app_client: FlaskClient, auth_headers: dict[str, str], seeded_db) -> None:
+        # AC 8 — every Processing seed skips; a held batch claim is cleared; Applied still 409.
+        assert seeded_db.claim_job_batch("b-1974", "NEW", 10, candidate_id="cand-1") >= 1
+        assert seeded_db.get_job("j-proc-0")["batch_id"] == "b-1974"
+        for i in range(len(self._PROCESSING)):
+            resp = app_client.post(f"/api/jobs/j-proc-{i}/skip", headers=auth_headers)
+            assert resp.status_code == 200, self._PROCESSING[i]
+        assert seeded_db.get_job("j-proc-0")["batch_id"] in (None, "")
+        skipped = self._ids(app_client, auth_headers, "skipped")
+        processing = self._ids(app_client, auth_headers, "processing")
+        for i in range(len(self._PROCESSING)):
+            assert f"j-proc-{i}" in skipped and f"j-proc-{i}" not in processing
+            assert seeded_db.get_job(f"j-proc-{i}")["state"] == "CANDIDATE_SKIPPED"
+        assert app_client.post("/api/jobs/j-applied/skip", headers=auth_headers).status_code == 409
+        assert seeded_db.get_job("j-applied")["state"] == "CANDIDATE_APPLIED"
+
+    def test_error_build_artifacts_detail_editable_with_retry(self, app_client: FlaskClient, auth_headers: dict[str, str]) -> None:
+        # AC 5 — terminal build failure on Skipped is editable and retries to RECOMMENDED.
+        resp = app_client.get("/api/jobs/j-err-build", headers=auth_headers)
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["fields_editable"] is True
+        assert "RECOMMENDED" in body["legal_next_states"]
+
+
+# AST-2067 Branches (both job routes): missing job 404; PUT body not a dict / uuid missing-blank 400;
+# core ValueError 400 (candidate key on job route, cross-key/cross-job uuid = AC7, current
+# unchanged); unexpected Exception → logged once + 500 payload; 200 (PUT logs one completion line,
+# candidate_id from the job row or "-").
+class TestAst2067JobVersionRoutes:
+    _BASE = "/api/jobs/job-1/artifacts/job.artifacts.cover_letter"
+
+    @pytest.fixture
+    def db(self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setattr(
+            jobs_mod, "get_job", lambda jid: {"astral_job_id": jid, "candidate_id": "cand-1"} if jid == "job-1" else None
+        )
+        return sqlite_in_memory
+
+    def _seed(self, db, eid: str = "job-1", at: str = "cover_letter", n: int = 3) -> list:
+        return [
+            db.save_artifact("job", eid, at, {"Subject": "S", "Letter": f"v{i}", "signature": ""}, candidate_id="cand-1")
+            for i in range(1, n + 1)
+        ]
+
+    def test_list_and_set_current_200(
+        self, jobs_client: FlaskClient, auth_headers, db, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        v1, v2, v3 = self._seed(db)
+        got = jobs_client.get(f"{self._BASE}/versions", headers=auth_headers)
+        assert got.status_code == 200
+        versions = got.get_json()["versions"]
+        assert sorted(versions, key=lambda u: versions[u]["position"]) == [v1, v2, v3]
+        caplog.set_level("INFO")
+        put = jobs_client.put(f"{self._BASE}/current", json={"artifact_uuid": v2}, headers=auth_headers)
+        assert put.status_code == 200
+        assert put.get_json()["current"] == v2
+        assert db.get_current_artifact("job", "job-1", "cover_letter")["artifact_data"]["Letter"] == "v2"
+        assert any(
+            m.startswith("cand-1 | api") and "completed: PUT 200" in m for m in (r.getMessage() for r in caplog.records)
+        )
+
+    def test_cross_key_uuid_400_current_unchanged(self, jobs_client: FlaskClient, auth_headers, db) -> None:
+        # AC7: job_resume uuid and other-job uuid on the cover_letter route → 400; v3 stays current.
+        _, _, v3 = self._seed(db)
+        other_key = self._seed(db, at="job_resume", n=1)[0]
+        other_job = self._seed(db, eid="job-2", n=1)[0]
+        for uid in (other_key, other_job):
+            res = jobs_client.put(f"{self._BASE}/current", json={"artifact_uuid": uid}, headers=auth_headers)
+            assert res.status_code == 400
+            assert "is not a version of" in res.get_json()["error"]
+        assert db.get_current_artifact("job", "job-1", "cover_letter")["artifact_uuid"] == v3
+
+    @pytest.mark.parametrize(
+        "method,suffix,body", [("get", "versions", None), ("put", "current", {"artifact_uuid": "u"})]
+    )
+    def test_missing_job_404(self, jobs_client: FlaskClient, auth_headers, db, method, suffix, body) -> None:
+        res = getattr(jobs_client, method)(
+            f"/api/jobs/nope/artifacts/job.artifacts.cover_letter/{suffix}", json=body, headers=auth_headers
+        )
+        assert res.status_code == 404
+        assert res.get_json() == {"error": "Not found"}
+
+    @pytest.mark.parametrize("body", [["not", "a", "dict"], {}, {"artifact_uuid": "  "}, {"artifact_uuid": 7}])
+    def test_put_bad_body_400(self, jobs_client: FlaskClient, auth_headers, db, body) -> None:
+        res = jobs_client.put(f"{self._BASE}/current", json=body, headers=auth_headers)
+        assert res.status_code == 400
+        assert res.get_json() == {"error": "artifact_uuid required"}
+
+    @pytest.mark.parametrize(
+        "method,suffix,body", [("get", "versions", None), ("put", "current", {"artifact_uuid": "u"})]
+    )
+    def test_candidate_key_on_job_route_400(
+        self, jobs_client: FlaskClient, auth_headers, db, method, suffix, body
+    ) -> None:
+        res = getattr(jobs_client, method)(
+            f"/api/jobs/job-1/artifacts/candidate.artifacts.base_resume/{suffix}", json=body, headers=auth_headers
+        )
+        assert res.status_code == 400
+        assert "not job-scoped" in res.get_json()["error"]
+
+    @pytest.mark.parametrize(
+        "patch,method,suffix,body",
+        [
+            ("list_job_artifact_versions", "get", "versions", None),
+            ("set_job_artifact_current", "put", "current", {"artifact_uuid": "u"}),
+        ],
+    )
+    @pytest.mark.parametrize("job_cid", ["cand-1", None])
+    def test_unexpected_error_logged_once_500(
+        self,
+        jobs_client: FlaskClient,
+        auth_headers,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+        patch,
+        method,
+        suffix,
+        body,
+        job_cid,
+    ) -> None:
+        def _boom(*a, **k):
+            raise RuntimeError("db down")
+
+        monkeypatch.setattr(jobs_mod, "get_job", lambda jid: {"astral_job_id": jid, "candidate_id": job_cid})
+        monkeypatch.setattr(jobs_mod, patch, _boom)
+        caplog.set_level("ERROR")
+        res = getattr(jobs_client, method)(f"{self._BASE}/{suffix}", json=body, headers=auth_headers)
+        assert res.status_code == 500
+        assert res.get_json()["exception_type"] == "RuntimeError"
+        errors = [r.getMessage() for r in caplog.records if r.levelname == "ERROR" and "failed" in r.getMessage()]
+        assert len(errors) == 1 and errors[0].startswith(f"{job_cid or '-'} | api")
+
+
+# Branches: GET /api/jobs/<id>/resume_structure — missing job 404 / 200 / unexpected 500 (cid set / "-").
+# PUT /api/jobs/<id>/artifacts/job_resume_structure — missing job 404 / body not dict (json not dict,
+# key missing, value not dict) 400 / ValueError 400 (no log) / unexpected 500 / 200 + INFO.
+class TestAst2081JobResumeStructureRoutes:
+    _GET = "/api/jobs/{}/resume_structure"
+    _PUT = "/api/jobs/{}/artifacts/job_resume_structure"
+
+    @staticmethod
+    def _cd() -> dict:
+        from src.core import candidate as core_candidate
+
+        raw = core_candidate.default_resume_structure()
+        raw["sections"]["professional_summary"]["title"] = "Candidate Summary"
+        return {"artifacts": {"resume_structure": raw, "base_resume": {"awards": "Prize"}}}
+
+    @pytest.fixture
+    def db(self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch):
+        from src.core import tracker as tracker_mod
+
+        monkeypatch.setattr(
+            jobs_mod, "get_job", lambda jid: {"astral_job_id": jid, "candidate_id": "cand-1"} if jid in ("job-a", "job-b") else None
+        )
+        monkeypatch.setattr(tracker_mod, "_candidate_id_for_job", lambda jid: "cand-1")
+        monkeypatch.setattr(tracker_mod, "_candidate_data_for_job", lambda jid: self._cd())
+        return sqlite_in_memory
+
+    def _inherited_payload(self) -> dict:
+        from src.core import candidate as core_candidate
+
+        cd = self._cd()
+        resolved = core_candidate.hydrate_resume_structure_from_base_resume(
+            core_candidate.resolve_resume_structure(cd), cd["artifacts"]["base_resume"]
+        )
+        return core_candidate.resume_structure_editor_payload(resolved)
+
+    @pytest.mark.parametrize("method,url", [("get", _GET), ("put", _PUT)])
+    def test_missing_job_404(self, jobs_client: FlaskClient, auth_headers, db, method, url) -> None:
+        res = getattr(jobs_client, method)(url.format("nope"), json={"job_resume_structure": {}}, headers=auth_headers)
+        assert res.status_code == 404
+        assert res.get_json() == {"error": "Not found"}
+
+    def test_get_inherits_candidate_and_writes_nothing(self, jobs_client: FlaskClient, auth_headers, db) -> None:
+        # AC16: unedited job → candidate's all_sections (hydrated like the candidate GET); no row written.
+        res = jobs_client.get(self._GET.format("job-a"), headers=auth_headers)
+        assert res.status_code == 200
+        body = res.get_json()
+        assert body == self._inherited_payload()
+        assert "awards" in {r["id"] for r in body["all_sections"]}
+        assert body["catalog"]["body_format_details"]["line"]["label"] == "Line"
+        assert db.list_artifacts("job", "job-a", "job_resume_structure") == []
+
+    def test_put_then_get_isolated_per_job(
+        self, jobs_client: FlaskClient, auth_headers, db, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        # AC15 + AC18: job A edits (rename / format / reorder / accent) show on A only; B still inherits.
+        from src.core import candidate as core_candidate
+
+        raw = self._cd()["artifacts"]["resume_structure"]
+        secs = raw["sections"]
+        secs["professional_summary"]["title"] = "Profile"
+        secs["highlights"]["format"] = "line"
+        secs["core_competencies"]["order"], secs["technical_skills"]["order"] = 10, 5
+        accent = cfg.BUILD_CONFIG["accent_palette"][2].upper()
+        caplog.set_level("INFO")
+        put = jobs_client.put(
+            self._PUT.format("job-a"),
+            json={"job_resume_structure": {"sections": secs, "accent_color": accent}},
+            headers=auth_headers,
+        )
+        assert put.status_code == 200 and put.get_json() == {"ok": True}
+        info = [r.getMessage() for r in caplog.records if r.levelname == "INFO" and "completed: PUT 200" in r.getMessage()]
+        assert info == ["cand-1 | api /api/jobs/job-a/artifacts/job_resume_structure completed: PUT 200"]
+        a = jobs_client.get(self._GET.format("job-a"), headers=auth_headers).get_json()
+        rows = {r["id"]: r for r in a["all_sections"]}
+        assert rows["professional_summary"]["title"] == "Profile"
+        assert rows["highlights"]["format"] == "line"
+        assert rows["technical_skills"]["order"] < rows["core_competencies"]["order"]
+        assert a["accent_color"] == accent
+        assert jobs_client.get(self._GET.format("job-b"), headers=auth_headers).get_json() == self._inherited_payload()
+        assert db.list_artifacts("candidate", "cand-1", "resume_structure") == []
+        assert core_candidate.resolve_resume_structure(self._cd())["sections"]["professional_summary"]["title"] == (
+            "Candidate Summary"
+        )
+
+    @pytest.mark.parametrize(
+        "body", [["not", "a", "dict"], {}, {"job_resume_structure": "x"}, {"job_resume_structure": ["x"]}]
+    )
+    def test_put_body_not_dict_400(self, jobs_client: FlaskClient, auth_headers, db, body) -> None:
+        res = jobs_client.put(self._PUT.format("job-a"), json=body, headers=auth_headers)
+        assert res.status_code == 400
+        assert res.get_json() == {"error": "job_resume_structure must be a dict"}
+
+    def test_put_invalid_structure_400_no_log(
+        self, jobs_client: FlaskClient, auth_headers, db, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        caplog.set_level("INFO")
+        res = jobs_client.put(
+            self._PUT.format("job-a"), json={"job_resume_structure": {"accent_color": "#123456"}}, headers=auth_headers
+        )
+        assert res.status_code == 400
+        assert "accent_palette" in res.get_json()["error"]
+        assert not [r for r in caplog.records if r.name == jobs_mod.logger.name]
+        assert db.list_artifacts("job", "job-a", "job_resume_structure") == []
+
+    @pytest.mark.parametrize(
+        "patch,method,url",
+        [("get_job_effective_resume_structure", "get", _GET), ("save_job_artifact", "put", _PUT)],
+    )
+    @pytest.mark.parametrize("job_cid", ["cand-1", None])
+    def test_unexpected_error_logged_once_500(
+        self,
+        jobs_client: FlaskClient,
+        auth_headers,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+        patch,
+        method,
+        url,
+        job_cid,
+    ) -> None:
+        def _boom(*a, **k):
+            raise RuntimeError("db down")
+
+        monkeypatch.setattr(jobs_mod, "get_job", lambda jid: {"astral_job_id": jid, "candidate_id": job_cid})
+        monkeypatch.setattr(jobs_mod, patch, _boom)
+        caplog.set_level("ERROR")
+        res = getattr(jobs_client, method)(
+            url.format("job-a"), json={"job_resume_structure": {"sections": {}}}, headers=auth_headers
+        )
+        assert res.status_code == 500
+        assert res.get_json()["exception_type"] == "RuntimeError"
+        errors = [r.getMessage() for r in caplog.records if r.levelname == "ERROR" and "failed" in r.getMessage()]
+        assert len(errors) == 1 and errors[0].startswith(f"{job_cid or '-'} | api")

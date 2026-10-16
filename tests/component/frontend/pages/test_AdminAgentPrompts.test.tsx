@@ -12,45 +12,31 @@ vi.mock("../../../../src/ui/frontend/src/lib/api", async (importOriginal) => {
 
 const mockedApi = vi.mocked(api)
 
-const models = [
-  {
-    model_code: "claude-sonnet",
-    model_label: "Claude Sonnet",
-    cpm_input: 3,
-    cpm_output: 15,
-    cpm_cache_write: 3.75,
-    cpm_cache_read: 0.3,
-    default_temperature: 0.2,
-    default_max_tokens: 4096,
+// AST-1880 / AST-1957: GET /agents/models — keyed by model id; `order` carries catalog order; each model's own
+// default output budget, no brain sizes. AST-2181: structured_output_capability — Kimi capable, Haiku not.
+const models = {
+  "kimi-k2.6": {
+    order: 1, label: "Kimi K2.6", server_id: "kimi", server_label: "Kimi", default_max_tokens: 16000,
+    structured_output_capability: "advisory",
   },
-]
+  "claude-haiku-4-5": {
+    order: 0, label: "Claude Haiku 4.5", server_id: "anthropic", server_label: "Anthropic", default_max_tokens: 8192,
+    structured_output_capability: null,
+  },
+}
 
-const brainCatalog = [
-  {
-    brain_setting: "Little",
-    label: "Little",
-    default_temperature: 0.7,
-    default_max_tokens: 8192,
-  },
-  {
-    brain_setting: "Medium",
-    label: "Medium",
-    default_temperature: 0.2,
-    default_max_tokens: 64000,
-  },
-  {
-    brain_setting: "Big",
-    label: "Big",
-    default_temperature: 1,
-    default_max_tokens: 32000,
-  },
-]
-
+// AST-1957: rows carry the seven plain settings as the data layer exposes them (lists decoded, bool fallbacks).
+const emptySettings = {
+  quantization: null, temperature: null, reasoning_effort: null, provider_allow_fallbacks: null,
+  provider_only: null, provider_ignore: null, provider_sort: null,
+}
 const agents = [
   {
     agent_id: "agent_a",
-    model_code: "claude-sonnet",
+    model_id: "claude-haiku-4-5",
+    ...emptySettings,
     temperature: 0.2,
+    provider_allow_fallbacks: true,
     max_tokens: 4096,
     task_count: 0,
     content_length: 12,
@@ -58,8 +44,14 @@ const agents = [
   },
   {
     agent_id: "agent_b",
-    model_code: "missing-model",
-    temperature: 0.1,
+    model_id: "kimi-k2.6",
+    quantization: "fp8",
+    temperature: null,
+    reasoning_effort: "none",
+    provider_allow_fallbacks: false,
+    provider_only: ["groq", "together"],
+    provider_ignore: ["deepinfra"],
+    provider_sort: "price",
     max_tokens: 1024,
     task_count: 2,
     content_length: 8,
@@ -68,10 +60,19 @@ const agents = [
 ]
 
 describe("AdminAgentPrompts", () => {
+  let postBodies: Record<string, unknown>[] = []
+  let putBodies: Record<string, unknown>[] = []
   beforeEach(() => {
     localStorage.clear()
     mockedApi.mockReset()
+    postBodies = []
+    putBodies = []
   })
+
+  const field = (label: string) =>
+    screen.getByText(label, { selector: "label.dep-field-label" }).closest(".dep-field") as HTMLElement
+  const optionTexts = (label: string) =>
+    within(field(label)).getAllByRole("option").map(o => o.textContent)
 
   const agentTokens = ["FIRST_NAME", "LAST_NAME"]
 
@@ -90,15 +91,22 @@ describe("AdminAgentPrompts", () => {
         return { ok: true, json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE", candidate_data: {} }] } as Response
       }
       if (url === "/api/admin/agents/meta/tokens") return { ok: true, json: async () => agentTokens } as Response
-      if (url === "/api/admin/agents/brain_settings") return { ok: true, json: async () => brainCatalog } as Response
       if (url === "/api/admin/agents" && !init?.method) return { ok: true, json: async () => agents } as Response
       if (url === "/api/admin/agents/models") return { ok: true, json: async () => models } as Response
       if (url === "/api/admin/agents/agent_a" && !init?.method) {
         return { ok: true, json: async () => ({ ...agents[0], content: "system prompt" }) } as Response
       }
-      if (url === "/api/admin/agents/agent_a" && init?.method === "PUT")
-        return { ok: true, status: 200, json: async () => ({ agent_id: "agent_a", brain_setting: "Medium" }) } as Response
-      if (url === "/api/admin/agents" && init?.method === "POST") return { ok: true, json: async () => ({}) } as Response
+      if (url === "/api/admin/agents/agent_b" && !init?.method) {
+        return { ok: true, json: async () => ({ ...agents[1], content: "b prompt" }) } as Response
+      }
+      if (/^\/api\/admin\/agents\/agent_[ab]$/.test(url) && init?.method === "PUT") {
+        putBodies.push(JSON.parse(String(init.body)))
+        return { ok: true, status: 200, json: async () => ({ ...agents[0] }) } as Response
+      }
+      if (url === "/api/admin/agents" && init?.method === "POST") {
+        postBodies.push(JSON.parse(String(init.body)))
+        return { ok: true, json: async () => ({}) } as Response
+      }
       if (url === "/api/admin/agents/agent_a" && init?.method === "DELETE") return { ok: true, json: async () => ({}) } as Response
     })
   }
@@ -124,6 +132,143 @@ describe("AdminAgentPrompts", () => {
     await userEvent.click(screen.getByRole("button", { name: "Save" }))
     await waitFor(() => expect(screen.getByText(/Agent "agent_a" deleted/)).toBeInTheDocument())
   }, 20000)
+
+  // AST-1957 AC 10: seven plain settings inputs replace brain size + mode — Quantization, Temperature, Effort,
+  // Allow provider fallbacks (checkbox), Provider only, Provider ignore, Provider sort — sent under the settings keys.
+  describe("AST-1957 Manage Agents plain settings", () => {
+    const textInput = (label: string) => within(field(label)).getByRole("textbox") as HTMLInputElement
+    const tempInput = () => within(field("Temperature")).getByRole("spinbutton") as HTMLInputElement
+    const maxTokInput = () => within(field("Max Tokens")).getByRole("spinbutton") as HTMLInputElement
+    const fallbacks = () => screen.getByRole("checkbox", { name: /allow provider fallbacks/i }) as HTMLInputElement
+    const textLabels = ["Quantization", "Effort", "Provider only", "Provider ignore", "Provider sort"]
+    const headers = () =>
+      screen.getAllByRole("columnheader").map(th => (th.textContent ?? "").replace(/[▲▼]/g, "").trim())
+    const noRetiredControls = () => {
+      for (const label of ["Brain size", "Mode"])
+        expect(screen.queryByText(label, { selector: "label.dep-field-label" })).not.toBeInTheDocument()
+    }
+
+    it("list shows the settings columns, not Brain setting / Mode", async () => {
+      mockApi()
+      renderWithProviders(<AgentPrompts />)
+      await waitFor(() => expect(screen.getByText("agent_a")).toBeInTheDocument())
+      expect(headers()).toEqual(expect.arrayContaining(["Quant", "Temp", "Effort", "Fallbacks", "Only", "Ignore", "Sort"]))
+      expect(headers()).not.toContain("Brain setting")
+      expect(headers()).not.toContain("Mode")
+      const rowA = screen.getByText("agent_a").closest("tr") as HTMLElement
+      for (const cell of ["Claude Haiku 4.5", "0.2", "yes"]) expect(within(rowA).getByText(cell)).toBeInTheDocument()
+      const rowB = screen.getByText("agent_b").closest("tr") as HTMLElement
+      for (const cell of ["fp8", "none", "no", "groq, together", "deepinfra", "price"])
+        expect(within(rowB).getByText(cell)).toBeInTheDocument()
+    }, 15000)
+
+    it("Add opens on the first model, empty settings with fallbacks on; Max Tokens placeholder follows the model", async () => {
+      mockApi()
+      renderWithProviders(<AgentPrompts />)
+      await waitFor(() => expect(screen.getByText("agent_a")).toBeInTheDocument())
+      await userEvent.click(screen.getByRole("button", { name: "+ Add Agent" }))
+      noRetiredControls()
+      expect(optionTexts("Model")).toEqual(["Claude Haiku 4.5", "Kimi K2.6"])
+      expect(within(field("Model")).getByRole("combobox")).toHaveValue("claude-haiku-4-5")
+      for (const label of textLabels) expect(textInput(label)).toHaveValue("")
+      expect(tempInput()).toHaveValue(null)
+      expect(fallbacks()).toBeChecked()
+      // Empty max_tokens means the model default: shown as placeholder, never pre-filled.
+      expect(maxTokInput()).toHaveValue(null)
+      expect(maxTokInput()).toHaveAttribute("placeholder", "default 8192")
+      await userEvent.selectOptions(within(field("Model")).getByRole("combobox"), "kimi-k2.6")
+      expect(maxTokInput()).toHaveAttribute("placeholder", "default 16000")
+      expect(maxTokInput()).toHaveValue(null)
+    }, 20000)
+
+    it("Add saves every setting under its key (trimmed, lists split) with no brain_setting or mode", async () => {
+      mockApi()
+      renderWithProviders(<AgentPrompts />)
+      await waitFor(() => expect(screen.getByText("agent_a")).toBeInTheDocument())
+      await userEvent.click(screen.getByRole("button", { name: "+ Add Agent" }))
+      fireEvent.change(screen.getByPlaceholderText("e.g. job_analyst_grace"), { target: { value: "kimi agent" } })
+      await userEvent.selectOptions(within(field("Model")).getByRole("combobox"), "kimi-k2.6")
+      fireEvent.change(textInput("Quantization"), { target: { value: " bf16 " } })
+      fireEvent.change(tempInput(), { target: { value: "0.7" } })
+      fireEvent.change(textInput("Effort"), { target: { value: "high" } })
+      await userEvent.click(fallbacks())
+      fireEvent.change(textInput("Provider only"), { target: { value: " groq, together ,, " } })
+      fireEvent.change(textInput("Provider sort"), { target: { value: "price" } })
+      await userEvent.click(screen.getByRole("button", { name: "Save" }))
+      await waitFor(() => expect(postBodies).toHaveLength(1))
+      // Exact body: blank Provider ignore goes out as null; empty max_tokens is not sent.
+      expect(postBodies[0]).toEqual({
+        agent_id: "kimi_agent", content: "", model_id: "kimi-k2.6",
+        quantization: "bf16", temperature: 0.7, reasoning_effort: "high", provider_allow_fallbacks: false,
+        provider_only: ["groq", "together"], provider_ignore: null, provider_sort: "price",
+        requires_structured_output: false,
+      })
+    }, 20000)
+
+    it("AC 10: Edit renders the seven settings from the row and saves them under the settings keys", async () => {
+      mockApi()
+      renderWithProviders(<AgentPrompts />)
+      await waitFor(() => expect(screen.getByText("agent_b")).toBeInTheDocument())
+      await userEvent.click(screen.getByText("agent_b"))
+      await waitFor(() => expect(screen.getByDisplayValue("b prompt")).toBeInTheDocument())
+      noRetiredControls()
+      expect(within(field("Model")).getByRole("combobox")).toHaveValue("kimi-k2.6")
+      expect(textInput("Quantization")).toHaveValue("fp8")
+      expect(tempInput()).toHaveValue(null)
+      expect(textInput("Effort")).toHaveValue("none")
+      expect(fallbacks()).not.toBeChecked()
+      expect(textInput("Provider only")).toHaveValue("groq, together")
+      expect(textInput("Provider ignore")).toHaveValue("deepinfra")
+      expect(textInput("Provider sort")).toHaveValue("price")
+      // Set temperature, clear two settings, turn fallbacks on.
+      fireEvent.change(tempInput(), { target: { value: "0.3" } })
+      fireEvent.change(textInput("Quantization"), { target: { value: "" } })
+      fireEvent.change(textInput("Provider ignore"), { target: { value: "" } })
+      await userEvent.click(fallbacks())
+      await userEvent.click(screen.getByRole("button", { name: "Save" }))
+      await waitFor(() => expect(putBodies).toHaveLength(1))
+      // Every settings key is sent, so a cleared input clears the stored setting.
+      expect(putBodies[0]).toEqual({
+        content: "b prompt", max_tokens: 1024, model_id: "kimi-k2.6",
+        quantization: null, temperature: 0.3, reasoning_effort: "none", provider_allow_fallbacks: true,
+        provider_only: ["groq", "together"], provider_ignore: null, provider_sort: "price",
+        requires_structured_output: false,
+      })
+    }, 20000)
+
+    it("a row with every setting empty shows — in the list, blanks in Edit with fallbacks checked, and saves fallbacks true", async () => {
+      const bare = { ...agents[0], ...emptySettings }
+      installBaseApiMocks(mockedApi, async (url: string, init?: RequestInit) => {
+        if (url === "/api/candidates") return { ok: true, json: async () => [] } as Response
+        if (url === "/api/admin/agents/meta/tokens") return { ok: true, json: async () => agentTokens } as Response
+        if (url === "/api/admin/agents" && !init?.method) return { ok: true, json: async () => [bare] } as Response
+        if (url === "/api/admin/agents/models") return { ok: true, json: async () => models } as Response
+        if (url === "/api/admin/agents/agent_a" && !init?.method) {
+          return { ok: true, json: async () => ({ ...bare, content: "system prompt" }) } as Response
+        }
+        if (url === "/api/admin/agents/agent_a" && init?.method === "PUT") {
+          putBodies.push(JSON.parse(String(init.body)))
+          return { ok: true, status: 200, json: async () => bare } as Response
+        }
+      })
+      renderWithProviders(<AgentPrompts />)
+      await waitFor(() => expect(screen.getByText("agent_a")).toBeInTheDocument())
+      const row = screen.getByText("agent_a").closest("tr") as HTMLElement
+      // One em dash per settings column.
+      expect(within(row).getAllByText("—")).toHaveLength(7)
+      await userEvent.click(screen.getByText("agent_a"))
+      await waitFor(() => expect(screen.getByDisplayValue("system prompt")).toBeInTheDocument())
+      for (const label of textLabels) expect(textInput(label)).toHaveValue("")
+      expect(tempInput()).toHaveValue(null)
+      // Stored null reads as the new-row default; Save writes it explicitly.
+      expect(fallbacks()).toBeChecked()
+      await userEvent.click(screen.getByRole("button", { name: "Save" }))
+      await waitFor(() => expect(putBodies).toHaveLength(1))
+      expect(putBodies[0]).toMatchObject({ ...emptySettings, provider_allow_fallbacks: true })
+      expect(putBodies[0]).not.toHaveProperty("brain_setting")
+      expect(putBodies[0]).not.toHaveProperty("mode")
+    }, 20000)
+  })
 
   it("shows validation and error toasts", async () => {
     mockApi()
@@ -166,7 +311,7 @@ describe("AdminAgentPrompts", () => {
       if (url === "/api/admin/agents/meta/tokens") {
         return { ok: false, status: 500, json: async () => ({ error: "fail" }) } as Response
       }
-      if (url === "/api/admin/agents/brain_settings") return { ok: true, json: async () => brainCatalog } as Response
+      if (url === "/api/admin/agents/models") return { ok: true, json: async () => models } as Response
       if (url === "/api/admin/agents" && !init?.method) return { ok: true, json: async () => agents } as Response
       if (url === "/api/admin/agents/agent_a" && !init?.method) {
         return { ok: true, json: async () => ({ ...agents[0], content: "system prompt" }) } as Response
@@ -191,7 +336,7 @@ describe("AdminAgentPrompts", () => {
         return { ok: true, json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE", candidate_data: {} }] } as Response
       }
       if (url === "/api/admin/agents/meta/tokens") return { ok: true, json: async () => agentTokens } as Response
-      if (url === "/api/admin/agents/brain_settings") return { ok: true, json: async () => brainCatalog } as Response
+      if (url === "/api/admin/agents/models") return { ok: true, json: async () => models } as Response
       if (url === "/api/admin/agents" && !init?.method) return { ok: true, json: async () => agents } as Response
       if (url === "/api/admin/agents/agent_a" && !init?.method) {
         return { ok: true, json: async () => ({ ...agents[0], content: "Hello {$FIRST_NAME}" }) } as Response
@@ -235,7 +380,7 @@ describe("AdminAgentPrompts", () => {
       if (url === "/api/candidates") {
         return { ok: true, json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE", candidate_data: {} }] } as Response
       }
-      if (url === "/api/admin/agents/brain_settings") return { ok: true, json: async () => brainCatalog } as Response
+      if (url === "/api/admin/agents/models") return { ok: true, json: async () => models } as Response
       if (url === "/api/admin/agents" && !init?.method) return { ok: true, json: async () => agents } as Response
     })
     renderWithProviders(<AgentPrompts />)
@@ -256,6 +401,86 @@ describe("AdminAgentPrompts", () => {
     expect(deletes[1]).toBeDisabled()
     expect(deletes[0]).not.toHaveClass("dep-btn")
   }, 15000)
+
+  describe("AST-2181 requires structured output", () => {
+    const required = () => screen.getByRole("checkbox", { name: /requires structured output/i }) as HTMLInputElement
+    const modelSelect = () => within(field("Model")).getByRole("combobox") as HTMLSelectElement
+
+    // agent_b as stored with the setting on (kimi = advisory); PUT answers 400 when putStatus says so.
+    function mockRequiringAgent(putStatus = 200) {
+      const row = { ...agents[1], requires_structured_output: true }
+      installBaseApiMocks(mockedApi, async (url: string, init?: RequestInit) => {
+        if (url === "/api/candidates") return { ok: true, json: async () => [] } as Response
+        if (url === "/api/admin/agents/meta/tokens") return { ok: true, json: async () => agentTokens } as Response
+        if (url === "/api/admin/agents" && !init?.method) return { ok: true, json: async () => [row] } as Response
+        if (url === "/api/admin/agents/models") return { ok: true, json: async () => models } as Response
+        if (url === "/api/admin/agents/agent_b" && !init?.method) {
+          return { ok: true, json: async () => ({ ...row, content: "b prompt" }) } as Response
+        }
+        if (url === "/api/admin/agents/agent_b" && init?.method === "PUT") {
+          putBodies.push(JSON.parse(String(init.body)))
+          const error = "model 'claude-haiku-4-5' does not support structured output"
+          return putStatus === 200
+            ? ({ ok: true, status: 200, json: async () => row } as Response)
+            : ({ ok: false, status: putStatus, json: async () => ({ error }) } as Response)
+        }
+      })
+    }
+
+    it("Add: unchecked by default; ticking hides incapable models (current one flagged), unticking restores", async () => {
+      mockApi()
+      renderWithProviders(<AgentPrompts />)
+      await waitFor(() => expect(screen.getByText("agent_a")).toBeInTheDocument())
+      await userEvent.click(screen.getByRole("button", { name: "+ Add Agent" }))
+      expect(required()).not.toBeChecked()
+      expect(optionTexts("Model")).toEqual(["Claude Haiku 4.5", "Kimi K2.6"])
+      await userEvent.click(required())
+      // Haiku is not offered; it stays only as the flagged current value so the select never shows another model.
+      expect(optionTexts("Model")).toEqual(["Claude Haiku 4.5 — no structured output", "Kimi K2.6"])
+      expect(modelSelect()).toHaveValue("claude-haiku-4-5")
+      await userEvent.selectOptions(modelSelect(), "kimi-k2.6")
+      expect(optionTexts("Model")).toEqual(["Kimi K2.6"])
+      await userEvent.click(required())
+      expect(optionTexts("Model")).toEqual(["Claude Haiku 4.5", "Kimi K2.6"])
+    }, 20000)
+
+    it("Add saves the setting in the body", async () => {
+      mockApi()
+      renderWithProviders(<AgentPrompts />)
+      await waitFor(() => expect(screen.getByText("agent_a")).toBeInTheDocument())
+      await userEvent.click(screen.getByRole("button", { name: "+ Add Agent" }))
+      fireEvent.change(screen.getByPlaceholderText("e.g. job_analyst_grace"), { target: { value: "lucy" } })
+      await userEvent.selectOptions(modelSelect(), "kimi-k2.6")
+      await userEvent.click(required())
+      await userEvent.click(screen.getByRole("button", { name: "Save" }))
+      await waitFor(() => expect(postBodies).toHaveLength(1))
+      expect(postBodies[0]).toMatchObject({ model_id: "kimi-k2.6", requires_structured_output: true })
+    }, 20000)
+
+    it("Edit: stored true shows checked, picker offers only capable models, Save sends it", async () => {
+      mockRequiringAgent()
+      renderWithProviders(<AgentPrompts />)
+      await waitFor(() => expect(screen.getByText("agent_b")).toBeInTheDocument())
+      await userEvent.click(screen.getByText("agent_b"))
+      await waitFor(() => expect(screen.getByDisplayValue("b prompt")).toBeInTheDocument())
+      expect(required()).toBeChecked()
+      expect(optionTexts("Model")).toEqual(["Kimi K2.6"])
+      await userEvent.click(screen.getByRole("button", { name: "Save" }))
+      await waitFor(() => expect(putBodies).toHaveLength(1))
+      expect(putBodies[0]).toMatchObject({ model_id: "kimi-k2.6", requires_structured_output: true })
+    }, 20000)
+
+    it("Edit: the API's 400 gate text reaches the error toast and the editor stays open", async () => {
+      mockRequiringAgent(400)
+      renderWithProviders(<AgentPrompts />)
+      await waitFor(() => expect(screen.getByText("agent_b")).toBeInTheDocument())
+      await userEvent.click(screen.getByText("agent_b"))
+      await waitFor(() => expect(screen.getByDisplayValue("b prompt")).toBeInTheDocument())
+      await userEvent.click(screen.getByRole("button", { name: "Save" }))
+      await waitFor(() => expect(screen.getByText(/does not support structured output/)).toBeInTheDocument())
+      expect(screen.getByDisplayValue("b prompt")).toBeInTheDocument()
+    }, 20000)
+  })
 
   describe("AST-1410 silent refetch", () => {
     it("post-save list refetch keeps the table and skips Loading...", async () => {

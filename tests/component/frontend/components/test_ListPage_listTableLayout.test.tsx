@@ -13,7 +13,7 @@ describe("ListPage AST-647 list table layout", () => {
     localStorage.clear()
     const api = (await import("../../../../src/ui/frontend/src/lib/api")).default
     vi.mocked(api).mockImplementation(async (url: string) => {
-      if (url === "/api/system/ui_config") {
+      if (url === "/api/ui_config") {
         return {
           json: async () => ({
             column_types: {},

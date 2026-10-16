@@ -1,15 +1,18 @@
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react"
 import { useCandidate } from "../contexts/CandidateContext"
 import { useStateUi } from "../contexts/StateUiContext"
 import { legacyStateSectionLabel, unmappedJobStates } from "../lib/stateUiSections"
 import CandidateActionNotesModal from "../components/CandidateActionNotesModal"
 import CandidateJobRowActions from "../components/CandidateJobRowActions"
 import JobAnalysisReportModal from "../components/JobAnalysisReportModal"
+import PhaseAnalysisLines from "../components/PhaseAnalysisLines"
 import Toast, { type ToastMessage } from "../components/Toast"
-import { useCandidateJobActions } from "../hooks/useCandidateJobActions"
+import { useCandidateJobActions, type BulkActionResult } from "../hooks/useCandidateJobActions"
 import { useInPlaceLiveRefresh } from "../hooks/useInPlaceLiveRefresh"
 import api from "../lib/api"
+import { formatPhaseScore, primaryActionsForState, totalScore } from "../lib/recommendedJobReport"
 import Time from "../components/Time"
+import JobTitleText from "../components/JobTitleText"
 
 interface Job {
   astral_job_id: string
@@ -17,6 +20,8 @@ interface Job {
   company: string
   state: string
   state_changed_at: string | null
+  created_at?: string | null
+  source?: string | null
   jd_score?: number | null
   do_score?: number | null
   get_score?: number | null
@@ -26,9 +31,10 @@ interface Job {
 
 interface SortState { col: string; asc: boolean }
 
-function formatPhaseScore(value: unknown): string {
-  if (typeof value === "number" && Number.isFinite(value)) return value.toFixed(1)
-  return "\u2014"
+const TOTAL_SCORE_COL = "total_score"
+
+function finiteOrNull(v: unknown): number | null {
+  return typeof v === "number" && Number.isFinite(v) ? v : null
 }
 
 function sortRecommendedJobs(jobs: Job[], col: string, asc: boolean, phaseFields: string[]): Job[] {
@@ -38,15 +44,18 @@ function sortRecommendedJobs(jobs: Job[], col: string, asc: boolean, phaseFields
       cmp = (a.job_title || "").localeCompare(b.job_title || "")
     } else if (col === "company") {
       cmp = a.company.localeCompare(b.company)
+    } else if (col === "source") {
+      cmp = (a.source || "").localeCompare(b.source || "")
     } else if (col === "state_changed_at") {
       cmp = (a.state_changed_at || "").localeCompare(b.state_changed_at || "")
+    } else if (col === "created_at") {
+      cmp = (a.created_at || "").localeCompare(b.created_at || "")
     } else if (col === "state") {
       cmp = (a.state || "").localeCompare(b.state || "")
-    } else if (phaseFields.includes(col)) {
-      const av = a[col]
-      const bv = b[col]
-      const an = typeof av === "number" && Number.isFinite(av) ? av : null
-      const bn = typeof bv === "number" && Number.isFinite(bv) ? bv : null
+    } else if (phaseFields.includes(col) || col === TOTAL_SCORE_COL) {
+      // Total shares the phase columns' null handling — one sorter, not two.
+      const an = col === TOTAL_SCORE_COL ? totalScore(a, phaseFields) : finiteOrNull(a[col])
+      const bn = col === TOTAL_SCORE_COL ? totalScore(b, phaseFields) : finiteOrNull(b[col])
       if (an === null && bn === null) cmp = 0
       else if (an === null) cmp = 1
       else if (bn === null) cmp = -1
@@ -56,7 +65,10 @@ function sortRecommendedJobs(jobs: Job[], col: string, asc: boolean, phaseFields
   })
 }
 
-export default function Recommended() {
+// AST-1975: one list component for Jobs → Ready and Jobs → Review; the route supplies both.
+interface RecommendedProps { view: "ready" | "review"; title: string }
+
+export default function Recommended({ view, title }: RecommendedProps) {
   const { manifest, loadState } = useStateUi()
   const { selectedId } = useCandidate()
   const [rows, setRows] = useState<Job[]>([])
@@ -66,21 +78,47 @@ export default function Recommended() {
   const openJobReport = useCallback((jobId: string) => setReportId(jobId), [])
   const [toast, setToast] = useState<ToastMessage | null>(null)
   const [sorts, setSorts] = useState<Record<string, SortState>>({})
+  // Page-level selection keyed by astral_job_id; not persisted (AST-1968).
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  // Analysis toggle: on at page load, not persisted (AST-1968).
+  const [showAnalysis, setShowAnalysis] = useState(true)
 
   const load = useCallback((showSpinner = false) => {
     if (!selectedId) return
     beginRefresh(showSpinner)
-    api(`/api/jobs?view=recommended&candidate_id=${encodeURIComponent(selectedId)}`)
+    api(`/api/jobs?view=${view}&candidate_id=${encodeURIComponent(selectedId)}`)
       .then(r => r.json())
-      .then(data => setRows(Array.isArray(data) ? data : []))
+      .then(data => {
+        // Spinner loads are mount + candidate switch only — drop any prior selection there.
+        // Cleared in the async callback, not synchronously, so the mount effect stays lint-clean.
+        if (showSpinner) setSelected(new Set())
+        setRows(Array.isArray(data) ? data : [])
+      })
       .finally(() => endRefresh())
-  }, [selectedId, beginRefresh, endRefresh])
+  }, [selectedId, view, beginRefresh, endRefresh])
 
-  const actions = useCandidateJobActions(load)
+  // After any bulk action: one toast with the split, then clear selection (AC 8).
+  const handleBulkDone = useCallback((r: BulkActionResult) => {
+    setSelected(new Set())
+    setToast({
+      text: `${r.label}: ${r.succeeded} succeeded, ${r.failed} failed`,
+      variant: r.failed ? "error" : "success",
+    })
+  }, [])
 
-  useEffect(() => {
-    if (actions.error) setToast({ text: actions.error, variant: "error" })
-  }, [actions.error])
+  const actions = useCandidateJobActions(load, handleBulkDone)
+
+  // Hook errors render as a derived toast (no setState-in-effect); memoized so Toast's
+  // timer only restarts when the error itself changes. Page toasts (bulk) take precedence.
+  const errorToast = useMemo<ToastMessage | null>(
+    () => (actions.error ? { text: actions.error, variant: "error" } : null),
+    [actions.error],
+  )
+  const { clearError } = actions
+  const dismissToast = useCallback(() => {
+    setToast(null)
+    clearError()
+  }, [clearError])
 
   useEffect(() => { load(true) }, [load])
 
@@ -89,45 +127,50 @@ export default function Recommended() {
     [manifest?.jobs.recommended.phase_score_columns],
   )
 
+  // Eligibility from manifest primary_actions_by_state — no hardcoded state list.
+  const canGenerate = useCallback(
+    (state: string) => primaryActionsForState(manifest, state).some(a => a.action_key === "generate_artifacts"),
+    [manifest],
+  )
+
+  // Derived from current rows so ids that left the list (row action, refresh) never count.
+  const selectedIds = useMemo(
+    () => rows.filter(j => selected.has(j.astral_job_id)).map(j => j.astral_job_id),
+    [rows, selected],
+  )
+  const generateIds = useMemo(
+    () => rows.filter(j => selected.has(j.astral_job_id) && canGenerate(j.state)).map(j => j.astral_job_id),
+    [rows, selected, canGenerate],
+  )
+
+  const toggleSelect = useCallback((id: string) => setSelected(prev => {
+    const next = new Set(prev)
+    if (next.has(id)) next.delete(id); else next.add(id)
+    return next
+  }), [])
+
+  // Header Select All (AST-2170): add or remove a whole section's ids; other sections' picks are untouched.
+  const setSectionSelected = useCallback((ids: string[], on: boolean) => setSelected(prev => {
+    const next = new Set(prev)
+    for (const id of ids) { if (on) next.add(id); else next.delete(id) }
+    return next
+  }), [])
+
   const sections = useMemo(() => {
     if (!manifest) return []
-    const meteoriteSection = manifest.jobs.recommended.meteorite_section
-    const prefix = meteoriteSection?.company_prefix ?? ""
-    // Null company is not a meteorite-prefix match (runtime JSON can be null).
-    const isMeteoriteJob = (job: Job) =>
-      Boolean(prefix) && (job.company ?? "").startsWith(prefix)
-    const meteoriteRows = rows.filter(isMeteoriteJob)
-    const normalRows = rows.filter(job => !isMeteoriteJob(job))
     const byState: Record<string, Job[]> = {}
-    for (const job of normalRows) {
+    for (const job of rows) {
       if (!byState[job.state]) byState[job.state] = []
       byState[job.state].push(job)
     }
     const knownStates = manifest.jobs.recommended.sections.map(r => r.state)
     const normal = manifest.jobs.recommended.sections
       .filter(row => (byState[row.state]?.length ?? 0) > 0)
-      .map(row => ({
-        state: row.state,
-        label: row.label,
-        jobs: byState[row.state],
-      }))
-    const legacy = unmappedJobStates(normalRows, knownStates)
+      .map(row => ({ state: row.state, label: row.label, jobs: byState[row.state] }))
+    const legacy = unmappedJobStates(rows, knownStates)
       .filter(s => byState[s]?.length)
-      .map(s => ({
-        state: s,
-        label: legacyStateSectionLabel(s),
-        jobs: byState[s],
-      }))
-    const out = [...normal, ...legacy]
-    // AST-1057: prepend Meteorites when any post-upshot meteorite-company jobs exist.
-    if (meteoriteSection && meteoriteRows.length > 0) {
-      out.unshift({
-        state: meteoriteSection.section_id,
-        label: meteoriteSection.label,
-        jobs: meteoriteRows,
-      })
-    }
-    return out
+      .map(s => ({ state: s, label: legacyStateSectionLabel(s), jobs: byState[s] }))
+    return [...normal, ...legacy]
   }, [rows, manifest])
 
   function handleSort(sectionState: string, col: string) {
@@ -145,7 +188,29 @@ export default function Recommended() {
   return (
     <div className="page-container">
       <div className="list-page-header">
-        <h1 className="list-page-title">Recommended</h1>
+        <h1 className="list-page-title">{title}</h1>
+        <div className="recommended-list-header-actions">
+          {selectedIds.length > 0 && (
+            <>
+              <button type="button" className="btn secondary" disabled={actions.busy}
+                onClick={() => actions.skipJobs(selectedIds)}>
+                Skip ({selectedIds.length})
+              </button>
+              <button type="button" className="btn secondary" disabled={actions.busy}
+                onClick={() => actions.requestBulkAction(selectedIds, "applied", "Applied")}>
+                Applied ({selectedIds.length})
+              </button>
+              <button type="button" className="btn primary" disabled={actions.busy || generateIds.length === 0}
+                onClick={() => actions.generateJobs(generateIds)}>
+                Generate Artifacts ({generateIds.length})
+              </button>
+            </>
+          )}
+          <label className="recommended-analysis-toggle">
+            <input type="checkbox" checked={showAnalysis} onChange={e => setShowAnalysis(e.target.checked)} />
+            Analysis
+          </label>
+        </div>
       </div>
       {loading ? (
         <div className="list-page-status">Loading...</div>
@@ -154,11 +219,16 @@ export default function Recommended() {
       ) : loadState === "error" || !manifest ? (
         <div className="list-page-status">State UI manifest unavailable.</div>
       ) : sections.length === 0 ? (
-        <div className="list-page-status">No recommended jobs yet</div>
+        <div className="list-page-status">{`No jobs in ${title}`}</div>
       ) : (
         sections.map(sec => {
           const sort = sorts[sec.state] ?? { col: "state_changed_at", asc: false }
           const sorted = sortRecommendedJobs(sec.jobs, sort.col, sort.asc, phaseFields)
+          // checkbox + actions + title + company + source + state + phase cols + total + created + updated
+          const columnCount = 9 + manifest.jobs.recommended.phase_score_columns.length
+          const sectionIds = sec.jobs.map(j => j.astral_job_id)
+          // Derived, never stored: checked only when every row in this section is selected (sections are never empty).
+          const allSectionSelected = sectionIds.every(id => selected.has(id))
           return (
             <div key={sec.state} style={{ marginBottom: 24 }}>
               <h2 style={{
@@ -173,12 +243,23 @@ export default function Recommended() {
                 <table className="list-page-table">
                   <thead>
                     <tr>
+                      <th style={{ width: 1 }} aria-label="Select">
+                        <input
+                          type="checkbox"
+                          aria-label={`All jobs in ${sec.label}`}
+                          checked={allSectionSelected}
+                          onChange={() => setSectionSelected(sectionIds, !allSectionSelected)}
+                        />
+                      </th>
                       <th style={{ width: 1, whiteSpace: "nowrap" }}>Actions</th>
                       <th className="sortable" onClick={() => handleSort(sec.state, "job_title")}>
                         Job Title{sortIndicator(sec.state, "job_title")}
                       </th>
                       <th className="sortable" onClick={() => handleSort(sec.state, "company")}>
                         Company{sortIndicator(sec.state, "company")}
+                      </th>
+                      <th className="sortable" onClick={() => handleSort(sec.state, "source")}>
+                        Source{sortIndicator(sec.state, "source")}
                       </th>
                       <th className="sortable" onClick={() => handleSort(sec.state, "state")}>
                         State{sortIndicator(sec.state, "state")}
@@ -193,6 +274,16 @@ export default function Recommended() {
                           {col.label}{sortIndicator(sec.state, col.field)}
                         </th>
                       ))}
+                      <th
+                        className="sortable"
+                        style={{ textAlign: "center", whiteSpace: "nowrap", width: 1 }}
+                        onClick={() => handleSort(sec.state, TOTAL_SCORE_COL)}
+                      >
+                        Total{sortIndicator(sec.state, TOTAL_SCORE_COL)}
+                      </th>
+                      <th className="sortable" onClick={() => handleSort(sec.state, "created_at")}>
+                        Created{sortIndicator(sec.state, "created_at")}
+                      </th>
                       <th className="sortable" onClick={() => handleSort(sec.state, "state_changed_at")}>
                         Updated{sortIndicator(sec.state, "state_changed_at")}
                       </th>
@@ -200,25 +291,48 @@ export default function Recommended() {
                   </thead>
                   <tbody>
                     {sorted.map(job => (
-                      <tr key={job.astral_job_id} className="clickable" onClick={() => openJobReport(job.astral_job_id)}>
-                        <td onClick={e => e.stopPropagation()}>
-                          <CandidateJobRowActions
-                            state={job.state}
-                            showViewAnalysis={false}
-                            onSkip={() => actions.skipJob(job.astral_job_id)}
-                            onAction={a => actions.requestAction(job.astral_job_id, a)}
-                          />
-                        </td>
-                        <td>{job.job_title || "\u2014"}</td>
-                        <td>{job.company}</td>
-                        <td>{job.state || "\u2014"}</td>
-                        {manifest.jobs.recommended.phase_score_columns.map(col => (
-                          <td key={col.field} style={{ textAlign: "center", whiteSpace: "nowrap", width: 1 }}>
-                            {formatPhaseScore(job[col.field])}
+                      <Fragment key={job.astral_job_id}>
+                        <tr className="clickable" onClick={() => openJobReport(job.astral_job_id)}>
+                          <td onClick={e => e.stopPropagation()}>
+                            <input
+                              type="checkbox"
+                              aria-label={`Select ${job.job_title || job.astral_job_id}`}
+                              checked={selected.has(job.astral_job_id)}
+                              onChange={() => toggleSelect(job.astral_job_id)}
+                            />
                           </td>
-                        ))}
-                        <td><Time value={job.state_changed_at} /></td>
-                      </tr>
+                          <td onClick={e => e.stopPropagation()}>
+                            <CandidateJobRowActions
+                              state={job.state}
+                              showViewAnalysis={false}
+                              onSkip={() => actions.skipJob(job.astral_job_id)}
+                              onAction={a => actions.requestAction(job.astral_job_id, a)}
+                              onGenerate={canGenerate(job.state) ? () => actions.generateJob(job.astral_job_id) : undefined}
+                            />
+                          </td>
+                          <td><JobTitleText title={job.job_title} fallback={"\u2014"} /></td>
+                          <td>{job.company}</td>
+                          <td>{job.source || "\u2014"}</td>
+                          <td>{job.state || "\u2014"}</td>
+                          {manifest.jobs.recommended.phase_score_columns.map(col => (
+                            <td key={col.field} style={{ textAlign: "center", whiteSpace: "nowrap", width: 1 }}>
+                              {formatPhaseScore(job[col.field])}
+                            </td>
+                          ))}
+                          <td style={{ textAlign: "center", whiteSpace: "nowrap", width: 1 }}>
+                            {formatPhaseScore(totalScore(job, phaseFields))}
+                          </td>
+                          <td><Time value={job.created_at} /></td>
+                          <td><Time value={job.state_changed_at} /></td>
+                        </tr>
+                        {showAnalysis && (
+                          <tr className="clickable recommended-analysis-row" onClick={() => openJobReport(job.astral_job_id)}>
+                            <td colSpan={columnCount}>
+                              <PhaseAnalysisLines job={job} />
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
                     ))}
                   </tbody>
                 </table>
@@ -239,7 +353,7 @@ export default function Recommended() {
         onClose={actions.closePending}
         onConfirm={actions.confirmPending}
       />
-      <Toast message={toast} onDone={() => setToast(null)} />
+      <Toast message={toast ?? errorToast} onDone={dismissToast} />
     </div>
   )
 }

@@ -12,6 +12,7 @@ Isolated FastAPI microservice — **not** under `src/`. Flat imports (`from auth
 | `service/telescope/app.py` + auth | `tests/component/service/test_telescope_app.py` | no |
 | Import fence + Dockerfile / requirements | `tests/component/service/test_telescope_fence.py` | no |
 | Railway Phase 1 + bidirectional CI fence | `tests/component/service/test_telescope_deploy_ci.py` | no |
+| `service/telescope/{interact,scrape,worker}.py` click-then-capture | `tests/component/service/test_telescope_click.py` | no |
 
 **Integration tier:** no existing `tests/integration/` scenario exercises Telescope (platform client is sibling **AST-1726**). No integration revision this pass.
 
@@ -221,3 +222,45 @@ cd src/ui/frontend && npm run test:component -- \
   tests/component/service/test_telescope_capture.py::test_capture_links_filters_http \
   tests/component/service/test_telescope_capture.py::test_ast1732_capture_links_multi_match_dedupes_by_href -q
 ```
+
+---
+
+### AST-2023 · AST-2022 (Telescope click-then-capture)
+
+**Scope:** optional `click_href` on `TelescopeRequest`; `interact.click_and_follow` (exact `a[href="…"]` attribute match, same-tab or popup); `run_scrape` clicks after load / cookies / expand / wait_ready, re-dismisses cookies on the destination, captures there; missing anchor → `ClickTargetMissing` → `ScrapeError("click_target_missing")`; `QueueWorker._retry_delay` never retries that class. Platform client half: [`external/telescope.md`](../external/telescope.md) § AST-2023.
+
+| Area | Component tests |
+| --- | --- |
+| Missing anchor fails on `count()` — no click, no waiters armed | `test_telescope_click.py::TestAst2023ClickAndFollow::test_missing_anchor_raises_click_target_missing_without_clicking` |
+| Exact attribute selector + CSS `"` / `\` escaping | `…::TestAst2023ClickAndFollow::test_selector_is_exact_href_attribute_with_css_escaping` |
+| Same-tab nav → original page; popup → new page | `…::test_same_tab_navigation_returns_original_page`, `…::test_popup_returns_new_tab_page` |
+| Present anchor, no navigation → plain error (retryable) | `…::test_click_without_navigation_is_plain_error_not_click_target_missing` |
+| `click_href` default `None` / parses | `test_telescope_click.py::TestAst2023RunScrapeClick::test_request_click_href_defaults_none_and_parses` |
+| No `click_href` → old step sequence + old response keys | `…::TestAst2023RunScrapeClick::test_without_click_href_unchanged_sequence_and_shape` |
+| Click after list-page steps; `final_url` / `text` / `scrape_meta` from destination | `…::test_click_href_captures_destination_after_list_page_steps` |
+| `ClickTargetMissing` → `click_target_missing`; other click error → `scrape_failed` | `…::test_missing_target_maps_to_click_target_missing`, `…::test_other_click_failure_stays_scrape_failed` |
+| `_retry_delay` → `None` for `click_target_missing` on attempt 1; `scrape_failed` control retries | `test_telescope_click.py::TestAst2023RetryDelay` |
+
+New nodes are red on pre-change product (`origin/dev` versions of the four product files) except the regression guards (unchanged-shape / `scrape_failed` controls), which pass on both.
+
+**Broken / obsolete:** none caused by this diff. **Pre-existing red on `origin/dev` (not AST-2023):** `test_telescope_deploy_ci.py::TestRailwayPhase1Toml::test_no_healthcheck_path_and_no_phase2_hooks` — live `railway.toml` now sets `healthcheckPath`; Phase-1 assert is stale. Left for Susan to scope.
+
+**Integration tier:** no existing `tests/integration/` scenario exercises Telescope. No integration revision.
+
+## QA test manifest
+
+1. **Service gap (required):** `tests/component/service/test_telescope_click.py` — 12 nodes.
+2. **Client gap (required):** `tests/component/external/test_telescope.py::TestAst2023ClickThrough` — 7 nodes.
+3. **Regression (required):** rest of `tests/component/service/` + `tests/component/external/test_telescope.py`, deselecting the five pre-existing reds (four retired-HTTP-pool nodes listed in [`external/telescope.md`](../external/telescope.md) § AST-2023 + the Railway node above).
+
+```bash
+/home/susan/astral/.venv/bin/python -m pytest \
+  tests/component/service/ \
+  tests/component/external/test_telescope.py \
+  --deselect tests/component/external/test_telescope.py::TestTelescopePoolHttp \
+  --deselect tests/component/external/test_telescope.py::TestAst1750PostTelescopeDebugDump \
+  --deselect tests/component/service/test_telescope_deploy_ci.py::TestRailwayPhase1Toml::test_no_healthcheck_path_and_no_phase2_hooks \
+  -q
+```
+
+**Pass criterion:** pytest green on the command above — not zero-arg harness / branch-lock gate (see external § AST-2023 for `src/external/telescope.py` `LOCKED_AT_100` state).

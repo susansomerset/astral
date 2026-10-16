@@ -12,6 +12,7 @@ Public API lives on `src.data.database`. Cluster files under this directory map 
 | `test_agents.py` | `agent` |
 | `test_agent_tasks.py` | `agent_task` |
 | `test_agent_data.py` | `agent_data` |
+| `test_telescope_data.py` | `web_data` (AST-2131) |
 | `test_agent_responses.py` | `agent_responses` |
 | `test_company_job_scans.py` | `company_job_scan` |
 | `test_timesheets.py` | `timesheets` |
@@ -20,5 +21,7 @@ Public API lives on `src.data.database`. Cluster files under this directory map 
 | `test_app_log.py` | `app_log` |
 | `test_state_helpers.py` | batch helpers, score floors, legacy wrappers |
 | `test_artifacts.py` | `artifacts` (AST-1352; rename AST-1364) |
+| `test_terminal_state_remap.py` | retired terminal-state remap across `job` / `company` / `candidate` / `meteorite` + `dispatch_task` (AST-2087) |
+| `test_search.py` | `search_entity_rows` — candidate-scoped search read across `job` / `company` / `meteorite` (AST-2173) |
 
 Adjust boundaries only with a Linear note and this file.

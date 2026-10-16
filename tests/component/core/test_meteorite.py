@@ -661,158 +661,24 @@ class TestAst1702SourceEntityLand:
 
 
 
-# Branches: URL detector; no_candidate/param_required; text vs link mode; scrape soft-fail; Style D (AST-1517).
-class TestAst1517CreateContactMeteorite:
-    """AST-1517: contact-task create — scrape-or-text → create_meteorite_job."""
+# Branches: create_contact_meteorite retired; Contact markup never reaches create_meteorite_job (AST-2061).
+class TestAst2061NoContactJobWrite:
+    def test_create_contact_meteorite_removed(self) -> None:
+        assert not hasattr(meteorite_mod, "create_contact_meteorite")
+        assert not hasattr(meteorite_mod, "_contact_param_looks_like_url")
 
-    def test_contact_param_looks_like_url(self) -> None:
-        looks = meteorite_mod._contact_param_looks_like_url
-        assert looks("") is False
-        assert looks("   ") is False
-        assert looks("line one\nline two") is False
-        assert looks("has space.com") is False
-        assert looks(".hidden") is False
-        assert looks("https://jobs.example/jd") is True
-        assert looks("jobs.example.com/path") is True
+    def test_contact_markup_never_reaches_create_meteorite_job(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # [bug-repro] AST-2061: the retired task key is ignored, so no job row is written.
+        create = MagicMock()
+        monkeypatch.setattr(meteorite_mod, "create_meteorite_job", create)
+        from src.core import contact as contact_mod
 
-    @pytest.mark.asyncio
-    async def test_no_candidate(self) -> None:
-        out = await meteorite_mod.create_contact_meteorite("", "https://x.example/j")
-        assert out == {
-            "ok": False,
-            "error": "no_candidate",
-            "task_key": "create_contact_meteorite",
-        }
-
-    @pytest.mark.asyncio
-    async def test_param_required(self) -> None:
-        out = await meteorite_mod.create_contact_meteorite("c1", "  ")
-        assert out == {
-            "ok": False,
-            "error": "param_required",
-            "task_key": "create_contact_meteorite",
-        }
-
-    @pytest.mark.asyncio
-    async def test_text_mode_creates_without_scrape(
-        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        db = sqlite_in_memory
-        cid = "cand-1517-text"
-        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "T"})
-        body = "Senior Engineer\n" + ("detail " * 20)
-
-        async def _fail_scrape(*_a, **_k):
-            raise AssertionError("text mode must not scrape")
-
-        monkeypatch.setattr(
-            "src.core.gazer.contact_task_gazer_scrape", _fail_scrape
+        results = contact_mod.run_contact_task_dispatch(
+            astral_candidate_id="c1",
+            markup_spans=[("create_contact_meteorite", "Senior Engineer at Acme")],
         )
-        out = await meteorite_mod.create_contact_meteorite(cid, body, debug=False)
-        assert out["ok"] is True
-        assert out["mode"] == "text"
-        assert out["task_key"] == "create_contact_meteorite"
-        assert out["result"]["astral_job_id"]
-        from src.utils.config import TRACKER_CONFIG
-
-        jd_key = TRACKER_CONFIG["job_data_keys"]["job_description"]
-        row = db.get_job(out["result"]["astral_job_id"])
-        assert row["job_data"][jd_key] == body.rstrip()
-
-    @pytest.mark.asyncio
-    async def test_link_mode_scrape_then_create(
-        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        db = sqlite_in_memory
-        cid = "cand-1517-link"
-        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "L"})
-        url = "https://jobs.example/jd"
-        visible = "Role title\n" + ("jd " * 20)
-
-        async def _scrape(_cid, _url, debug=False):
-            assert _url == url
-            return {
-                "ok": True,
-                "visible_text": visible,
-                "url": url,
-                "final_url": "https://jobs.example/jd/final",
-                "page_status": "ok",
-                "task_key": "gazer_scrape",
-            }
-
-        monkeypatch.setattr(
-            "src.core.gazer.contact_task_gazer_scrape", _scrape
-        )
-        out = await meteorite_mod.create_contact_meteorite(cid, url, debug=False)
-        assert out["ok"] is True
-        assert out["mode"] == "link"
-        assert out["page_status"] == "ok"
-        assert out["final_url"] == "https://jobs.example/jd/final"
-        row = db.get_job(out["result"]["astral_job_id"])
-        assert row["job_link"] == "https://jobs.example/jd/final"
-
-    @pytest.mark.asyncio
-    async def test_link_mode_scrape_failure_soft_return(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        async def _scrape(_cid, _url, debug=False):
-            return {"ok": False, "error": "no_connectivity", "task_key": "gazer_scrape"}
-
-        monkeypatch.setattr(
-            "src.core.gazer.contact_task_gazer_scrape", _scrape
-        )
-        out = await meteorite_mod.create_contact_meteorite(
-            "c1", "https://jobs.example/jd", debug=False
-        )
-        assert out["ok"] is False
-        assert out["error"] == "no_connectivity"
-        assert out["mode"] == "link"
-
-    @pytest.mark.asyncio
-    async def test_link_mode_empty_visible_text(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        async def _scrape(_cid, _url, debug=False):
-            return {
-                "ok": True,
-                "visible_text": "   ",
-                "page_status": "blocked",
-                "task_key": "gazer_scrape",
-            }
-
-        monkeypatch.setattr(
-            "src.core.gazer.contact_task_gazer_scrape", _scrape
-        )
-        out = await meteorite_mod.create_contact_meteorite(
-            "c1", "https://jobs.example/jd", debug=False
-        )
-        assert out["ok"] is False
-        assert out["error"] == "empty_visible_text"
-        assert out["scrape"]["page_status"] == "blocked"
-
-    @pytest.mark.asyncio
-    async def test_debug_true_emits_style_d(
-        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        db = sqlite_in_memory
-        cid = "cand-1517-dbg"
-        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "D"})
-        log = MagicMock()
-        monkeypatch.setattr(meteorite_mod, "get_logger", lambda _n: log)
-        out = await meteorite_mod.create_contact_meteorite(
-            cid, "plain pasted jd\n" + ("x" * 40), debug=True
-        )
-        assert out["ok"] is True
-        contact_calls = [
-            c
-            for c in log.debug_index.call_args_list
-            if c.kwargs.get("func") == "meteorite.create_contact_meteorite"
-        ]
-        assert len(contact_calls) == 2
-        assert contact_calls[0].kwargs.get("outcome") == "found"
-        assert str(contact_calls[1].kwargs.get("outcome", "")).startswith(
-            "recorded astral_job_id="
-        )
+        create.assert_not_called()
+        assert results == []
 
 
 # Branches: stage gates; skip; classify-only return; Style D (AST-1530 / AST-1560).
@@ -1130,7 +996,7 @@ class TestAst1703EmailBreadcrumb:
         assert out["total_failed"] == 0
         assert out["total_errors"] == 1
         row = db.get_meteorite(row_id)
-        assert row["state"] == "SCRAPE_ERROR"
+        assert row["state"] == "ERROR_STAGE_METEORITE_UNPARSEABLE"
         assert "breadcrumb" in (row.get("error") or "")
 
     def test_stage_meteorite_schema_accepts_breadcrumb_fields(self) -> None:
@@ -1219,14 +1085,23 @@ class TestAst1560RunStageMeteorite:
 
     @pytest.mark.asyncio
     async def test_missing_classify_outcome_errors_with_monitoring(
-        self, sqlite_in_memory, caplog
+        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch, caplog
     ) -> None:
+        # AST-2034 (parent AC8): unclassified NEW now goes to Ruth; a Ruth failure parks the
+        # row at ERROR_STAGE_METEORITE — the old SCRAPE_ERROR "missing classify_outcome" arm is a Fail.
         import logging
+
+        import src.core.agent as agent_mod
 
         db = sqlite_in_memory
         cid = "cand-stg-miss"
         db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "M"})
-        row_id = _insert_meteorite_row(db, cid)
+        row_id = _insert_meteorite_row(db, cid, content="raw blob " + ("m" * 40))
+
+        async def _do_task(**_kwargs):
+            return {"success": False, "error": "llm down"}
+
+        monkeypatch.setattr(agent_mod, "do_task", _do_task)
         with caplog.at_level(logging.WARNING):
             out = await meteorite_mod.run_stage_meteorite(
                 _ingress_task(batch_id="stage-batch-miss", candidate_id=cid)
@@ -1234,8 +1109,12 @@ class TestAst1560RunStageMeteorite:
         # AST-1751: ERROR arms bump total_errors only — not total_failed.
         assert out["total_failed"] == 0
         assert out["total_errors"] == 1
-        assert db.get_meteorite(row_id)["state"] == "SCRAPE_ERROR"
-        assert any("missing classify_outcome" in r.message for r in caplog.records)
+        row = db.get_meteorite(row_id)
+        assert row["state"] == "ERROR_STAGE_METEORITE"
+        assert row["error"] == "llm down"
+        assert not any("missing classify_outcome" in r.getMessage() for r in caplog.records)
+        # _row_miss warning names the row and the human-reset next step.
+        assert any("ERROR_STAGE_METEORITE" in r.getMessage() for r in caplog.records)
 
 
 @pytest.mark.skipif(
@@ -1243,7 +1122,7 @@ class TestAst1560RunStageMeteorite:
     reason="AST-1560 run_scrape_meteorite not on this publish tip",
 )
 class TestAst1560RunScrapeMeteorite:
-    """AST-1560 / AST-1774: SCRAPE_LINK → CHECK_UNIQUE | BOT_BLOCKED | ERROR."""
+    """AST-1560 / AST-1774: SCRAPE_LINK → CHECK_UNIQUE | BOT_BLOCKED_SCRAPE_METEORITE | SCRAPE_LINK_RETRY → ERROR_SCRAPE_METEORITE."""
 
     @pytest.mark.asyncio
     async def test_ok_visible_text_to_ready(
@@ -1310,16 +1189,16 @@ class TestAst1560RunScrapeMeteorite:
                     task_key=METEORITE_INGRESS_DISPATCH_CONFIG["scrape_task_key"],
                 )
             )
-        # AST-1751: scrape BOT_BLOCKED is fail-only (not pass, not error).
+        # AST-1751: scrape BOT_BLOCKED_SCRAPE_METEORITE is fail-only (not pass, not error).
         assert out["total_failed"] == 1
         assert out["total_passed"] == 0
         assert out["total_errors"] == 0
-        assert db.get_meteorite(row_id)["state"] == "BOT_BLOCKED"
-        # Product: _row_miss → logger.warning "… — scrape blocked at {link}" / BOT_BLOCKED.
+        assert db.get_meteorite(row_id)["state"] == "BOT_BLOCKED_SCRAPE_METEORITE"
+        # Product: _row_miss → logger.warning "… — scrape blocked at {link}" / BOT_BLOCKED_SCRAPE_METEORITE.
         assert any(
-            "scrape blocked at" in r.getMessage() and "BOT_BLOCKED" in r.getMessage()
+            "scrape blocked at" in r.getMessage() and "BOT_BLOCKED_SCRAPE_METEORITE" in r.getMessage()
             for r in caplog.records
-        ), "expected _row_miss warning with scrape blocked + BOT_BLOCKED"
+        ), "expected _row_miss warning with scrape blocked + BOT_BLOCKED_SCRAPE_METEORITE"
 
     @pytest.mark.asyncio
     async def test_sibling_rows_do_not_abort_batch(
@@ -1360,14 +1239,14 @@ class TestAst1560RunScrapeMeteorite:
         # AST-1751: ERROR row must not also bump total_failed.
         assert out["total_failed"] == 0
         assert out["total_errors"] == 1
-        assert db.get_meteorite(bad_id)["state"] == "SCRAPE_ERROR"
+        assert db.get_meteorite(bad_id)["state"] == "SCRAPE_LINK_RETRY"
         assert db.get_meteorite(good_id)["state"] == "CHECK_UNIQUE"
 
     @pytest.mark.asyncio
     async def test_ast1751_error_only_batch_fail_zero_error_n(
         self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """AST-1751 bug-repro: five SCRAPE_ERROR rows → fail:0 error:5 (not fail:5)."""
+        """AST-1751 bug-repro: five failing SCRAPE_LINK rows (→ SCRAPE_LINK_RETRY) → fail:0 error:5 (not fail:5)."""
         db = sqlite_in_memory
         cid = "cand-scp-err5"
         db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "E5"})
@@ -1393,6 +1272,25 @@ class TestAst1560RunScrapeMeteorite:
             "AST-1751: ERROR-only batch must report fail:0 (errors are not also fails)"
         )
         assert out["total_errors"] == 5
+
+    @pytest.mark.asyncio
+    async def test_ast2086_scrape_failure_retries_once_then_errors(self, sqlite_in_memory) -> None:
+        """AST-2086 AC5: SCRAPE_LINK failure → SCRAPE_LINK_RETRY; a failure from the retry → ERROR_SCRAPE_METEORITE."""
+        db = sqlite_in_memory
+        cid = "cand-scp-retry"
+        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "R"})
+        row_id = _insert_meteorite_row(db, cid, state="SCRAPE_LINK", link="not-http")
+        tk = METEORITE_INGRESS_DISPATCH_CONFIG["scrape_task_key"]
+
+        first = await meteorite_mod.run_scrape_meteorite(_ingress_task(batch_id="scrape-retry-1", candidate_id=cid, task_key=tk))
+        assert db.get_meteorite(row_id)["state"] == "SCRAPE_LINK_RETRY"
+        assert (first["total_errors"], first["total_failed"]) == (1, 0)
+
+        # The retry companion is claimed by the same scrape dispatch; the second strike is terminal.
+        second = await meteorite_mod.run_scrape_meteorite(_ingress_task(batch_id="scrape-retry-2", candidate_id=cid, task_key=tk))
+        assert second["total_processed"] == 1
+        assert db.get_meteorite(row_id)["state"] == "ERROR_SCRAPE_METEORITE"
+        assert (second["total_errors"], second["total_failed"]) == (1, 0)
 
     @pytest.mark.asyncio
     async def test_ast1750_scrape_closed_error_includes_signal_text_len_final_url(
@@ -1432,10 +1330,10 @@ class TestAst1560RunScrapeMeteorite:
                 debug=True,
             )
 
-        # AST-1752: closed content is LINK_EXPIRED fail, not SCRAPE_ERROR.
+        # AST-1752: closed content is a JD_SCRAPE_FAIL_CLOSED fail, not an error.
         assert out["total_failed"] == 1
         assert out["total_errors"] == 0
-        assert db.get_meteorite(row_id)["state"] == "LINK_EXPIRED"
+        assert db.get_meteorite(row_id)["state"] == "JD_SCRAPE_FAIL_CLOSED"
         err = db.get_meteorite(row_id)["error"] or ""
         assert "scrape_closed" in err, f"expected scrape_closed in error, got {err!r}"
         assert "signal=" in err, (
@@ -1453,8 +1351,8 @@ class TestAst1560RunScrapeMeteorite:
             for r in caplog.records
         ), "AST-1750: warning must carry the same diagnostic why string"
         assert any(
-            "This row is LINK_EXPIRED" in r.getMessage() for r in caplog.records
-        ), "AST-1752: closed warning next step is LINK_EXPIRED"
+            "This row is JD_SCRAPE_FAIL_CLOSED" in r.getMessage() for r in caplog.records
+        ), "AST-1752: closed warning next step is JD_SCRAPE_FAIL_CLOSED"
 
     @pytest.mark.asyncio
     async def test_ast1752_missing_content_is_link_expired_fail(
@@ -1463,7 +1361,7 @@ class TestAst1560RunScrapeMeteorite:
         monkeypatch: pytest.MonkeyPatch,
         caplog: pytest.LogCaptureFixture,
     ) -> None:
-        """AST-1752 bug-repro: missing content verdict is LINK_EXPIRED fail, not SCRAPE_ERROR."""
+        """AST-1752 bug-repro: missing content verdict is a JD_SCRAPE_FAIL_MISSING fail, not an error."""
         import logging
 
         db = sqlite_in_memory
@@ -1498,14 +1396,14 @@ class TestAst1560RunScrapeMeteorite:
         assert out["total_errors"] == 0
         assert out["total_passed"] == 0
         row = db.get_meteorite(row_id)
-        assert row["state"] == "LINK_EXPIRED"
+        assert row["state"] == "JD_SCRAPE_FAIL_MISSING"
         err = row["error"] or ""
         assert "scrape_missing" in err
         assert "signal=None" in err
         assert f"text_len={len(visible)}" in err
         assert "final_url=" in err
         assert any(
-            "This row is LINK_EXPIRED" in r.getMessage() for r in caplog.records
+            "This row is JD_SCRAPE_FAIL_MISSING" in r.getMessage() for r in caplog.records
         )
 
 
@@ -1579,15 +1477,15 @@ class TestAst1560RunLandMeteorite:
         # AST-1751: land ERROR arm bumps total_errors only — not total_failed.
         assert out["total_failed"] == 0
         assert out["total_errors"] == 1
-        assert db.get_meteorite(row_id)["state"] == "SCRAPE_ERROR"
+        assert db.get_meteorite(row_id)["state"] == "ERROR_LAND_METEORITE"
 
 
 @pytest.mark.skipif(
     not hasattr(meteorite_mod, "apply_paste"),
-    reason="AST-1561 BOT_BLOCKED paste recovery not on this publish tip",
+    reason="AST-1561 BOT_BLOCKED_SCRAPE_METEORITE paste recovery not on this publish tip",
 )
 class TestAst1561ApplyPaste:
-    """AST-1561: BOT_BLOCKED → READY via paste (no classify)."""
+    """AST-1561: BOT_BLOCKED_SCRAPE_METEORITE → READY via paste (no classify)."""
 
     def test_moves_bot_blocked_to_ready(self, sqlite_in_memory) -> None:
         db = sqlite_in_memory
@@ -1596,7 +1494,7 @@ class TestAst1561ApplyPaste:
         row_id = _insert_meteorite_row(
             db,
             cid,
-            state="BOT_BLOCKED",
+            state="BOT_BLOCKED_SCRAPE_METEORITE",
             link="https://blocked.example/j",
         )
         out = meteorite_mod.apply_paste(row_id, "Full JD paste " + ("x" * 40))
@@ -1619,7 +1517,7 @@ class TestAst1561ApplyPaste:
         db = sqlite_in_memory
         cid = "cand-paste-empty"
         db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "E"})
-        row_id = _insert_meteorite_row(db, cid, state="BOT_BLOCKED")
+        row_id = _insert_meteorite_row(db, cid, state="BOT_BLOCKED_SCRAPE_METEORITE")
         assert meteorite_mod.apply_paste(row_id, "   ")["error"] == "empty_paste"
 
 
@@ -1635,7 +1533,7 @@ class TestAst1561BotBlockedLookup:
         row_id = _insert_meteorite_row(
             db,
             cid,
-            state="BOT_BLOCKED",
+            state="BOT_BLOCKED_SCRAPE_METEORITE",
             estelle_thread_ts="1234.5678",
         )
         found = meteorite_mod.find_meteorite_for_estelle_thread(
@@ -1653,7 +1551,7 @@ class TestAst1561BotBlockedLookup:
             cid,
             source_kind="paste",
             source_id="blob-1",
-            state="BOT_BLOCKED",
+            state="BOT_BLOCKED_SCRAPE_METEORITE",
         )
         found = meteorite_mod.find_meteorite_bot_blocked_paste_source(candidate_id=cid)
         assert found is not None
@@ -1681,7 +1579,7 @@ class TestAst1561RunNotifyBotBlocked:
         row_id = _insert_meteorite_row(
             db,
             cid,
-            state="BOT_BLOCKED",
+            state="BOT_BLOCKED_SCRAPE_METEORITE",
             link="https://jobs.example/blocked",
         )
         monkeypatch.setattr(
@@ -1713,7 +1611,7 @@ class TestAst1561RunNotifyBotBlocked:
         row_id = _insert_meteorite_row(
             db,
             cid,
-            state="BOT_BLOCKED",
+            state="BOT_BLOCKED_SCRAPE_METEORITE",
             nag_count=nag_limit,
         )
         post = MagicMock()
@@ -1820,7 +1718,7 @@ class TestAst1559CheckInbox:
         assert out["total_errors"] == 1
         rows = db.list_meteorites_by_source("email", mid)
         assert len(rows) == 1
-        assert rows[0]["state"] == "NEW_EMAIL_ERROR"
+        assert rows[0]["state"] == "ERROR_STAGE_METEORITE"
         archive.assert_not_called()
 
     @pytest.mark.asyncio
@@ -1898,7 +1796,7 @@ class TestAst1559CheckInbox:
     reason="AST-1689 electronic_contact map/persist not on this publish tip",
 )
 class TestAst1689ElectronicContactMapPersist:
-    """AST-1689: map Ruth contact → row; soft-fail; BOT_BLOCKED preserve; no job_data."""
+    """AST-1689: map Ruth contact → row; soft-fail; BOT_BLOCKED_SCRAPE_METEORITE preserve; no job_data."""
 
     @pytest.mark.asyncio
     async def test_text_outcome_stores_contact_on_row(
@@ -2072,11 +1970,11 @@ class TestAst1689ElectronicContactMapPersist:
                 task_key=METEORITE_INGRESS_DISPATCH_CONFIG["scrape_task_key"],
             )
         )
-        # AST-1751: scrape BOT_BLOCKED counts as fail (contact column still preserved).
+        # AST-1751: scrape BOT_BLOCKED_SCRAPE_METEORITE counts as fail (contact column still preserved).
         assert out["total_failed"] == 1
         assert out["total_passed"] == 0
         row = db.get_meteorite(row_id)
-        assert row["state"] == "BOT_BLOCKED"
+        assert row["state"] == "BOT_BLOCKED_SCRAPE_METEORITE"
         assert row[col] == "keep@example.com"
 
     @pytest.mark.asyncio
@@ -2178,7 +2076,7 @@ class TestAst1689ElectronicContactMapPersist:
 
 @pytest.mark.skipif(not hasattr(meteorite_mod, "run_land_meteorite"), reason="AST-1560 land runner not on this publish tip")
 class TestAst1693RunLandBotBlocked:
-    """AST-1693: claim BOT_BLOCKED; contentful land with http job_link; empty stays."""
+    """AST-1693: claim BOT_BLOCKED_SCRAPE_METEORITE; contentful land with http job_link; empty stays."""
 
     @pytest.mark.asyncio
     async def test_contentful_bot_blocked_lands_with_http_link(self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -2186,7 +2084,7 @@ class TestAst1693RunLandBotBlocked:
         cid = "cand-1693-land"
         link = "https://example.test/job/1"
         db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "L"})
-        row_id = _insert_meteorite_row(db, cid, state="BOT_BLOCKED", content="Non-scrape JD " + ("q" * 40), link=link)
+        row_id = _insert_meteorite_row(db, cid, state="BOT_BLOCKED_SCRAPE_METEORITE", content="Non-scrape JD " + ("q" * 40), link=link)
         captured: dict = {}
         def _save(_cid, **kwargs):
             captured.update(kwargs)
@@ -2203,30 +2101,30 @@ class TestAst1693RunLandBotBlocked:
         db = sqlite_in_memory
         cid = "cand-1693-empty"
         db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "E"})
-        row_id = _insert_meteorite_row(db, cid, state="BOT_BLOCKED", content="", link="https://example.test/job/empty")
+        row_id = _insert_meteorite_row(db, cid, state="BOT_BLOCKED_SCRAPE_METEORITE", content="", link="https://example.test/job/empty")
         out = await meteorite_mod.run_land_meteorite(_ingress_task(batch_id="land-1693-empty", candidate_id=cid, task_key=METEORITE_INGRESS_DISPATCH_CONFIG["land_task_key"]))
         assert out["total_failed"] == 0 and out["total_errors"] == 0 and out["total_passed"] == 0
         row = db.get_meteorite(row_id)
-        assert row["state"] == "BOT_BLOCKED" and not row.get("astral_job_id")
+        assert row["state"] == "BOT_BLOCKED_SCRAPE_METEORITE" and not row.get("astral_job_id")
 
 
 @pytest.mark.skipif(not hasattr(meteorite_mod, "run_notify_meteorite_bot_blocked"), reason="AST-1561 notify runner not on this publish tip")
 class TestAst1693NotifySkipsContentful:
-    """AST-1693: contentful BOT_BLOCKED belongs to land — notify must not DM."""
+    """AST-1693: contentful BOT_BLOCKED_SCRAPE_METEORITE belongs to land — notify must not DM."""
 
     @pytest.mark.asyncio
     async def test_skips_contentful_bot_blocked(self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch) -> None:
         db = sqlite_in_memory
         cid = "cand-1693-notify"
         db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "N", "contact": {"slack_user_id": "U-1693"}})
-        row_id = _insert_meteorite_row(db, cid, state="BOT_BLOCKED", content="Paste-ready JD " + ("x" * 40), link="https://jobs.example/blocked-contentful")
+        row_id = _insert_meteorite_row(db, cid, state="BOT_BLOCKED_SCRAPE_METEORITE", content="Paste-ready JD " + ("x" * 40), link="https://jobs.example/blocked-contentful")
         post = MagicMock()
         monkeypatch.setattr(meteorite_mod, "_resolve_slack_dm_channel_for_candidate", lambda _c: "D-1693")
         monkeypatch.setattr("src.core.contact.contact_post_message", post)
         out = await meteorite_mod.run_notify_meteorite_bot_blocked(_notify_task(batch_id="notify-1693-skip", candidate_id=cid))
         assert out["total_passed"] == 0
         row = db.get_meteorite(row_id)
-        assert row["state"] == "BOT_BLOCKED" and not row.get("estelle_notified_at")
+        assert row["state"] == "BOT_BLOCKED_SCRAPE_METEORITE" and not row.get("estelle_notified_at")
         post.assert_not_called()
 
 
@@ -2351,7 +2249,7 @@ class TestAst1713StageSavesRuthRow:
         assert out["error"] and "candidate not found" in out["error"]
         rows = db.list_meteorites_by_source("email", "mid-miss")
         assert len(rows) == 1
-        assert rows[0]["state"] == "NEW_EMAIL_ERROR"
+        assert rows[0]["state"] == "ERROR_STAGE_METEORITE"
 
     def test_insert_binds_caller_state(self, sqlite_in_memory) -> None:
         db = sqlite_in_memory
@@ -2874,7 +2772,7 @@ class TestAst1774RunCheckUniqueMeteorite:
         row_id = _insert_meteorite_row(
             db,
             cid,
-            state="BOT_BLOCKED",
+            state="BOT_BLOCKED_SCRAPE_METEORITE",
             link="https://jobs.example.com/blocked",
         )
         out = meteorite_mod.apply_paste(row_id, "Paste JD body " + ("p" * 40))
@@ -3260,3 +3158,787 @@ class TestAst1785PreferHttpJobLinkOverBreadcrumb:
         row = db.get_meteorite(row_id)
         assert row["state"] == "SCRAPE_LINK"
         assert row["link"] == url
+
+
+# Branches: blank jd_text + http job_link under text outcome must NOT use ingress_blob
+# (combo link-only scrap); classic blank+no-link still uses blob (AST-1756) (AST-1796).
+@pytest.mark.skipif(
+    not hasattr(meteorite_mod, "_map_classify_jobs_to_meteorite_rows"),
+    reason="AST-1796 map helper not on this publish tip",
+)
+class TestAst1796ComboBlankJdTextHttpJobLinkSkipsIngressBlob:
+    """AST-1796 bug-repro: link-only jobs item under text outcome must not swallow the email blob."""
+
+    _BLOB = (
+        "Here is the full JD for role A.\n\n"
+        "Also open: https://example.com/jobs/other"
+    )
+
+    def test_blank_jd_text_with_http_job_link_skips_ingress_blob(self) -> None:
+        # Pre-fix: AST-1756 fills content from ingress_blob before AST-1785 sets link —
+        # link-only combo items become full-email scraps. Fixed: empty content + http link.
+        url = "https://example.com/jobs/other"
+        rows, err = meteorite_mod._map_classify_jobs_to_meteorite_rows(
+            "multi_jd_inline",
+            [{
+                "jd_text": "",
+                "job_link": url,
+                "from_email": "recruiter@co.com",
+                "to_email": "me@ex.com",
+                "sent_at": "2026-09-17T18:05:00+00:00",
+            }],
+            candidate_id="cand-1796",
+            source_kind="email",
+            source_id="mid-1796",
+            ingress_blob=self._BLOB,
+            timezone_key="America/New_York",
+        )
+        assert err is None and len(rows) == 1
+        assert rows[0]["link"] == url
+        content = (rows[0].get("content") or "").strip()
+        assert content != self._BLOB.strip()
+        assert content == ""
+
+
+# Branches: classify-fail fallthrough + map-error both warn once when the ERROR-row
+# insert succeeds; a failed ERROR-row insert keeps its own single log (no extra warn).
+class TestAst1617StageErrorWarns:
+    """[bug-repro] AST-1617: stage errors that callers count must emit an always-on WARNING."""
+
+    @staticmethod
+    def _stage_common(monkeypatch: pytest.MonkeyPatch, *, insert=None) -> None:
+        monkeypatch.setattr(
+            meteorite_mod, "get_candidate", lambda _cid: {"astral_candidate_id": "c1617"}
+        )
+        monkeypatch.setattr(
+            meteorite_mod, "_insert_stage_rows", insert or (lambda _rows: ([101], None))
+        )
+        monkeypatch.setattr(meteorite_mod, "_candidate_contact_timezone", lambda _cid: None)
+
+    @staticmethod
+    def _warns_for(caplog: pytest.LogCaptureFixture, sid: str) -> list:
+        import logging
+
+        return [
+            r
+            for r in caplog.records
+            if r.name == "src.core.meteorite"
+            and r.levelno >= logging.WARNING
+            and sid in r.getMessage()
+        ]
+
+    @pytest.mark.asyncio
+    async def test_classify_fail_warns_once(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        import logging
+
+        self._stage_common(monkeypatch)
+
+        async def _classify_fail(*_a, **_k):
+            return {"success": False, "outcome": "", "jobs": [], "error": "llm timeout", "batch_id": "b1"}
+
+        monkeypatch.setattr(meteorite_mod, "_classify_stage_blob", _classify_fail)
+        with caplog.at_level(logging.WARNING, logger="src.core.meteorite"):
+            out = await meteorite_mod.stage_meteorite(
+                "c1617", "blob", source_kind="email", source_id="mid-1617-a"
+            )
+        assert out["error"] == "llm timeout"
+        warns = self._warns_for(caplog, "mid-1617-a")
+        assert len(warns) == 1
+        msg = warns[0].getMessage()
+        assert "c1617" in msg and "email" in msg and "llm timeout" in msg
+
+    @pytest.mark.asyncio
+    async def test_map_error_warns_once(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        import logging
+
+        from src.utils.config import STAGE_METEORITE_CONFIG
+
+        self._stage_common(monkeypatch)
+        landable = STAGE_METEORITE_CONFIG["text_source_ref_outcomes"][0]
+
+        async def _classify_ok(*_a, **_k):
+            return {"success": True, "outcome": landable, "jobs": [{}], "error": None, "batch_id": "b2"}
+
+        monkeypatch.setattr(meteorite_mod, "_classify_stage_blob", _classify_ok)
+        monkeypatch.setattr(
+            meteorite_mod,
+            "_map_classify_jobs_to_meteorite_rows",
+            lambda *_a, **_k: ([], "jobs[0] missing content"),
+        )
+        with caplog.at_level(logging.WARNING, logger="src.core.meteorite"):
+            out = await meteorite_mod.stage_meteorite(
+                "c1617", "blob", source_kind="email", source_id="mid-1617-b"
+            )
+        assert out["error"] == "jobs[0] missing content"
+        warns = self._warns_for(caplog, "mid-1617-b")
+        assert len(warns) == 1
+        msg = warns[0].getMessage()
+        assert "c1617" in msg and "email" in msg and "missing content" in msg
+
+    @pytest.mark.asyncio
+    async def test_error_row_insert_failure_logs_once_no_extra_warn(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        import logging
+
+        def _insert_boom(_rows):
+            raise RuntimeError("insert boom")
+
+        self._stage_common(monkeypatch, insert=_insert_boom)
+
+        async def _classify_fail(*_a, **_k):
+            return {"success": False, "outcome": "", "jobs": [], "error": "llm timeout", "batch_id": "b3"}
+
+        monkeypatch.setattr(meteorite_mod, "_classify_stage_blob", _classify_fail)
+        with caplog.at_level(logging.WARNING, logger="src.core.meteorite"):
+            out = await meteorite_mod.stage_meteorite(
+                "c1617", "blob", source_kind="email", source_id="mid-1617-c"
+            )
+        assert out["error"] == "llm timeout"
+        warns = self._warns_for(caplog, "mid-1617-c")
+        assert len(warns) == 1
+        assert warns[0].levelno == logging.ERROR
+
+
+# Branches: ctx key map forwarded / absent → do_task loads by candidate id (AST-1879).
+class TestAst1879ClassifyKeyMapHandOff:
+    """AST-1879: _classify_stage_blob forwards candidate_api_keys to do_task ctx."""
+
+    async def _run(self, monkeypatch: pytest.MonkeyPatch, ctx: object) -> dict:
+        import src.core.agent as agent_mod
+
+        seen: dict = {}
+
+        async def _do_task(**kwargs):
+            seen.update(kwargs)
+            return {"success": False, "error": "stop"}
+
+        monkeypatch.setattr(agent_mod, "do_task", _do_task)
+        await meteorite_mod._classify_stage_blob(
+            "cand-1879", "blob", source_kind="email", source_id="msg-1879", ctx=ctx
+        )
+        return seen["ctx"]
+
+    @pytest.mark.asyncio
+    async def test_forwards_key_map_from_ctx(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        keys = {"kimi": "sk-kimi"}
+        task_ctx = await self._run(
+            monkeypatch, {"candidate_data": {"a": 1}, "candidate_api_keys": keys}
+        )
+        assert task_ctx["candidate_api_keys"] == keys
+        assert task_ctx["astral_candidate_id"] == "cand-1879"
+        assert "candidate_api_key" not in task_ctx
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("ctx", [None, {"astral_candidate_id": "cand-1879"}])
+    async def test_no_key_map_in_ctx_leaves_it_off(self, monkeypatch: pytest.MonkeyPatch, ctx: object) -> None:
+        # do_task then loads the map by candidate id (_candidate_server_key).
+        task_ctx = await self._run(monkeypatch, ctx)
+        assert "candidate_api_keys" not in task_ctx
+        assert task_ctx["astral_candidate_id"] == "cand-1879"
+
+
+# AST-1988: _hold_log_batch stamps batch + candidate as a token pair, or no-ops under a parent batch.
+# Branches: no parent → (batch_tok, cand_tok); parent batch set → None, parent ids kept; blank cid → candidate None;
+# _classify_stage_blob caller resets both tokens in finally.
+class TestAst1988HoldLogBatchPairing:
+    """log_candidate_id rides _hold_log_batch (AST-1988 AC 4); #14 is the bug-repro."""
+
+    @staticmethod
+    def _ids() -> tuple:
+        from src.utils.logging import log_batch_id, log_candidate_id
+
+        return log_batch_id.get(), log_candidate_id.get()
+
+    @staticmethod
+    def _start(batch=None, cand=None) -> tuple:
+        # Pin a known start state so a leak from another test can't green these.
+        from src.utils.logging import log_batch_id, log_candidate_id
+
+        return log_batch_id.set(batch), log_candidate_id.set(cand)
+
+    @staticmethod
+    def _restore(tokens: tuple) -> None:
+        from src.utils.logging import log_batch_id, log_candidate_id
+
+        log_candidate_id.reset(tokens[1])
+        log_batch_id.reset(tokens[0])
+
+    def test_hold_sets_both_and_returns_token_pair(self) -> None:
+        # bug-repro: pre-fix _hold_log_batch takes one arg (TypeError) and returns a single token.
+        from src.utils.logging import log_batch_id, log_candidate_id
+
+        start = self._start()
+        try:
+            tok = meteorite_mod._hold_log_batch("b-1988", "cand-1988")
+            assert isinstance(tok, tuple) and len(tok) == 2
+            assert self._ids() == ("b-1988", "cand-1988")
+            log_batch_id.reset(tok[0])
+            log_candidate_id.reset(tok[1])
+            assert self._ids() == (None, None)
+        finally:
+            self._restore(start)
+
+    def test_hold_noop_under_parent_batch(self) -> None:
+        start = self._start("parent-b", "parent-c")
+        try:
+            assert meteorite_mod._hold_log_batch("b-1988", "cand-1988") is None
+            assert self._ids() == ("parent-b", "parent-c")
+        finally:
+            self._restore(start)
+
+    def test_hold_blank_candidate_stamps_none(self) -> None:
+        from src.utils.logging import log_batch_id, log_candidate_id
+
+        start = self._start()
+        try:
+            tok = meteorite_mod._hold_log_batch("b-1988", "")
+            assert self._ids() == ("b-1988", None)
+            log_batch_id.reset(tok[0])
+            log_candidate_id.reset(tok[1])
+        finally:
+            self._restore(start)
+
+    @pytest.mark.asyncio
+    async def test_classify_stage_blob_stamps_and_releases(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Same do_task patch as TestAst1879ClassifyKeyMapHandOff._run, capturing ids mid-run.
+        import src.core.agent as agent_mod
+
+        seen: list = []
+
+        async def _do_task(**kwargs):
+            seen.append(self._ids())
+            return {"success": False, "error": "stop"}
+
+        monkeypatch.setattr(agent_mod, "do_task", _do_task)
+        start = self._start()
+        try:
+            await meteorite_mod._classify_stage_blob(
+                "cand-1988", "blob", source_kind="email", source_id="msg-1988"
+            )
+            assert len(seen) == 1
+            batch, cand = seen[0]
+            assert batch.startswith(meteorite_mod.STAGE_METEORITE_CONFIG["task_key"] + "-stage-")
+            assert cand == "cand-1988"
+            assert self._ids() == (None, None)
+        finally:
+            self._restore(start)
+
+
+# AST-2034: insert_slack_meteorite — raw Slack blob at NEW, unclassified (parent AC1/AC2 row shape
+# via direct call; mention/command strip + link unwrap are sibling AST-2035's job, not tested here).
+# Branches: ok + anchor stamped / ok no anchor; misses (cid, payload, source_id) insert nothing;
+# insert raises → soft-fail; anchor stamp raises → still ok.
+class TestAst2034InsertSlackMeteorite:
+    URL = "http://www.dice.com/jobs/13234abcd"
+
+    @staticmethod
+    def _last_row(db) -> dict:
+        rows = db.list_meteorites_by_source("slack", "C1:1700000000.000100")
+        assert len(rows) == 1
+        return rows[0]
+
+    def test_link_payload_lands_raw_at_new(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        out = meteorite_mod.insert_slack_meteorite(
+            "cand-2034", self.URL, source_id="C1:1700000000.000100", thread_ts="1700000000.000100",
+        )
+        assert out["ok"] is True and out["error"] is None
+        row = self._last_row(db)
+        assert row["id"] == out["meteorite_id"]
+        assert (row["candidate_id"], row["state"], row["source_kind"]) == ("cand-2034", "NEW", "slack")
+        assert row["classify_outcome"] is None
+        assert row["content"] == self.URL
+        assert row["link"] is None
+        assert row["estelle_thread_ts"] == "1700000000.000100"
+
+    def test_text_payload_lands_one_row_trimmed_interior_kept(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        jd = "Senior Engineer\nAcme Corp\n\nResponsibilities:\n- build things"
+        out = meteorite_mod.insert_slack_meteorite(
+            "cand-2034", f"  \n{jd}\n  ", source_id="C1:1700000000.000100",
+        )
+        assert out["ok"] is True
+        row = self._last_row(db)
+        assert row["state"] == "NEW" and row["classify_outcome"] is None
+        assert row["content"] == jd
+        # No anchor passed → nothing stamped.
+        assert not row.get("estelle_thread_ts")
+
+    @pytest.mark.parametrize(
+        ("cid", "payload", "sid", "why"),
+        [
+            ("", "blob", "C1:1", "candidate_id is required"),
+            ("cand-2034", "   ", "C1:1", "payload is required"),
+            ("cand-2034", None, "C1:1", "payload is required"),
+            ("cand-2034", "blob", " ", "source_id is required"),
+        ],
+    )
+    def test_validation_miss_inserts_nothing(self, sqlite_in_memory, cid, payload, sid, why) -> None:
+        db = sqlite_in_memory
+        out = meteorite_mod.insert_slack_meteorite(cid, payload, source_id=sid)
+        assert out == {"ok": False, "meteorite_id": None, "error": why}
+        assert db.list_meteorites_by_source("slack", sid.strip() or "C1:1") == []
+
+    def test_insert_raises_soft_fails(self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch) -> None:
+        def _boom(_rows):
+            raise RuntimeError("db locked")
+
+        monkeypatch.setattr(meteorite_mod, "_insert_stage_rows", _boom)
+        out = meteorite_mod.insert_slack_meteorite("cand-2034", "blob", source_id="C1:1")
+        assert out == {"ok": False, "meteorite_id": None, "error": "db locked"}
+
+    def test_anchor_stamp_failure_still_ok(self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch) -> None:
+        db = sqlite_in_memory
+
+        def _boom(*_a, **_k):
+            raise RuntimeError("update failed")
+
+        monkeypatch.setattr(meteorite_mod, "update_meteorite", _boom)
+        out = meteorite_mod.insert_slack_meteorite(
+            "cand-2034", "blob", source_id="C1:1700000000.000100", thread_ts="1700000000.000100",
+        )
+        # Row is saved; Contact must not tell the candidate nothing was saved.
+        assert out["ok"] is True
+        assert self._last_row(db)["state"] == "NEW"
+
+
+# AST-2034: run_stage_meteorite Ruth-classifies unclassified NEW rows (parent AC8/AC9/AC10).
+# Branches: insert sanitized / URL query kept / markup-only → payload miss; apply_paste drops script,
+# decodes entity-encoded markup, keeps plain line shaping; helper table (AST-2061). The double-encoded
+# plain-text residual is accepted and deliberately not pinned.
+class TestAst2061ContactSanitize:
+    SID = "C1:1700000000.000200"
+
+    @staticmethod
+    def _bot_blocked_row(db, cid: str) -> int:
+        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "S"})
+        return _insert_meteorite_row(db, cid, state="BOT_BLOCKED_SCRAPE_METEORITE", link="https://blocked.example/j")
+
+    def test_insert_slack_meteorite_stores_sanitized_content(self, sqlite_in_memory) -> None:
+        # [bug-repro] AST-2061: Contact markup / entity-encoded script never reaches stored content.
+        db = sqlite_in_memory
+        payload = "<img src=x onerror=alert(1)>Senior Eng &lt;script&gt;alert(1)&lt;/script&gt;"
+        out = meteorite_mod.insert_slack_meteorite("cand-2061", payload, source_id=self.SID)
+        assert out["ok"] is True
+        rows = db.list_meteorites_by_source("slack", self.SID)
+        assert len(rows) == 1
+        assert rows[0]["content"] == "Senior Eng"
+        assert rows[0]["state"] == "NEW"
+        assert rows[0]["classify_outcome"] is None
+
+    def test_insert_slack_meteorite_keeps_url_query(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        out = meteorite_mod.insert_slack_meteorite(
+            "cand-2061", "https://x.io/job?id=1&amp;src=slack", source_id=self.SID
+        )
+        assert out["ok"] is True
+        assert db.list_meteorites_by_source("slack", self.SID)[0]["content"] == "https://x.io/job?id=1&src=slack"
+
+    def test_insert_markup_only_payload_is_required_miss(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        out = meteorite_mod.insert_slack_meteorite("cand-2061", "<script>alert(1)</script>", source_id=self.SID)
+        assert out == {"ok": False, "meteorite_id": None, "error": "payload is required"}
+        assert db.list_meteorites_by_source("slack", self.SID) == []
+
+    def test_apply_paste_drops_script_content(self, sqlite_in_memory) -> None:
+        # [bug-repro] AST-2061: the old regex tag strip kept script text ("Senior Eng alert(1)").
+        db = sqlite_in_memory
+        row_id = self._bot_blocked_row(db, "cand-2061-script")
+        out = meteorite_mod.apply_paste(row_id, "<p>Senior Eng</p><script>alert(1)</script>")
+        assert out["ok"] is True
+        assert db.get_meteorite(row_id)["content"] == "Senior Eng"
+
+    def test_apply_paste_entity_encoded_plain_text(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        row_id = self._bot_blocked_row(db, "cand-2061-entity")
+        out = meteorite_mod.apply_paste(row_id, "&lt;script&gt;alert(1)&lt;/script&gt;Senior Eng")
+        assert out["ok"] is True
+        assert db.get_meteorite(row_id)["content"] == "Senior Eng"
+
+    def test_apply_paste_plain_lines_unchanged(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        row_id = self._bot_blocked_row(db, "cand-2061-lines")
+        out = meteorite_mod.apply_paste(row_id, "line1\n\n  line2  ")
+        assert out["ok"] is True
+        assert db.get_meteorite(row_id)["content"] == "line1\n\nline2"
+
+    @pytest.mark.parametrize(
+        ("raw", "expected"),
+        [
+            ("https://x.io/job?id=1&amp;src=slack", "https://x.io/job?id=1&src=slack"),
+            ("&lt;script&gt;alert(1)&lt;/script&gt;Senior Eng", "Senior Eng"),
+            ("<b>Senior</b> Eng <img src=x onerror=alert(1)> AT&amp;T", "Senior Eng  AT&T"),
+            ("<@U123> salary 1 < 2", "<@U123> salary 1 < 2"),
+            ("line1\n\nline2  <!-- c -->", "line1\n\nline2"),
+            (None, ""),
+        ],
+    )
+    def test_sanitize_contact_text_table(self, raw, expected) -> None:
+        assert meteorite_mod.sanitize_contact_text(raw) == expected
+
+
+# Branches: link_list → SCRAPE_LINK; single_jd_no_link → CHECK_UNIQUE; skip → NOT_A_JOB (failed);
+# do_task fail → ERROR_STAGE_METEORITE (TestAst1560RunStageMeteorite::test_missing_classify_outcome_…);
+# map fail → ERROR_STAGE_METEORITE with outcome kept; candidate missing → ERROR_STAGE_METEORITE;
+# multi_jd_inline 3 jobs → original routed + 2 unclaimed classified NEW siblings;
+# classified row → zero do_task calls; classify agent_data batch = claim id; claim released.
+class TestAst2034StageHopClassify:
+    URL = "http://www.dice.com/jobs/13234abcd"
+    SID = "C1:1700000000.000100"
+
+    @staticmethod
+    def _patch_ruth(monkeypatch: pytest.MonkeyPatch, outcome: str, jobs: list) -> list:
+        """Patch do_task with a Ruth reply; returns call log of (kwargs, log_batch_id at call)."""
+        import src.core.agent as agent_mod
+        from src.utils.logging import log_batch_id
+
+        calls: list = []
+
+        async def _do_task(**kwargs):
+            calls.append((kwargs, log_batch_id.get()))
+            return {"success": True, "parsed_response": {"outcome": outcome, "jobs": jobs}}
+
+        monkeypatch.setattr(agent_mod, "do_task", _do_task)
+        return calls
+
+    def _seed(self, db, cid: str, payload: str, *, save_candidate: bool = True) -> int:
+        if save_candidate:
+            db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "S"})
+        out = meteorite_mod.insert_slack_meteorite(cid, payload, source_id=self.SID)
+        assert out["ok"] is True
+        return out["meteorite_id"]
+
+    @staticmethod
+    async def _run(cid: str, batch_id: str) -> dict:
+        return await meteorite_mod.run_stage_meteorite(_ingress_task(batch_id=batch_id, candidate_id=cid))
+
+    @pytest.mark.asyncio
+    async def test_link_list_routes_to_scrape_link(self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch) -> None:
+        db = sqlite_in_memory
+        row_id = self._seed(db, "cand-2034-link", self.URL)
+        calls = self._patch_ruth(monkeypatch, "link_list", [{"job_link": self.URL, "job_title": "SWE"}])
+        out = await self._run("cand-2034-link", "b-2034-link")
+        assert len(calls) == 1
+        assert out["total_passed"] == 1 and out["total_errors"] == 0
+        row = db.get_meteorite(row_id)
+        assert row["state"] == "SCRAPE_LINK"
+        assert row["link"] == self.URL
+        assert row["classify_outcome"] == "link_list"
+        assert row["job_title"] == "SWE"
+
+    @pytest.mark.asyncio
+    async def test_single_jd_no_link_routes_to_check_unique(
+        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        db = sqlite_in_memory
+        jd = "Senior Engineer at Acme\n" + ("x" * 60)
+        row_id = self._seed(db, "cand-2034-text", jd)
+        self._patch_ruth(monkeypatch, "single_jd_no_link", [{"jd_text": jd, "employer_name": "Acme"}])
+        out = await self._run("cand-2034-text", "b-2034-text")
+        assert out["total_passed"] == 1
+        row = db.get_meteorite(row_id)
+        # Slack text rows carry no breadcrumb requirement (that gate is email-only).
+        assert row["state"] == "CHECK_UNIQUE"
+        assert row["content"] == jd
+        assert row["employer_name"] == "Acme"
+
+    @pytest.mark.asyncio
+    async def test_not_job_content_to_not_a_job(self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch) -> None:
+        db = sqlite_in_memory
+        row_id = self._seed(db, "cand-2034-skip", "lol hi estelle")
+        self._patch_ruth(monkeypatch, "not_job_content", [])
+        out = await self._run("cand-2034-skip", "b-2034-skip")
+        # AST-1742 / AST-1751: skip counts as failed, not error.
+        assert (out["total_failed"], out["total_errors"], out["total_passed"]) == (1, 0, 0)
+        row = db.get_meteorite(row_id)
+        assert row["state"] == "NOT_A_JOB"
+        assert row["classify_outcome"] == "not_job_content"
+
+    @pytest.mark.asyncio
+    async def test_map_failure_to_new_email_error_keeps_outcome(
+        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        db = sqlite_in_memory
+        row_id = self._seed(db, "cand-2034-map", "www.dice.com/jobs/x")
+        # link_list with a non-http job_link → _map_classify_jobs_to_meteorite_rows error.
+        self._patch_ruth(monkeypatch, "link_list", [{"job_link": "www.dice.com/jobs/x"}])
+        out = await self._run("cand-2034-map", "b-2034-map")
+        assert (out["total_errors"], out["total_failed"]) == (1, 0)
+        row = db.get_meteorite(row_id)
+        assert row["state"] == "ERROR_STAGE_METEORITE"
+        assert row["error"] == "url scrap missing http(s) job_link"
+        assert row["classify_outcome"] == "link_list"
+
+    @pytest.mark.asyncio
+    async def test_candidate_missing_to_new_email_error_no_ruth(
+        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        db = sqlite_in_memory
+        row_id = self._seed(db, "cand-2034-ghost", "blob", save_candidate=False)
+        calls = self._patch_ruth(monkeypatch, "single_jd_no_link", [])
+        out = await self._run("cand-2034-ghost", "b-2034-ghost")
+        assert calls == []
+        assert out["total_errors"] == 1
+        row = db.get_meteorite(row_id)
+        assert row["state"] == "ERROR_STAGE_METEORITE"
+        assert "candidate not found" in row["error"]
+
+    @pytest.mark.asyncio
+    async def test_multi_jd_inline_three_jobs_fans_out_two_siblings(
+        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        db = sqlite_in_memory
+        batch_id = "b-2034-multi"
+        row_id = self._seed(db, "cand-2034-multi", "three postings pasted")
+        jobs = [{"jd_text": f"Role {n} " + ("y" * 40), "job_title": f"Role {n}"} for n in (1, 2, 3)]
+        self._patch_ruth(monkeypatch, "multi_jd_inline", jobs)
+        out = await self._run("cand-2034-multi", batch_id)
+        # Counters are per claimed row: one row claimed, one routed.
+        assert (out["total_processed"], out["total_passed"]) == (1, 1)
+        rows = {r["id"]: r for r in db.list_meteorites_by_source("slack", self.SID)}
+        assert len(rows) == 3
+        assert rows.pop(row_id)["state"] == "CHECK_UNIQUE"
+        siblings = sorted(rows.values(), key=lambda r: r["id"])
+        assert [s["job_title"] for s in siblings] == ["Role 2", "Role 3"]
+        for s in siblings:
+            assert s["state"] == "NEW"
+            assert s["classify_outcome"] == "multi_jd_inline"
+            assert s["source_kind"] == "slack"
+            # Not claimed by this hop; next stage tick routes them via the classified branch.
+            assert s.get("batch_id") is None
+
+    @pytest.mark.asyncio
+    async def test_classified_row_never_calls_ruth(self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Parent AC9: same fixture shape as TestAst1560RunStageMeteorite::test_url_outcome_to_scrape_link.
+        db = sqlite_in_memory
+        cid = "cand-2034-classified"
+        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "C"})
+        row_id = _insert_meteorite_row(
+            db, cid, classify_outcome="single_jd_with_more", link="https://jobs.example.com/role",
+        )
+        calls = self._patch_ruth(monkeypatch, "not_job_content", [])
+        out = await self._run(cid, "b-2034-classified")
+        assert calls == []
+        assert out["total_passed"] == 1
+        assert db.get_meteorite(row_id)["state"] == "SCRAPE_LINK"
+
+    @pytest.mark.asyncio
+    async def test_classify_batch_joins_claim_and_claim_released(
+        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Parent AC10: do_task stamps agent_data.batch_id from log_batch_id; with no parent
+        # batch set, it must be the claim id — not a self-minted stage_meteorite-stage-… id.
+        from src.utils.logging import log_batch_id
+
+        db = sqlite_in_memory
+        batch_id = "b-2034-join"
+        cid = "cand-2034-join"
+        a = self._seed(db, cid, self.URL)
+        b = self._seed(db, cid, "lol", save_candidate=False)
+        calls = self._patch_ruth(monkeypatch, "link_list", [{"job_link": self.URL}])
+        tok = log_batch_id.set(None)
+        try:
+            await self._run(cid, batch_id)
+        finally:
+            log_batch_id.reset(tok)
+        assert len(calls) == 2
+        task_key = meteorite_mod.STAGE_METEORITE_CONFIG["task_key"]
+        for kwargs, stamped in calls:
+            assert stamped == batch_id
+            assert kwargs["index"] == f"{task_key}_batch_{batch_id}"
+        assert db.get_meteorite_batch(batch_id) == []
+        for mid in (a, b):
+            assert db.get_meteorite(mid).get("batch_id") is None
+
+
+# Branches: editable helper; save overwrite; refuse gates; no pipeline / agent_data (AST-2223).
+class TestAst2223SaveCandidateMeteoriteEdit:
+    """AST-2223: candidate overwrite edit — config-driven, not versioned, no ingress side-effects."""
+
+    def _seed(self, db, cid: str, **fields: object) -> int:
+        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "E"})
+        return _insert_meteorite_row(db, cid, **fields)
+
+    def _edit_body(self, **overrides) -> dict:
+        col = METEORITE_CONFIG["electronic_contact_column"]
+        base = {
+            "state": "CHECK_UNIQUE",
+            "content": "Edited JD body " + ("x" * 40),
+            "link": "https://jobs.example.com/edited",
+            "job_title": "Edited Title",
+            "employer_name": "Edited Co",
+            col: "edit@example.com",
+        }
+        base.update(overrides)
+        return base
+
+    def _pipeline_spies(self, monkeypatch: pytest.MonkeyPatch) -> dict:
+        spies = {
+            "stage_meteorite": MagicMock(name="stage_meteorite"),
+            "run_scrape_meteorite": MagicMock(name="run_scrape_meteorite"),
+            "get_visible_text": MagicMock(name="get_visible_text"),
+            "do_task": MagicMock(name="do_task"),
+            "save_agent_data": MagicMock(name="save_agent_data"),
+        }
+        monkeypatch.setattr(meteorite_mod, "stage_meteorite", spies["stage_meteorite"])
+        if hasattr(meteorite_mod, "run_scrape_meteorite"):
+            monkeypatch.setattr(meteorite_mod, "run_scrape_meteorite", spies["run_scrape_meteorite"])
+        monkeypatch.setattr(meteorite_mod, "get_visible_text", spies["get_visible_text"])
+        monkeypatch.setattr("src.core.agent.do_task", spies["do_task"])
+        monkeypatch.setattr("src.data.database.save_agent_data", spies["save_agent_data"])
+        return spies
+
+    def _assert_pipeline_untouched(self, spies: dict) -> None:
+        for name, spy in spies.items():
+            spy.assert_not_called()
+
+    def test_is_editable_keys_on_landed_only(self, sqlite_in_memory) -> None:
+        assert meteorite_mod.is_meteorite_editable(None) is False
+        assert meteorite_mod.is_meteorite_editable({"state": "LANDED"}) is False
+        assert meteorite_mod.is_meteorite_editable({"state": "READY"}) is True
+        # Claimed-but-non-LANDED stays editable on the flag; claim is a save-time 409.
+        assert meteorite_mod.is_meteorite_editable({"state": "READY", "batch_id": "b1"}) is True
+
+    def test_default_and_pick_list_state_persist_without_pipeline(
+        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        db = sqlite_in_memory
+        spies = self._pipeline_spies(monkeypatch)
+        mid = self._seed(db, "cand-2223-default", state="READY", content="old " + ("y" * 40))
+        out = meteorite_mod.save_candidate_meteorite_edit(mid, self._edit_body(state="CHECK_UNIQUE"))
+        assert out["ok"] is True
+        row = db.get_meteorite(mid)
+        assert row["state"] == "CHECK_UNIQUE"
+        assert row["content"].startswith("Edited JD body")
+        self._assert_pipeline_untouched(spies)
+
+        spies2 = self._pipeline_spies(monkeypatch)
+        out2 = meteorite_mod.save_candidate_meteorite_edit(
+            mid, self._edit_body(state="READY", content="Second edit " + ("z" * 40))
+        )
+        assert out2["ok"] is True
+        assert db.get_meteorite(mid)["state"] == "READY"
+        self._assert_pipeline_untouched(spies2)
+
+    def test_all_editable_fields_persist(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        col = METEORITE_CONFIG["electronic_contact_column"]
+        mid = self._seed(
+            db,
+            "cand-2223-fields",
+            state="NEW",
+            content="before",
+            link="https://old.example",
+            job_title="Old",
+            employer_name="OldCo",
+            **{col: "old@ex.com"},
+        )
+        body = self._edit_body(
+            content="  Full content " + ("a" * 40) + "  ",
+            link="  https://new.example/j  ",
+            job_title="  New Title  ",
+            employer_name="  New Co  ",
+            **{col: "  new@ex.com  "},
+        )
+        out = meteorite_mod.save_candidate_meteorite_edit(mid, body)
+        assert out["ok"] is True
+        row = db.get_meteorite(mid)
+        assert row["content"] == "Full content " + ("a" * 40)
+        assert row["link"] == "https://new.example/j"
+        assert row["job_title"] == "New Title"
+        assert row["employer_name"] == "New Co"
+        assert row[col] == "new@ex.com"
+
+    def test_state_change_clears_error_same_state_keeps_it(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        mid = self._seed(
+            db, "cand-2223-err", state="READY", content="body " + ("b" * 40), error="stale fail"
+        )
+        out = meteorite_mod.save_candidate_meteorite_edit(
+            mid, self._edit_body(state="CHECK_UNIQUE", content="body " + ("b" * 40))
+        )
+        assert out["ok"] is True
+        assert not db.get_meteorite(mid).get("error")
+
+        mid2 = self._seed(
+            db, "cand-2223-err2", state="READY", content="body " + ("c" * 40), error="keep me"
+        )
+        out2 = meteorite_mod.save_candidate_meteorite_edit(
+            mid2, self._edit_body(state="READY", content="body " + ("c" * 40))
+        )
+        assert out2["ok"] is True
+        assert db.get_meteorite(mid2)["error"] == "keep me"
+
+    def test_non_editable_field_refused(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        mid = self._seed(db, "cand-2223-badfield", state="READY", content="keep " + ("d" * 40))
+        before = dict(db.get_meteorite(mid))
+        body = self._edit_body()
+        body["astral_job_id"] = "should-not-write"
+        out = meteorite_mod.save_candidate_meteorite_edit(mid, body)
+        assert out == {"ok": False, "error": "bad_field"}
+        after = db.get_meteorite(mid)
+        assert after["content"] == before["content"]
+        assert after.get("astral_job_id") == before.get("astral_job_id")
+
+    def test_landed_row_and_landed_target_refused(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        landed = self._seed(db, "cand-2223-landed", state="LANDED", content="landed " + ("e" * 40))
+        before = dict(db.get_meteorite(landed))
+        out = meteorite_mod.save_candidate_meteorite_edit(landed, self._edit_body())
+        assert out == {"ok": False, "error": "locked"}
+        assert db.get_meteorite(landed)["content"] == before["content"]
+
+        mid = self._seed(db, "cand-2223-to-landed", state="READY", content="ok " + ("f" * 40))
+        before2 = dict(db.get_meteorite(mid))
+        out2 = meteorite_mod.save_candidate_meteorite_edit(mid, self._edit_body(state="LANDED"))
+        assert out2 == {"ok": False, "error": "bad_state"}
+        assert db.get_meteorite(mid)["state"] == before2["state"]
+
+    def test_claimed_row_refused(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        mid = self._seed(db, "cand-2223-claimed", state="READY", content="claimed " + ("g" * 40))
+        assert db.claim_meteorite_batch("claim-2223", "READY", 1, candidate_id="cand-2223-claimed") == 1
+        before = dict(db.get_meteorite(mid))
+        out = meteorite_mod.save_candidate_meteorite_edit(mid, self._edit_body())
+        assert out == {"ok": False, "error": "claimed"}
+        assert db.get_meteorite(mid)["content"] == before["content"]
+        assert db.get_meteorite(mid)["batch_id"] == "claim-2223"
+
+    def test_empty_content_refused(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        mid = self._seed(db, "cand-2223-empty", state="READY", content="keep " + ("h" * 40))
+        before = dict(db.get_meteorite(mid))
+        out = meteorite_mod.save_candidate_meteorite_edit(mid, self._edit_body(content="   "))
+        assert out == {"ok": False, "error": "empty_content"}
+        assert db.get_meteorite(mid)["content"] == before["content"]
+
+    def test_successful_save_creates_no_agent_data_row(
+        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        db = sqlite_in_memory
+        spies = self._pipeline_spies(monkeypatch)
+        mid = self._seed(db, "cand-2223-adata", state="NEW", content="seed " + ("i" * 40))
+
+        def _count() -> int:
+            conn = db._get_connection()
+            try:
+                db._ensure_agent_data_schema(conn)
+                return int(conn.execute("SELECT COUNT(*) FROM agent_data").fetchone()[0])
+            finally:
+                conn.close()
+
+        before = _count()
+        out = meteorite_mod.save_candidate_meteorite_edit(mid, self._edit_body())
+        assert out["ok"] is True
+        assert _count() == before
+        spies["save_agent_data"].assert_not_called()
+
+    def test_not_found(self, sqlite_in_memory) -> None:
+        out = meteorite_mod.save_candidate_meteorite_edit(999999, self._edit_body())
+        assert out == {"ok": False, "error": "not_found"}

@@ -489,3 +489,370 @@ _(generated from epic registry — do not hand-edit; edits are overwritten)_
 | AST-1298 | sub/AST-1280/AST-1298-release-orphaned-job-claim-after-provider-connection-error |
 
 **Epic worktree:** `astral-AST-1280/` — one active sub checked out at a time.
+
+## Bug: AST-1941 — Hold state on BUILD_ARTIFACTS hop provider failure
+
+**Linear:** [AST-1941](https://linear.app/astralcareermatch/issue/AST-1941) (fix child of mini-parent [AST-1940](https://linear.app/astralcareermatch/issue/AST-1940) — BUG: BUILD_ARTIFACTS -> ERROR_BUILD_ARTIFACTS)
+**Publish ref:** `origin/sub/AST-1940/AST-1941-hold-state-on-hop-provider-failure` (ftr `ftr/AST-1940-hop-failure-preserve-state`)
+**Explicit scope:** AST-1941 `## Scope` (verbatim copy of AST-1940 Component/Technical scope). No ancestor scope imported. No Canon Scope list on AST-1941 / AST-1940; no canon ids resolved for this pass.
+
+### As-is
+
+When a provider call fails on a hop-label-true BUILD_ARTIFACTS dispatch-chain hop (for example a job on `BUILD_ARTIFACTS.anticipate_scan`, or `draft_job_resume` returning `Connection error.`), `_apply_dispatch_chain_hop_failure` in `src/core/agent.py` classes every **non-balance** provider failure as hard. It calls `transition_job_state([index], "ERROR_BUILD_ARTIFACTS")` and then releases the claim. The job leaves the BUILD_ARTIFACTS chain claim pool and the hop is never retried. Only provider balance refusals (AST-897) hold state today.
+
+### To-be
+
+A provider failure on a BUILD_ARTIFACTS hop does **not** change the job's state. The job keeps its last happy state / hop label, the claim is still released (`batch_id` cleared), and the next dispatch sweep reclaims it and retries the hop. `ERROR_BUILD_ARTIFACTS` is reserved for `Job not found` / `Missing candidate_data`. The provider ERROR line, Execution History against the batch_id, and the AST-538 debug detail are unchanged. No retry cap or backoff (Susan's rule).
+
+### Repro
+
+Read on worktree tip `de2664949` (`== origin/dev`; `src/core/agent.py` has no diff vs `origin/dev`). `src/core/agent.py` L1123–L1131:
+
+```python
+err_state = (task_config.get("error_state") or "").strip()
+balance_hold = provider_failed and is_provider_balance_refusal(
+    {"failure_class": failure_class}
+)
+hard = bool(err_state) and (
+    "Job not found" in error
+    or "Missing candidate_data" in error
+    or (provider_failed and not balance_hold)   # AST-1191 (7f5b132e) — the defect
+)
+```
+
+Fixture repro (no DB; same ctx shape as `TestAst1191ArtifactHopFailureRelease._dispatch_ctx`):
+
+```python
+ctx = {
+    "astral_candidate_id": "somerset",
+    "candidate_data": {"artifacts": {}},
+    "batch_entities": [{"astral_job_id": "job-1941"}],
+    "dispatch_trigger_state": cfg.BUILD_ARTIFACTS_BASE_STATE,   # hop-label-true
+    "dispatch_chain_graduate_on_terminal": True,
+}
+agent._apply_dispatch_chain_hop_failure(
+    entity_type="job", index="job-1941", ctx=ctx,
+    task_config={"error_state": cfg.ERROR_BUILD_ARTIFACTS_STATE},
+    error="Connection error.", debug=False,
+    provider_failed=True, failure_class="provider_connection_error",
+)
+# Today:  tracker.transition_job_state(["job-1941"], "ERROR_BUILD_ARTIFACTS") is called;
+#         returns {"apply_error_state": True, "error_state": "ERROR_BUILD_ARTIFACTS", "batch_released": True}
+# To-be:  transition_job_state not called;
+#         returns {"apply_error_state": False, "error_state": "", "batch_released": True}
+```
+
+Live shape: `do_task(...)` provider-failure branch (`src/core/agent.py` ~L2296) → `_close_hop_ledger(success=False, provider_failed=True, failure_class=…)` → this helper. The existing tests `TestAst1191ArtifactHopFailureRelease::test_apply_provider_failed_transitions_and_releases` and `TestAst1298OrphanedJobClaimRelease::test_do_task_draft_job_resume_connection_error_releases_and_errors` already pin the broken behavior (they assert the `ERROR_BUILD_ARTIFACTS` transition).
+
+Retry path confirmed: for BUILD_ARTIFACTS chain triggers, `dispatcher` job claims use `dispatch_chain_claim_states_for_row` + `dispatch_chain_row_matches_job` (AST-596 / AST-803), so a job held on `BUILD_ARTIFACTS.<hop>` with a cleared `batch_id` is reclaimable on the next sweep.
+
+### Root cause
+
+AST-1191 (commit `7f5b132e`) added `or (provider_failed and not balance_hold)` to the `hard` predicate. That overrode the earlier rule (AST-596 / AST-788 / AST-803) that only `Job not found` / `Missing candidate_data` are hard and every other hop failure stays on the last happy compound state for retry. AST-1298 then hardened claim release around that same transition, but did not revisit the predicate. AST-1298 AC2 ("job is on `ERROR_BUILD_ARTIFACTS` … unless balance-refusal hold") is the half this fix deliberately supersedes; its claim-release half stays.
+
+### Proposed change
+
+Single file, single function family: `src/core/agent.py`.
+
+1. **`_apply_dispatch_chain_hop_failure`, hop-label-true branch** — replace L1123–L1131 (the `err_state` / `balance_hold` / `hard` block) with:
+
+   ```python
+   err_state = (task_config.get("error_state") or "").strip()
+   # Only a missing job / missing candidate_data is unrecoverable. Provider failures (balance
+   # or otherwise) hold the last happy state / hop label; the finally release below lets the
+   # next dispatch sweep reclaim and retry the hop. No retry cap by design.
+   hard = bool(err_state) and (
+       "Job not found" in error
+       or "Missing candidate_data" in error
+   )
+   ```
+
+   - `balance_hold` is deleted (its only purpose was to exempt balance refusals from the provider clause, which no longer exists).
+   - Everything after it stays byte-for-byte: `apply_error_state` / `batch_released` init, the `try` / inner `try … except ValueError` transition, the `finally` release (which on tip releases unconditionally on this branch — AST-1298 `91c81ba2`), and the return dict. With `hard` false, the result is `{"apply_error_state": False, "error_state": "", "batch_released": True}`.
+   - Hop-label-false branch (L1110–L1122) unchanged.
+
+2. **Import block** (`src/core/agent.py` L49–L53) — drop `is_provider_balance_refusal,` from the `from src.utils.llm_external import (…)` list. The helper above was its only use in `agent.py` (grep: no other `agent.py` reference, and nothing in `src/` / `tests/` / `scripts/` reaches it through `agent`). Leaving it would fail lint (unused import).
+
+3. ⚠️ **Decision — keep the `failure_class` parameter.** It becomes unused inside the helper. Keep it in the signature so the `_close_hop_ledger` → helper kwargs and the `do_task` provider-failure call site stay unchanged (AST-1298 Stage 1 step 4). Removing it would be a signature change outside this bug's delta.
+
+4. ⚠️ **Decision — no special-casing.** No `failure_class` allow-list, no `Connection error` substring check, no retry counter / backoff / cap, no new config keys. Balance refusal and every other provider failure now take the same hold-and-release path.
+
+5. Compile + lint `src/core/agent.py` before commit (`python -m py_compile src/core/agent.py` + repo lint). Engineer does not edit `tests/` or the bible.
+
+### Blast radius
+
+- **Callers:** only `_close_hop_ledger` inside `do_task` (L2183). Its result (`hop_fail_outcome`) is not read after assignment, so the outcome-dict change affects tests only. `consult._run_dispatch_chain_job_batch` and `dispatcher._run_unified` keep their own claim-release belts (AST-1298 Stage 2 / third belt) — untouched and still idempotent.
+- **Tests that assert the broken behavior (Betty's tree, `tests/component/core/test_agent.py`):**
+  - `TestAst1191ArtifactHopFailureRelease::test_apply_provider_failed_transitions_and_releases` → expect `apply_error_state is False`, `error_state == ""`, `batch_released is True`, `transition.assert_not_called()`, release called once.
+  - `TestAst1191ArtifactHopFailureRelease::test_do_task_provider_timeout_releases_and_errors`, `::test_do_task_debug_emits_found_and_recorded`, `::test_do_task_debug_false_skips_found_recorded` → `transition.assert_not_called()`; release still called once.
+  - `TestAst1298OrphanedJobClaimRelease::test_do_task_draft_job_resume_connection_error_releases_and_errors` → `transition.assert_not_called()`; release still called once.
+  - `TestAst1298OrphanedJobClaimRelease::test_apply_transition_non_value_error_still_releases` → **breaks differently**: with `Connection error.` the transition is no longer attempted, so `pytest.raises(RuntimeError)` fails. To keep AST-1298's "non-`ValueError` from transition still releases" invariant covered, switch its `error` to a hard string (e.g. `"Job not found"`); expectations otherwise unchanged.
+  - Unchanged / still green: `TestAst1191…::test_apply_balance_hold_skips_error_state_but_releases`, `::test_apply_hop_label_false_*`, and the hard-string do_task test at ~L5603 (`Missing candidate_data` → `ERROR_BUILD_ARTIFACTS` + release).
+- **Test bible:** `docs/test-bible/core/agent.md` § AST-1191 · AST-1164 (L366) states "non-balance provider failures apply `error_state`" — Betty updates to the held-state rule.
+- **Runtime behavior:** a persistently failing provider is retried on every sweep (same as balance holds today). Approved by Susan in AST-1940; no cap added.
+- No `TASK_CONFIG` `error_state`, `JOB_STATES` / prior-states, `run_next`, hop topology, LLM adapter, or consult failure-branch change.
+
+### What must still hold
+
+- AST-1298 AC1 / AC3: after any provider failure on a hop-label-true BUILD_ARTIFACTS hop, the job row's `batch_id` is cleared and a later dispatch claim can reclaim it (`finally` release untouched; `batch_released: True`).
+- AST-1298 Stage 1: a non-`ValueError` raised by `transition_job_state` (now only reachable on hard strings) still cannot skip the release.
+- AST-1298 hop-label-false defense-in-depth release (job + `provider_failed`) unchanged; non-job / no-index hop-label-false still returns `_HOP_FAILURE_NOOP`.
+- `Job not found` / `Missing candidate_data` still transition to `ERROR_BUILD_ARTIFACTS` (configured `error_state`) and release.
+- AST-897 balance refusal still holds state and releases (now via the same path as every provider failure).
+- AST-1298 AC4 / AST-1191 debug trail: `do_task` provider-failure logging (`log_llm_batch_summary(..., error=)` hop error line, non-empty error coercion, AST-538 `debug=True` detail) is not touched by this change.
+- AST-1298 AC5: success path claim/process/clear unchanged (helper is only called on failure).
+- **Superseded on purpose:** AST-1298 AC2's "job is on `ERROR_BUILD_ARTIFACTS`" for provider failures — now held state instead.
+
+### Joan fix-board — AST-1941
+
+**Triage:** The change narrows the hop-label-true `hard` predicate back to `"Job not found"` / `"Missing candidate_data"` only, keeps AST-1298’s `finally` claim release, and holds state for all provider failures (balance included) so the next sweep can reclaim. That matches **`astral.batch.claim-process-release`** as AST-1298 scored it (“transition then release **when hard-fail applies**”), **`patt.task.dispatch-retry`** / AST-788–AST-596 retry-on-last-hop intent, and AST-897’s documented expectation that balance (and other provider) failures on this helper stay retryable — AST-1191’s provider clause was the regression, not canon law. **`astral.state.core-decides-transitions`**, debug/logging statutes, and **`astral.dispatch.run-next-is-chain-authority`** are untouched. Superseding AST-1298 AC2 (“on `ERROR_BUILD_ARTIFACTS`”) is an explicit, Susan-approved product correction in **What must still hold**, not an in-force statute amend. **`docs/test-bible/core/agent.md`** prose is Betty’s test-tree work (blast radius), not a statute/pattern landing — so not **CANON: REVISE**. No ambiguous new precedent or unbounded architectural call → not **ESCALATE**.
+
+```text
+[board-joan]  CANON: OK
+
+context_tokens≈14000
+```
+
+### Radia review-fix — AST-1941
+
+[code-rubric]
+**Ticket:** AST-1941
+**Publish ref:** `75baf6cc4dbf9e5dd302a5875ea25fd1ddd7c89f` (`origin/sub/AST-1940/AST-1941-hold-state-on-hop-provider-failure`)
+**Corpus:** (none cited — frozen Canon Scope empty on Linear description; plan-fix records the same)
+**Overall:** CLEAN
+
+## Canon scores
+
+*(Frozen Canon Scope on Linear description: **none** — plan-fix § Bug: AST-1941: “No Canon Scope list on AST-1941 / AST-1940; no canon ids resolved for this pass.” No directive ids to score; roll-up from canon grades is vacuously clean. Fix-board Joan `[board-joan] CANON: OK` overlap narrative is context only, not a substitute frozen list. Off-list statutes named in Joan’s triage were not graded per review-child §5.3.)*
+
+## Column diff vs plan stage
+
+no plan-stage scores attached (Joan fix-board only; no `validate-plan` fix-mode canon table on this ticket)
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+**[bug-repro]** not applicable — clean board opt-out: `qa-fix` did not run; fix-board `TESTS: REVISE` test/bible work was split to gap sibling **AST-1942** (per spawn prompt). Do not score missing `[bug-repro]` on this tip.
+
+**## What must still hold — OK**
+
+| Item | Verdict |
+|------|---------|
+| AST-1298 AC1/AC3: provider failure on hop-label-true BUILD_ARTIFACTS clears `batch_id` (`finally` release; `batch_released: True`) | OK — `try`/`finally` release block unchanged; only `hard` predicate narrowed |
+| AST-1298 Stage 1: non-`ValueError` from `transition_job_state` cannot skip release | OK — inner `try`/`except ValueError` + `finally` release intact; hard paths still reach transition |
+| Hop-label-false defense-in-depth (`provider_failed` + job) unchanged | OK — L1110–L1121 untouched |
+| `Job not found` / `Missing candidate_data` → configured `error_state` + release | OK — sole `hard` conditions retained |
+| AST-897 balance refusal holds state and releases | OK — now same hold-and-release path as all provider failures (plan decision § Proposed change item 4) |
+| AST-1298 AC4 / AST-1191 debug trail (`do_task` provider-failure logging) | OK — no edits outside `_apply_dispatch_chain_hop_failure` hop-label-true predicate + import trim |
+| AST-1298 AC5 success path | OK — helper only on failure path |
+| Superseded AST-1298 AC2 (provider → `ERROR_BUILD_ARTIFACTS`) | OK — intentionally reversed per plan **What must still hold** |
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **Sibling test carry / board split:** Product diff is `src/core/agent.py` only (+ plan doc). Linear **Scope** still lists `tests/component/core/test_agent.py`; board **TESTS: REVISE** and Katherine’s **test-fix** comment document **six** expected `tests/component/core/test_agent.py` failures on this tip, owned by **AST-1942** — not a product defect on AST-1941. Treat AST-1941 as the product slice; do not route product `resolve-child` for those reds.
+- **Plan fidelity:** Matches plan-fix **Proposed change** (remove `balance_hold` / provider clause from `hard`, drop unused `is_provider_balance_refusal` import, keep `failure_class` in signature, hop-label-false branch byte-stable).
+
+### Notes
+
+- **Diff base:** `origin/ftr/AST-1940-hop-failure-preserve-state...origin/sub/AST-1940/AST-1941-hold-state-on-hop-provider-failure` — 2 files, +126/−5 (docs plan patch + 8-line product change).
+- **Canon Scope gap → ESCALATE:** not warranted (empty list is explicit; board cleared canon at F2).
+- **Chuckles post-review (§8):** **PROCEED** + **Normal** parent shape — mini-parent **AST-1940** with live `ftr/AST-1940-hop-failure-preserve-state` (not fix-lane **ORPHANED** / dev-seeded). → **Review Posted** → clean-review shortcut → **User Testing** (skip `resolve-child`). Do **not** use orphaned finish-up merge-to-`dev` path for this ticket.
+
+### What's solid
+
+- Minimal, surgical predicate change with inline comment tying hold-and-release to AST-596 / sweep retry intent.
+- Blast-radius call sites (`_close_hop_ledger` / `do_task`) and AST-1298 release belt left intact.
+
+context_tokens≈22000
+
+---
+
+```
+[code-rubric] PROCEED (Commit: 75baf6cc4dbf9e5dd302a5875ea25fd1ddd7c89f) product hold predicate
+```
+
+### Resolution — AST-1941
+
+docs-acceptance: product-only fix. The six `test_agent.py` flips and the bible update (Betty `[board-betty] TESTS: REVISE`) land on gap sibling AST-1942, stacked after this ticket on `ftr/AST-1940-hop-failure-preserve-state`.
+
+## Bug: AST-1942 — Flip hop provider-failure tests to held state
+
+**Linear:** [AST-1942](https://linear.app/astralcareermatch/issue/AST-1942) (test-gap sibling of AST-1941, mini-parent [AST-1940](https://linear.app/astralcareermatch/issue/AST-1940); filed from Betty's `[board-betty] TESTS: REVISE` on AST-1941)
+**Publish ref:** `origin/sub/AST-1940/AST-1942-flip-hop-provider-failure-tests` (ftr `ftr/AST-1940-hop-failure-preserve-state`)
+**Explicit scope:** AST-1942 `## Scope` — `tests/component/core/test_agent.py` (modified test functions only, no new fixtures) + `docs/test-bible/core/agent.md` (§ AST-1191 · AST-1164 and § AST-1298 · AST-1280 prose/rows). **No product code** (AC4). No Canon Scope list on AST-1942. Executor: Betty (test tree + bible).
+
+### As-is
+
+AST-1941's product fix (`75baf6cc`, already on this sub's tip via `ftr`) makes every provider failure on a hop-label-true BUILD_ARTIFACTS hop hold state and release the claim. Six existing `test_agent.py` tests still assert the superseded provider-failure → `ERROR_BUILD_ARTIFACTS` transition, so they fail on this tip. The bible's § AST-1191 · AST-1164 still says "non-balance provider failures apply `error_state`", and two § AST-1298 · AST-1280 rows describe the old Connection-error → `ERROR_BUILD_ARTIFACTS` outcome.
+
+### To-be
+
+The six tests assert the held-state rule ("no transition, claim released once"). The non-`ValueError`-still-releases invariant (AST-1298 Stage 1) stays covered by driving it with a hard error string. The bible states that provider failures hold state and only `Job not found` / `Missing candidate_data` apply `error_state`. Balance-hold, hop-label-false, and `Missing candidate_data` hard-string tests are untouched and green.
+
+### Repro
+
+Observed at AST-1941 test-fix (tip `75baf6cc`, same tests as this tip): tip with fix 46 failed / 355 passed vs. the same tree with `origin/ftr`'s pre-fix `src/core/agent.py` 40 / 361. The 40 shared failures pre-exist and are out of scope. The 6 new ones, and their messages:
+
+| Node (`tests/component/core/test_agent.py::…`) | Failure on fixed tip |
+|---|---|
+| `TestAst1191ArtifactHopFailureRelease::test_apply_provider_failed_transitions_and_releases` | `assert False is True` (`apply_error_state`) |
+| `TestAst1191ArtifactHopFailureRelease::test_do_task_provider_timeout_releases_and_errors` | transition `Called 0 times` |
+| `TestAst1191ArtifactHopFailureRelease::test_do_task_debug_emits_found_and_recorded` | transition `Called 0 times` |
+| `TestAst1191ArtifactHopFailureRelease::test_do_task_debug_false_skips_found_recorded` | transition `Called 0 times` |
+| `TestAst1298OrphanedJobClaimRelease::test_do_task_draft_job_resume_connection_error_releases_and_errors` | transition `Called 0 times` |
+| `TestAst1298OrphanedJobClaimRelease::test_apply_transition_non_value_error_still_releases` | `DID NOT RAISE RuntimeError` |
+
+**Bug-repro node (AC1):** the revised apply-level test (Proposed change item 1). It must be **red** against `origin/dev`'s `src/core/agent.py` (the provider clause transitions → `transition.assert_not_called()` fails) and **green** on this tip. Verification recipe (test tree untouched by the engineer; `src/core/agent.py` restored afterwards):
+
+```bash
+NODE='tests/component/core/test_agent.py::TestAst1191ArtifactHopFailureRelease::test_apply_provider_failed_holds_state_and_releases'
+git checkout origin/dev -- src/core/agent.py
+ASTRAL_PYTHON=/home/susan/astral/.venv/bin/python ./scripts/testing/run_component_tests.sh "$NODE" -q   # expect 1 failed
+git checkout HEAD -- src/core/agent.py
+ASTRAL_PYTHON=/home/susan/astral/.venv/bin/python ./scripts/testing/run_component_tests.sh "$NODE" -q   # expect 1 passed
+git status --short src/core/agent.py                                                                     # expect clean
+```
+
+### Root cause
+
+The tests were written for AST-1191 / AST-1298 when the `hard` predicate in `_apply_dispatch_chain_hop_failure` included `(provider_failed and not balance_hold)`. AST-1941 removed that clause on purpose (superseding AST-1298 AC2). The tests and bible pin the removed behavior; they are stale, not the product.
+
+### Proposed change
+
+All edits in Betty's tree. Every other test in both classes stays byte-for-byte.
+
+**`tests/component/core/test_agent.py`**
+
+1. **`TestAst1191ArtifactHopFailureRelease` class docstring** (~L6066): `"""AST-1191: provider hop failure → error_state + claim release + debug trail."""` → `"""AST-1191 / AST-1941: provider hop failure → held state + claim release + debug trail."""`
+2. **`test_apply_provider_failed_transitions_and_releases`** (~L6077) — **the bug repro.**
+   - ⚠️ **Decision — rename** to `test_apply_provider_failed_holds_state_and_releases`. The old name asserts the opposite of the new behavior; leaving it would make the node id lie. Only this test is renamed; the other five keep their names (each name still holds: `do_task` still returns `success=False` / "errors", debug still emits).
+   - Same inputs (ctx, `error="Provider call exceeded per-call time budget (600s)"`, `provider_failed=True`, `failure_class="provider_call_timeout"`).
+   - Replace the four assertions with:
+     ```python
+     assert out == {"apply_error_state": False, "error_state": "", "batch_released": True}
+     transition.assert_not_called()
+     release.assert_called_once_with("job-1191")
+     ```
+3. **`test_do_task_provider_timeout_releases_and_errors`** (~L6201), **`test_do_task_debug_emits_found_and_recorded`** (~L6248), **`test_do_task_debug_false_skips_found_recorded`** (~L6288): replace `transition.assert_called_once_with(["job-1191"], cfg.ERROR_BUILD_ARTIFACTS_STATE)` with `transition.assert_not_called()`. Keep `release.assert_called_once_with("job-1191")` and every other assertion.
+4. **`TestAst1298OrphanedJobClaimRelease::test_do_task_draft_job_resume_connection_error_releases_and_errors`** (~L6375): same swap → `transition.assert_not_called()`; keep `out["success"] is False`, `out.get("error") == "Connection error."`, `release.assert_called_once_with("job-1298")`.
+5. **`TestAst1298OrphanedJobClaimRelease::test_apply_transition_non_value_error_still_releases`** (~L6305): change only `error="Connection error."` → `error="Job not found"` (a hard string, so the transition is attempted and the `RuntimeError` side effect fires). Leave `provider_failed=True` / `failure_class` as-is (the hard string decides `hard` regardless). Update the comment to: `# Non-ValueError from transition (hard string) must not skip finally release (AST-1298 Stage 1).` Assertions unchanged: `pytest.raises(RuntimeError, match="transition blew up")`, transition called once with `ERROR_BUILD_ARTIFACTS`, release called once.
+
+**`docs/test-bible/core/agent.md`**
+
+6. **§ AST-1191 · AST-1164 prose** (~L366): replace `non-balance provider failures apply \`error_state\` then \`release_job_dispatch_claim\`; balance refusal holds state but still releases claim;` with `provider failures (balance or otherwise) hold state — no \`error_state\` — and release the claim; only \`Job not found\` / \`Missing candidate_data\` apply \`error_state\` then release (**AST-1941**, supersedes the AST-1191 provider → \`error_state\` rule);`. Rest of the paragraph unchanged.
+7. **§ AST-1191 · AST-1164 table, row 1** (~L370): area `Hop failure apply + claim release + debug` → `Hop failure apply (provider → held state) + claim release + debug`. Add one row after it: `| Bug repro: provider failure holds state (AST-1941 / AST-1942) | \`src/core/agent.py\` | **\`TestAst1191ArtifactHopFailureRelease::test_apply_provider_failed_holds_state_and_releases\`** |`.
+8. **§ AST-1298 · AST-1280 prose** (~L386): after `helper \`try\`/\`finally\` still releases when \`transition_job_state\` raises non-\`ValueError\`` insert ` (reachable on hard strings only since AST-1941)`.
+9. **§ AST-1298 · AST-1280 rows** (~L390–L391):
+   - `Transition non-\`ValueError\` still releases` → `Transition non-\`ValueError\` (hard string \`Job not found\`) still releases`.
+   - `` `draft_job_resume` Connection error → `ERROR_BUILD_ARTIFACTS` + release + debug `` → `` `draft_job_resume` Connection error → held state (no transition) + release + debug (AST-1941) ``.
+   - Node ids in those rows unchanged.
+
+⚠️ **Decision — no new bible section.** AST-1942 scope is "modified bible prose/rows for the AST-1191 / AST-1298 entries", so the repro and rule change go into those entries (items 6–9), not a new § AST-1941.
+
+### Blast radius
+
+- Only the six nodes above plus the one class docstring change in `test_agent.py`. The rename in item 2 changes one node id: the AST-1191 bible row added in item 7 carries the new id. Earlier Linear comments (AST-1941 test-fix) cite the old id as history — no edit needed.
+- **Unchanged and must stay green:** `TestAst1191…::test_apply_balance_hold_skips_error_state_but_releases`, `::test_apply_hop_label_false_job_provider_failed_releases`, `::test_apply_hop_label_false_non_job_returns_noop`, `TestAst848DispatchChainDoTask::test_hard_failure_transitions_error_build_artifacts` (~L5603, `Missing candidate_data`), and the consult `TestAst371ResumeArtifactDispatch` release tests (they mock `do_task`; unaffected).
+- `tests/integration/`: no scenario touches this path (Betty confirmed at board).
+- No `src/**` edits.
+
+### What must still hold
+
+- AC1: the bug-repro node is red on `origin/dev`'s `src/core/agent.py` and green on this tip (recipe in Repro).
+- AC2: the repointed non-`ValueError` test still proves release runs when `transition_job_state` raises non-`ValueError` (transition attempted once, release once, `RuntimeError` propagates).
+- AC3: balance-hold, hop-label-false, and `Missing candidate_data` hard-string tests are unchanged and pass.
+- AC4: no product code on this ticket.
+- After this lands, `test_agent.py` + `test_llm_external.py` on this tip fail only on the 40 pre-existing nodes shared with the pre-fix baseline — the six AST-1941 nodes are green.
+
+### Joan fix-board — AST-1942
+
+```text
+[board-joan]  CANON: OK
+
+context_tokens≈18000
+```
+
+### Radia review-fix — AST-1942
+
+[code-rubric]
+**Ticket:** AST-1942
+**Publish ref:** `48c4881a0bd4a7a180823bf207538282de98eec2` (`origin/sub/AST-1940/AST-1942-flip-hop-provider-failure-tests`)
+**Corpus:** (none cited — frozen Canon Scope empty on Linear description; plan-fix § Bug: AST-1942 records the same)
+**Overall:** CLEAN
+
+## Canon scores
+
+*(Frozen Canon Scope on Linear description: **none** — plan-fix: “No Canon Scope list on AST-1942.” No directive ids to score; roll-up vacuously clean. Fix-board Joan `[board-joan] CANON: OK` only.)*
+
+## Column diff vs plan stage
+
+no plan-stage scores attached (Joan fix-board only; no `validate-plan` fix-mode canon table)
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+**[bug-repro] OK** — Designated node `TestAst1191ArtifactHopFailureRelease::test_apply_provider_failed_holds_state_and_releases` (qa-fix commit `779fae307`, Betty `[bug-repro]` Linear thread, bible § AST-1942 manifest). The body is not tautological: it calls `_apply_dispatch_chain_hop_failure` with hop-label-true ctx, `provider_failed=True`, and `failure_class="provider_call_timeout"`, then pins AST-1941 **To-be** with `assert out == {"apply_error_state": False, "error_state": "", "batch_released": True}`, `transition.assert_not_called()`, and `release.assert_called_once_with("job-1191")`. That fails on pre-fix product (transition + `apply_error_state` True / `ERROR_BUILD_ARTIFACTS`), which Betty and Katherine documented via temporary `origin/dev` `src/core/agent.py` checkout. Katherine’s test-fix comment confirms red→green on that node.
+
+**advisory (process, not assertion weakness):** The repro test has no first-line `# [bug-repro]` comment inside `test_agent.py` (unlike some older nodes); identification lives in bible + qa-fix Linear. Optional hygiene only.
+
+**## What must still hold — OK**
+
+| Item | Verdict |
+|------|---------|
+| AC1: repro red on `origin/dev` `agent.py`, green on tip with AST-1941 fix | OK — test + qa-fix/test-fix evidence; stacked tip carries `75baf6cc` via `ftr` ancestry |
+| AC2: non-`ValueError` path still releases when transition raises | OK — `error="Job not found"`, `pytest.raises(RuntimeError)`, transition once + release once unchanged |
+| AC3: balance-hold, hop-label-false, `Missing candidate_data` tests untouched | OK — not in diff; only six nodes + class docstring |
+| AC4: no product code on this ticket | OK — `git diff origin/ftr/...origin/sub/...1942 -- src/**` empty; delta is `test_agent.py`, `agent.md`, plan doc |
+| AC5: six AST-1941 nodes green; only 40 pre-existing baseline failures remain | OK — per Katherine test-fix vs ftr baseline (0 new failures) |
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **Plan fidelity:** Diff matches plan-fix **Proposed change** items 1–9 (rename + five `assert_not_called` flips, hard-string repoint + comment, bible prose/rows, AST-1942 manifest paragraph in bible).
+- **Cross-ticket:** Test/bible-only gap for AST-1941; no sibling **product** scope in diff.
+- **Sibling test carry:** N/A (this ticket owns the REVISE gap).
+- **40 baseline failures:** Pre-existing ftr/env nodes — out of scope per plan; not a finding on AST-1942.
+
+### Notes
+
+- **Diff base:** `origin/ftr/AST-1940-hop-failure-preserve-state...origin/sub/AST-1940/AST-1942-flip-hop-provider-failure-tests` — 3 files, +115/−17 (tests + bible + plan patch).
+- **Chuckles post-review (§8):** **PROCEED** + **Normal** mini-parent **AST-1940** (`ftr` present). → **Review Posted** → clean-review shortcut → **User Testing** (skip `resolve-child`). Not orphaned dev-merge path.
+
+### What's solid
+
+- Repro is apply-level (fast, direct helper) with a full outcome dict, not “no exception” hand-waving.
+- `test_apply_transition_non_value_error_still_releases` correctly preserves AST-1298 Stage 1 by driving a **hard** string after AST-1941 narrowed `hard`.
+- Bible rows and prose stay aligned with AST-1941 product semantics.
+
+context_tokens≈24000
+
+---
+
+```
+[code-rubric] PROCEED (Commit: 48c4881a0bd4a7a180823bf207538282de98eec2) tests bible gap closed
+```

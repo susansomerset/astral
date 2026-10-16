@@ -23,6 +23,7 @@ const tasks = [
     task_seq: 1,
     task_name: "task_a",
     model_code: "claude",
+    response_schema_count: 0,
     system_prompt_tokens: 10,
     base_cache_tokens: 20,
     parsed_cache_tokens: null,
@@ -44,6 +45,7 @@ const tasks = [
     task_seq: 2,
     task_name: "task_b",
     model_code: "claude",
+    response_schema_count: 2,
     system_prompt_tokens: 11,
     base_cache_tokens: 21,
     parsed_cache_tokens: 22,
@@ -544,4 +546,80 @@ describe("AdminTaskPrompts", () => {
       expect(screen.getByDisplayValue("Phase One draft")).toBeInTheDocument()
     }, 20000)
   })
+
+  // AST-1939 (reverses AST-1909): the agent row is the only model source — the modal has no Model / Brain
+  // size select and Save never writes the agent. The list's read-only Model column stays.
+  describe("AST-1939 no task-level model picker", () => {
+    // Any /api/admin/agents/<id> request (GET or PUT) — /ids feeds the Agent select and is allowed.
+    const agentRowCalls = () =>
+      mockedApi.mock.calls.filter(([u]) => /^\/api\/admin\/agents\/(?!ids$)[^/?]+$/.test(String(u)))
+
+    async function openTaskA() {
+      renderWithProviders(<TaskPrompts />)
+      await waitFor(() => expect(screen.getByText("Manage Tasks")).toBeInTheDocument())
+      await userEvent.click(screen.getByRole("button", { name: "Expand section" }))
+      await userEvent.click(screen.getByText("task_a"))
+      await waitFor(() => expect(screen.getByDisplayValue("cache")).toBeInTheDocument())
+      return screen.getByRole("heading", { name: /Edit: task_a/ }).closest(".modal-card") as HTMLElement
+    }
+
+    it("modal has no Model or Brain size select and fetches neither the catalog nor the agent row", async () => {
+      mockApi()
+      const modal = await openTaskA()
+      // Agent select still there; the AST-1909 selects and their "Applies to agent" hint are gone.
+      expect(within(modal).getByText("Agent", { selector: "label" })).toBeInTheDocument()
+      expect(within(modal).queryByText("Model", { selector: "label" })).not.toBeInTheDocument()
+      expect(within(modal).queryByText("Brain size", { selector: "label" })).not.toBeInTheDocument()
+      expect(within(modal).queryByText(/Applies to agent/)).not.toBeInTheDocument()
+      expect(mockedApi.mock.calls.some(([u]) => u === "/api/admin/agents/models")).toBe(false)
+      expect(agentRowCalls()).toHaveLength(0)
+    }, 20000)
+
+    it("changing the Agent then saving issues only the task PUT — no agent request", async () => {
+      mockApi()
+      const modal = await openTaskA()
+      const agentSelect = within(modal).getByText("Agent", { selector: "label" }).closest(".dep-field")!
+        .querySelector("select") as HTMLSelectElement
+      await userEvent.selectOptions(agentSelect, "agent_b")
+      await userEvent.click(within(modal).getByRole("button", { name: "Save" }))
+      await waitFor(() => expect(screen.getByText(/Task "task_a" updated/)).toBeInTheDocument())
+      const puts = mockedApi.mock.calls.filter(([, i]) => i?.method === "PUT").map(([u]) => u)
+      expect(puts).toEqual(["/api/admin/tasks/task_a"])
+      expect(JSON.parse(String(mockedApi.mock.calls.find(([, i]) => i?.method === "PUT")?.[1]?.body)).agent_id).toBe("agent_b")
+      expect(agentRowCalls()).toHaveLength(0)
+    }, 20000)
+
+    it("task list keeps the read-only Model column showing model_code", async () => {
+      mockApi()
+      renderWithProviders(<TaskPrompts />)
+      await waitFor(() => expect(screen.getByText("Manage Tasks")).toBeInTheDocument())
+      await userEvent.click(screen.getByRole("button", { name: "Expand section" }))
+      const table = screen.getByText("task_a").closest("table") as HTMLElement
+      const headers = within(table).getAllByRole("columnheader").map(h => h.textContent)
+      expect(headers).toContain("Model")
+      const row = screen.getByText("task_a").closest("tr") as HTMLElement
+      const cells = within(row).getAllByRole("cell")
+      expect(cells[headers.indexOf("Model")]).toHaveTextContent("claude")
+    }, 20000)
+  })
+
+  // AST-1978: RSC column sits directly left of System and shows the served integer — 0 included, never blank.
+  describe("AST-1978 RSC column", () => {
+    it("header order is Model | RSC | System | Base Cache and cells show served counts", async () => {
+      mockApi()
+      renderWithProviders(<TaskPrompts />)
+      await waitFor(() => expect(screen.getByText("Manage Tasks")).toBeInTheDocument())
+      await userEvent.click(screen.getByRole("button", { name: "Expand section" }))
+      const table = screen.getByText("task_a").closest("table") as HTMLElement
+      const headers = within(table).getAllByRole("columnheader").map(h => h.textContent)
+      const rsc = headers.indexOf("RSC")
+      expect(headers.slice(rsc - 1, rsc + 3)).toEqual(["Model", "RSC", "System", "Base Cache"])
+      expect(within(table).getAllByRole("columnheader")[rsc]).toHaveStyle({ textAlign: "right" })
+      // Body rows in task_seq order (task_a, task_b); 0 must render as "0", not blank.
+      const rscCells = within(table).getAllByRole("row").slice(1)
+        .map(r => within(r).getAllByRole("cell")[rsc].textContent)
+      expect(rscCells).toEqual(["0", "2"])
+    }, 20000)
+  })
+
 })

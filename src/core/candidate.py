@@ -3,6 +3,7 @@ Core candidate: candidate lifecycle management (AST-216).
 
 In-scope: initiate_candidate, save_candidate_data, get_candidate,
 transition_candidate_state, parse_candidate_resume, check_context_complete,
+check_profile_complete, incomplete_profile, advance_candidate_readiness (AST-2229),
 contact uniqueness enforcement on save (AST-1080),
 get_new_candidate_batch / clear_candidate_batch (batch claim wrappers; AST-1259),
 operative save_candidate_data(candidate_id, artifact_key, blob) + hydrate via
@@ -27,6 +28,9 @@ Writing Preferences (candidate.context.writing_preferences) uses the same
 operative save + get_candidate_current hydrate path (AST-1665).
 Resume structure (candidate.artifacts.resume_structure) uses the same
 operative save + get_candidate_current hydrate path (AST-1679).
+Contact context commands (AST-2206): get_candidate_id_for_slack_channel (channel →
+the one candidate naming it in contact.slack_channel_id), contact_command_show_context
+(read-current reply) and contact_command_save_context (nh3 sanitize → operative save).
 All writes go through database.save_candidate (upsert) or save_artifact (operative);
 state transition logic lives here.
 
@@ -62,12 +66,15 @@ from src.utils.config import (
     CANDIDATE_CONTACT_UNIQUENESS_CONFIG,
     CANDIDATE_LIBRARY_CONFIG,
     CANDIDATE_LOOKUP_CONFIG,
+    CONTACT_CONFIG,
+    CONTACT_CONTEXT_COMMAND_CONFIG,
     COVER_FROM_BLOCK_CONFIG,
     TOKEN_SOURCES,
     TOPIC_MENU_CONFIG,
     SURFER_CONSENT_CONFIG,
     CANDIDATE_STATES,
     CANDIDATE_STAGE_DISPATCH,
+    remap_legacy_candidate_state,
     CRAFT_ARTIFACTS_CHAIN_TASK_TO_NAV_PATH,
     CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY,
     CRAFT_RUBRIC_UI_TASK_KEYS,
@@ -77,27 +84,40 @@ from src.utils.config import (
     PRONOUN_PREFERENCE_DEFAULT,
     PRONOUN_PREFERENCE_OPTIONS,
     RESUME_STRUCTURE_BODY_FORMATS,
+    RESUME_STRUCTURE_BODY_FORMAT_DETAILS,
     RESUME_STRUCTURE_CONTACT_SECTION_IDS,
     RESUME_STRUCTURE_DEFAULT,
     RESUME_STRUCTURE_DEFAULT_FORMAT_BY_ID,
     RESUME_STRUCTURE_EXTRA_DEFAULT_FORMAT,
+    RESUME_STRUCTURE_HEADER_FORMAT_DEFAULT,
+    RESUME_STRUCTURE_HEADER_FORMAT_DETAILS,
+    RESUME_STRUCTURE_HEADER_FORMATS,
     RESUME_STRUCTURE_EXTRA_ID_PATTERN,
+    RESUME_STRUCTURE_HIDDEN_FLOW_LABEL,
     RESUME_STRUCTURE_KNOWN_SECTION_IDS,
+    RESUME_STRUCTURE_NEW_EXTRA_DEFAULT_FORMAT,
+    RESUME_STRUCTURE_PAGE_BREAK_DEFAULT_BY_ID,
     RESUME_STRUCTURE_PAGE_BREAK_POLICIES,
     RESUME_STRUCTURE_PAGE_BREAK_POLICY_DEFAULT,
+    RESUME_STRUCTURE_PAGE_BREAK_POLICY_LABELS,
     RESUME_STRUCTURE_REQUIRED_SECTION_IDS,
     RESUME_STRUCTURE_RESERVED_EXTRA_IDS,
     TASK_CONFIG,
+    UI_CONFIG,
     RUBRIC_CRITERIA_ARTIFACT_KEYS,
     RUBRIC_OWNER_TASK_BY_ARTIFACT_KEY,
     dispatch_claim_states,
     dispatch_hop_label,
+    is_registered_state,
     is_valid_candidate_batch_claim_state,
     parse_dispatch_hop_label,
+    registered_base,
+    retry_base,
     rubric_owner_task_key,
+    state_prior_states,
 )
 from src.utils.formatting import value_to_str
-from src.utils.logging import flush_log_buffer, get_logger, log_batch_id, truncate_debug_content
+from src.utils.logging import flush_log_buffer, get_logger, log_batch_id, log_candidate_id, truncate_debug_content
 
 logger = get_logger(__name__)
 
@@ -948,6 +968,13 @@ def save_candidate_data(
         if pref and pref not in PRONOUN_PREFERENCE_OPTIONS:
             raise ValueError(f"Invalid pronouns value: {pref!r}")
 
+    # AST-2042: theme is a candidate_data meta key; only profile-selectable registry ids may be stored
+    # (examples-only palettes are rejected too). List, not set, so an unhashable value fails cleanly.
+    if "theme" in blob_merge:
+        selectable = [tid for tid, t in UI_CONFIG["themes"].items() if t["profile_selectable"]]
+        if blob_merge["theme"] not in selectable:
+            raise ValueError(f"Invalid theme value: {blob_merge['theme']!r}")
+
     contact = blob_merge.get("contact")
     if isinstance(contact, dict):
         _coerce_contact_string_lists(contact)
@@ -1413,21 +1440,77 @@ def opt_out_surfer_consent(candidate_id: str, *, debug: bool = False) -> dict:
     return surfer_consent_dto(candidate_id)
 
 
-def _assert_unique_rubric_codes(criteria: list, artifact_key: str) -> None:
-    """Reject duplicate two-letter codes within one rubric artifact list (AST-1513)."""
-    seen: Dict[str, str] = {}
-    for idx, item in enumerate(criteria):
+# Encoded-grade decode (agent._GRADE_SEG) only matches two uppercase letters.
+_RUBRIC_CODE_RE = re.compile(r"^[A-Z]{2}$")
+# AST-2008: last-letter sequence for re-lettering a duplicate rubric code (X, Y, Z, then A… wrapping).
+_RUBRIC_CODE_UPTICK_LETTERS = "XYZABCDEFGHIJKLMNOPQRSTUVW"
+_ASCII_UPPER = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+
+
+def _derive_rubric_code(label: str, reserved: set) -> Optional[str]:
+    """First free two-letter code for a label: word initials, then first-letter uptick, then every AA–ZZ (AST-2126)."""
+    words = re.findall(r"[A-Z]+", (label or "").upper())
+    if len(words) > 1:
+        base = words[0][0] + words[1][0]
+    elif words and len(words[0]) > 1:
+        base = words[0][:2]
+    else:
+        base = ""
+    pool = ([base] + [base[0] + ch for ch in _RUBRIC_CODE_UPTICK_LETTERS]) if base else []
+    # Full AA–ZZ enumeration so a free code is always found while one exists.
+    pool += [a + b for a in _ASCII_UPPER for b in _ASCII_UPPER]
+    return next((c for c in pool if c not in reserved), None)
+
+
+def _uptick_duplicate_rubric_codes(criteria: list, artifact_key: str) -> list:
+    """Make every code a decodable two-letter code (fill blank/invalid from the label), then re-letter later
+    duplicates; first occurrence keeps its code (AST-2008, AST-2126).
+    Pure: returns a new list; a changed item is a shallow copy (inputs may be EMBEDDED_* refs)."""
+    # Every valid original code is reserved up front so a fill/re-letter never takes a later item's own code.
+    reserved = {
+        str(c.get("code") or "").strip().upper()
+        for c in criteria
+        if isinstance(c, dict) and _RUBRIC_CODE_RE.match(str(c.get("code") or "").strip().upper())
+    }
+    seen: set = set()
+    out: list = []
+    for item in criteria:
+        # Non-dict: sync raises on it — pass through untouched.
         if not isinstance(item, dict):
+            out.append(item)
             continue
-        label = (item.get("label") or item.get("code") or "").strip() or f"#{idx + 1}"
-        code = (item.get("code") or "").strip() or f"V{idx + 1:02d}"
-        code_key = code.upper()
-        if code_key in seen:
-            raise ValueError(
-                f"Rubric {artifact_key!r}: duplicate code {code!r} on vectors "
-                f"{seen[code_key]!r} and {label!r}"
-            )
-        seen[code_key] = label
+        code = str(item.get("code") or "").strip().upper()
+        if not _RUBRIC_CODE_RE.match(code):
+            # Blank / V01-style / wrong length: the model would echo a code _GRADE_SEG can never match.
+            label = (item.get("label") or "").strip()
+            new_code = _derive_rubric_code(label, reserved)
+            if new_code is None:
+                raise ValueError(f"Rubric {artifact_key!r}: no free two-letter code for {label!r}")
+            reserved.add(new_code)
+            seen.add(new_code)
+            logger.warning("Rubric %r: invalid code %r on %r -> %s", artifact_key, item.get("code"), label, new_code)
+            out.append({**item, "code": new_code})
+            continue
+        if code not in seen:
+            seen.add(code)
+            # Store the normalized form (e.g. " tp" -> "TP"); untouched when already exact.
+            out.append(item if item.get("code") == code else {**item, "code": code})
+            continue
+        label = (item.get("label") or code).strip()
+        new_code = next(
+            (code[:-1] + ch for ch in _RUBRIC_CODE_UPTICK_LETTERS if (code[:-1] + ch).upper() not in reserved),
+            None,
+        )
+        if new_code is None:
+            # All 26 last letters taken — keep the duplicate rather than fail the save (Decision C).
+            logger.warning("Rubric %r: duplicate code %s on %r — no free last letter, kept", artifact_key, code, label)
+            out.append(item)
+            continue
+        reserved.add(new_code.upper())
+        seen.add(new_code.upper())
+        logger.warning("Rubric %r: duplicate code %s on %r -> %s", artifact_key, code, label, new_code)
+        out.append({**item, "code": new_code})
+    return out
 
 
 def normalize_rubric_artifacts_on_save(artifacts: dict) -> None:
@@ -1456,7 +1539,6 @@ def normalize_rubric_artifacts_on_save(artifacts: dict) -> None:
                 item["importance"] = _normalize_importance_value(item.get("importance"), ci)
             except ValueError as e:
                 raise ValueError(f"Rubric {key!r}, vector {label!r}: {e}") from e
-        _assert_unique_rubric_codes(val, key)
 
 
 def _rubric_rows_to_criteria(rows: list) -> list:
@@ -1496,6 +1578,22 @@ def _merge_embedded_evaluate_jd_criteria(criteria: list) -> list:
     return head + list(EMBEDDED_EVALUATE_JD_CRITERIA)
 
 
+def _merge_embedded_company_prefilter_criteria(criteria: list) -> list:
+    """Prepend EMBEDDED_COMPANY_PREFILTER_CRITERIA; embedded wins on duplicate code (AST-707 / AST-1881)."""
+    embedded_codes = {
+        str(c.get("code")).strip().upper()
+        for c in EMBEDDED_COMPANY_PREFILTER_CRITERIA
+        if isinstance(c, dict) and c.get("code")
+    }
+    tail = [
+        c
+        for c in (criteria or [])
+        if isinstance(c, dict)
+        and str(c.get("code") or "").strip().upper() not in embedded_codes
+    ]
+    return list(EMBEDDED_COMPANY_PREFILTER_CRITERIA) + tail
+
+
 def rubric_criteria_for_task(candidate_id: str, owner_task_key: str) -> list:
     """Active rubric criteria from rubric_vector for (candidate, owner task_key)."""
     if not candidate_id or not owner_task_key:
@@ -1503,20 +1601,44 @@ def rubric_criteria_for_task(candidate_id: str, owner_task_key: str) -> list:
     rows = database.list_rubric_vectors(candidate_id, owner_task_key, current_only=True)
     criteria = _rubric_rows_to_criteria(rows)
     if owner_task_key == "prefilter_company":
-        embedded_codes = {
-            str(c.get("code")).strip().upper()
-            for c in EMBEDDED_COMPANY_PREFILTER_CRITERIA
-            if isinstance(c, dict) and c.get("code")
-        }
-        tail = [
-            c
-            for c in criteria
-            if isinstance(c, dict) and str(c.get("code") or "").strip().upper() not in embedded_codes
-        ]
-        return list(EMBEDDED_COMPANY_PREFILTER_CRITERIA) + tail
+        return _merge_embedded_company_prefilter_criteria(criteria)
     if owner_task_key in ("evaluate_jd", "evaluate_meteorite"):
         return _merge_embedded_evaluate_jd_criteria(criteria)
     return criteria
+
+
+def rubric_dispatch_error(candidate_id: Optional[str], task_key: str) -> Optional[str]:
+    """User-facing reason a rubric-backed task can't Auto/Run: duplicate codes, invalid codes, or empty rubric
+    (AST-2091, AST-2126). None when the rubric is fine, the task isn't rubric-backed, or there's no candidate
+    (key gate owns that). Pure read."""
+    # TASK_CONFIG.rubric_artifact, not rubric_owner_task_key(): craft_* tasks must stay runnable on an empty rubric.
+    rk = (TASK_CONFIG.get((task_key or "").strip()) or {}).get("rubric_artifact")
+    owner = RUBRIC_OWNER_TASK_BY_ARTIFACT_KEY.get(rk) if rk else None
+    cid = str(candidate_id or "").strip()
+    if not owner or not cid:
+        return None
+    # Same list consult grades with (embedded QC/GC/RC merges included).
+    criteria = rubric_criteria_for_task(cid, owner)
+    if not criteria:
+        return f"Rubric '{rk}' is empty for this candidate."
+    # Strict on the stored value: the prompt shows it as-is, and _GRADE_SEG never matches a V01 / lowercase echo.
+    bad = sorted({
+        str(c.get("code") or "").strip() or "(blank)"
+        for c in criteria
+        if isinstance(c, dict) and not _RUBRIC_CODE_RE.match(str(c.get("code") or "").strip())
+    })
+    if bad:
+        return f"Rubric '{rk}' has invalid vector codes: {', '.join(bad)} — re-save the rubric"
+    # strip().upper() matches _vector_labels_map.
+    counts: Dict[str, int] = {}
+    for c in criteria:
+        code = str(c.get("code") or "").strip().upper() if isinstance(c, dict) else ""
+        if code:
+            counts[code] = counts.get(code, 0) + 1
+    dupes = sorted(code for code, n in counts.items() if n > 1)
+    if dupes:
+        return f"Rubric '{rk}' has duplicate vector codes: {', '.join(dupes)}"
+    return None
 
 
 def rubric_criteria_for_token(candidate_id: str, owner_task_key: str) -> list:
@@ -1546,6 +1668,11 @@ def apply_rubric_vectors_save(candidate_id: str, artifacts: dict) -> None:
         # meteorite JD screen, not just the regular gazer-discovered evaluate_jd.
         if owner in ("evaluate_jd", "evaluate_meteorite"):
             val = _merge_embedded_evaluate_jd_criteria(val)
+        # AST-1881: restore RC on save (prepend; embedded wins on code), like QC/GC.
+        elif owner == "prefilter_company":
+            val = _merge_embedded_company_prefilter_criteria(val)
+        # AST-2008: after the embedded merge so a merge-introduced collision is repaired too.
+        val = _uptick_duplicate_rubric_codes(val, key)
         database.sync_rubric_vectors_from_criteria(candidate_id, owner, val)
         del artifacts[key]
 
@@ -1634,6 +1761,110 @@ def get_candidate_current_artifact_uuid(
     if not isinstance(uuid, str) or not uuid.strip():
         return None
     return uuid
+
+
+def artifact_versions_by_uuid(rows: list, uuid_field: str) -> Dict[str, Dict[str, Any]]:
+    """Chronological rows → {uuid: {created_at, current, position}} (AST-2066; position 1-based)."""
+    return {
+        row[uuid_field]: {
+            "created_at": row.get("created_at"),
+            "current": row.get("current"),
+            "position": i,
+        }
+        for i, row in enumerate(rows, start=1)
+    }
+
+
+def _candidate_catalog_entry(candidate_id: str, artifact_key: str) -> Tuple[str, str, str]:
+    """Resolve (entity_type, candidate_id, artifact_type) for a candidate catalog key (AST-2066)."""
+    key = (artifact_key or "").strip()
+    if not key:
+        raise ValueError("artifact_key required")
+    entry = ARTIFACT_CONFIG.get(key)
+    if entry is None:
+        raise ValueError(f"unknown catalog key: {key!r}")
+    if not entry.get("candidate_scoped") or entry.get("entity_type") != "candidate":
+        raise ValueError(f"catalog key not candidate-owned: {key!r}")
+    cid = (candidate_id or "").strip()
+    if not cid:
+        raise ValueError("candidate_id required")
+    return entry["entity_type"], cid, key.rsplit(".", 1)[-1]
+
+
+def list_candidate_artifact_versions(
+    candidate_id: str, artifact_key: str
+) -> Dict[str, Dict[str, Any]]:
+    """Version map for a candidate catalog key, oldest first (AST-2066 / patt.artifact.read-current)."""
+    et, cid, at = _candidate_catalog_entry(candidate_id, artifact_key)
+    return artifact_versions_by_uuid(database.list_artifacts(et, cid, at), "artifact_uuid")
+
+
+def set_candidate_artifact_current(
+    candidate_id: str, artifact_key: str, artifact_uuid: str
+) -> str:
+    """Move current to artifact_uuid for a candidate catalog key; body untouched (AST-2066)."""
+    et, cid, at = _candidate_catalog_entry(candidate_id, artifact_key)
+    uid = database.set_current_artifact(et, cid, at, artifact_uuid)
+    # Same post-rotate AUTO revalidation as the save_candidate_data str-path (AST-1781).
+    try:
+        database.revalidate_dispatch_tasks_for_artifact(cid, artifact_key.strip())
+    except Exception as exc:
+        logger.warning(
+            "%s | artifact_key=%r %s: %s — AUTO revalidation skipped after set-current",
+            cid,
+            artifact_key,
+            type(exc).__name__,
+            exc,
+        )
+    logger.info(
+        "%s | candidate %s: %s -> %s (batch: %s)",
+        cid,
+        "artifact current set",
+        artifact_key.strip(),
+        uid,
+        "-",
+    )
+    return uid
+
+
+def _rubric_owner_task(artifact_key: str) -> str:
+    """Owner task_key for a rubric criteria artifact key (AST-2066 / AST-723)."""
+    owner = RUBRIC_OWNER_TASK_BY_ARTIFACT_KEY.get((artifact_key or "").strip())
+    if not owner:
+        raise ValueError(f"not a rubric criteria key: {artifact_key!r}")
+    return owner
+
+
+def list_rubric_criterion_versions(
+    candidate_id: str, artifact_key: str, code: str
+) -> Dict[str, Dict[str, Any]]:
+    """Version map for one rubric criterion (shared code), oldest first (AST-2066)."""
+    owner = _rubric_owner_task(artifact_key)
+    cid = (candidate_id or "").strip()
+    ck = (code or "").strip()
+    if not cid or not ck:
+        raise ValueError("candidate_id and code required")
+    rows = database.list_rubric_vectors(cid, owner, current_only=False, code=ck)
+    return artifact_versions_by_uuid(rows, "rubric_vector_uuid")
+
+
+def set_rubric_criterion_current(
+    candidate_id: str, artifact_key: str, code: str, rubric_vector_uuid: str
+) -> str:
+    """Move current to rubric_vector_uuid for one criterion; other codes untouched (AST-2066)."""
+    owner = _rubric_owner_task(artifact_key)
+    cid = (candidate_id or "").strip()
+    uid = database.set_current_rubric_vector(cid, owner, code, rubric_vector_uuid)
+    logger.info(
+        "%s | candidate %s: %s %s -> %s (batch: %s)",
+        cid,
+        "rubric criterion current set",
+        artifact_key.strip(),
+        (code or "").strip().upper(),
+        uid,
+        "-",
+    )
+    return uid
 
 
 def hydrate_operative_base_resume_for_response(candidate_id: str, cd: dict) -> None:
@@ -1824,19 +2055,30 @@ def hydrate_operative_writing_preferences_for_response(candidate_id: str, cd: di
 
     Miss → leave legacy context.writing_preferences blob untouched (parent AC6 migration window).
     Hit → write current string onto context.writing_preferences for the editor contract.
+    Dict bodies (legacy/agent rows) coerce for display only — prefer writing_general_instructions,
+    else stable json.dumps; do not rewrite the artifact row (AST-2243).
     """
     if not isinstance(cd, dict):
         return
     body = get_candidate_current(candidate_id, _WRITING_PREFERENCES_ARTIFACT_KEY)
     if body is None:
         return
-    if not isinstance(body, str):
+    if isinstance(body, str):
+        overlay = body
+    elif isinstance(body, dict):
+        # Display coerce only — plain_text catalog still stores strings on new writes.
+        instructions = body.get("writing_general_instructions")
+        if isinstance(instructions, str) and instructions.strip():
+            overlay = instructions
+        else:
+            overlay = json.dumps(body, sort_keys=True)
+    else:
         return
     ctx = cd.get("context")
     if not isinstance(ctx, dict):
         ctx = {}
         cd["context"] = ctx
-    ctx["writing_preferences"] = body
+    ctx["writing_preferences"] = overlay
 
 
 def _normalize_search_term_lines(val: str) -> list[str]:
@@ -1968,15 +2210,11 @@ def get_new_candidate_batch(
     context: prefix for auto-generated batch_id (required when batch_id is not provided).
     """
     # Registry keys + REQUESTED_ARTIFACTS.<hop> runtime labels (AST-1388).
+    # Multi-state claim (states=): skip registry gate on companions (AST-1801).
     if states is None:
         if not is_valid_candidate_batch_claim_state(state):
             allowed = list(CANDIDATE_STATES.keys()) if CANDIDATE_STATES else []
             raise ValueError(f"state must be one of {allowed!r}, got {state!r}")
-    else:
-        for s in states:
-            if not is_valid_candidate_batch_claim_state(s):
-                allowed = list(CANDIDATE_STATES.keys()) if CANDIDATE_STATES else []
-                raise ValueError(f"state must be one of {allowed!r}, got {s!r}")
     limit_val = limit if limit is not None else 10
     if not batch_id and not context:
         raise ValueError("batch_id or context is required for batch_id generation")
@@ -2137,6 +2375,148 @@ def get_candidate_id_for_query(
     return None
 
 
+# AST-2206: Contact context commands. contact.slack_channel_id is not a uniqueness-gated field
+# (CANDIDATE_CONTACT_UNIQUENESS_CONFIG), so two candidates can name one channel — ambiguous → None.
+_SLACK_CHANNEL_ID_PATH = "contact.slack_channel_id"
+# Handler reply texts; {label} is the CONTACT_CONTEXT_COMMAND_CONFIG row label.
+_CONTACT_SHOW_EMPTY_REPLY = "No {label} saved yet for this candidate."
+_CONTACT_SAVE_ACK_REPLY = "Saved. That's now the current {label}."
+
+
+def get_candidate_id_for_slack_channel(
+    channel_id: str,
+    *,
+    debug: bool = False,
+) -> Optional[str]:
+    """The one non-deleted candidate whose contact.slack_channel_id is ``channel_id`` (AST-2206).
+
+    None when the channel is empty, unmapped, or named by more than one candidate.
+    """
+    if debug:
+        logger.set_debug_flag(True)
+    ch = (channel_id or "").strip()
+    if not ch:
+        return None
+    logger.debug("Calling list_candidates: [include_deleted=False]")
+    candidates = list_candidates(include_deleted=False)
+    logger.debug("Response from list_candidates: %s", candidates)
+    logger.debug("Beginning slack channel lookup loop on %s items", len(candidates))
+    hit_ids = sorted(
+        {
+            (c.get("astral_candidate_id") or "").strip()
+            for c in candidates
+            if _lookup_path_value(c, _SLACK_CHANNEL_ID_PATH) == ch
+        }
+        - {""}
+    )
+    logger.debug("End slack channel lookup loop after %s items", len(candidates))
+    if len(hit_ids) > 1:
+        logger.warning(
+            "%s | slack channel %s is named by %s candidates (%s)\n"
+            "  No candidate is mapped to this channel until only one names it",
+            hit_ids[0], ch, len(hit_ids), ", ".join(hit_ids),
+        )
+    return hit_ids[0] if len(hit_ids) == 1 else None
+
+
+def _contact_context_command(artifact_key: Optional[str]) -> Optional[Dict[str, Any]]:
+    """CONTACT_CONTEXT_COMMAND_CONFIG row whose artifact_key matches; None for any other key."""
+    key = (artifact_key or "").strip()
+    return next(
+        (m for m in CONTACT_CONTEXT_COMMAND_CONFIG.values() if m["artifact_key"] == key), None
+    )
+
+
+def contact_command_show_context(
+    candidate_id: str,
+    payload: str,
+    *,
+    source_id: str,
+    thread_ts: Optional[str] = None,
+    artifact_key: Optional[str] = None,
+    debug: bool = False,
+) -> dict:
+    """CONTACT_CONFIG["commands"] code handler for /show-<context> (AST-2206).
+
+    Read-only (patt.artifact.read-current); payload is ignored (payload_optional entry).
+    Returns {ok, meteorite_id (always None), error, reply_text}; Contact posts reply_text.
+    """
+    cid = (candidate_id or "").strip()
+    ctx = _contact_context_command(artifact_key)
+    if not cid:
+        # No reply_text → Contact's hear-ack path.
+        return {"ok": False, "meteorite_id": None, "error": "no_candidate", "reply_text": None}
+    if ctx is None:
+        logger.warning(
+            "%s | contact show handler got artifact_key %r, not a context command key\n"
+            "  Nothing was shown",
+            cid, artifact_key,
+        )
+        return {"ok": False, "meteorite_id": None, "error": "unknown_artifact_key", "reply_text": None}
+    logger.debug(
+        "Calling get_candidate_current: [candidate_id=%s, artifact_key=%s]", cid, ctx["artifact_key"]
+    )
+    body = get_candidate_current(cid, ctx["artifact_key"])
+    logger.debug("Response from get_candidate_current: %r", body)
+    reply = body if isinstance(body, str) and body.strip() else _CONTACT_SHOW_EMPTY_REPLY.format(label=ctx["label"])
+    return {"ok": True, "meteorite_id": None, "error": None, "reply_text": reply}
+
+
+def contact_command_save_context(
+    candidate_id: str,
+    payload: str,
+    *,
+    source_id: str,
+    thread_ts: Optional[str] = None,
+    artifact_key: Optional[str] = None,
+    debug: bool = False,
+) -> dict:
+    """CONTACT_CONFIG["commands"] code handler for /save-<context> <text> (AST-2206).
+
+    nh3-sanitizes payload (Contact's one sanitize helper), then write-operative through
+    save_candidate_data — identical-to-current is a no-op there. Contact's only artifact
+    write ("write artifact" pinhole kind). Returns {ok, meteorite_id (always None), error,
+    reply_text}; Contact posts reply_text.
+    """
+    cid = (candidate_id or "").strip()
+    ctx = _contact_context_command(artifact_key)
+    if not cid:
+        # No reply_text → Contact's hear-ack path.
+        return {"ok": False, "meteorite_id": None, "error": "no_candidate", "reply_text": None}
+    if ctx is None:
+        logger.warning(
+            "%s | contact save handler got artifact_key %r, not a context command key\n"
+            "  Nothing was saved",
+            cid, artifact_key,
+        )
+        return {"ok": False, "meteorite_id": None, "error": "unknown_artifact_key", "reply_text": None}
+    key = ctx["artifact_key"]
+    # Late import: meteorite imports candidate at module level.
+    from src.core.meteorite import sanitize_contact_text
+
+    logger.debug("Calling sanitize_contact_text: [payload=%r]", payload)
+    body = sanitize_contact_text(payload)
+    logger.debug("Response from sanitize_contact_text: %r", body)
+    if not body:
+        logger.warning(
+            "%s | contact save of %s rejected — the text is empty after sanitize\n  Nothing was saved",
+            cid, key,
+        )
+        # Same usage line the runner posts for an empty payload; own entry found by handler + key.
+        usage = next(
+            m["usage_reply_text"] for m in CONTACT_CONFIG["commands"].values()
+            if m["handler"] == f"{__name__}.contact_command_save_context" and m.get("artifact_key") == key
+        )
+        return {"ok": False, "meteorite_id": None, "error": "empty_after_sanitize", "reply_text": usage}
+    logger.debug("Calling save_candidate_data: [candidate_id=%s, artifact_key=%s]", cid, key)
+    artifact_uuid = save_candidate_data(cid, key, body, debug=debug)
+    logger.debug("Response from save_candidate_data: %s", artifact_uuid)
+    return {
+        "ok": True, "meteorite_id": None, "error": None,
+        "reply_text": _CONTACT_SAVE_ACK_REPLY.format(label=ctx["label"]),
+    }
+
+
 def preview_task_prompt(
     task_key: str,
     candidate_id: str = "",
@@ -2218,10 +2598,9 @@ class IllegalCandidateTransition(ValueError):
 
 
 def _candidate_prior_states(to_state: str):
-    cfg = CANDIDATE_STATES.get(to_state)
-    if cfg is None:
+    if not is_registered_state(CANDIDATE_STATES, to_state):
         raise ValueError(f"Unknown candidate state: {to_state}")
-    return cfg.get("prior_states")
+    return state_prior_states(CANDIDATE_STATES, to_state)
 
 
 def _candidate_state_allowed(from_state: str, to_state: str) -> bool:
@@ -2253,12 +2632,39 @@ def write_candidate_dispatch_hop_label(
     return label
 
 
-def requested_artifacts_dispatch_claim_states() -> List[str]:
-    """Bare trigger + retry + live-chain hop labels for craft_get_rubric @ REQUESTED_ARTIFACTS."""
-    trigger = CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["trigger_state"]
-    states: List[str] = list(dispatch_claim_states(trigger, "candidate"))
-    for tk in _walk_requested_artifacts_chain_task_keys():
-        states.append(dispatch_hop_label(trigger, tk))
+def _candidate_stage_for_trigger(bare_trigger: str) -> dict:
+    """CANDIDATE_STAGE_DISPATCH entry whose trigger_state matches bare_trigger."""
+    bare = (bare_trigger or "").strip()
+    for entry in CANDIDATE_STAGE_DISPATCH.values():
+        if entry.get("trigger_state") == bare:
+            return entry
+    raise ValueError(f"no CANDIDATE_STAGE_DISPATCH stage for trigger {bare!r}")
+
+
+def _walk_candidate_stage_chain_task_keys(stage: dict) -> list[str]:
+    """Live run_next walk from stage entry hop; defensive cycle bail (write-path is acyclic)."""
+    start = (stage.get("task_key") or "").strip()
+    out: list[str] = []
+    seen: set[str] = set()
+    key = start
+    while key:
+        if key in seen:
+            raise RuntimeError(f"craft run_next cycle at {key!r}")
+        seen.add(key)
+        out.append(key)
+        key = (_current_agent_task_run_next(key) or "").strip()
+    return out
+
+
+def candidate_stage_dispatch_claim_states(trigger_state: str) -> List[str]:
+    """Bare trigger + retry + live-chain hop labels for any CANDIDATE_STAGE_DISPATCH stage."""
+    raw = (trigger_state or "").strip()
+    parsed = parse_dispatch_hop_label(raw)
+    bare = parsed[0] if parsed else raw
+    stage = _candidate_stage_for_trigger(bare)
+    states: List[str] = list(dispatch_claim_states(bare, "candidate"))
+    for tk in _walk_candidate_stage_chain_task_keys(stage):
+        states.append(dispatch_hop_label(bare, tk))
     seen: set[str] = set()
     out: List[str] = []
     for s in states:
@@ -2266,6 +2672,24 @@ def requested_artifacts_dispatch_claim_states() -> List[str]:
             seen.add(s)
             out.append(s)
     return out
+
+
+def requested_artifacts_dispatch_claim_states() -> List[str]:
+    """Bare trigger + retry + live-chain hop labels for craft_get_rubric @ REQUESTED_ARTIFACTS."""
+    return candidate_stage_dispatch_claim_states(
+        CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["trigger_state"]
+    )
+
+
+def is_candidate_stage_chain_task(task_key: str) -> bool:
+    """True when task_key is on any CANDIDATE_STAGE_DISPATCH live run_next walk."""
+    tk = (task_key or "").strip()
+    if not tk:
+        return False
+    for stage in CANDIDATE_STAGE_DISPATCH.values():
+        if tk in _walk_candidate_stage_chain_task_keys(stage):
+            return True
+    return False
 
 
 def _start_candidate_reap_timer(candidate_id: str) -> None:
@@ -2361,7 +2785,7 @@ def transition_candidate_state(
     candidate = database.get_candidate(candidate_id)
     if not candidate:
         raise ValueError(f"Candidate not found: {candidate_id}")
-    if to_state not in CANDIDATE_STATES:
+    if not is_registered_state(CANDIDATE_STATES, to_state):
         raise ValueError(f"Unknown candidate state: {to_state}")
     from_state = candidate["state"]
     # One prior_states check: gate when not force; INFO when force bypasses.
@@ -2394,17 +2818,9 @@ def start_requested_artifacts(candidate_id: str) -> str:
 
 def _walk_requested_artifacts_chain_task_keys() -> list[str]:
     """Live run_next walk from stage entry hop; defensive cycle bail (write-path is acyclic)."""
-    start = CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["task_key"]
-    out: list[str] = []
-    seen: set[str] = set()
-    key = (start or "").strip()
-    while key:
-        if key in seen:
-            raise RuntimeError(f"craft run_next cycle at {key!r}")
-        seen.add(key)
-        out.append(key)
-        key = (_current_agent_task_run_next(key) or "").strip()
-    return out
+    return _walk_candidate_stage_chain_task_keys(
+        CANDIDATE_STAGE_DISPATCH["requested_artifacts"]
+    )
 
 
 def requested_artifacts_chain_task_keys() -> list[str]:
@@ -2421,9 +2837,9 @@ def is_requested_artifacts_chain_ui_task(task_key: str) -> bool:
 
 
 def _artifacts_nav_label_for_path(path: str) -> str:
-    """Resolve Artifacts NAV_CONFIG child label for a path string."""
+    """Resolve NAV_CONFIG child label for a path (any group — Artifacts group dissolved)."""
     for section in NAV_CONFIG:
-        if not isinstance(section, dict) or section.get("label") != "Artifacts":
+        if not isinstance(section, dict):
             continue
         for item in section.get("items") or []:
             if isinstance(item, dict) and item.get("path") == path:
@@ -2452,15 +2868,49 @@ def requested_artifacts_chain_artifact_keys() -> list[str]:
     return keys
 
 
+def candidate_stage(state: str) -> int:
+    """Registry stage for a candidate state (incl. implicit {base}_RETRY)."""
+    base = registered_base(CANDIDATE_STATES, state)
+    if not base:
+        raise ValueError(f"Unknown candidate state: {state}")
+    return int(CANDIDATE_STATES[base]["stage"])
+
+
+_RETIRED_TOPIC_STATES = frozenset({
+    "REQUIRED_TOPICS_READY",
+    "REQUIRED_TOPICS_READY_STALE",
+    "ALL_TOPICS_READY",
+    "ALL_TOPICS_READY_STALE",
+})
+
+
+def migrate_retired_topic_candidate_states() -> int:
+    """Persist remap of live topic-ready(+stale) rows onto PROFILE_READY / CONTEXT_READY.
+    Returns count of rows rewritten."""
+    rewritten = 0
+    for row in list_candidates(include_deleted=False):
+        state = row.get("state") or ""
+        if state not in _RETIRED_TOPIC_STATES:
+            continue
+        cid = row.get("astral_candidate_id")
+        if not cid:
+            continue
+        to_state = remap_legacy_candidate_state(state)
+        transition_candidate_state(cid, to_state, force=True)
+        rewritten += 1
+    return rewritten
+
+
 def check_context_complete(candidate_id: str) -> bool:
     """True when all CANDIDATE_LIBRARY_CONFIG['context_completeness_keys'] are non-empty (no state write).
-    Already-advanced candidates (progress_rank >= ALL_TOPICS_READY) count as complete."""
+    Already-advanced candidates (progress_rank >= CONTEXT_READY) count as complete."""
     candidate = database.get_candidate(candidate_id)
     if not candidate:
         return False
     current_state = candidate.get("state", "")
-    rank = int((CANDIDATE_STATES.get(current_state) or {}).get("progress_rank", -1))
-    ready_rank = int(CANDIDATE_STATES["ALL_TOPICS_READY"]["progress_rank"])
+    # {base}_RETRY carries its base's rank (AST-1806).
+    rank = int((CANDIDATE_STATES.get(registered_base(CANDIDATE_STATES, current_state) or "") or {}).get("progress_rank", -1))
+    ready_rank = int(CANDIDATE_STATES["CONTEXT_READY"]["progress_rank"])
     if rank >= ready_rank and rank >= 0:
         return True
     ctx = (candidate.get("candidate_data") or {}).get("context", {})
@@ -2472,9 +2922,108 @@ def check_context_complete(candidate_id: str) -> bool:
     return True
 
 
+def check_profile_complete(candidate_id: str) -> bool:
+    """True when required Profile pieces are present (no state write)."""
+    candidate = database.get_candidate(candidate_id)
+    if not candidate:
+        return False
+    first = str(candidate.get("first") or "").strip()
+    last = str(candidate.get("last") or "").strip()
+    if not first or not last:
+        return False
+    contact = (candidate.get("candidate_data") or {}).get("contact") or {}
+    if not isinstance(contact, dict):
+        contact = {}
+    return bool(str(contact.get("contact_email") or "").strip())
+
+
+def incomplete_profile(candidate_id: str) -> bool:
+    """True when required Profile pieces are missing (alert signal for nav siblings)."""
+    # Missing row → False so callers do not paint a ghost Profile alert.
+    if not database.get_candidate(candidate_id):
+        return False
+    return not check_profile_complete(candidate_id)
+
+
+def _raw_resume_ready(candidate_id: str) -> bool:
+    """Non-empty context.raw_resume — material for REQUESTED_RESUME craft."""
+    candidate = database.get_candidate(candidate_id)
+    if not candidate:
+        return False
+    ctx = (candidate.get("candidate_data") or {}).get("context") or {}
+    if not isinstance(ctx, dict):
+        return False
+    return bool(str(ctx.get("raw_resume") or "").strip())
+
+
+def _base_resume_ready(candidate_id: str) -> bool:
+    """Operative base_resume present for REQUESTED_ARTIFACTS hop."""
+    body = load_pilot_base_resume_for_candidate(candidate_id)
+    if body is None:
+        return False
+    if isinstance(body, str):
+        return bool(body.strip())
+    return bool(body)
+
+
+def _always_ready(_candidate_id: str) -> bool:
+    return True
+
+
+# Exact from-state → (to_state, predicate). Stale companions forward; no demote hops.
+_READINESS_HOPS: Dict[str, Tuple[str, Any]] = {
+    "INTAKE_INITIATED": ("PROFILE_READY", check_profile_complete),
+    "PROFILE_READY": ("CONTEXT_READY", check_context_complete),
+    "CONTEXT_READY": ("REQUESTED_RESUME", _raw_resume_ready),
+    "RESUME_READY": ("REQUESTED_ARTIFACTS", _base_resume_ready),
+    "RESUME_READY_STALE": ("REQUESTED_ARTIFACTS", _base_resume_ready),
+    "ARTIFACTS_READY": ("ACTIVE_SEARCH", _always_ready),
+    "ARTIFACTS_READY_STALE": ("ACTIVE_SEARCH", _always_ready),
+}
+
+
+def advance_candidate_readiness() -> int:
+    """Forward-only presence advance. Returns count of successful transitions."""
+    moved = 0
+    for row in list_candidates(include_deleted=False):
+        state = row.get("state") or ""
+        cid = row.get("astral_candidate_id")
+        if not cid:
+            continue
+        hop = _READINESS_HOPS.get(state)
+        if hop is None:
+            continue
+        to_state, predicate = hop
+        if to_state not in CANDIDATE_STATES:
+            continue
+        if not predicate(cid):
+            continue
+        try:
+            if candidate_stage(to_state) < candidate_stage(state):
+                continue
+        except ValueError:
+            continue
+        try:
+            transition_candidate_state(cid, to_state)
+        except (IllegalCandidateTransition, ValueError):
+            continue
+        # Joan: statute `state` event (not a custom readiness_advance token).
+        logger.info(
+            "%s | candidate state: %s -> %s (batch: %s)",
+            cid,
+            state,
+            to_state,
+            "-",
+        )
+        moved += 1
+    return moved
+
+
 def age_stale_candidate_states(*, now: Optional[datetime] = None) -> int:
     """Move waiting-stage candidates past stale_after_hours into stale_state.
     Returns count of successful transitions. No scheduler wiring (AST-972)."""
+    # AST-2228: heal retired topic rows before stale aging (no dispatcher/database touch).
+    migrate_retired_topic_candidate_states()
     clock = now if now is not None else datetime.now(timezone.utc)
     if clock.tzinfo is None:
         clock = clock.replace(tzinfo=timezone.utc)
@@ -2609,7 +3158,14 @@ def normalize_resume_structure(raw: dict) -> dict:
             "job_agent_editable": job_ed,
         }
         if sid in RESUME_STRUCTURE_CONTACT_SECTION_IDS:
-            pass
+            # Header layout (one_line / two_line); blank → omitted, which reads as the default.
+            hfmt = spec.get("format")
+            if isinstance(hfmt, str) and hfmt.strip():
+                if hfmt not in RESUME_STRUCTURE_HEADER_FORMATS:
+                    raise ValueError(
+                        f"section {sid} format must be one of {list(RESUME_STRUCTURE_HEADER_FORMATS)}"
+                    )
+                row["format"] = hfmt
         elif sid == "experience":
             fmt = spec.get("format")
             if fmt is None or (isinstance(fmt, str) and not fmt.strip()):
@@ -2814,6 +3370,85 @@ def enabled_resume_structure_sections(resolved: dict) -> list:
     }
     enabled.sort(key=lambda s: (order_by_id.get(s["id"], 0), s["id"]))
     return enabled
+
+
+def resume_structure_editor_payload(resolved: dict) -> dict:
+    """Structure-editor payload for a resolved structure (AST-2081): sections, all_sections, accent_color, catalog.
+
+    Shared by the candidate and job resume_structure GETs. Format labels/descriptions/fonts and flow
+    labels come from config only — the frontend never hardcodes them.
+    """
+    accent = resolved.get("accent_color")
+    if not isinstance(accent, str):
+        accent = None
+    required = set(RESUME_STRUCTURE_REQUIRED_SECTION_IDS)
+    contact = set(RESUME_STRUCTURE_CONTACT_SECTION_IDS)
+    all_sections = []
+    sections_map = resolved.get("sections") if isinstance(resolved.get("sections"), dict) else {}
+    for sid, spec in sorted(
+        sections_map.items(),
+        key=lambda kv: (
+            kv[1].get("order", 0) if isinstance(kv[1], dict) and isinstance(kv[1].get("order"), int) else 0,
+            kv[0],
+        ),
+    ):
+        if not isinstance(spec, dict):
+            continue
+        all_sections.append({
+            "id": sid,
+            "title": spec.get("title") or "",
+            "enabled": bool(spec.get("enabled")),
+            "order": spec.get("order") if isinstance(spec.get("order"), int) else 0,
+            # Header (contact) rows carry the header layout; unset reads as the default.
+            "format": (
+                spec["format"] if isinstance(spec.get("format"), str)
+                else RESUME_STRUCTURE_HEADER_FORMAT_DEFAULT if sid in contact
+                else None
+            ),
+            "job_agent_editable": bool(spec.get("job_agent_editable")),
+            "required": sid in required,
+            "format_locked": sid == "experience",
+            "page_break_policy": (
+                spec["page_break_policy"]
+                if isinstance(spec.get("page_break_policy"), str)
+                and spec["page_break_policy"] in RESUME_STRUCTURE_PAGE_BREAK_POLICIES
+                else RESUME_STRUCTURE_PAGE_BREAK_POLICY_DEFAULT
+            ),
+        })
+    fonts = BUILD_CONFIG["default_style"]["fonts"]
+    catalog = {
+        "body_formats": list(RESUME_STRUCTURE_BODY_FORMATS),
+        "required_ids": list(RESUME_STRUCTURE_REQUIRED_SECTION_IDS),
+        "contact_ids": list(RESUME_STRUCTURE_CONTACT_SECTION_IDS),
+        "extra_id_pattern": RESUME_STRUCTURE_EXTRA_ID_PATTERN,
+        "reserved_extra_ids": list(RESUME_STRUCTURE_RESERVED_EXTRA_IDS),
+        "new_extra_default_format": RESUME_STRUCTURE_NEW_EXTRA_DEFAULT_FORMAT,
+        "page_break_policies": list(RESUME_STRUCTURE_PAGE_BREAK_POLICIES),
+        "page_break_policy_labels": dict(RESUME_STRUCTURE_PAGE_BREAK_POLICY_LABELS),
+        "page_break_policy_default": RESUME_STRUCTURE_PAGE_BREAK_POLICY_DEFAULT,
+        "page_break_policy_defaults": dict(RESUME_STRUCTURE_PAGE_BREAK_DEFAULT_BY_ID),
+        # AST-2081: per-format label / tooltip / preview font (CSS font-family string), id-keyed.
+        "body_format_details": {
+            fmt: {
+                "label": d["label"],
+                "description": d["description"],
+                "font_family": fonts[d["font_stack"]],
+            }
+            # Header layouts share the map (ids don't collide); body_formats / header_formats pick the options.
+            for fmt, d in {
+                **RESUME_STRUCTURE_BODY_FORMAT_DETAILS,
+                **RESUME_STRUCTURE_HEADER_FORMAT_DETAILS,
+            }.items()
+        },
+        "header_formats": list(RESUME_STRUCTURE_HEADER_FORMATS),
+        "hidden_flow_label": RESUME_STRUCTURE_HIDDEN_FLOW_LABEL,
+    }
+    return {
+        "sections": enabled_resume_structure_sections(resolved),
+        "all_sections": all_sections,
+        "accent_color": accent,
+        "catalog": catalog,
+    }
 
 
 def filter_base_resume_to_structure(content: dict, section_ids: set) -> dict:
@@ -3504,12 +4139,13 @@ debug_experience_jobs = _debug_experience_jobs
 
 
 def save_candidate_admin(candidate_id: str, **kwargs: Any) -> None:
-    """Direct candidate row updates from admin API (state override, api_key, etc.)."""
+    """Direct candidate row updates from admin API (state override, etc.). API keys: update_candidate_api_keys."""
     database.save_candidate(candidate_id, **kwargs)
 
 
-def clear_candidate_api_key(candidate_id: str) -> None:
-    database.clear_candidate_api_key(candidate_id)
+def update_candidate_api_keys(candidate_id: str, entries: List[Dict[str, str]]) -> None:
+    """Admin key edits on the candidate's api_keys array: key sets/replaces that server's entry, "" removes it."""
+    database.update_candidate_api_keys(candidate_id, entries)
 
 
 def get_pending_craft_generation(
@@ -3591,6 +4227,23 @@ def _persist_craft_dispatch_success(candidate_id: str, task_key: str, parsed: An
             raise ValueError("craft_company_search_terms search_terms must be a string")
         apply_company_search_terms_save(candidate_id, {"company_search_terms": terms})
         return
+    # AST-2222: terminal base-resume hop — contact field, not an artifact key.
+    if task_key == "draft_title_patterns":
+        if not isinstance(parsed, dict):
+            raise ValueError("draft_title_patterns parsed_response must be a dict")
+        raw = parsed.get("title_patterns")
+        if isinstance(raw, list):
+            text = "\n".join(str(x).strip() for x in raw if str(x).strip())
+        elif isinstance(raw, str):
+            text = raw.strip()
+        else:
+            raise ValueError(
+                f"draft_title_patterns title_patterns must be str or list, got {type(raw).__name__}"
+            )
+        if not text:
+            raise ValueError("draft_title_patterns title_patterns must be non-empty")
+        save_candidate_data(candidate_id, {"contact": {"title_patterns": text}})
+        return
     artifact_key = CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY.get(task_key)
     if artifact_key:
         if not isinstance(parsed, dict):
@@ -3602,21 +4255,28 @@ def _persist_craft_dispatch_success(candidate_id: str, task_key: str, parsed: An
         # QC/GC are source-agnostic — also restore for the meteorite dealbreaker screen.
         if artifact_key in ("jobdesc_rubric", "meteorite_jobdesc_rubric"):
             criteria = _merge_embedded_evaluate_jd_criteria(criteria)
+        # AST-1881: craft_prefilter_rubric persist restores RC before sync.
+        elif artifact_key == "company_prefilter":
+            criteria = _merge_embedded_company_prefilter_criteria(criteria)
         arts = {artifact_key: criteria}
         normalize_rubric_artifacts_on_save(arts)
         apply_rubric_vectors_save(candidate_id, arts)
         return
+    # Intermediate stage hops: RESPONSE already in agent_data; no artifact write.
+    cfg = TASK_CONFIG.get(task_key) or {}
+    if cfg.get("entity_type") == "candidate" and not cfg.get("artifact_key"):
+        return
     raise ValueError(f"unsupported craft task_key for dispatch persist: {task_key!r}")
 
 
-def _requested_stage_failure_target(primary_state: str, current_state: str) -> str:
-    """Primary → retry_state; already on retry (or other) → error_state."""
-    cfg = CANDIDATE_STATES[primary_state]
-    retry = cfg["retry_state"]
-    error = cfg["error_state"]
-    if current_state == primary_state:
-        return retry
-    return error
+def _requested_stage_failure_target(primary_state: str, current_state: str, task_key: str) -> str:
+    """Primary → retry_state; already on retry → the failing hop's ERROR_<HOP>."""
+    # Retry-only dispatch rows pass {base}_RETRY; resolve to the base, then compare against it
+    # so a failure while on retry lands on the hop's error_state, never back into retry (AST-642).
+    primary = registered_base(CANDIDATE_STATES, primary_state) or primary_state
+    if current_state == primary:
+        return CANDIDATE_STATES[primary]["retry_state"]
+    return TASK_CONFIG[task_key]["error_state"]
 
 
 async def run_requested_artifacts_dispatch(
@@ -3633,10 +4293,18 @@ async def run_requested_artifacts_dispatch(
     candidate = database.get_candidate(candidate_id)
     if not candidate:
         return {**zero, "total_processed": 1, "total_errors": 1}
-    stage = CANDIDATE_STAGE_DISPATCH["requested_artifacts"]
-    raw_trigger = (trigger_state or "").strip() or stage["trigger_state"]
-    parsed_trig = parse_dispatch_hop_label(raw_trigger)
+    # Resolve stage from bare trigger; omit → requested_artifacts. Non-stage bare keeps
+    # that stage's defaults so the unregistered-trigger fail path (warn, no hop ERROR) still works.
+    raw_trigger = (trigger_state or "").strip()
+    parsed_trig = parse_dispatch_hop_label(raw_trigger) if raw_trigger else None
     bare_trigger = parsed_trig[0] if parsed_trig else raw_trigger
+    stage_triggers = {e["trigger_state"] for e in CANDIDATE_STAGE_DISPATCH.values()}
+    if bare_trigger in stage_triggers:
+        stage = _candidate_stage_for_trigger(bare_trigger)
+    else:
+        stage = CANDIDATE_STAGE_DISPATCH["requested_artifacts"]
+        if not bare_trigger:
+            bare_trigger = stage["trigger_state"]
     pass_state = stage["pass_state"]
     current = (candidate.get("state") or "").strip()
     start_key = (task_key or "").strip() or (stage.get("task_key") or "").strip()
@@ -3657,6 +4325,21 @@ async def run_requested_artifacts_dispatch(
             ctx=task_ctx,
             debug=debug,
         )
+        if response and response.get("empty_tokens") and is_registered_state(CANDIDATE_STATES, bare_trigger):
+            # AST-2000: data defect — the failing hop's own error_state, never retry.
+            err_state = TASK_CONFIG[(response.get("empty_token_task") or start_key)]["error_state"]
+            logger.debug("empty_tokens route candidate_id=%s dest=%s", candidate_id, err_state)
+            try:
+                transition_candidate_state(candidate_id, err_state)
+            except ValueError as exc:
+                # Caught here so it can't reach the broad except below, whose target can be a retry holding.
+                logger.warning(
+                    "%s skipped error_state %s — %s\n  The candidate is still counted as an error",
+                    candidate_id,
+                    err_state,
+                    exc,
+                )
+            return {**zero, "total_processed": 1, "total_errors": 1}
         if not response or not response.get("success"):
             raise RuntimeError(
                 (response or {}).get("error") if response else f"do_task None for {start_key}"
@@ -3665,18 +4348,26 @@ async def run_requested_artifacts_dispatch(
             transition_candidate_state(candidate_id, pass_state)
         return {"total_processed": 1, "total_passed": 1, "total_failed": 0, "total_errors": 0}
     except Exception as e:
-        logger.error("run_requested_artifacts_dispatch failed candidate_id=%s error=%s", candidate_id, e)
+        msg = "run_requested_artifacts_dispatch failed candidate_id=%s error=%s"
         # AST-1388: leave last successful compound hop label; bare trigger still → retry/error.
         after = ((database.get_candidate(candidate_id) or {}).get("state") or "").strip()
         parsed = parse_dispatch_hop_label(after)
+        # Held on a hop label / unregistered trigger: still claimable, not an error (AST-1839).
         if parsed and parsed[0] == bare_trigger:
+            logger.warning(msg, candidate_id, e)
             return {"total_processed": 1, "total_passed": 0, "total_failed": 1, "total_errors": 0}
-        if bare_trigger not in CANDIDATE_STATES:
+        if not is_registered_state(CANDIDATE_STATES, bare_trigger):
+            logger.warning(msg, candidate_id, e)
             return {"total_processed": 1, "total_passed": 0, "total_failed": 1, "total_errors": 0}
-        target = _requested_stage_failure_target(bare_trigger, current)
+        # A held hop label returned above, so the failure is on the entry hop (start_key).
+        target = _requested_stage_failure_target(bare_trigger, current, start_key)
+        # AST-1839: retry holding → WARNING, uncounted; error_state (out of the holding) → ERROR, counted.
+        (logger.warning if retry_base(target) else logger.error)(msg + " -> %s", candidate_id, e, target)
         try:
             transition_candidate_state(candidate_id, target)
         except ValueError:
+            return {"total_processed": 1, "total_passed": 0, "total_failed": 0, "total_errors": 1}
+        if not retry_base(target):
             return {"total_processed": 1, "total_passed": 0, "total_failed": 0, "total_errors": 1}
         return {"total_processed": 1, "total_passed": 0, "total_failed": 1, "total_errors": 0}
 
@@ -3684,24 +4375,34 @@ async def run_requested_artifacts_dispatch(
 def run_session_resume_parse(
     resume_text: str,
     *,
+    candidate_id: Optional[str] = None,
     debug: bool = False,
 ) -> Tuple[Dict[str, Any], int]:
-    """Parse pasted resume text via simple_resume_parse (Ruth / Little); no candidate bind/persist.
+    """Parse pasted resume text via simple_resume_parse (Ruth / Little) on the selected candidate's API keys; no candidate bind/persist.
 
-    Returns (json_body, http_status) for Admin session-resume paste (AST-986 / AST-1038).
+    Returns (json_body, http_status) for Admin session-resume paste (AST-986 / AST-1038 / AST-1878).
     """
     if not isinstance(resume_text, str) or not resume_text.strip():
         return ({"success": False, "error": "resume_text is required"}, 400)
+    cid = (candidate_id or "").strip()
+    if not cid:
+        return ({"success": False, "error": "candidate_id is required"}, 400)
+    cand = database.get_candidate(cid)
+    if not cand:
+        return ({"success": False, "error": f"Candidate not found: {cid}"}, 404)
 
     logger.set_debug_flag(debug)
     paste = resume_text.strip()
     structure = default_resume_structure()
-    # Synthetic token ctx only — no astral_candidate_id (do not load a real candidate).
+    # Synthetic token ctx: selected candidate's keys + astral_candidate_id for agent cache isolation (AST-1639).
+    # Still no bind/persist — ledger stays on the "session" sentinel; save_candidate is never called here.
     ctx = {
+        "astral_candidate_id": cid,
         "candidate_data": {
             "context": {"raw_resume": paste},
             "artifacts": {"resume_structure": structure},
         },
+        "candidate_api_keys": dict(cand.get("candidate_api_keys") or {}),
     }
 
     ledger_task_key = "user-session-parse-resume"
@@ -3883,6 +4584,7 @@ def run_candidate_artifact_generation(
             batch_size=1,
         )
         log_batch_id.set(batch_id)
+        log_candidate_id.set(candidate_id)
         logger.info(
             "UI generate started task_key=%r ledger_task_key=%s batch_id=%s candidate_id=%s",
             task_key,
@@ -3997,6 +4699,12 @@ def run_candidate_artifact_generation(
                 if isinstance(crit, list):
                     parsed_response["criteria"] = _merge_embedded_evaluate_jd_criteria(crit)
                     criteria_count = len(parsed_response["criteria"])
+            # AST-1881: prepend RC into craft_prefilter_rubric generate response/stash.
+            elif task_key == "craft_prefilter_rubric" and isinstance(parsed_response, dict):
+                crit = parsed_response.get("criteria")
+                if isinstance(crit, list):
+                    parsed_response["criteria"] = _merge_embedded_company_prefilter_criteria(crit)
+                    criteria_count = len(parsed_response["criteria"])
             if not _stash_pending_craft_generation(
                 candidate_id, task_key, response_batch_id, parsed_response
             ):
@@ -4087,3 +4795,4 @@ def run_candidate_artifact_generation(
     finally:
         flush_log_buffer()
         log_batch_id.set(None)
+        log_candidate_id.set(None)

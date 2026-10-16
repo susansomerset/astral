@@ -49,7 +49,7 @@ describe("ContextTextPage", () => {
       if (url === "/api/state_ui_manifest") {
         return Promise.reject(new Error("use default manifest"))
       }
-      if (url === "/api/system/ui_config") {
+      if (url === "/api/ui_config") {
         return { json: async () => ({ column_types: {} }) } as Response
       }
       throw new Error(`unexpected api call: ${url}`)

@@ -20,7 +20,7 @@ class TestAst1071ContactSkillsApi:
             "contact_skills",
             MagicMock(
                 return_value={
-                    "save_candidate_profile": {
+                    "sample_skill": {
                         "entity": "candidate",
                         "write": True,
                         "description": "profile",
@@ -33,7 +33,7 @@ class TestAst1071ContactSkillsApi:
         assert resp.status_code == 200
         body = resp.get_json()
         assert "skills" in body
-        assert body["skills"]["save_candidate_profile"]["allowed_paths"] == ["profile.first"]
+        assert body["skills"]["sample_skill"]["allowed_paths"] == ["profile.first"]
 
     def test_run_skill_ok(
         self, contact_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
@@ -41,7 +41,7 @@ class TestAst1071ContactSkillsApi:
         run = MagicMock(
             return_value={
                 "ok": True,
-                "skill_key": "save_candidate_profile",
+                "skill_key": "sample_skill",
                 "astral_candidate_id": "c1",
                 "paths_written": ["profile.first"],
             }
@@ -49,14 +49,14 @@ class TestAst1071ContactSkillsApi:
         monkeypatch.setattr(contact_api, "run_contact_skill", run)
         monkeypatch.setattr(contact_api, "ui_llm_debug", MagicMock(return_value=False))
         resp = contact_client.post(
-            "/api/admin/contact/skills/save_candidate_profile",
+            "/api/admin/contact/skills/sample_skill",
             headers=auth_headers,
             json={"astral_candidate_id": "c1", "fields": {"profile.first": "Ada"}},
         )
         assert resp.status_code == 200
         assert resp.get_json()["ok"] is True
         run.assert_called_once_with(
-            "save_candidate_profile",
+            "sample_skill",
             astral_candidate_id="c1",
             fields={"profile.first": "Ada"},
             debug=False,
@@ -72,7 +72,7 @@ class TestAst1071ContactSkillsApi:
         )
         monkeypatch.setattr(contact_api, "ui_llm_debug", MagicMock(return_value=False))
         resp = contact_client.post(
-            "/api/admin/contact/skills/save_candidate_profile",
+            "/api/admin/contact/skills/sample_skill",
             headers=auth_headers,
             json={"astral_candidate_id": "c1", "fields": {"profile.middle": "X"}},
         )
@@ -83,7 +83,7 @@ class TestAst1071ContactSkillsApi:
         self, contact_client: FlaskClient, auth_headers: dict[str, str]
     ) -> None:
         resp = contact_client.post(
-            "/api/admin/contact/skills/save_candidate_profile",
+            "/api/admin/contact/skills/sample_skill",
             headers=auth_headers,
             json={"astral_candidate_id": "c1", "fields": ["nope"]},
         )
@@ -102,7 +102,7 @@ class TestAst1071ContactSkillsApi:
         warn = MagicMock()
         monkeypatch.setattr(contact_api.logger, "warning", warn)
         resp = contact_client.post(
-            "/api/admin/contact/skills/save_candidate_profile",
+            "/api/admin/contact/skills/sample_skill",
             headers=auth_headers,
             json={"astral_candidate_id": "c1", "fields": {"profile.first": "Ada"}},
         )
@@ -124,11 +124,31 @@ class TestAst1071ContactSkillsApi:
     def test_run_requires_auth(self, contact_client: FlaskClient) -> None:
         assert (
             contact_client.post(
-                "/api/admin/contact/skills/save_candidate_profile",
+                "/api/admin/contact/skills/sample_skill",
                 json={"astral_candidate_id": "c1", "fields": {}},
             ).status_code
             == 401
         )
+
+
+# Branches: real empty registry — list returns {}; any run key 400 before candidate lookup (AST-2061).
+class TestAst2061ContactSkillsApiEmptyRegistry:
+    def test_list_skills_empty(self, contact_client: FlaskClient, auth_headers: dict[str, str]) -> None:
+        resp = contact_client.get("/api/admin/contact/skills", headers=auth_headers)
+        assert resp.status_code == 200
+        assert resp.get_json() == {"skills": {}}
+
+    def test_run_any_skill_400(
+        self, contact_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(contact_api, "ui_llm_debug", MagicMock(return_value=False))
+        resp = contact_client.post(
+            "/api/admin/contact/skills/sample_skill",
+            headers=auth_headers,
+            json={"astral_candidate_id": "c1", "fields": {"contact.contact_email": "x@evil.test"}},
+        )
+        assert resp.status_code == 400
+        assert resp.get_json() == {"error": "unknown contact skill: 'sample_skill'"}
 
 
 # Branches: GET/PUT listen payload; 400; auth 401/403 (AST-1067).

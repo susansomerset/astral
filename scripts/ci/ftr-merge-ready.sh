@@ -43,11 +43,13 @@ list_ftrs() {
 }
 
 conflict_files_for_ftr() {
-  local ftr="$1" base out
-  base=$(git merge-base origin/dev "origin/$ftr")
-  out=$(git merge-tree "$base" "origin/$ftr" origin/dev 2>&1) || true
-  if echo "$out" | grep -qE 'changed in both|<<<<<<<'; then
-    echo "$out" | awk '/^changed in both/{getline; if ($NF ~ /\//) print $NF}'
+  local ftr="$1" out rc=0
+  # Real merge simulation (git >= 2.38): exit 0 = clean, 1 = conflicts, >1 = error. The old
+  # `merge-tree <base> a b` form flagged any file edited on both sides, even when it auto-merged.
+  out=$(git merge-tree --write-tree --name-only "origin/$ftr" origin/dev 2>&1) || rc=$?
+  if [[ "$rc" -ne 0 ]]; then
+    # Line 1 is the tree id; conflicted paths follow until the first blank line (errors print as-is).
+    echo "$out" | sed '1d;/^$/,$d'
     return 1
   fi
   return 0

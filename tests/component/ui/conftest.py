@@ -29,17 +29,6 @@ def _ui_fail_closed_deploy_env(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture(autouse=True)
-def _ui_default_anthropic_llm_provider(monkeypatch: pytest.MonkeyPatch) -> None:
-    from src.utils import config as cfg_mod
-
-    monkeypatch.setattr(cfg_mod, "get_active_llm_provider", lambda: "anthropic")
-    import importlib
-
-    mod = importlib.import_module("src.ui.api.api_admin")
-    monkeypatch.setattr(mod, "get_active_llm_provider", lambda: "anthropic")
-
-
-@pytest.fixture(autouse=True)
 def _register_mock_authenticator(monkeypatch: pytest.MonkeyPatch) -> None:
     """AST-611: Stytch validate_bearer_token stub for UI route tests."""
     from src.utils import auth as utils_auth
@@ -86,6 +75,8 @@ _DB_SCHEMA_FLAGS = (
     "_company_job_scan_schema_ensured",
     "_surfer_batch_schema_ensured",  # AST-1229
     "_artifact_schema_ensured",  # AST-1352 / AST-1364 / singular+cid AST-1597
+    "_rubric_vector_schema_ensured",  # AST-2067: rubric version routes on fresh DBs
+    "_web_data_schema_ensured",  # AST-2133: composed JD resolves web_data on fresh DBs
     "_agent_responses_table_sunset_applied",
     "_entity_agent_responses_column_sunset_applied",
     "_agent_schema_ensured",
@@ -98,6 +89,7 @@ _DB_SCHEMA_FLAGS = (
     "_company_search_terms_schema_ensured",
     "_company_search_terms_migration_swept",
     "_intake_session_schema_ensured",
+    "_meteorite_schema_ensured",  # AST-1974: nav meteorite count reads the table on fresh DBs
 )
 
 

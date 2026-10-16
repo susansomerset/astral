@@ -123,7 +123,7 @@ describe("CompaniesWatchList", () => {
       if (url === "/api/state_ui_manifest") {
         return Promise.reject(new Error("use default manifest"))
       }
-      if (url === "/api/system/ui_config") {
+      if (url === "/api/ui_config") {
         return jsonResponse({ column_types: {} })
       }
       throw new Error(url)

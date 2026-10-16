@@ -8,12 +8,12 @@ import struct
 from flask import Blueprint, g, jsonify, request
 
 from ui.auth import require_auth, require_admin
+from ui.api_errors import server_error_from_exception
 from src.core.candidate import (
     _clear_pending_craft_generation,
     _stash_pending_craft_generation,
     apply_company_search_terms_save,
     apply_rubric_vectors_save,
-    clear_candidate_api_key,
     company_search_terms_joined_text,
     company_search_terms_lines_for_candidate,
     delete_candidate as core_delete_candidate,
@@ -21,6 +21,7 @@ from src.core.candidate import (
     filter_base_resume_to_structure,
     ingest_legacy_label_content_base_resume,
     get_candidate,
+    get_candidate_id_for_query,
     get_pending_craft_generation,
     hydrate_operative_base_resume_for_response,
     hydrate_operative_bio_summary_for_response,
@@ -36,30 +37,26 @@ from src.core.candidate import (
     IllegalCandidateTransition,
     initiate_candidate,
     list_candidates as core_list_candidates,
+    list_candidate_artifact_versions,
+    list_rubric_criterion_versions,
     normalize_resume_structure,
     normalize_rubric_artifacts_on_save,
     prepare_resume_structure_sections_for_save,
     resolve_resume_structure,
+    resume_structure_editor_payload,
     run_candidate_artifact_generation,
-    save_candidate_admin,
     save_candidate_data,
+    set_candidate_artifact_current,
+    set_rubric_criterion_current,
     start_requested_artifacts,
     transition_candidate_state,
+    update_candidate_api_keys,
 )
 from src.core.contact import resolve_pinned_base_resume
 from src.utils.config import (
     CANDIDATE_STATES,
     CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY,
-    RESUME_STRUCTURE_BODY_FORMATS,
-    RESUME_STRUCTURE_CONTACT_SECTION_IDS,
-    RESUME_STRUCTURE_EXTRA_ID_PATTERN,
-    RESUME_STRUCTURE_NEW_EXTRA_DEFAULT_FORMAT,
-    RESUME_STRUCTURE_PAGE_BREAK_DEFAULT_BY_ID,
-    RESUME_STRUCTURE_PAGE_BREAK_POLICIES,
-    RESUME_STRUCTURE_PAGE_BREAK_POLICY_DEFAULT,
-    RESUME_STRUCTURE_PAGE_BREAK_POLICY_LABELS,
-    RESUME_STRUCTURE_REQUIRED_SECTION_IDS,
-    RESUME_STRUCTURE_RESERVED_EXTRA_IDS,
+    LLM_SERVER_CONFIG,
     RUBRIC_CRITERIA_ARTIFACT_KEYS,
     TASK_CONFIG,
     UI_CONFIG,
@@ -121,9 +118,13 @@ def _validate_cover_letter_signature_image(value) -> None:
 
 
 def _sanitize_candidate(c: dict) -> dict:
-    """Strip ciphertext, inject has_api_key boolean. Applied to every outbound candidate."""
-    c["has_api_key"] = bool(c.get("candidate_api_key"))
+    """Strip every key (plaintext map + legacy ciphertext); expose the api_keys array as [{server, label}]. Applied to every outbound candidate."""
+    keys = c.pop("candidate_api_keys", None) or {}
     c.pop("candidate_api_key", None)
+    # One entry per stored key, in array order (AST-1901) — no fixed per-server slots, never the key itself.
+    c["api_keys"] = [
+        {"server": sid, "label": (LLM_SERVER_CONFIG.get(sid) or {}).get("label", sid)} for sid in keys
+    ]
     return c
 
 
@@ -141,6 +142,18 @@ def get_candidate_states():
     return jsonify(list(CANDIDATE_STATES.keys()))
 
 
+# Must be registered before the /<candidate_id> catch-all
+@candidate_bp.route("/by_email")
+@require_auth
+def get_candidate_by_email():
+    """AST-1768: unique candidate id whose profile emails match ?email= (login bind)."""
+    email = (request.args.get("email") or "").strip()
+    if "@" not in email:
+        return jsonify({"error": "email required"}), 400
+    # Unique hit only; no/ambiguous match → null so the SPA keeps its stored selection.
+    return jsonify({"candidate_id": get_candidate_id_for_query(email)})
+
+
 @candidate_bp.route("/<candidate_id>/resume_structure")
 @require_auth
 def get_candidate_resume_structure(candidate_id):
@@ -153,56 +166,7 @@ def get_candidate_resume_structure(candidate_id):
         resolve_resume_structure(cd),
         artifacts.get("base_resume"),
     )
-    accent = resolved.get("accent_color")
-    if not isinstance(accent, str):
-        accent = None
-    required = set(RESUME_STRUCTURE_REQUIRED_SECTION_IDS)
-    contact = set(RESUME_STRUCTURE_CONTACT_SECTION_IDS)
-    all_sections = []
-    sections_map = resolved.get("sections") if isinstance(resolved.get("sections"), dict) else {}
-    for sid, spec in sorted(
-        sections_map.items(),
-        key=lambda kv: (
-            kv[1].get("order", 0) if isinstance(kv[1], dict) and isinstance(kv[1].get("order"), int) else 0,
-            kv[0],
-        ),
-    ):
-        if not isinstance(spec, dict):
-            continue
-        all_sections.append({
-            "id": sid,
-            "title": spec.get("title") or "",
-            "enabled": bool(spec.get("enabled")),
-            "order": spec.get("order") if isinstance(spec.get("order"), int) else 0,
-            "format": spec.get("format") if isinstance(spec.get("format"), str) else None,
-            "job_agent_editable": bool(spec.get("job_agent_editable")),
-            "required": sid in required,
-            "format_locked": sid == "experience" or sid in contact,
-            "page_break_policy": (
-                spec["page_break_policy"]
-                if isinstance(spec.get("page_break_policy"), str)
-                and spec["page_break_policy"] in RESUME_STRUCTURE_PAGE_BREAK_POLICIES
-                else RESUME_STRUCTURE_PAGE_BREAK_POLICY_DEFAULT
-            ),
-        })
-    catalog = {
-        "body_formats": list(RESUME_STRUCTURE_BODY_FORMATS),
-        "required_ids": list(RESUME_STRUCTURE_REQUIRED_SECTION_IDS),
-        "contact_ids": list(RESUME_STRUCTURE_CONTACT_SECTION_IDS),
-        "extra_id_pattern": RESUME_STRUCTURE_EXTRA_ID_PATTERN,
-        "reserved_extra_ids": list(RESUME_STRUCTURE_RESERVED_EXTRA_IDS),
-        "new_extra_default_format": RESUME_STRUCTURE_NEW_EXTRA_DEFAULT_FORMAT,
-        "page_break_policies": list(RESUME_STRUCTURE_PAGE_BREAK_POLICIES),
-        "page_break_policy_labels": dict(RESUME_STRUCTURE_PAGE_BREAK_POLICY_LABELS),
-        "page_break_policy_default": RESUME_STRUCTURE_PAGE_BREAK_POLICY_DEFAULT,
-        "page_break_policy_defaults": dict(RESUME_STRUCTURE_PAGE_BREAK_DEFAULT_BY_ID),
-    }
-    return jsonify({
-        "sections": enabled_resume_structure_sections(resolved),
-        "all_sections": all_sections,
-        "accent_color": accent,
-        "catalog": catalog,
-    })
+    return jsonify(resume_structure_editor_payload(resolved))
 
 
 @candidate_bp.route("/<candidate_id>")
@@ -245,6 +209,112 @@ def get_operative_base_resume_api(candidate_id):
     return jsonify({"base_resume": body})
 
 
+@candidate_bp.route("/<candidate_id>/artifacts/<artifact_key>/versions", methods=["GET"])
+@require_auth
+def get_candidate_artifact_versions_api(candidate_id, artifact_key):
+    """AST-2067: chronological version map for a candidate catalog key (oldest first)."""
+    if not get_candidate(candidate_id):
+        return jsonify({"error": f"Candidate not found: {candidate_id}"}), 404
+    try:
+        versions = list_candidate_artifact_versions(candidate_id, artifact_key)
+    except ValueError as exc:
+        # Unknown / non-candidate catalog key — routed reject, no log.
+        return jsonify({"error": str(exc)}), 400
+    except Exception as exc:
+        logger.exception(
+            "%s | api %s failed\n  %s: %s\n  Returning 500; the editor shows no version arrows",
+            candidate_id,
+            f"/api/candidates/{candidate_id}/artifacts/{artifact_key}/versions",
+            type(exc).__name__,
+            exc,
+        )
+        return server_error_from_exception(exc)
+    return jsonify({"versions": versions})
+
+
+@candidate_bp.route("/<candidate_id>/artifacts/<artifact_key>/current", methods=["PUT"])
+@require_auth
+def put_candidate_artifact_current_api(candidate_id, artifact_key):
+    """AST-2067: move current to a named version of a candidate catalog key; body untouched."""
+    if not get_candidate(candidate_id):
+        return jsonify({"error": f"Candidate not found: {candidate_id}"}), 404
+    body = request.get_json(silent=True)
+    uid = body.get("artifact_uuid") if isinstance(body, dict) else None
+    if not isinstance(uid, str) or not uid.strip():
+        return jsonify({"error": "artifact_uuid required"}), 400
+    route = f"/api/candidates/{candidate_id}/artifacts/{artifact_key}/current"
+    try:
+        current = set_candidate_artifact_current(candidate_id, artifact_key, uid)
+        versions = list_candidate_artifact_versions(candidate_id, artifact_key)
+    except ValueError as exc:
+        # Bad key, or uuid outside this key/candidate (cross-key guard) — data layer rolled back.
+        return jsonify({"error": str(exc)}), 400
+    except Exception as exc:
+        logger.exception(
+            "%s | api %s failed\n  %s: %s\n  Returning 500; the editor keeps its loaded version",
+            candidate_id,
+            route,
+            type(exc).__name__,
+            exc,
+        )
+        return server_error_from_exception(exc)
+    logger.info("%s | api %s completed: PUT %s", candidate_id, route, 200)
+    return jsonify({"current": current, "versions": versions})
+
+
+@candidate_bp.route("/<candidate_id>/rubric/<artifact_key>/<code>/versions", methods=["GET"])
+@require_auth
+def get_rubric_criterion_versions_api(candidate_id, artifact_key, code):
+    """AST-2067: chronological version map for one rubric criterion (shared code, oldest first)."""
+    if not get_candidate(candidate_id):
+        return jsonify({"error": f"Candidate not found: {candidate_id}"}), 404
+    try:
+        versions = list_rubric_criterion_versions(candidate_id, artifact_key, code)
+    except ValueError as exc:
+        # Not a rubric criteria key — routed reject, no log.
+        return jsonify({"error": str(exc)}), 400
+    except Exception as exc:
+        logger.exception(
+            "%s | api %s failed\n  %s: %s\n  Returning 500; the criterion shows no version arrows",
+            candidate_id,
+            f"/api/candidates/{candidate_id}/rubric/{artifact_key}/{code}/versions",
+            type(exc).__name__,
+            exc,
+        )
+        return server_error_from_exception(exc)
+    return jsonify({"versions": versions})
+
+
+@candidate_bp.route("/<candidate_id>/rubric/<artifact_key>/<code>/current", methods=["PUT"])
+@require_auth
+def put_rubric_criterion_current_api(candidate_id, artifact_key, code):
+    """AST-2067: move current to a named version of one rubric criterion; other codes untouched."""
+    if not get_candidate(candidate_id):
+        return jsonify({"error": f"Candidate not found: {candidate_id}"}), 404
+    body = request.get_json(silent=True)
+    uid = body.get("rubric_vector_uuid") if isinstance(body, dict) else None
+    if not isinstance(uid, str) or not uid.strip():
+        return jsonify({"error": "rubric_vector_uuid required"}), 400
+    route = f"/api/candidates/{candidate_id}/rubric/{artifact_key}/{code}/current"
+    try:
+        current = set_rubric_criterion_current(candidate_id, artifact_key, code, uid)
+        versions = list_rubric_criterion_versions(candidate_id, artifact_key, code)
+    except ValueError as exc:
+        # Bad key, or uuid outside this candidate/task/code (cross-key guard) — data layer rolled back.
+        return jsonify({"error": str(exc)}), 400
+    except Exception as exc:
+        logger.exception(
+            "%s | api %s failed\n  %s: %s\n  Returning 500; the criterion keeps its loaded version",
+            candidate_id,
+            route,
+            type(exc).__name__,
+            exc,
+        )
+        return server_error_from_exception(exc)
+    logger.info("%s | api %s completed: PUT %s", candidate_id, route, 200)
+    return jsonify({"current": current, "versions": versions})
+
+
 @candidate_bp.route("", methods=["POST"])
 @require_admin
 def create_candidate():
@@ -272,7 +342,7 @@ def create_candidate():
 def update_candidate_data(candidate_id):
     """Update candidate_data fields (merge=True). If 'state' is in the body,
     applies it via transition_candidate_state (fail closed on illegal hops).
-    api_key handling: non-empty string = set/replace, empty string = clear to NULL."""
+    api_keys handling ([{server, key}]): non-empty key = set/replace that server's entry, "" = remove it; duplicate servers → 400."""
     body = request.get_json(silent=True) or {}
     if not body:
         return jsonify({"error": "No data provided"}), 400
@@ -289,12 +359,24 @@ def update_candidate_data(candidate_id):
     resume_structure_saved = False
     try:
         state_override = body.pop("state", None)
-        api_key = body.pop("api_key", None)
+        api_keys = body.pop("api_keys", None)
         confirm_override = body.pop("confirm_state_override", False)
         if not g.user.get("is_admin") and (
-            state_override is not None or api_key is not None or confirm_override is True
+            state_override is not None or api_keys is not None or confirm_override is True
         ):
             return jsonify({"error": "Admin access required"}), 403
+        if api_keys is not None:
+            if not isinstance(api_keys, list):
+                return jsonify({"error": "api_keys must be an array of {server, key}"}), 400
+            seen_servers: set = set()
+            for e in api_keys:
+                sid = e.get("server") if isinstance(e, dict) else None
+                if sid not in LLM_SERVER_CONFIG or not isinstance(e.get("key"), str):
+                    # Name the server only — never echo a submitted key.
+                    return jsonify({"error": f"Invalid api_keys entry for server {sid!r}"}), 400
+                if sid in seen_servers:
+                    return jsonify({"error": f"Duplicate api_keys entry for server {sid!r}"}), 400
+                seen_servers.add(sid)
         base_resume_in_save = False
         pilot_body = None
         resume_structure_body = None
@@ -473,11 +555,9 @@ def update_candidate_data(candidate_id):
                     }), 400
                 except ValueError as e:
                     return jsonify({"error": str(e)}), 400
-        if api_key is not None:
-            if api_key.strip():
-                save_candidate_admin(candidate_id, candidate_api_key=api_key.strip())
-            else:
-                clear_candidate_api_key(candidate_id)
+        # Edits land in the candidate's api_keys array; the data layer encrypts (AST-1901).
+        if api_keys:
+            update_candidate_api_keys(candidate_id, [{"server": e["server"], "key": e["key"].strip()} for e in api_keys])
     except Exception as e:
         # Failed Save: keep submitted criteria recoverable via GET …/pending
         logger.exception(
@@ -525,6 +605,17 @@ def update_candidate_data(candidate_id):
             200,
         )
     if resume_structure_saved:
+        logger.info(
+            "%s | api %s completed: PUT %s",
+            candidate_id,
+            f"/api/candidates/{candidate_id}/data",
+            200,
+        )
+    # stat.logging.info.api: a keys-only save still completed work — one line, not doubled when an artifact line fired.
+    if api_keys and not (
+        strengths_saved or priorities_saved or deal_breakers_saved or bio_summary_saved
+        or ideal_day_saved or backstory_saved or writing_preferences_saved or resume_structure_saved
+    ):
         logger.info(
             "%s | api %s completed: PUT %s",
             candidate_id,

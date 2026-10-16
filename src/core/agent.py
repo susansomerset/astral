@@ -17,6 +17,7 @@ uses the existing schema path — no new decode helper.
 Layer: core → data, external, utils  (never ← ui)
 """
 
+import asyncio
 import functools
 import hashlib
 import inspect
@@ -44,22 +45,20 @@ from src.data.database import (
     list_rubric_vector_uuid_by_code,
 )
 from src.core.timesheets import record_timesheet_entry
+from src.core.grade_schema import build_grade_tool_schema, grade_row_ids, hydrate_grade_tool_input
 from src.external.anthropic import send_to_anthropic, getTimestampPrefix
 from src.utils.llm_external import (
     extract_api_response_text,
-    is_provider_balance_refusal,
     normalize_provider_error,
 )
-from src.external.deepseek import send_to_deepseek
+from src.external.llm_compat import send_to_llm_compat
 from src.utils.config import (
     TASK_CONFIG, BASE_SCHEMA, BLOCK_TYPES, ASTRAL_CONFIG, BUILD_CONFIG,
     INFLOW_CONFIG,
-    resolve_tokens, get_model, CHARS_PER_TOKEN, DEEPSEEK_MODEL_PRICING,
+    resolve_tokens, CHARS_PER_TOKEN,
     chain_context_selected_agent,
-    get_active_llm_provider,
-    resolve_brain_setting_to_anthropic_agent_key,
-    resolve_brain_setting_to_deepseek_tier_meta,
-    deepseek_brain_max_tokens_floor,
+    get_llm_server,
+    resolve_agent_settings,
     CALLER_HOP_TOKEN_NAMES,
     ENTITY_TYPES,
     _CRAFT_RESUME_NORMALIZE_TASK_KEYS,
@@ -68,11 +67,8 @@ from src.utils.config import (
     _TOKEN_RE,
     list_artifact_keys_in_prompt_texts,
     RUBRIC_FEEDBACK_CONFIG,
-    CRAFT_RUBRIC_MAX_TOKENS,
-    CRAFT_RUBRIC_UI_TASK_KEYS,
     is_vector_feedback_task,
     is_conversational_task,
-    CONTACT_ESTELLE_CONFIG,
     CONVERSATIONAL_PERFORMANCE_SCHEMA,
     rubric_owner_task_key,
     JOB_ARTIFACT_AGENT_DATA_PIN_BY_TASK,
@@ -84,8 +80,11 @@ from src.utils.rubric_feedback import (
     normalize_vector_reviews_raw,
     parse_vector_reviews_diagnostic,
 )
-from src.utils.formatting import clean_encoded_agent_payload, coerce_grades_encoded_json_parse
-from src.utils.logging import flush_log_buffer, get_logger, log_batch_id, log_debug
+from src.utils.formatting import (
+    hydrate_entity_labels,
+    split_entity_segments,
+)
+from src.utils.logging import flush_log_buffer, get_logger, log_batch_id, log_candidate_id, log_debug
 
 logger = get_logger(__name__)
 
@@ -106,18 +105,22 @@ def _with_log_debug(fn):
     return wrapper
 
 
-def _warn_hop_no_success(task_key: str, why: str) -> None:
+def _warn_hop_no_success(task_key: str, why: str, envelope: Any = None) -> None:
     logger.warning(
         "%s skipped — %s\n  This hop is not persisting a success RESPONSE",
         task_key,
         why,
     )
+    # A failed/malformed agent_performance envelope: full detail at DEBUG only.
+    if envelope is not None:
+        perf = envelope.get("agent_performance", envelope) if isinstance(envelope, dict) else envelope
+        logger.debug("%s failed envelope: agent_performance=%s", task_key, perf)
 
 
 def _log_swallowed_agent_data(who: Any, what: str, exc: Optional[BaseException] = None) -> None:
     if exc is None:
         exc = sys.exc_info()[1]
-    logger.exception(
+    logger.error_exc(
         "%s | %s\n  %s: %s\n  Continuing without that agent_data row",
         who or "-",
         what,
@@ -129,51 +132,10 @@ def _log_swallowed_agent_data(who: Any, what: str, exc: Optional[BaseException] 
 # Sentinel: production _store_prompt_blocks passes four cache slots; pytest uses legacy ``cache_content=``.
 _PB_SLOT_OMIT = object()
 
-# Batch encoded consult dispatch: models must return the usual JSON envelope, not bare compact lines (AST-501 / AST-503).
-_STRICT_ENCODED_BATCH_CONSULT_KEYS = frozenset({
-    "qualify_job_listings",
-    "evaluate_jd",
-    "evaluate_meteorite",
-    "grade_do",
-    "grade_get",
-    "grade_like",
-    "meteorite_like",
-})
-
-
-def _is_strict_encoded_batch_consult(task_key: str) -> bool:
-    """True when task_key (or its content master) is in the strict encoded-batch set."""
-    return resolve_task_key_for_content(task_key) in _STRICT_ENCODED_BATCH_CONSULT_KEYS
-
-
-def _strict_encoded_batch_consult_envelope_err(task_key: str, parsed: Any) -> Optional[str]:
-    """Return error detail if encoded-batch consult response bypasses envelope rules; otherwise None."""
-    if not _is_strict_encoded_batch_consult(task_key) or parsed is None:
-        return None
-    if isinstance(parsed, str):
-        return (
-            "Encoded batch consult tasks require JSON with agent_performance "
-            "and agent_payload keys; bare text / compact lines alone are rejected"
-        )
-    if not isinstance(parsed, dict):
-        return "Response must be the standard JSON envelope object"
-    perf = parsed.get("agent_performance")
-    apl = parsed.get("agent_payload")
-    if perf is None or apl is None:
-        return "Response must include non-null agent_performance and agent_payload (standard envelope)"
-    if isinstance(apl, dict):
-        return "agent_payload must be the newline-separated encoded string (or list of lines), not structured JSON rows"
-    return None
-
 
 # ---------------------------------------------------------------------------
-# _decode_payload — compact encoded payload → response_schema shape
+# Grade confidence validation on decoded payload shapes
 # ---------------------------------------------------------------------------
-
-# Built from config so valid_grades is the single source of truth for grade letters.
-_valid_grade_letters = "".join(ASTRAL_CONFIG.get("valid_grades", []))
-# Each segment: 2-char vector code + 1 grade letter + 1 confidence digit (0 for X, 1–5 otherwise).
-_GRADE_SEG = re.compile(rf"^[A-Z]{{2}}[{_valid_grade_letters}][0-5]$")
 
 
 def _validate_grade_confidence_list(grades: list, label: str) -> Optional[str]:
@@ -235,161 +197,6 @@ def _validate_grade_confidence_in_payload(parsed: Any, task_key: str) -> Optiona
     if isinstance(glist, list) and glist:
         return _validate_grade_confidence_list(glist, f"{task_key} grades")
     return None
-
-
-def _decode_payload(task_key: str, output_type: str, payload: str, ctx: Dict[str, Any]) -> Dict[str, Any]:
-    """Parse compact pipe-delimited agent_payload string into response_schema shape.
-
-    Grade segments: _GRADE_SEG = 2-char code + grade letter + confidence digit (AST-357).
-    pos → astral_job_id (job) or company_id (company entity_type) via ctx["batch_entities"].
-    Vector names: ctx["vector_labels"] maps 2-char codes to full rubric labels; falls back to
-    raw 2-char code when the map is absent or incomplete. _render_pass_fail ignores vector names;
-    _render_score requires rubric criteria with labels — callers guard with `if rubric_list` before scoring (AST-429).
-    "_meta" in output_type determines whether metadata fields after grades are accepted;
-    trailing non-grade content raises ValueError for grades-only types.
-    "grades_encoded_notes" (do/get/like): non-segment tail rejoins to job["notes"] only (optional).
-    """
-    with_meta = "_meta" in output_type or output_type == "grades_encoded_prefilter_links"
-    with_notes = output_type == "grades_encoded_notes"
-    batch_entities = (ctx or {}).get("batch_entities") or []
-    payload = clean_encoded_agent_payload(payload or "")
-    lines = [ln for ln in payload.splitlines() if ln.strip()]
-
-    # AST-880: link-type vet → results[{hit_index, grade, website, confidence}]
-    if output_type == "grades_encoded_vet_meta":
-        vet_cfg = INFLOW_CONFIG["vet"]
-        vector_code = vet_cfg["grade_vector_code"]
-        allowed_grades = vet_cfg["pass_grades"] | vet_cfg["fail_grades"]
-        valid_letters = set(ASTRAL_CONFIG.get("valid_grades", []))
-        result_rows: List[Dict[str, Any]] = []
-        logger.debug("Beginning decode loop on %s items", len(lines))
-        for line in lines:
-            fields = [f.strip() for f in line.split("|")]
-            try:
-                pos = int(fields[0])
-            except (ValueError, IndexError):
-                raise ValueError(f"[{task_key}] bad position field in line: {line!r}")
-            if pos < 0 or pos >= len(batch_entities):
-                logger.warning(
-                    "%s skipped — pos %s out of range for this batch\n  This line is not being graded",
-                    task_key,
-                    pos,
-                )
-                continue
-            if len(fields) < 3:
-                raise ValueError(f"[{task_key}] vet line needs pos|LT{{grade}}{{conf}}|website: {line!r}")
-            norm = "".join(ch for ch in fields[1] if ch not in " -:")
-            if not _GRADE_SEG.match(norm) or norm[:2] != vector_code:
-                raise ValueError(f"[{task_key}] bad LT grade segment in line: {line!r}")
-            grade, conf_d = norm[2], int(norm[3])
-            if conf_d not in (1, 2, 3, 4, 5):
-                raise ValueError(
-                    f"[{task_key}] non-X grade requires confidence 1-5, got {conf_d} in segment {norm!r} (line {line!r})"
-                )
-            website = "|".join(fields[2:]).strip()
-            if not website:
-                raise ValueError(f"[{task_key}] missing website on vet line: {line!r}")
-            if grade not in valid_letters or grade not in allowed_grades:
-                raise ValueError(f"[{task_key}] illegal vet grade {grade!r} in line: {line!r}")
-            result_rows.append({
-                "hit_index": pos,
-                "grade": grade,
-                "website": website,
-                "confidence": conf_d,
-            })
-        logger.debug("End decode loop after %s items", len(result_rows))
-        return {"results": result_rows}
-
-    # Company vs job id field / result array (AST-1723) — job path unchanged.
-    entity_type = (TASK_CONFIG.get(task_key) or {}).get("entity_type") or ""
-    company_decode = entity_type == "company"
-    id_key = "company_id" if company_decode else "astral_job_id"
-    array_key = "companies" if company_decode else "jobs"
-
-    vector_labels: Dict[str, str] = (ctx or {}).get("vector_labels") or {}
-    result_rows: List[Dict[str, Any]] = []
-    logger.debug("Beginning decode loop on %s items", len(lines))
-    for line in lines:
-        fields = [f.strip() for f in line.split("|")]
-        try:
-            pos = int(fields[0])
-        except (ValueError, IndexError):
-            raise ValueError(f"[{task_key}] bad position field in line: {line!r}")
-        if pos < 0 or pos >= len(batch_entities):
-            # Model occasionally 1-indexes at round-number boundaries (e.g. returns 100 for last item in batch of 100).
-            # Skip the line rather than killing the whole batch — the job stays in its current state and retries next run.
-            logger.warning(
-                "%s skipped — pos %s out of range for this batch\n  This line is not being graded",
-                task_key,
-                pos,
-            )
-            continue
-
-        grade_segs, meta = [], []
-        for f in fields[1:]:
-            # Strip ASCII space, hyphen, colon for grade match only; meta keeps pipe-stripped original (AST-483).
-            norm = "".join(ch for ch in f if ch not in " -:")
-            if _GRADE_SEG.match(norm):
-                grade_segs.append(norm)
-            else:
-                meta.append(f)
-
-        if meta and not with_meta and not with_notes:
-            raise ValueError(f"[{task_key}] unexpected trailing content in grades-only line: {line!r}")
-
-        codes = [seg[:2] for seg in grade_segs]
-        if len(codes) != len(set(codes)):
-            dupes = sorted({c for c in codes if codes.count(c) > 1})
-            raise ValueError(
-                f"[{task_key}] duplicate vector code {','.join(dupes)} in encoded line: {line!r}"
-            )
-
-        grade_rows: List[Dict[str, Any]] = []
-        for seg in grade_segs:
-            code, letter, conf_ch = seg[:2], seg[2], seg[3]
-            conf_d = int(conf_ch)
-            if letter == "X":
-                if conf_d != 0:
-                    raise ValueError(
-                        f"[{task_key}] grade X requires confidence digit 0, got {conf_d} in segment {seg!r} (line {line!r})"
-                    )
-            elif conf_d not in (1, 2, 3, 4, 5):
-                raise ValueError(
-                    f"[{task_key}] non-X grade requires confidence 1-5, got {conf_d} in segment {seg!r} (line {line!r})"
-                )
-            grade_rows.append(
-                {"vector": vector_labels.get(code, code), "grade": letter, "confidence": conf_d}
-            )
-
-        row: Dict[str, Any] = {
-            id_key: batch_entities[pos][id_key],
-            "grades": grade_rows,
-        }
-        if with_meta:
-            if output_type == "grades_encoded_prefilter_links":
-                from src.core.consult import _apply_prefilter_encoded_link_meta
-
-                _apply_prefilter_encoded_link_meta(row, meta)
-            else:
-                for i, key in enumerate(("company_job_id", "job_title", "job_link")):
-                    if i < len(meta):
-                        row[key] = meta[i] or None
-                # key:value extras → job_data dict (location, salary_range, company name, etc.)
-                if meta[3:]:
-                    row["job_data"] = {
-                        k.strip(): (v.strip() or None)
-                        for field in meta[3:] if ":" in field
-                        for k, v in [field.split(":", 1)]
-                    }
-        elif with_notes and meta:
-            joined = "|".join(meta).strip()
-            if joined:
-                row["notes"] = joined
-
-        result_rows.append(row)
-
-    logger.debug("End decode loop after %s items", len(result_rows))
-    return {array_key: result_rows}
 
 
 # ---------------------------------------------------------------------------
@@ -502,6 +309,8 @@ def resolved_task_system(
     chain_entry: bool = False,
     parent_task_key: Optional[str] = None,
     parent_caller_summary: Optional[Dict[str, str]] = None,
+    warn_on_empty: bool = True,
+    empty_tokens: Optional[list] = None,
 ) -> str:
     """System block text: per-task ``system_prompt`` when non-empty, else agent ``content`` (AST-305 / AST-361)."""
     raw = (agent_task_row.get("system_prompt") or "").strip()
@@ -515,6 +324,8 @@ def resolved_task_system(
         chain_entry=chain_entry,
         parent_task_key=parent_task_key,
         parent_caller_summary=parent_caller_summary,
+        warn_on_empty=warn_on_empty,
+        empty_tokens=empty_tokens,
     )
 
 
@@ -564,6 +375,8 @@ def resolved_agent_content(
     chain_entry: bool = False,
     parent_task_key: Optional[str] = None,
     parent_caller_summary: Optional[Dict[str, str]] = None,
+    warn_on_empty: bool = True,
+    empty_tokens: Optional[list] = None,
 ) -> str:
     """Resolve non-chain tokens in agent.content before SELECTED_AGENT injection (AST-631)."""
     return resolve_tokens(
@@ -575,6 +388,8 @@ def resolved_agent_content(
         chain_entry=chain_entry,
         parent_task_key=parent_task_key,
         parent_caller_summary=parent_caller_summary,
+        warn_on_empty=warn_on_empty,
+        empty_tokens=empty_tokens,
     )
 
 
@@ -588,6 +403,8 @@ def _chain_context(
     chain_entry: bool = False,
     parent_task_key: Optional[str] = None,
     parent_caller_summary: Optional[Dict[str, str]] = None,
+    warn_on_empty: bool = True,
+    empty_tokens: Optional[list] = None,
 ) -> Dict[str, str]:
     """Chain/runtime tokens for resolve_tokens (AST-304). SELECTED_AGENT = resolved agent body (AST-631)."""
     resolved_body = resolved_agent_content(
@@ -598,6 +415,8 @@ def _chain_context(
         chain_entry=chain_entry,
         parent_task_key=parent_task_key,
         parent_caller_summary=parent_caller_summary,
+        warn_on_empty=warn_on_empty,
+        empty_tokens=empty_tokens,
     )
     base = chain_context_selected_agent(resolved_body)
     if not extra:
@@ -693,23 +512,6 @@ def _referenced_caller_tokens(*texts: Optional[str]) -> set[str]:
             if name in CALLER_HOP_TOKEN_NAMES:
                 needed.add(name)
     return needed
-
-
-def _mid_chain_empty_caller_tokens(
-    *,
-    callee_task_key: str,
-    parent_task_key: str,
-    chain_context: Dict[str, str],
-    segment_texts: Dict[str, str],
-) -> Optional[str]:
-    needed = _referenced_caller_tokens(*segment_texts.values())
-    for tok in needed:
-        if (chain_context.get(tok) or "").strip() == "":
-            return (
-                f"Required caller token {{${tok}}} is empty on mid-chain hop "
-                f"(task={callee_task_key}, parent={parent_task_key})"
-            )
-    return None
 
 
 # AST-597: mid-chain resume — hydrate {$CALLER_*} from stored agent_data
@@ -1123,13 +925,12 @@ def _apply_dispatch_chain_hop_failure(
             "batch_released": batch_released,
         }
     err_state = (task_config.get("error_state") or "").strip()
-    balance_hold = provider_failed and is_provider_balance_refusal(
-        {"failure_class": failure_class}
-    )
+    # Only a missing job / missing candidate_data is unrecoverable. Provider failures (balance
+    # or otherwise) hold the last happy state / hop label; the finally release below lets the
+    # next dispatch sweep reclaim and retry the hop. No retry cap by design.
     hard = bool(err_state) and (
         "Job not found" in error
         or "Missing candidate_data" in error
-        or (provider_failed and not balance_hold)
     )
     apply_error_state = False
     batch_released = False
@@ -1170,15 +971,24 @@ def _build_context(task_key: str, task_config: Dict[str, Any], index: Optional[s
         return fmt.replace("{index}", index)
 
 
+# Leading run of AST-1639 cache-isolation markers, any id, no separators between them.
+_CANDIDATE_PREFIX_RUN_RE = re.compile(r"^(?:\[astral-[^\]]*\])+")
+
+
 def _system_text_with_candidate_prefix(system_content: str, candidate_id: Optional[str]) -> str:
-    """Leading cache-isolation marker: first system bytes are ``[astral-<id>]`` then body."""
+    """Leading cache-isolation marker: first system bytes are ``[astral-<id>]`` then body.
+
+    Idempotent: any leading ``[astral-…]`` run is replaced by exactly one ``[astral-<cid>]``.
+    """
     cid = (candidate_id or "").strip()
     if not cid:
         raise ValueError(
             "candidate id required for agent system prompt "
             "(no omit / no sentinel — every agent call must carry an Astral candidate id)"
         )
-    return f"[astral-{cid}]{system_content}"
+    # Idempotent: drop any existing leading marker run (any id) so re-fed text gets exactly one.
+    body = _CANDIDATE_PREFIX_RUN_RE.sub("", system_content, count=1)
+    return f"[astral-{cid}]{body}"
 
 
 def _assemble_blocks_seven_segment(
@@ -1191,9 +1001,11 @@ def _assemble_blocks_seven_segment(
     model_code: str,
     skip_cache: bool = False,
     candidate_id: Optional[str] = None,
+    structured: bool = False,
 ) -> tuple:
     """Build Anthropic payloads: ≤5 cached ``system`` blocks (system + non-empty cache A–D raw text)
-    plus user-role blocks for nocache + live + stamped user."""
+    plus user-role blocks for nocache + live + stamped user.
+    structured=True: grader call — timestamp prefix without the envelope sentence (AST-2172)."""
     system_blocks: List[Dict[str, Any]] = []
     user_blocks: List[Dict[str, Any]] = []
     runtime_prompt: List[Dict[str, Any]] = []
@@ -1232,7 +1044,7 @@ def _assemble_blocks_seven_segment(
         user_blocks.append({"type": "text", "text": live_text})
         _track("live_content", live_text, False)
 
-    full_user = getTimestampPrefix() + user_content
+    full_user = getTimestampPrefix(structured=structured) + user_content
     user_blocks.append({"type": "text", "text": full_user})
     _track("user_prompt", full_user, False)
 
@@ -1283,6 +1095,7 @@ def _store_prompt_blocks(
     cache_content: Any = _PB_SLOT_OMIT,
     debug: bool = False,
     entity_id: Optional[str] = None,  # AST-1431 prompt-row stamp tests (do_task / helper / Ad Hoc)
+    entity_ids: Optional[List[str]] = None,
 ) -> List[Dict[str, str]]:
     """Store prompt blocks in agent_data. Returns prompt_blocks refs for ledger.
     Production: ``caches_resolved_four``. Legacy tests/callers: ``cache_content`` (slot A only).
@@ -1314,7 +1127,8 @@ def _store_prompt_blocks(
         if nocache_content:
             segments.append(("NO_CACHE", nocache_content))
         if live_content:
-            segments.append(("NO_CACHE", live_content))
+            # AST-2029: stored copy only — wire blocks were already built from unhydrated live_content
+            segments.append(("NO_CACHE", hydrate_entity_labels(live_content, entity_ids)))
         if user_content:
             segments.append(("TASK", user_content))
     else:
@@ -1327,14 +1141,15 @@ def _store_prompt_blocks(
         if nocache_content:
             segments.append(("NO_CACHE", nocache_content))
         if live_content:
-            segments.append(("NO_CACHE", live_content))
+            # AST-2029: stored copy only — wire blocks were already built from unhydrated live_content
+            segments.append(("NO_CACHE", hydrate_entity_labels(live_content, entity_ids)))
         if user_content:
             segments.append(("TASK", user_content))
 
     prompt_blocks: List[Dict[str, str]] = []
     logger.debug(
-        "Calling _store_prompt_blocks: [entity_type=%s, task_key=%s, batch_id=%s, entity_id=%s, n=%s]",
-        entity_type, task_key, batch_id, entity_id, len(segments),
+        "Calling _store_prompt_blocks: [entity_type=%s, task_key=%s, batch_id=%s, entity_id=%s, n=%s, n_ids=%s]",
+        entity_type, task_key, batch_id, entity_id, len(segments), len(entity_ids or []),
     )
     for block_type, content in segments:
         prompt_blocks.append({"type": block_type, "id": _save(block_type, content)})
@@ -1491,7 +1306,7 @@ def _capture_rubric_vector_feedback(
             completed_at=completed_at,
         )
     except Exception as exc:
-        logger.exception(
+        logger.error_exc(
             "%s | %s\n  %s: %s\n  This hop is still success; vector feedback was not saved",
             index or "-",
             task_key,
@@ -1521,6 +1336,7 @@ def _store_response_block(
     index: Optional[str] = None,
     *,
     debug: bool = False,
+    entity_ids: Optional[List[str]] = None,
 ) -> str:
     """Store a RESPONSE block in agent_data. On success, response_text is the decoded/validated
     payload; on failure it is the raw API text (or error / parsed fallback). Returns the agent_data_id.
@@ -1530,6 +1346,8 @@ def _store_response_block(
         "Calling _store_response_block: [entity_type=%s, task_key=%s, batch_id=%s, index=%s]",
         entity_type, task_key, batch_id, index,
     )
+    # AST-2029: hash + stored row both use the hydrated text
+    response_text = hydrate_entity_labels(response_text, entity_ids)
     content_hash = hashlib.sha256(
         f"{batch_id}:RESPONSE:{index or ''}:{response_text}".encode()
     ).hexdigest()[:16]
@@ -1823,6 +1641,149 @@ async def run_cover_letter_artifact_chain_for_job(
     )
 
 
+def _agent_llm_route(agent_row: Dict[str, Any]) -> Dict[str, Any]:
+    """Agent model_id + plain settings → resolve_agent_settings route (server, SKU, tier) (AST-1956).
+    Raises ValueError on a missing or unknown model_id; settings are passed through unchecked."""
+    aid = agent_row.get("agent_id")
+    model_id = (agent_row.get("model_id") or "").strip()
+    if not model_id:
+        raise ValueError(f"Agent '{aid}' has no model_id configured.")
+    return resolve_agent_settings(model_id, agent_row)
+
+
+def task_llm_server_id(task_key: str) -> str:
+    """Catalog server behind task_key's agent model — dispatcher key gate (AST-1879)."""
+    agent_row, _ = _resolve_task_prompts(task_key)
+    return _agent_llm_route(agent_row)["server_id"]
+
+
+def task_llm_server_id_or_none(task_key: str) -> Optional[str]:
+    """task_llm_server_id, or None when the task has no LLM agent (AST-1944).
+
+    No agent_task row, empty agent_id, or the "telescope" sentinel → no model, no server to gate on.
+    Any other resolution failure (unknown real agent, missing model_id) still raises — a
+    misconfigured LLM task must stay loud.
+    """
+    try:
+        # Strict path first: the stage_email_meteorite mailbox fold resolves a real agent here.
+        return task_llm_server_id(task_key)
+    except ValueError:
+        row = get_agent_task(resolve_task_key_for_content(task_key))
+        if ((row or {}).get("agent_id") or "").strip() in ("", "telescope"):
+            return None
+        raise
+
+
+def _candidate_server_key(
+    ctx: Optional[Dict[str, Any]], candidate_id: Optional[str], server_id: str
+) -> Optional[str]:
+    """The candidate's key for server_id only — never env, never another platform's key (AST-1879).
+
+    ctx["candidate_api_keys"] wins (session paste carries a map but no candidate id);
+    otherwise load the map by candidate id (callers that pass only astral_candidate_id).
+    """
+    keys = (ctx or {}).get("candidate_api_keys")
+    if keys is None and candidate_id:
+        keys = (database.get_candidate(candidate_id) or {}).get("candidate_api_keys")
+    return (keys or {}).get(server_id) or None
+
+
+def _missing_server_key_result(candidate_id: Optional[str], server_id: str) -> Dict[str, Any]:
+    """Failure envelope when the candidate holds no key for the route's server — no request was sent."""
+    return {
+        "success": False,
+        "error": f"Candidate {candidate_id or '-'} has no API key for server {server_id!r}",
+        "api_response": None,
+        "parsed_response": None,
+        "timesheet": {},
+    }
+
+
+# Forced-tool name on every grader call (AST-2172); transport reads it back from forced_tool["name"].
+GRADE_TOOL_NAME = "submit_grades"
+
+
+def grade_call_codes(task_key: str, ctx: Optional[Dict[str, Any]]) -> List[str]:
+    """Rubric vector codes for one grader call — the same list feeds the schema and the hydrate.
+    Vet grades its one configured vector; every other grader the keys of ctx["vector_labels"] (rubric order)."""
+    vet = INFLOW_CONFIG["vet"]
+    if task_key == vet["task_key"]:
+        return [vet["grade_vector_code"]]
+    return list((ctx or {}).get("vector_labels") or {})
+
+
+def grade_forced_tool(task_key: str, ctx: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    """{name, input_schema} when task_key's output type carries structured_output; None for every other task.
+    Raises ValueError when a grader call has no rubric codes."""
+    output_type = (TASK_CONFIG.get(task_key) or {}).get("output_type", "")
+    if not ASTRAL_CONFIG["output_types"].get(output_type, {}).get("structured_output"):
+        return None
+    schema = build_grade_tool_schema(output_type, grade_call_codes(task_key, ctx), grade_row_ids(ctx or {}))
+    if is_vector_feedback_task(task_key):
+        # AST-860 vector reviews ride agent_performance (RUBRIC_FEEDBACK_CONFIG prompt_suffix). The closed object
+        # must admit them or enforcing hosts drop every review; copied so grade_schema's constant stays intact.
+        perf = schema["properties"]["agent_performance"]
+        schema["properties"]["agent_performance"] = {
+            **perf,
+            "properties": {
+                **perf["properties"],
+                "vector_reviews": {"type": ["array", "null"], "items": {"type": "string"}},
+            },
+            "required": [*perf["required"], "vector_reviews"],
+        }
+    return {"name": GRADE_TOOL_NAME, "input_schema": schema}
+
+
+async def _send_to_server(
+    user_blocks: List[Dict[str, Any]],
+    *,
+    server_id: str,
+    sku: str,
+    tier: Dict[str, Any],
+    api_key: str,
+    system_blocks: List[Dict[str, Any]],
+    response_format: Optional[str],
+    prompt_label: str,
+    candidate_id: Optional[str],
+    temperature: Optional[float],
+    max_tokens: Optional[int],
+    debug: bool,
+    task_key_uuid: Optional[str],
+    no_cache_prompt_tokens: int,
+    no_cache_live_tokens: int,
+    batch_size: int = 1,
+    forced_tool: Optional[Dict[str, Any]] = None,
+    request_type: str = "DISPATCH_AGENT",
+    entity_type: Optional[str] = None,
+    entity_id: Optional[str] = None,
+) -> Dict[str, Any]:
+    """One outbound call on the server's protocol client: Anthropic SDK or the shared compat client."""
+    common = dict(
+        system_blocks=system_blocks,
+        response_format=response_format,
+        prompt_label=prompt_label,
+        candidate_id=candidate_id,
+        temperature=temperature,
+        max_tokens=max_tokens,
+        task_key_uuid=task_key_uuid,
+        no_cache_prompt_tokens=no_cache_prompt_tokens,
+        no_cache_live_tokens=no_cache_live_tokens,
+        batch_size=batch_size,
+        record_timesheet=record_timesheet_entry,
+        forced_tool=forced_tool,
+        request_type=request_type,
+        entity_type=entity_type,
+        entity_id=entity_id,
+    )
+    if get_llm_server(server_id)["protocol"] == "anthropic":
+        # api_key is always non-empty here, so send_to_anthropic never takes its env-key client.
+        return await send_to_anthropic(
+            user_blocks, model_code=sku, api_key_override=api_key, debug=debug,
+            reasoning_effort=tier.get("reasoning_effort"), **common,
+        )
+    return await send_to_llm_compat(user_blocks, server_id=server_id, sku=sku, tier=tier, api_key=api_key, **common)
+
+
 @_with_log_debug
 async def do_task(
     task_key: str,
@@ -1833,6 +1794,7 @@ async def do_task(
     debug: bool = False,
     store_agent_data: bool = True,
     chain_context: Optional[Dict[str, str]] = None,
+    request_type: str = "DISPATCH_AGENT",
 ) -> Dict[str, Any]:
     """Run a task by key. Fetches prompts from DB, resolves tokens, calls Anthropic API.
     Stores prompt + response blocks in agent_data when store_agent_data=True.
@@ -1848,10 +1810,11 @@ async def do_task(
             Land enrich (AST-1470) may pass ``qualify_meteorite_batch_{batch_id}`` with
             ``log_batch_id`` set — audit-only entity_id, not a job row UUID.
         candidate_data: Token-resolution dict (optional; ctx supersedes).
-        ctx: Full candidate raft dict. Extracts candidate_data + candidate_api_key.
+        ctx: Full candidate raft dict. Extracts candidate_data + candidate_api_keys (server → key map).
         debug: Emit verbose log lines.
         store_agent_data: When True, persist prompt/response blocks to agent_data table.
         chain_context: Optional extra chain-source token values (AST-303 parent hop → child).
+        request_type: Timesheet attribution; default DISPATCH_AGENT. Contact turns pass CONTACT_AGENT (AST-2220).
 
     Returns:
         Dict with success, api_response, parsed_response, timesheet, error (if failed).
@@ -1876,7 +1839,6 @@ async def do_task(
             task_key,
         )
 
-    api_key_override = None
     candidate_id = ctx.get("astral_candidate_id") if ctx else None
     if candidate_id:
         # Lazy import breaks agent↔candidate cycle (candidate imports agent paths).
@@ -1887,8 +1849,6 @@ async def do_task(
         arts = dict(cd.get("artifacts") or {})
         arts["company_search_terms"] = joined
         cd["artifacts"] = arts
-    if ctx and task_config.get("requires_candidate_key"):
-        api_key_override = ctx.get("candidate_api_key")
 
     agent_row, agent_task_row = _resolve_task_prompts(task_key)
     # AST-1698: harvest artifact pins from unresolved prompt templates (before resolve).
@@ -1959,6 +1919,14 @@ async def do_task(
         if k in (effective_chain_context or {})
     }
     _jc = _job_context_for_call(ctx, index, cd, debug=debug)
+    # AST-2000: per-segment empty-token collectors (snapshot-replaced segments are dropped below).
+    _empties: Dict[str, list] = {
+        seg: [] for seg in ("selected_agent", "system", "user", "cache_a", "cache_b", "cache_c", "cache_d", "nocache")
+    }
+    # Agent content only reaches the model via {$SELECTED_AGENT} (system fallback collects itself).
+    _selects_agent = any(
+        "{$SELECTED_AGENT}" in s for s in _task_prompt_texts(agent_task_row, None).values()
+    )
     _cc = _chain_context(
         agent_row,
         cd,
@@ -1968,44 +1936,28 @@ async def do_task(
         chain_entry=chain_entry,
         parent_task_key=parent_task_key or None,
         parent_caller_summary=parent_caller_summary or None,
+        warn_on_empty=False,
+        empty_tokens=_empties["selected_agent"] if _selects_agent else None,
     )
 
-    brain_setting = (agent_row.get("brain_setting") or "").strip()
-    # AST-1072: conversational CHAT turns use CONTACT_ESTELLE_CONFIG Medium — leave Estelle Big for upshot.
-    if is_conversational_task(task_key):
-        brain_setting = CONTACT_ESTELLE_CONFIG["default_brain_setting"]
-    elif not brain_setting:
-        raise ValueError(
-            f"Agent '{agent_row.get('agent_id')}' has no brain_setting configured."
+    # AST-1879 / AST-1956: the agent row's model + plain settings pick the server, SKU, and tier.
+    # Contact Estelle is her own agent row (AST-1878), so there is no conversational override.
+    route = _agent_llm_route(agent_row)
+    server_id = route["server_id"]
+    sku = route["sku"]
+    tier = route["tier"]
+    api_key = _candidate_server_key(ctx, candidate_id, server_id)
+    if not api_key:
+        logger.warning(
+            "%s | %s skipped — no %s API key on the candidate\n  This call is not going out",
+            candidate_id or "-",
+            task_key,
+            server_id,
         )
-
-    provider = get_active_llm_provider()
-    tier_meta: Optional[Dict[str, Any]] = None  # DeepSeek reasoning / vendor flags
-    if provider == "anthropic":
-        resolved_anthropic_key = resolve_brain_setting_to_anthropic_agent_key(brain_setting)
-        model_cfg = get_model(resolved_anthropic_key)
-    elif provider == "deepseek":
-        resolved_anthropic_key = ""
-        tier_meta = resolve_brain_setting_to_deepseek_tier_meta(brain_setting)
-        vm = tier_meta["vendor_model"]
-        model_cfg = DEEPSEEK_MODEL_PRICING.get(vm)
-        if not model_cfg:
-            raise ValueError(f"Unknown DeepSeek vendor_model for agent params: {vm!r}")
-    else:
-        raise ValueError(f"Unknown LLM active_provider {provider!r}")
-    agent_temperature = agent_row.get("temperature") if agent_row.get("temperature") is not None else model_cfg["default_temperature"]
-    agent_max_tokens = agent_row.get("max_tokens") if agent_row.get("max_tokens") is not None else model_cfg["default_max_tokens"]
-    # Craft rubrics emit long per-criterion content — floor so Get cannot truncate mid-JSON (AST-903).
-    if task_key in CRAFT_RUBRIC_UI_TASK_KEYS:
-        agent_max_tokens = max(int(agent_max_tokens), int(CRAFT_RUBRIC_MAX_TOKENS))
-        # AST-1380 Decision A: DeepSeek Big thinking shares max_tokens with the JSON answer —
-        # disable thinking so craft criteria are not starved mid-string.
-        if provider == "deepseek" and tier_meta is not None:
-            tier_meta = {**tier_meta, "thinking": False, "reasoning_effort": None}
-    if provider == "deepseek":
-        _ds_floor = deepseek_brain_max_tokens_floor(brain_setting)
-        if _ds_floor is not None:
-            agent_max_tokens = max(int(agent_max_tokens), _ds_floor)
+        return _with_harvest(_missing_server_key_result(candidate_id, server_id))
+    # AST-1956: temperature is the agent row's own setting, sent as stored (None → not sent).
+    agent_temperature = tier["temperature"]
+    agent_max_tokens = tier["max_tokens"]
 
     _hop_kw = dict(
         chain_entry=chain_entry,
@@ -2014,19 +1966,33 @@ async def do_task(
     )
     _rt_kw = {**_hop_kw}
 
-    system_content = resolved_task_system(agent_row, agent_task_row, cd, task_key, _cc, _jc, **_rt_kw)
-    user_content = resolve_tokens(agent_task_row.get("user_prompt") or "", cd, task_key, _cc, _jc, **_hop_kw)
-    rca = resolve_tokens(agent_task_row.get("cache_prompt") or "", cd, task_key, _cc, _jc, **_hop_kw)
-    rcb = resolve_tokens(agent_task_row.get("cache_prompt_b") or "", cd, task_key, _cc, _jc, **_hop_kw)
-    rcc = resolve_tokens(agent_task_row.get("cache_prompt_c") or "", cd, task_key, _cc, _jc, **_hop_kw)
-    rcd = resolve_tokens(agent_task_row.get("cache_prompt_d") or "", cd, task_key, _cc, _jc, **_hop_kw)
+    system_content = resolved_task_system(
+        agent_row, agent_task_row, cd, task_key, _cc, _jc, **_rt_kw, empty_tokens=_empties["system"]
+    )
+    user_content = resolve_tokens(
+        agent_task_row.get("user_prompt") or "", cd, task_key, _cc, _jc, **_hop_kw, empty_tokens=_empties["user"]
+    )
+    rca = resolve_tokens(
+        agent_task_row.get("cache_prompt") or "", cd, task_key, _cc, _jc, **_hop_kw, empty_tokens=_empties["cache_a"]
+    )
+    rcb = resolve_tokens(
+        agent_task_row.get("cache_prompt_b") or "", cd, task_key, _cc, _jc, **_hop_kw, empty_tokens=_empties["cache_b"]
+    )
+    rcc = resolve_tokens(
+        agent_task_row.get("cache_prompt_c") or "", cd, task_key, _cc, _jc, **_hop_kw, empty_tokens=_empties["cache_c"]
+    )
+    rcd = resolve_tokens(
+        agent_task_row.get("cache_prompt_d") or "", cd, task_key, _cc, _jc, **_hop_kw, empty_tokens=_empties["cache_d"]
+    )
 
     def _slot(res: str) -> Optional[str]:
         v = (res or "").strip()
         return v if v else None
 
     caches_four = (_slot(rca), _slot(rcb), _slot(rcc), _slot(rcd))
-    nocache_content = resolve_tokens(agent_task_row.get("nocache_prompt") or "", cd, task_key, _cc, _jc, **_hop_kw) or None
+    nocache_content = resolve_tokens(
+        agent_task_row.get("nocache_prompt") or "", cd, task_key, _cc, _jc, **_hop_kw, empty_tokens=_empties["nocache"]
+    ) or None
 
     if is_vector_feedback_task(task_key):
         _fb_suffix = (RUBRIC_FEEDBACK_CONFIG.get("prompt_suffix") or "").strip()
@@ -2040,51 +2006,60 @@ async def do_task(
     if isinstance(snap, dict) and snap and task_key.startswith("intake_"):
         if "system" in snap:
             system_content = snap.get("system") or ""
+            _empties["system"] = []
         rca = snap.get("cache_a") or ""
         rcb = snap.get("cache_b") or ""
         rcc = snap.get("cache_c") or ""
         rcd = snap.get("cache_d") or ""
         caches_four = (_slot(rca), _slot(rcb), _slot(rcc), _slot(rcd))
+        for _seg in ("cache_a", "cache_b", "cache_c", "cache_d"):
+            _empties[_seg] = []
         if "nocache" in snap:
             nocache_content = snap.get("nocache") or None
+            _empties["nocache"] = []
 
-    if not chain_entry:
-        segment_texts = {
-            "system": (agent_task_row.get("system_prompt") or "").strip() or (agent_row.get("content") or ""),
-            "user": agent_task_row.get("user_prompt") or "",
-            "cache_a": agent_task_row.get("cache_prompt") or "",
-            "cache_b": agent_task_row.get("cache_prompt_b") or "",
-            "cache_c": agent_task_row.get("cache_prompt_c") or "",
-            "cache_d": agent_task_row.get("cache_prompt_d") or "",
-            "nocache": agent_task_row.get("nocache_prompt") or "",
-            "live": live_content or "",
-            "system_resolved": system_content or "",
-            "user_resolved": user_content or "",
-            "cache_a_resolved": rca or "",
-            "cache_b_resolved": rcb or "",
-            "cache_c_resolved": rcc or "",
-            "cache_d_resolved": rcd or "",
-            "nocache_resolved": nocache_content or "",
-        }
-        guard_err = _mid_chain_empty_caller_tokens(
-            callee_task_key=task_key,
-            parent_task_key=parent_task_key or "",
-            chain_context=_cc,
-            segment_texts=segment_texts,
+    # dict.fromkeys = ordered-unique across segments (segment order above).
+    empty_names = list(dict.fromkeys(n for names in _empties.values() for n in names))
+    if empty_names:
+        # AST-2000: an incomplete prompt is never sent — one ERROR (we control the token content), no per-token WARNINGs.
+        logger.error(
+            "%s | %s skipped — empty tokens %s\n  This call is not going out",
+            index or candidate_id or "-",
+            task_key,
+            ", ".join(empty_names),
         )
-        if guard_err:
-            logger.warning(
-                "%s skipped — %s\n  This hop is not calling the model",
-                task_key,
-                guard_err,
-            )
-            return _with_harvest({
-                "success": False,
-                "error": guard_err,
-                "api_response": None,
-                "parsed_response": None,
-                "timesheet": {},
-            })
+        return _with_harvest({
+            "success": False,
+            "error": f"Empty tokens: {', '.join(empty_names)} (task={task_key})",
+            "empty_tokens": empty_names,
+            "empty_token_task": task_key,
+            "api_response": None,
+            "parsed_response": None,
+            "timesheet": {},
+        })
+
+    # AST-2172: grader calls carry a forced tool built from this call's rubric codes and row ids.
+    try:
+        forced_tool = grade_forced_tool(task_key, ctx)
+    except ValueError as exc:
+        # No rubric codes → no schema; a grader call never goes out without one (we control the rubric data).
+        # Intentional retry, unlike empty_tokens: a candidate with no rubric already stopped at the empty rubric
+        # token above (straight to error). Only a caller ctx without vector_labels lands here; callers route
+        # success=False through the _RETRY sibling then the error state, and the retry never reaches the provider.
+        logger.error(
+            "%s | %s skipped — %s\n  This call is not going out",
+            index or candidate_id or "-",
+            task_key,
+            exc,
+        )
+        return _with_harvest({
+            "success": False,
+            "error": str(exc),
+            "api_response": None,
+            "parsed_response": None,
+            "timesheet": {},
+        })
+    structured = forced_tool is not None
 
     context = _build_context(task_key, task_config, index)
     response_format = task_config.get("response_format", "text")
@@ -2134,9 +2109,8 @@ async def do_task(
         hop_ledger_closed = True
         if clear_log:
             log_batch_id.set(None)
+            log_candidate_id.set(None)
         return outcome
-
-    assemble_model_tag = resolved_anthropic_key if provider == "anthropic" else tier_meta["vendor_model"]
 
     system_blocks, user_blocks, runtime_prompt, no_cache_prompt_tokens, no_cache_live_tokens = _assemble_blocks_seven_segment(
         system_content=system_content,
@@ -2144,16 +2118,24 @@ async def do_task(
         caches_resolved_four=caches_four,
         nocache_content=nocache_content,
         live_content=live_content,
-        model_code=assemble_model_tag,
+        model_code=sku,
         skip_cache=skip_cache,
         candidate_id=candidate_id,
+        structured=structured,
     )
 
     prompt_blocks: List[Dict[str, str]] = []
     _should_store = store_agent_data and batch_id and entity_type
+    # AST-2029: real ids for stored labels — every batch entity must carry one, else store positional text
+    _ents = (ctx or {}).get("batch_entities") or []
+    _id_key = "company_id" if entity_type == "company" else "astral_job_id"
+    _store_ids = [str(e.get(_id_key) or "") if isinstance(e, dict) else "" for e in _ents]
+    _store_ids = _store_ids if _store_ids and all(_store_ids) else None
     if _should_store:
         try:
-            prompt_blocks = _store_prompt_blocks(
+            # Off the loop: a locked DB must not stall other companies' provider timers (AST-1842)
+            prompt_blocks = await asyncio.to_thread(
+                _store_prompt_blocks,
                 entity_type=entity_type,
                 task_key=task_key,
                 batch_id=batch_id,
@@ -2165,55 +2147,68 @@ async def do_task(
                 live_content=live_content,
                 debug=debug,
                 entity_id=index if index else None,
+                entity_ids=_store_ids,
             )
         except Exception as exc:
             _log_swallowed_agent_data(index, task_key, exc)
 
-    send_fn_name = "send_to_anthropic" if provider == "anthropic" else "send_to_deepseek"
-    model_tag = resolved_anthropic_key if provider == "anthropic" else tier_meta["vendor_model"]
     logger.debug(
-        "Calling %s: [task_key=%s, provider=%s, model=%s, max_tokens=%s, temp=%s, skip_cache=%s, candidate=%s]",
-        send_fn_name, task_key, provider, model_tag, agent_max_tokens, agent_temperature,
-        skip_cache, candidate_id or "",
+        "Calling _send_to_server: [task_key=%s, server=%s, model=%s, max_tokens=%s, temp=%s, effort=%s, skip_cache=%s, candidate=%s]",
+        task_key, server_id, sku, agent_max_tokens, agent_temperature, tier.get("reasoning_effort"), skip_cache, candidate_id or "",
     )
-    if provider == "anthropic":
-        result = await send_to_anthropic(
-            user_blocks,
-            system_blocks=system_blocks,
-            response_format=response_format,
-            prompt_label=task_key,
-            candidate_id=candidate_id,
-            api_key_override=api_key_override,
-            model_code=resolved_anthropic_key,
-            temperature=agent_temperature,
-            max_tokens=agent_max_tokens,
-            debug=debug,
-            task_key_uuid=agent_task_row.get("task_key_uuid"),
-            no_cache_prompt_tokens=no_cache_prompt_tokens,
-            no_cache_live_tokens=no_cache_live_tokens,
-            batch_size=batch_size,
-            record_timesheet=record_timesheet_entry,
-        )
-    else:
-        result = await send_to_deepseek(
-            user_blocks,
-            system_blocks=system_blocks,
-            response_format=response_format,
-            prompt_label=task_key,
-            candidate_id=candidate_id,
-            api_key_override=api_key_override,
-            vendor_model=tier_meta["vendor_model"],
-            tier_meta=tier_meta,
-            temperature=agent_temperature,
-            max_tokens=agent_max_tokens,
-            debug=debug,
-            task_key_uuid=agent_task_row.get("task_key_uuid"),
-            no_cache_prompt_tokens=no_cache_prompt_tokens,
-            no_cache_live_tokens=no_cache_live_tokens,
-            batch_size=batch_size,
-            record_timesheet=record_timesheet_entry,
-        )
-    logger.debug("Response from %s: %s", send_fn_name, result)
+    # AST-2217: multi-entity calls leave entity_id empty; request_type from caller (contact = CONTACT_AGENT, AST-2220).
+    _multi = batch_size > 1 or len(_ents) > 1
+    result = await _send_to_server(
+        user_blocks,
+        server_id=server_id,
+        sku=sku,
+        tier=tier,
+        api_key=api_key,
+        system_blocks=system_blocks,
+        response_format=response_format,
+        prompt_label=task_key,
+        candidate_id=candidate_id,
+        temperature=agent_temperature,
+        max_tokens=agent_max_tokens,
+        debug=debug,
+        task_key_uuid=agent_task_row.get("task_key_uuid"),
+        no_cache_prompt_tokens=no_cache_prompt_tokens,
+        no_cache_live_tokens=no_cache_live_tokens,
+        batch_size=batch_size,
+        forced_tool=forced_tool,
+        request_type=request_type,
+        entity_type=entity_type or None,
+        entity_id=None if _multi else (index if index else None),
+    )
+    logger.debug("Response from _send_to_server: %s", result)
+    # Call outcome onto the active batch's ledger row — dispatcher batch, or the hop row
+    # _open_run_next_hop_ledger set log_batch_id to.
+    ledger_batch_id = log_batch_id.get()
+    if ledger_batch_id:
+        # AST-2008: every call writes duration + failure class (NULL on success). Several calls can share
+        # one row; the last call wins, so the pair always describes the same call (Decision A).
+        cols: Dict[str, Any] = {
+            "llm_call_seconds": (result.get("timesheet") or {}).get("duration"),
+            "llm_failure_class": None if result.get("success")
+            else (str(result.get("failure_class") or "").strip() or "provider_failed"),
+        }
+        # AST-1960: host on successful calls only — a call that never reached a host carries the server
+        # label, which must not overwrite the real host a sibling call wrote.
+        if result.get("success"):
+            # Anthropic-direct results carry no host; that server is its own host, so its label stands in.
+            cols["host"] = result.get("host") or get_llm_server(server_id)["label"]
+        logger.debug("Calling database.update_dispatch_ledger: [batch_id=%s, cols=%s]", ledger_batch_id, cols)
+        try:
+            # Off the loop like the agent_data writes: a locked DB must not stall provider timers (AST-1842).
+            await asyncio.to_thread(database.update_dispatch_ledger, ledger_batch_id, **cols)
+        except Exception:
+            # A ledger hiccup must never change the call's own outcome.
+            logger.error_exc(
+                "%s | %s\n  Ledger call outcome write failed for batch %s\n  Continuing without it on that ledger row",
+                index or "-",
+                task_key,
+                ledger_batch_id,
+            )
     result["runtime_prompt"] = runtime_prompt
     result["source_artifact_ids"] = list(source_artifact_ids)
 
@@ -2243,9 +2238,9 @@ async def do_task(
         )
         if _should_store:
             try:
-                _store_response_block(
+                await asyncio.to_thread(_store_response_block,
                     entity_type, task_key, batch_id, _failure_response_block_data(index, audit_body), index=index,
-                    debug=debug)
+                    debug=debug, entity_ids=_store_ids)
             except Exception as exc:
                 _log_swallowed_agent_data(index, task_key, exc)
         hop_fail_outcome = _close_hop_ledger(
@@ -2274,17 +2269,6 @@ async def do_task(
                 pass
     parsed = result.get("parsed_response")
     output_type = task_config.get("output_type", "")
-    rubric_encoded = "_encoded" in output_type and bool(task_config.get("rubric_artifact"))
-    strict_batch = _is_strict_encoded_batch_consult(task_key)
-    if strict_batch and isinstance(parsed, dict) and parsed.get("agent_payload") is not None and parsed.get("agent_performance") is None:
-        parsed = {**parsed, "agent_performance": {}}
-        result["parsed_response"] = parsed
-    envelope_err = _strict_encoded_batch_consult_envelope_err(task_key, parsed) if strict_batch else None
-    if not envelope_err and "_encoded" in output_type:
-        parsed = coerce_grades_encoded_json_parse(parsed, raw_text or "")
-        result["parsed_response"] = parsed
-    if strict_batch and not envelope_err:
-        envelope_err = _strict_encoded_batch_consult_envelope_err(task_key, parsed)
 
     if is_vector_feedback_task(task_key) and isinstance(parsed, dict):
         parsed = _normalize_rubric_envelope_for_capture(parsed)
@@ -2294,25 +2278,7 @@ async def do_task(
     if is_vector_feedback_task(task_key) and isinstance(parsed, dict) and "agent_performance" in parsed:
         envelope_snapshot = copy.deepcopy(parsed)
 
-    if envelope_err:
-        _warn_hop_no_success(task_key, envelope_err)
-        if _should_store:
-            try:
-                _store_response_block(
-                    entity_type,
-                    task_key,
-                    batch_id,
-                    _failure_response_block_data(index, _audit_response_body(raw_text, parsed, envelope_err)),
-                    index=index,
-                    debug=debug)
-            except Exception as exc:
-                _log_swallowed_agent_data(index, task_key, exc)
-        _close_hop_ledger(success=False, clear_log=True, failure_error=str(envelope_err))
-        return _with_harvest({"success": False, "api_response": result.get("api_response"),
-                "parsed_response": None, "error": envelope_err, "raw_response": parsed,
-                "timesheet": result.get("timesheet", {})})
-
-    if parsed is not None and response_format in ("json", "python") and not rubric_encoded:
+    if parsed is not None and response_format in ("json", "python") and not structured:
         if isinstance(parsed, dict) and schema:
             if task_key in _CRAFT_RESUME_NORMALIZE_TASK_KEYS:
                 from src.core.candidate import normalize_craft_resume_base_agent_payload
@@ -2325,18 +2291,18 @@ async def do_task(
             _coerce_schema_str_fields_from_list(parsed, schema, debug=debug)
         err = _validate_response_schema(parsed, schema, task_key)
         if err:
-            _warn_hop_no_success(task_key, err)
+            _warn_hop_no_success(task_key, err, parsed)
             if log_batch_id.get():
                 flush_log_buffer()
             if _should_store:
                 try:
-                    _store_response_block(
+                    await asyncio.to_thread(_store_response_block,
                         entity_type,
                         task_key,
                         batch_id,
                         _failure_response_block_data(index, _validation_failure_audit_body(err, raw_text, parsed)),
                         index=index,
-                    debug=debug)
+                    debug=debug, entity_ids=_store_ids)
                 except Exception:
                     _log_swallowed_agent_data(index, task_key)
             _close_hop_ledger(success=False, clear_log=True, failure_error=str(err))
@@ -2353,7 +2319,7 @@ async def do_task(
                     flush_log_buffer()
                 if _should_store:
                     try:
-                        _store_response_block(
+                        await asyncio.to_thread(_store_response_block,
                             entity_type,
                             task_key,
                             batch_id,
@@ -2361,7 +2327,7 @@ async def do_task(
                                 index, _validation_failure_audit_body(cat_err, raw_text, parsed)
                             ),
                             index=index,
-                        debug=debug)
+                        debug=debug, entity_ids=_store_ids)
                     except Exception:
                         _log_swallowed_agent_data(index, task_key)
                 _close_hop_ledger(success=False, clear_log=True, failure_error=str(cat_err))
@@ -2375,13 +2341,13 @@ async def do_task(
                 _warn_hop_no_success(task_key, conf_err)
                 if _should_store:
                     try:
-                        _store_response_block(
+                        await asyncio.to_thread(_store_response_block,
                             entity_type,
                             task_key,
                             batch_id,
                             _failure_response_block_data(index, _audit_response_body(raw_text, parsed, conf_err)),
                             index=index,
-                        debug=debug)
+                        debug=debug, entity_ids=_store_ids)
                     except Exception:
                         _log_swallowed_agent_data(index, task_key)
                 _close_hop_ledger(success=False, clear_log=True, failure_error=str(conf_err))
@@ -2398,20 +2364,20 @@ async def do_task(
                     _warn_hop_no_success(task_key, grade_err)
                     if _should_store:
                         try:
-                            _store_response_block(
+                            await asyncio.to_thread(_store_response_block,
                                 entity_type,
                                 task_key,
                                 batch_id,
                                 _failure_response_block_data(index, _audit_response_body(raw_text, parsed, grade_err)),
                                 index=index,
-                            debug=debug)
+                            debug=debug, entity_ids=_store_ids)
                         except Exception:
                             _log_swallowed_agent_data(index, task_key)
                     _close_hop_ledger(success=False, clear_log=True, failure_error=str(grade_err))
                     return _with_harvest({"success": False, "api_response": result.get("api_response"), "parsed_response": None,
                             "error": grade_err, "raw_response": parsed, "timesheet": result.get("timesheet", {})})
 
-    if isinstance(parsed, dict) and "agent_payload" in parsed:
+    if not structured and isinstance(parsed, dict) and "agent_payload" in parsed:
         # AST-1072: preserve conversational outcome on result before unwrapping payload.
         if is_conversational_task(task_key):
             _perf_keep = parsed.get("agent_performance")
@@ -2424,23 +2390,58 @@ async def do_task(
             parsed = "\n".join(str(item) for item in parsed)
         result["parsed_response"] = parsed
 
-    output_type = task_config.get("output_type", "")
-    # For encoded output types: normalize rubric shapes or decode compact string, then validate.
+    # Grader tasks (AST-2172): the forced tool's input hydrates into the decoded jobs[] / companies[] / results[]
+    # shape, so scoring, grades_key persistence and retry routing downstream are unchanged.
     post_rubric_decode = False
-    if rubric_encoded and parsed is not None:
+    if structured:
+        codes = grade_call_codes(task_key, ctx)
+        _perf = parsed.get("agent_performance") if isinstance(parsed, dict) else None
+        # AST-1839: a model-reported failure (bad source content) is an agent failure. Rubric graders only —
+        # vet never read status.
+        if task_config.get("rubric_artifact") and _agent_performance_status(_perf) == "failure":
+            _note = (_perf.get("failure_note") if isinstance(_perf, dict) else None) or parsed.get("failure_note")
+            agent_err = f"Agent failure: {_note or 'Agent returned status=failure with no note'}"
+            _warn_hop_no_success(task_key, agent_err, parsed)
+            # Keep cleanly hydrated rows so a batch caller fails only the gaps, not the batch (AST-2089).
+            # Same validation bar as the success path; any error → None → caller fails the whole batch.
+            salvaged = None
+            if (ctx or {}).get("batch_entities"):
+                try:
+                    _cand = hydrate_grade_tool_input(task_key, output_type, parsed, codes, ctx)
+                    if schema:
+                        _coerce_schema_str_fields_from_list(_cand, schema, debug=debug)
+                    if ((_cand.get("jobs") or _cand.get("companies"))
+                            and not _validate_response_schema(_cand, schema, task_key)
+                            and not _validate_grade_confidence_in_payload(_cand, task_key)):
+                        salvaged = _cand
+                except Exception as exc:
+                    logger.debug("%s | no salvage after agent failure: %s: %s", task_key, type(exc).__name__, exc)
+            if _should_store:
+                try:
+                    await asyncio.to_thread(_store_response_block,
+                        entity_type,
+                        task_key,
+                        batch_id,
+                        _failure_response_block_data(index, _audit_response_body(raw_text, parsed, agent_err)),
+                        index=index,
+                        debug=debug, entity_ids=_store_ids)
+                except Exception as exc:
+                    _log_swallowed_agent_data(index, task_key, exc)
+            _close_hop_ledger(success=False, clear_log=True, failure_error=agent_err)
+            return _with_harvest({"success": False, "agent_failure": True, "api_response": result.get("api_response"),
+                    "parsed_response": None, "error": agent_err, "raw_response": parsed,
+                    "salvaged_response": salvaged, "timesheet": result.get("timesheet", {})})
         try:
-            from src.core.consult import _normalize_rubric_task_response
-
             logger.debug(
-                "Calling _normalize_rubric_task_response: [task_key=%s, parsed=%s]",
-                task_key, parsed,
+                "Calling hydrate_grade_tool_input: [task_key=%s, output_type=%s, codes=%s, parsed=%s]",
+                task_key, output_type, codes, parsed,
             )
-            parsed = _normalize_rubric_task_response(task_key, task_config, parsed, ctx or {})
-            logger.debug("Response from _normalize_rubric_task_response: %s", parsed)
+            parsed = hydrate_grade_tool_input(task_key, output_type, parsed, codes, ctx or {})
+            logger.debug("Response from hydrate_grade_tool_input: %s", parsed)
             result["parsed_response"] = parsed
             post_rubric_decode = True
         except Exception as exc:
-            logger.exception(
+            logger.warn_exc(
                 "%s | %s\n  %s: %s\n  Returning this hop as failed",
                 index or "-",
                 task_key,
@@ -2449,44 +2450,11 @@ async def do_task(
             )
             if _should_store:
                 try:
-                    body = _audit_response_body(raw_text, None, str(exc))
-                    if isinstance(parsed, str) and parsed.strip():
-                        body = f"{body}\n--- agent_payload ---\n{parsed}"
-                    _store_response_block(
-                        entity_type, task_key, batch_id, _failure_response_block_data(index, body), index=index,
-                    debug=debug)
-                except Exception:
-                    _log_swallowed_agent_data(index, task_key)
-            _close_hop_ledger(success=False, clear_log=True, failure_error=str(exc))
-            return _with_harvest({"success": False, "api_response": result.get("api_response"),
-                    "parsed_response": None, "error": str(exc), "timesheet": result.get("timesheet", {})})
-    elif "_encoded" in output_type and isinstance(parsed, str):
-        try:
-            logger.debug(
-                "Calling _decode_payload: [task_key=%s, output_type=%s, parsed=%s]",
-                task_key, output_type, parsed,
-            )
-            parsed = _decode_payload(task_key, output_type, parsed, ctx or {})
-            logger.debug("Response from _decode_payload: %s", parsed)
-            result["parsed_response"] = parsed
-            post_rubric_decode = True
-        except Exception as exc:
-            logger.exception(
-                "%s | %s\n  %s: %s\n  Returning this hop as failed",
-                index or "-",
-                task_key,
-                type(exc).__name__,
-                exc,
-            )
-            if _should_store:
-                try:
-                    body = _audit_response_body(raw_text, None, str(exc))
-                    # parsed is still the agent_payload string that failed decode
-                    if isinstance(parsed, str) and parsed.strip():
-                        body = f"{body}\n--- agent_payload ---\n{parsed}"
-                    _store_response_block(
-                        entity_type, task_key, batch_id, _failure_response_block_data(index, body), index=index,
-                    debug=debug)
+                    await asyncio.to_thread(_store_response_block,
+                        entity_type, task_key, batch_id,
+                        _failure_response_block_data(index, _audit_response_body(raw_text, parsed, str(exc))),
+                        index=index,
+                    debug=debug, entity_ids=_store_ids)
                 except Exception:
                     _log_swallowed_agent_data(index, task_key)
             _close_hop_ledger(success=False, clear_log=True, failure_error=str(exc))
@@ -2505,18 +2473,18 @@ async def do_task(
             _coerce_schema_str_fields_from_list(parsed, schema, debug=debug)
         err = _validate_response_schema(parsed, schema, task_key)
         if err:
-            _warn_hop_no_success(task_key, err)
+            _warn_hop_no_success(task_key, err, parsed)
             if log_batch_id.get():
                 flush_log_buffer()
             if _should_store:
                 try:
-                    _store_response_block(
+                    await asyncio.to_thread(_store_response_block,
                         entity_type,
                         task_key,
                         batch_id,
                         _failure_response_block_data(index, _validation_failure_audit_body(err, raw_text, parsed)),
                         index=index,
-                    debug=debug)
+                    debug=debug, entity_ids=_store_ids)
                 except Exception:
                     _log_swallowed_agent_data(index, task_key)
             _close_hop_ledger(success=False, clear_log=True, failure_error=str(err))
@@ -2532,7 +2500,7 @@ async def do_task(
                     flush_log_buffer()
                 if _should_store:
                     try:
-                        _store_response_block(
+                        await asyncio.to_thread(_store_response_block,
                             entity_type,
                             task_key,
                             batch_id,
@@ -2540,7 +2508,7 @@ async def do_task(
                                 index, _validation_failure_audit_body(cat_err, raw_text, parsed)
                             ),
                             index=index,
-                        debug=debug)
+                        debug=debug, entity_ids=_store_ids)
                     except Exception:
                         _log_swallowed_agent_data(index, task_key)
                 _close_hop_ledger(success=False, clear_log=True, failure_error=str(cat_err))
@@ -2552,13 +2520,13 @@ async def do_task(
                 _warn_hop_no_success(task_key, conf_err)
                 if _should_store:
                     try:
-                        _store_response_block(
+                        await asyncio.to_thread(_store_response_block,
                             entity_type,
                             task_key,
                             batch_id,
                             _failure_response_block_data(index, _audit_response_body(raw_text, parsed, conf_err)),
                             index=index,
-                        debug=debug)
+                        debug=debug, entity_ids=_store_ids)
                     except Exception:
                         _log_swallowed_agent_data(index, task_key)
                 _close_hop_ledger(success=False, clear_log=True, failure_error=str(conf_err))
@@ -2596,7 +2564,7 @@ async def do_task(
     if _should_store and raw_text:
         try:
             store_content = json.dumps(parsed) if isinstance(parsed, (dict, list)) else (parsed or raw_text)
-            resp_id = _store_response_block(entity_type, task_key, batch_id, store_content, index=index, debug=debug)
+            resp_id = await asyncio.to_thread(_store_response_block, entity_type, task_key, batch_id, store_content, index=index, debug=debug, entity_ids=_store_ids)
             prompt_blocks.append({"type": "RESPONSE", "id": resp_id})
         except Exception:
             _log_swallowed_agent_data(index, task_key)
@@ -2652,7 +2620,7 @@ async def do_task(
                             catalog_key,
                         )
             except Exception as persist_err:
-                logger.exception(
+                logger.error_exc(
                     "%s | %s\n  %s: %s\n  The hop is still success; the replica was not saved",
                     index,
                     task_key,
@@ -2672,7 +2640,7 @@ async def do_task(
 
             persist_draft_job_resume_notes(index, parsed)
         except Exception as persist_err:
-            logger.exception(
+            logger.error_exc(
                 "%s | %s\n  %s: %s\n  The hop is still success; the notes were not saved",
                 index,
                 task_key,
@@ -2720,7 +2688,7 @@ async def do_task(
                 )
             candidate_craft_persisted = True
         except Exception as persist_err:
-            logger.exception(
+            logger.error_exc(
                 "%s | %s\n  %s: %s\n  This hop is failing closed",
                 index,
                 task_key,
@@ -2789,7 +2757,7 @@ async def do_task(
         try:
             raw = ctx["resolve_run_next_live"](parsed)
         except Exception as exc:
-            logger.exception(
+            logger.error_exc(
                 "%s | %s\n  %s: %s\n  Continuing with live_content as-is",
                 index or "-",
                 task_key,
@@ -2992,6 +2960,7 @@ def _open_run_next_hop_ledger(
         batch_size=batch_size,
     )
     log_batch_id.set(hop_batch_id)
+    log_candidate_id.set(candidate_id)
     return hop_batch_id
 
 
@@ -3049,14 +3018,16 @@ async def run_adhoc_workbench_test(
     live_content: Optional[str] = None,
     model_code: Optional[str] = None,
     *,
-    tier_meta: Optional[Dict[str, Any]] = None,
+    server_id: Optional[str] = None,
+    tier: Optional[Dict[str, Any]] = None,
     temperature: Optional[float] = None,
     max_tokens: Optional[int] = None,
     response_format: Optional[str] = "text",
     context: Optional[str] = None,
-    api_key_override: Optional[str] = None,
+    candidate_api_keys: Optional[Dict[str, str]] = None,
     task_key_uuid: Optional[str] = None,
     debug: bool = False,
+    forced_tool: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Wrap run_adhoc with dispatch_ledger, log_batch_id, and agent_data for workbench Test."""
     catalog_task_key = (workbench_task_key or "").strip()
@@ -3077,6 +3048,7 @@ async def run_adhoc_workbench_test(
         batch_size=1,
     )
     log_batch_id.set(batch_id)
+    log_candidate_id.set(candidate_id or None)
     logger.info(
         "%s | dispatch %s starting %s — 1 available (batch: %s)",
         candidate_id or "-",
@@ -3110,8 +3082,8 @@ async def run_adhoc_workbench_test(
 
         try:
             logger.debug(
-                "Calling run_adhoc: [task_key=%s, candidate=%s, model=%s]",
-                workbench_task_key, candidate_id, model_code,
+                "Calling run_adhoc: [task_key=%s, candidate=%s, server=%s, model=%s]",
+                workbench_task_key, candidate_id, server_id, model_code,
             )
             result = await run_adhoc(
                 system_content=system_content,
@@ -3123,15 +3095,17 @@ async def run_adhoc_workbench_test(
                 nocache_content=nocache_content,
                 live_content=live_content,
                 model_code=model_code,
-                tier_meta=tier_meta,
+                server_id=server_id,
+                tier=tier,
                 temperature=temperature,
                 max_tokens=max_tokens,
                 response_format=response_format,
                 context=context,
                 candidate_id=candidate_id,
-                api_key_override=api_key_override,
+                candidate_api_keys=candidate_api_keys,
                 task_key_uuid=task_key_uuid,
                 debug=debug,
+                forced_tool=forced_tool,
             )
             logger.debug("Response from run_adhoc: %s", result)
         except Exception as exc:
@@ -3143,7 +3117,7 @@ async def run_adhoc_workbench_test(
                 total_failed=0,
                 total_errors=1,
             )
-            logger.exception(
+            logger.error_exc(
                 "%s | adhoc %s\n  %s: %s\n  This test is recorded FAILED",
                 candidate_id or "-",
                 ledger_task_key,
@@ -3241,6 +3215,7 @@ async def run_adhoc_workbench_test(
     finally:
         flush_log_buffer()
         log_batch_id.set(None)
+        log_candidate_id.set(None)
 
 
 async def run_adhoc(
@@ -3254,20 +3229,28 @@ async def run_adhoc(
     live_content: Optional[str] = None,
     model_code: Optional[str] = None,
     *,
-    tier_meta: Optional[Dict[str, Any]] = None,
+    server_id: Optional[str] = None,
+    tier: Optional[Dict[str, Any]] = None,
     temperature: Optional[float] = None,
     max_tokens: Optional[int] = None,
     response_format: Optional[str] = "text",
     context: Optional[str] = None,
     candidate_id: Optional[str] = None,
-    api_key_override: Optional[str] = None,
+    candidate_api_keys: Optional[Dict[str, str]] = None,
     task_key_uuid: Optional[str] = None,
     debug: bool = False,
+    forced_tool: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Run an ad-hoc prompt without DB prompt resolution or agent_data storage.
-    Uses candidate's API key when available, falls back to system key."""
+    Routes by catalog server; sends only the candidate's key for that server (no fallback — AST-1879).
+    forced_tool ({name, input_schema}) → grader test, same tool as do_task (AST-2172)."""
     if not model_code:
-        raise ValueError("run_adhoc requires model_code (Anthropic AGENT_CONFIG key or DeepSeek vendor_model)")
+        raise ValueError("run_adhoc requires model_code (catalog SKU)")
+    if not server_id or tier is None:
+        raise ValueError("run_adhoc requires server_id and tier (resolve_agent_settings route)")
+    api_key = (candidate_api_keys or {}).get(server_id)
+    if not api_key:
+        return _missing_server_key_result(candidate_id, server_id)
 
     system_blocks, user_blocks, runtime_prompt, no_cache_prompt_tokens, no_cache_live_tokens = _assemble_blocks_seven_segment(
         system_content=system_content,
@@ -3278,43 +3261,34 @@ async def run_adhoc(
         model_code=model_code,
         skip_cache=False,
         candidate_id=candidate_id,
+        structured=forced_tool is not None,
     )
 
-    if tier_meta is not None:
-        result = await send_to_deepseek(
-            user_blocks,
-            system_blocks=system_blocks,
-            response_format=response_format,
-            prompt_label="adhoc",
-            vendor_model=model_code,
-            tier_meta=tier_meta,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            candidate_id=candidate_id,
-            api_key_override=api_key_override,
-            task_key_uuid=task_key_uuid,
-            debug=debug,
-            no_cache_prompt_tokens=no_cache_prompt_tokens,
-            no_cache_live_tokens=no_cache_live_tokens,
-            record_timesheet=record_timesheet_entry,
-        )
-    else:
-        result = await send_to_anthropic(
-            user_blocks,
-            system_blocks=system_blocks,
-            response_format=response_format,
-            prompt_label="adhoc",
-            model_code=model_code,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            candidate_id=candidate_id,
-            api_key_override=api_key_override,
-            task_key_uuid=task_key_uuid,
-            debug=debug,
-            no_cache_prompt_tokens=no_cache_prompt_tokens,
-            no_cache_live_tokens=no_cache_live_tokens,
-            record_timesheet=record_timesheet_entry,
-        )
+    logger.debug(
+        "Calling _send_to_server: [task_key=adhoc, server=%s, model=%s, max_tokens=%s, temp=%s, effort=%s, candidate=%s]",
+        server_id, model_code, max_tokens, temperature, tier.get("reasoning_effort"), candidate_id or "",
+    )
+    result = await _send_to_server(
+        user_blocks,
+        server_id=server_id,
+        sku=model_code,
+        tier=tier,
+        api_key=api_key,
+        system_blocks=system_blocks,
+        response_format=response_format,
+        prompt_label="adhoc",
+        candidate_id=candidate_id,
+        temperature=temperature,
+        max_tokens=max_tokens,
+        debug=debug,
+        task_key_uuid=task_key_uuid,
+        no_cache_prompt_tokens=no_cache_prompt_tokens,
+        no_cache_live_tokens=no_cache_live_tokens,
+        forced_tool=forced_tool,
+        request_type="DISPATCH_AGENT",
+        entity_type=None,
+        entity_id=None,
+    )
     result["runtime_prompt"] = runtime_prompt
     return result
 
@@ -3328,11 +3302,10 @@ def get_entity_agent_story(entity: Dict[str, Any]) -> List[Dict[str, Any]]:
     """Expand latest-per-task agent refs (agent_data.entity_id) with block content.
 
     Entity type from astral_job_id / short_name / astral_candidate_id presence.
-    For scored tasks (TASK_CONFIG[task_key].scored == True):
-    - Attaches vector_grades and rubric_artifact to the enriched entry for display.
-    - RESPONSE blocks for batch tasks (those with a "jobs" array) are filtered to
-      just the matching astral_job_id entry. Old encoded data (no astral_job_id in
-      the jobs array) yields an empty content string so the frontend skips rendering.
+    For job / company entities, NO_CACHE and RESPONSE blocks of every task are cut to this
+    entity via _slice_entity_block (AST-2030): a block carrying only other entities becomes ""
+    (frontend skips it); a block with no id-keyed segments (legacy) shows whole.
+    Scored tasks also attach vector_grades and rubric_artifact for display.
 
     Duplicate block types get a counter suffix: NO_CACHE, NO_CACHE (2).
     """
@@ -3349,7 +3322,7 @@ def get_entity_agent_story(entity: Dict[str, Any]) -> List[Dict[str, Any]]:
     try:
         entries = database.list_entity_latest_agent_refs(entity_type, entity_id)
     except Exception as exc:
-        logger.exception(
+        logger.error_exc(
             "%s | %s story\n  %s: %s\n  Returning an empty story",
             entity_id,
             entity_type,
@@ -3376,7 +3349,7 @@ def get_entity_agent_story(entity: Dict[str, Any]) -> List[Dict[str, Any]]:
             if row:
                 data_map[bid] = row
         except Exception as exc:
-            logger.exception(
+            logger.error_exc(
                 "%s | %s story block %s\n  %s: %s\n  Continuing with a partial story",
                 entity_id,
                 entity_type,
@@ -3388,6 +3361,7 @@ def get_entity_agent_story(entity: Dict[str, Any]) -> List[Dict[str, Any]]:
     entity_ref_id = entity.get("astral_job_id") or entity.get("short_name")
 
     enriched = []
+    logger.debug("Beginning get_entity_agent_story loop on %s items", len(entries))
     for e in entries:
         task_key = e.get("task_key", "")
         task_cfg = TASK_CONFIG.get(task_key, {})
@@ -3404,17 +3378,24 @@ def get_entity_agent_story(entity: Dict[str, Any]) -> List[Dict[str, Any]]:
             label = btype if type_counts[btype] == 1 else f"{btype} ({type_counts[btype]})"
             content = data_map.get(bid, {}).get("block_data", "") or ""
 
-            if is_scored and btype == "RESPONSE" and entity_ref_id:
-                content = _filter_response_block(content, entity_ref_id)
+            if btype in ("NO_CACHE", "RESPONSE") and entity_ref_id:
+                # AST-2030: every task, not only scored; another chunk's block → "" (D2)
+                content = _slice_entity_block(content, entity_ref_id) or ""
 
             blocks.append({"type": label, "id": bid, "content": content})
 
         entry = {**e, "blocks": blocks}
 
-        # AST-1550: optional display name from live agent_task (omit when blank).
-        task_name = ((get_agent_task(task_key) or {}).get("task_name") or "").strip()
+        # AST-1550 / AST-2232: optional display names from live agent_task + agent (omit when blank).
+        task_row = get_agent_task(task_key) or {}
+        task_name = (task_row.get("task_name") or "").strip()
         if task_name:
             entry["task_name"] = task_name
+        agent_id = (task_row.get("agent_id") or "").strip()
+        agent_row = get_agent(agent_id) if agent_id else None
+        agent_name = ((agent_row or {}).get("agent_name") or "").strip()
+        if agent_name:
+            entry["agent_name"] = agent_name
 
         if is_scored:
             grades_key = task_cfg.get("grades_key")
@@ -3425,37 +3406,48 @@ def get_entity_agent_story(entity: Dict[str, Any]) -> List[Dict[str, Any]]:
 
         enriched.append(entry)
 
+    logger.debug("End get_entity_agent_story loop after %s items", len(enriched))
     return enriched
 
 
-def _filter_response_block(content: str, entity_id: str) -> str:
-    """For batch task RESPONSE blocks: filter jobs/companies array to the matching entity.
+def _slice_entity_block(content: str, entity_id: str) -> Optional[str]:
+    """One entity's slice of a stored NO_CACHE / TASK / RESPONSE block (AST-2030).
 
-    Returns the matching entry as pretty JSON, empty string for old encoded
-    data (no id present), or the original content for non-batch responses.
+    Whole block when it has no id-keyed segments (legacy positional, single-entity, shared prompt);
+    None when it has segments but none for entity_id (another chunk's call in the same batch).
     """
+    segments = split_entity_segments(content)
+    out = segments.get(entity_id) if segments else content
+    logger.debug("Response from _slice_entity_block: %s", out)
+    return out
+
+
+def _entity_call_view(content: str, entity_id: str) -> Optional[str]:
+    """Block as a one-entity (Each-mode) call would have stored it (AST-2052).
+
+    JSON companies[] / jobs[] → same object with only this entity's item; tagged text → preamble
+    before the first [entity_id=…] tag + this entity's segment. Whole / None exactly as _slice_entity_block.
+    """
+    seg = _slice_entity_block(content, entity_id)
+    if seg is None or seg == content:
+        return seg  # other chunk's call, or no id-keyed segments (legacy / shared prompt)
     try:
-        parsed = json.loads(content)
+        data = json.loads(content)
     except (json.JSONDecodeError, TypeError):
-        return content  # not JSON — leave as-is
-
-    if not isinstance(parsed, dict):
-        return content
-
-    # Prefer companies when present (AST-1723); else jobs.
-    rows = parsed.get("companies")
-    id_key = "company_id"
-    if not isinstance(rows, list):
-        rows = parsed.get("jobs")
-        id_key = "astral_job_id"
-    if rows is None:
-        return content  # single-entity response — show as-is
-
-    if not any(isinstance(j, dict) and j.get(id_key) for j in rows):
-        return ""  # old encoded payload — skip
-
-    match = next((j for j in rows if isinstance(j, dict) and j.get(id_key) == entity_id), None)
-    return json.dumps(match, indent=2) if match else ""
+        data = None
+    # Same array precedence as split_entity_segments: companies[] first, else jobs[]
+    arr_key, id_key = next(
+        ((k, i) for k, i in (("companies", "company_id"), ("jobs", "astral_job_id"))
+         if isinstance(data, dict) and isinstance(data.get(k), list)),
+        (None, None),
+    )
+    if arr_key:
+        items = [it for it in data[arr_key] if isinstance(it, dict) and str(it.get(id_key)) == entity_id]
+        out = json.dumps({**data, arr_key: items})
+    else:
+        out = content[: max(content.find("[entity_id="), 0)] + seg
+    logger.debug("Response from _entity_call_view: %s", out)
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -3468,26 +3460,26 @@ def get_agent_data(
     entity_id: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """Retrieve agent_data blocks for a batch.
-    When entity_id is provided and block_type is TASK or RESPONSE (or unset),
-    parses the block_data content to extract the element for that entity.
-    Assumes batch responses embed per-entity sections identifiable by entity_id."""
+    With entity_id (AST-2030 / AST-2052), rows read as one Each-mode call for that entity: NO_CACHE / TASK / RESPONSE via _entity_call_view (other chunks' rows dropped, rows without id-keyed segments whole), blank rows omitted.
+    SYSTEM / CACHE_A–D are shared prompt and pass through."""
     rows = get_agent_data_by_batch(batch_id, block_type)
     if not entity_id:
         return rows
 
     result = []
+    logger.debug("Beginning get_agent_data slice loop on %s items", len(rows))
     for row in rows:
-        bt = row.get("block_type")
-        if bt not in ("TASK", "RESPONSE"):
-            result.append(row)
+        if row.get("block_type") not in ("NO_CACHE", "TASK", "RESPONSE"):
+            if (row.get("block_data") or "").strip():
+                result.append(row)
             continue
-        # Extract entity-specific segment from the block content
-        content = row.get("block_data") or ""
-        segment = _extract_entity_segment(content, entity_id)
-        if segment is not None:
-            row = dict(row)
-            row["block_data"] = segment
-        result.append(row)
+        segment = _entity_call_view(row.get("block_data") or "", entity_id)
+        if segment is None:
+            continue  # another chunk's call — carries only other entities
+        if not segment.strip():
+            continue  # AST-2052: skip empty prompt content
+        result.append({**row, "block_data": segment})
+    logger.debug("End get_agent_data slice loop after %s items", len(result))
     return result
 
 

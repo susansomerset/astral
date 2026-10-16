@@ -6,7 +6,7 @@
 
 | Source | Test file | Branch lock |
 | --- | --- | --- |
-| `src/external/slack.py` | `tests/component/external/test_slack.py` | no |
+| `src/external/slack.py` (incl. channel type lookup `fetch_channel_type`, AST-2061) | `tests/component/external/test_slack.py` | no |
 
 ---
 
@@ -138,3 +138,99 @@ Three public helpers on `src/external/slack.py`: `list_bot_channels` (public/pri
 **Bible shasum (publish tip):**
 - `docs/test-bible/external/slack.md` — *(filled after publish)*
 
+---
+
+### AST-1815 · AST-1814
+
+**Parent:** [AST-1814 — Slack channel list isn't working](https://linear.app/astralcareermatch/issue/AST-1814). **Publish:** `origin/sub/AST-1814/AST-1815-surface-slack-scopes-on-conversations-list-errors` (product); tests landed by **AST-1816** on `origin/sub/AST-1814/AST-1816-gap-slack-scope-error-tests`.
+
+`conversations.list` `ok:false` raises in `list_bot_channels` / `_iter_conversations` append Slack `needed` / `provided` when present; the plain `"<method> failed: <error>"` text stays the same when they are absent. No change to pagination, types, sort, or soft-skip.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| `conversations.list` ok:false needed/provided detail | `src/external/slack.py` | **`TestAst1815SlackScopeErrorDetail`** |
+| Existing hard-fail prefix checks | `src/external/slack.py` | existing **`TestAst1787ChannelListMembershipFullHistory::test_list_bot_channels_ok_false_raises`**, **`TestAst1667WorkspacePosterPool::test_hard_failures_raise`** |
+
+**Broken / obsolete this pass:** none — existing asserts use `match="conversations.list"` (prefix unchanged).
+
+**Integration:** no existing scenario exercises Slack channel list errors — no revision; do not invent.
+
+## QA test manifest
+
+1. `[bug-repro]` + AC3 pin (new): `tests/component/external/test_slack.py::TestAst1815SlackScopeErrorDetail` — `test_list_bot_channels_missing_scope_names_needed_and_provided` and `test_iter_conversations_missing_scope_names_needed_and_provided` are red on the pre-fix tree and flip green once AST-1815 is on the tip; `test_conversations_list_error_without_scope_fields_is_plain` is green on both.
+2. Existing regression: `tests/component/external/test_slack.py::TestAst1787ChannelListMembershipFullHistory::test_list_bot_channels_ok_false_raises`
+3. Existing regression: `tests/component/external/test_slack.py::TestAst1667WorkspacePosterPool::test_hard_failures_raise`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/external/test_slack.py::TestAst1815SlackScopeErrorDetail \
+  tests/component/external/test_slack.py::TestAst1787ChannelListMembershipFullHistory::test_list_bot_channels_ok_false_raises \
+  tests/component/external/test_slack.py::TestAst1667WorkspacePosterPool::test_hard_failures_raise \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines after AST-1815 lands on the tip — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/external/slack.md` — *(filled after publish)*
+
+---
+
+### AST-2062 · AST-2055 (Estelle pinhole — tests for AST-2061)
+
+**Parent:** [AST-2055](https://linear.app/astralcareermatch/issue/AST-2055) (fix child [AST-2061](https://linear.app/astralcareermatch/issue/AST-2061)). **Publish:** `origin/sub/AST-2055/AST-2062-estelle-pinhole-tests`.
+
+`fetch_channel_type(channel)`: gated by `require_controlled_external_io`, `conversations.info` GET, returns Slack's `channel_type` vocabulary — `is_im` → `im`, `is_mpim` → `mpim` (checked before private), `is_private`/`is_group` → `group`, else `channel`; raises on blank id or `ok:false` (with `needed`/`provided` detail via `_slack_error`). Contact's fail-closed `app_mention` gate: [`../core/contact.md`](../core/contact.md) § AST-2062.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Gate (integration mode, no live opt-in → `RuntimeError`, no HTTP); flag mapping (6 params) + `conversations.info` / `params == {"channel": "C1"}`; ok:false scope detail; blank id | `src/external/slack.py` | **`TestAst2061FetchChannelType`** (4) |
+
+**Broken / obsolete this pass:** none — additive.
+
+**Integration:** none — do not invent.
+
+## QA test manifest
+
+1. `tests/component/external/test_slack.py::TestAst2061FetchChannelType`
+
+Full AST-2062 command (all four pages): [`../core/contact.md`](../core/contact.md) § AST-2062.
+
+### AST-2072 · AST-2050 (post_message reply_broadcast)
+
+**Parent:** [AST-2050](https://linear.app/astralcareermatch/issue/AST-2050). **Publish:** `origin/sub/AST-2050/AST-2072-estelle-thread-response`.
+
+`post_message(..., reply_broadcast=False)`: `reply_broadcast: true` goes into the `chat.postMessage` body only inside the `thread_ts` branch, so a top-level post never carries it (AC 11); default leaves every existing caller's body unchanged. Contact placement: [`../core/contact.md`](../core/contact.md) § AST-2072.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Exact body: thread + broadcast; broadcast without thread dropped; thread default has no flag | `src/external/slack.py` | **`TestAst2072PostMessageReplyBroadcast::test_body`** (3) |
+
+**Broken / obsolete this pass:** none — `TestAst1069ExternalSlack::test_post_message_requires_gate_and_posts` unchanged and still green.
+
+**Integration:** none — do not invent.
+
+## QA test manifest
+
+1. `tests/component/external/test_slack.py::TestAst2072PostMessageReplyBroadcast`
+
+Full AST-2072 command: [`../core/contact.md`](../core/contact.md) § AST-2072.
+
+### AST-2211 · AST-2206 (opt-in thread replies on full channel history)
+
+**Parent:** [AST-2206](https://linear.app/astralcareermatch/issue/AST-2206). **Publish:** `origin/sub/AST-2206/AST-2211-show-save-handlers-threaded-history`. Plan: `docs/features/contact/ast-2211-show-save-handlers-threaded-history.md`.
+
+`fetch_full_conversation_history(*, channel, include_thread_replies=False)`. Off (default): output unchanged and no `conversations.replies` call, so the admin snapshot (§ AST-1787) is untouched (ticket AC 4). On: every history message with `reply_count > 0` and a `ts` gets `conversations.replies` (hard-fail, no soft-skip); the echoed parent is dropped; replies merge into the one ascending `ts` sort keeping Slack's `user` / `thread_ts`. Caller with the flag on is sibling **AST-2212**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Default off → no replies call, same ascending list | `src/external/slack.py` | new **`TestAst2211FullHistoryThreadReplies::test_default_off_never_pulls_replies`** |
+| On → only `reply_count>0` + ts parents pulled; parent echo dropped; global ascending merge; `user` / `thread_ts` kept | same | **`…::test_on_merges_replies_ascending_without_parent_echo`** |
+| On → `conversations.replies` ok:false raises | same | **`…::test_on_replies_ok_false_raises`** |
+| AC 4 caller half: snapshot calls the fetch with `channel=` only | `src/core/contact.py` (untouched) | **`TestAst1788AdminSlackChannelOrchestration::test_snapshot_happy_path`** (`assert_called_once_with(channel=…)`), API: **`TestAst1788AdminSlackChannelApis`** — unchanged, green |
+
+**Broken / obsolete this pass:** none — `TestAst1787ChannelListMembershipFullHistory` (default path) unchanged and green.
+
+**Integration:** none — do not invent.
+
+Manifest: [`../core/candidate.md`](../core/candidate.md) § AST-2211.

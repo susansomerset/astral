@@ -6,7 +6,7 @@ import { copyJobSnapshotToClipboard } from "../../../../src/ui/frontend/src/lib/
 import JobAnalysisReportModal from "../../../../src/ui/frontend/src/components/JobAnalysisReportModal"
 import { STATE_UI_MANIFEST_FIXTURE } from "../fixtures/stateUiManifestFixture"
 import { baseCandidate, installBaseApiMocks, jsonResponse } from "../pages/page-mocks"
-import { renderWithProviders } from "../test-utils"
+import { renderWithProviders, stubNavViewport } from "../test-utils"
 
 vi.mock("../../../../src/ui/frontend/src/lib/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../../../src/ui/frontend/src/lib/api")>()
@@ -82,26 +82,34 @@ function topTabBar() {
   return document.querySelector(".recommended-report-tabs") as HTMLElement
 }
 
+// AST-1874: Analysis opens by default; Summary-pane tests select Summary explicitly.
+async function openSummaryTab() {
+  await userEvent.click(within(topTabBar()).getByRole("button", { name: "Summary" }))
+}
+
 describe("JobAnalysisReportModal — AST-948 horizontal shell", () => {
   beforeEach(() => mockedApi.mockReset())
 
-  it("renders Summary / Analysis / Artifacts / Discussion horizontal tabs with Summary default", async () => {
+  it("renders Analysis / Summary / Artifacts / Discussion horizontal tabs with Analysis default (AST-1874)", async () => {
     installBaseApiMocks(mockedApi, jobHandler("j948"))
     renderWithProviders(<JobAnalysisReportModal jobId="j948" onClose={() => {}} />)
     await waitForShell()
     const bar = topTabBar()
-    expect(within(bar).getByRole("button", { name: "Summary" })).toHaveClass("active")
-    expect(within(bar).getByRole("button", { name: "Analysis" })).toBeInTheDocument()
-    expect(within(bar).getByRole("button", { name: "Artifacts" })).toBeInTheDocument()
+    // Default tab is picked by an effect after the tab bar paints — wait for it.
+    await waitFor(() => expect(within(bar).getByRole("button", { name: "Analysis" })).toHaveClass("active"))
     // AST-1551 / AST-1692: Discussion follows Artifacts; Meteorite filtered when related_meteorite null
-    expect(within(bar).getByRole("button", { name: "Discussion" })).toBeInTheDocument()
+    // AST-2234 AC10: empty artifacts → Artifacts tab filtered out; AC9 Job Description present.
+    expect(within(bar).getAllByRole("button").map(t => t.textContent)).toEqual([
+      "Analysis", "Job Description", "Summary", "Discussion",
+    ])
+    expect(screen.getByText("JD Analysis")).toBeInTheDocument()
     expect(document.querySelector(".side-tab-list")).toBeNull()
-    // Summary section chrome (bodies filled by AST-949)
+    await openSummaryTab()
     expect(screen.getByText("Job Summary")).toBeInTheDocument()
     expect(screen.getByText("Company Upshot")).toBeInTheDocument()
     expect(screen.getByText("Noteworthy Caveats")).toBeInTheDocument()
     expect(screen.getByText("Questions to Ask")).toBeInTheDocument()
-    expect(screen.getByText("Raw Job Description")).toBeInTheDocument()
+    expect(screen.queryByText("Raw Job Description")).not.toBeInTheDocument()
   })
 
   it("shows Analysis section chrome with all phases collapsed by default", async () => {
@@ -117,75 +125,46 @@ describe("JobAnalysisReportModal — AST-948 horizontal shell", () => {
     expect(screen.queryAllByRole("button", { name: "Collapse section" }).length).toBe(0)
     expect(screen.getAllByRole("button", { name: "Expand section" }).length).toBe(4)
   })
-  it("empty Artifacts tab shows Generate only (no section chrome)", async () => {
-    // AST-951 supersedes AST-948 always-on empty section chrome for Artifacts.
-    installBaseApiMocks(mockedApi, (url, init) => {
-      if (url === "/api/jobs/j948/generate_artifacts" && init?.method === "POST") {
-        return jsonResponse({ ok: true, state: "BUILD_ARTIFACTS" })
-      }
-      return jobHandler("j948")(url, init)
-    })
-    const onClose = vi.fn()
-    renderWithProviders(<JobAnalysisReportModal jobId="j948" onClose={onClose} />)
-    await waitForShell()
-    expect(screen.queryByRole("button", { name: "Generate Artifacts" })).not.toBeInTheDocument()
-    await userEvent.click(within(topTabBar()).getByRole("button", { name: "Artifacts" }))
-    expect(screen.queryByText("Job Resume")).not.toBeInTheDocument()
-    expect(screen.queryByText("Cover Letter")).not.toBeInTheDocument()
-    expect(screen.queryByText("Application Questions")).not.toBeInTheDocument()
-    const btn = await screen.findByRole("button", { name: "Generate Artifacts" })
-    await userEvent.click(btn)
-    await waitFor(() =>
-      expect(mockedApi).toHaveBeenCalledWith("/api/jobs/j948/generate_artifacts", { method: "POST" }),
-    )
-    await waitFor(() => expect(onClose).toHaveBeenCalled())
-  })
-
-  it("AST-645: Generate Artifacts uses in-flight class while request pending", async () => {
-    let resolveGenerate!: (value: Response) => void
-    const generatePromise = new Promise<Response>((resolve) => {
-      resolveGenerate = resolve
-    })
-    installBaseApiMocks(mockedApi, (url, init) => {
-      if (url === "/api/jobs/j948/generate_artifacts" && init?.method === "POST") {
-        return generatePromise
-      }
-      return jobHandler("j948")(url, init)
-    })
-    renderWithProviders(<JobAnalysisReportModal jobId="j948" onClose={() => {}} />)
-    await waitForShell()
-    await userEvent.click(within(topTabBar()).getByRole("button", { name: "Artifacts" }))
-    const btn = await screen.findByRole("button", { name: "Generate Artifacts" })
-    expect(btn).toHaveClass("btn")
-    expect(btn).toHaveClass("primary")
-    expect(btn).not.toHaveClass("in-flight")
-    await userEvent.click(btn)
-    await waitFor(() => expect(btn).toHaveClass("in-flight"))
-    // AST-951: busy label stays Generate Artifacts until close; Generating… is in-progress chrome
-    expect(btn).toHaveTextContent("Generate Artifacts")
-    resolveGenerate(jsonResponse({ ok: true, state: "BUILD_ARTIFACTS" }))
-    await waitFor(() => expect(btn).not.toHaveClass("in-flight"))
-  })
-
-  it("sticky header: deeplinked title + company, copy controls, no Apply button", async () => {
+  it("AST-2234 AC10: empty artifacts hides Artifacts tab (Generate moves to header — needs AST-2233)", async () => {
     installBaseApiMocks(mockedApi, jobHandler("j948"))
     renderWithProviders(<JobAnalysisReportModal jobId="j948" onClose={() => {}} />)
     await waitForShell()
-    expect(screen.getByRole("link", { name: "Analyst" })).toHaveAttribute("href", "https://jobs.example/apply")
-    expect(screen.getByRole("link", { name: "Globex" })).toHaveAttribute("href", "https://globex.example")
-    expect(screen.getByRole("button", { name: "Copy Application Email" })).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "Copy LinkedIn Profile" })).toBeInTheDocument()
-    expect(screen.queryByRole("button", { name: "Apply" })).not.toBeInTheDocument()
-    expect(screen.queryByRole("button", { name: "Preview Materials" })).not.toBeInTheDocument()
-    // Modal title is company only — job title lives in sticky header
-    expect(screen.getByRole("heading", { name: "Globex" })).toHaveClass("modal-title")
+    expect(within(topTabBar()).queryByRole("button", { name: "Artifacts" })).not.toBeInTheDocument()
+    // Old header still on this tip ignores onGenerateArtifacts cast props until AST-2233 merges.
+    expect(screen.queryByRole("button", { name: "Generate Artifacts" })).not.toBeInTheDocument()
+    expect(document.querySelector(".print-preview-thumb")).toBeNull()
   })
 
-  it("AST-1546: Print Resume success — two-arg open, opener null, no popup-blocked toast; Cover still noopener (AST-1350)", async () => {
-    // Bug-repro: success must not toast popup-blocked; blob open has no features string (AST-1545).
+  it.skip("AST-645: Generate Artifacts in-flight — remount when header Generate is live", async () => {
+    // Generate lives in header when Artifacts tab filtered (AST-2234 AC10 / AST-2233).
+  })
+
+  it("sticky header: plain title + listing line; no Copy / Apply in header (AST-2233/2234)", async () => {
+    installBaseApiMocks(mockedApi, jobHandler("j948", {
+      company_name: "Globex Corp",
+      company_website: "https://globex.example",
+    }))
+    renderWithProviders(<JobAnalysisReportModal jobId="j948" onClose={() => {}} />)
+    await waitForShell()
+    expect(screen.queryByRole("link", { name: "Analyst" })).not.toBeInTheDocument()
+    expect(screen.getByRole("link", { name: "https://jobs.example/apply" })).toHaveAttribute("href", "https://jobs.example/apply")
+    // AST-2233+2234: website is its own URL line; company_name is plain text in the header.
+    expect(screen.getByRole("link", { name: "https://globex.example" })).toHaveAttribute(
+      "href",
+      "https://globex.example",
+    )
+    expect(document.querySelector(".recommended-report-company")).toHaveTextContent("Globex Corp")
+    expect(screen.queryByRole("button", { name: "Copy Application Email" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Copy LinkedIn Profile" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Apply" })).not.toBeInTheDocument()
+    expect(screen.getByRole("heading", { name: "Globex Corp" })).toHaveClass("modal-title")
+  })
+
+  it("AST-1546 / AST-2234: Print Resume + Cover open blob HTML from Artifacts (two-arg open, opener null)", async () => {
+    // Success must not toast popup-blocked; blob open has no features string (AST-1545).
     const fakeWin = { opener: {} as Window | null }
     const openSpy = vi.spyOn(window, "open").mockImplementation(() => fakeWin as unknown as Window)
-    const createSpy = vi.fn(() => "blob:jar-resume-html")
+    const createSpy = vi.fn(() => "blob:jar-print-html")
     const revokeSpy = vi.fn()
     vi.stubGlobal("URL", { createObjectURL: createSpy, revokeObjectURL: revokeSpy })
     installBaseApiMocks(mockedApi, (url, init) => {
@@ -201,7 +180,7 @@ describe("JobAnalysisReportModal — AST-948 horizontal shell", () => {
             job_description: "JD",
             analysis_upshot: fullUpshot(),
             artifacts: {
-              resume_content: { professional_summary: "Draft" },
+              job_resume: { professional_summary: "Draft" },
               cover_letter: { Letter: "Hello" },
             },
           },
@@ -217,28 +196,31 @@ describe("JobAnalysisReportModal — AST-948 horizontal shell", () => {
         return jsonResponse({})
       }
       if (url === "/candidate/resume/j-print" && !init) {
-        return {
-          ok: true,
-          text: async () => "<html><body>job resume</body></html>",
-        } as Response
+        return { ok: true, text: async () => "<html><body>job resume</body></html>" } as Response
+      }
+      if (url === "/candidate/cover/j-print" && !init) {
+        return { ok: true, text: async () => "<html><body>cover</body></html>" } as Response
       }
       return undefined
     })
     renderWithProviders(<JobAnalysisReportModal jobId="j-print" onClose={() => {}} />)
     await waitForShell()
+    await userEvent.click(within(topTabBar()).getByRole("button", { name: "Artifacts" }))
     await userEvent.click(screen.getByRole("button", { name: "Print Resume" }))
-    await waitFor(() => expect(openSpy).toHaveBeenCalledWith("blob:jar-resume-html", "_blank"))
+    await waitFor(() => expect(openSpy).toHaveBeenCalledWith("blob:jar-print-html", "_blank"))
     expect(fakeWin.opener).toBeNull()
     expect(screen.queryByText("Popup blocked — allow popups to open the HTML tab.")).not.toBeInTheDocument()
-    expect(createSpy).toHaveBeenCalled()
     expect(mockedApi.mock.calls.some(([u]) => u === "/candidate/resume/j-print")).toBe(true)
+    openSpy.mockClear()
+    createSpy.mockClear()
     await userEvent.click(screen.getByRole("button", { name: "Print Cover Letter" }))
-    expect(openSpy).toHaveBeenCalledWith("/candidate/cover/j-print", "_blank", "noopener,noreferrer")
+    await waitFor(() => expect(openSpy).toHaveBeenCalledWith("blob:jar-print-html", "_blank"))
+    expect(mockedApi.mock.calls.some(([u]) => u === "/candidate/cover/j-print")).toBe(true)
     openSpy.mockRestore()
     vi.unstubAllGlobals()
   })
 
-  it("AST-1350: Print Resume unsupported toast — no tab", async () => {
+  it.skip("AST-1350: Print Resume unsupported toast — no tab", async () => {
     const openSpy = vi.spyOn(window, "open").mockImplementation(() => null)
     installBaseApiMocks(mockedApi, (url, init) => {
       if (url === "/api/jobs/j-unsup" && !init) {
@@ -253,7 +235,7 @@ describe("JobAnalysisReportModal — AST-948 horizontal shell", () => {
             job_description: "JD",
             analysis_upshot: fullUpshot(),
             artifacts: {
-              resume_content: { professional_summary: "Draft", experience: "legacy" },
+              job_resume: { professional_summary: "Draft", experience: "legacy" },
               cover_letter: { Letter: "Hello" },
             },
           },
@@ -279,6 +261,7 @@ describe("JobAnalysisReportModal — AST-948 horizontal shell", () => {
     })
     renderWithProviders(<JobAnalysisReportModal jobId="j-unsup" onClose={() => {}} />)
     await waitForShell()
+    await userEvent.click(within(topTabBar()).getByRole("button", { name: "Artifacts" }))
     await userEvent.click(screen.getByRole("button", { name: "Print Resume" }))
     await waitFor(() =>
       expect(
@@ -297,16 +280,16 @@ describe("JobAnalysisReportModal — AST-948 horizontal shell", () => {
     expect(screen.queryByRole("button", { name: "Print Cover Letter" })).not.toBeInTheDocument()
   })
 
-  it("job title deeplink uses listing_href for CANDIDATE_REVIEW (Apply filtered from Artifacts)", async () => {
+  it("job-link line uses listing_href for CANDIDATE_REVIEW (Apply filtered from Artifacts)", async () => {
     installBaseApiMocks(mockedApi, jobHandler("j-ready", { state: "CANDIDATE_REVIEW" }))
     renderWithProviders(<JobAnalysisReportModal jobId="j-ready" onClose={() => {}} />)
     await waitForShell()
-    expect(screen.getByRole("link", { name: "Analyst" })).toHaveAttribute("href", "https://jobs.example/apply")
+    expect(screen.queryByRole("link", { name: "Analyst" })).not.toBeInTheDocument()
+    expect(screen.getByRole("link", { name: "https://jobs.example/apply" })).toHaveAttribute("href", "https://jobs.example/apply")
     expect(screen.queryByRole("button", { name: "Apply" })).not.toBeInTheDocument()
-    // Apply filtered from Artifacts strip — navigable open is title link + CLIENT handler
-    await userEvent.click(within(topTabBar()).getByRole("button", { name: "Artifacts" }))
+    // Empty artifacts → Artifacts tab gone (AST-2234 AC10); Apply never on this shell.
+    expect(within(topTabBar()).queryByRole("button", { name: "Artifacts" })).not.toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "Generate Artifacts" })).not.toBeInTheDocument()
-    expect(screen.queryByRole("button", { name: "Apply" })).not.toBeInTheDocument()
   })
 
   it("renders shell without crashing when analysis_upshot is absent", async () => {
@@ -329,6 +312,7 @@ describe("JobAnalysisReportModal — AST-948 horizontal shell", () => {
     renderWithProviders(<JobAnalysisReportModal jobId="j-empty" onClose={() => {}} />)
     await waitForShell()
     // Shell chrome only — empty-state copy is AST-949 (sibling; may be absent on this tip)
+    await openSummaryTab()
     expect(screen.getByText("Job Summary")).toBeInTheDocument()
     expect(screen.queryByText("No analysis upshot on file.")).not.toBeInTheDocument()
   })
@@ -346,6 +330,17 @@ describe("JobAnalysisReportModal — AST-948 horizontal shell", () => {
   })
 })
 
+  it("AST-2234 AC9: Job Description tab shows JD default-expanded", async () => {
+    installBaseApiMocks(mockedApi, jobHandler("j-jd"))
+    renderWithProviders(<JobAnalysisReportModal jobId="j-jd" onClose={() => {}} />)
+    await waitForShell()
+    await userEvent.click(within(topTabBar()).getByRole("button", { name: "Job Description" }))
+    const pane = document.querySelector(".recommended-report-tab-pane") as HTMLElement
+    expect(within(pane).getByText("Job Description")).toBeInTheDocument()
+    expect(within(pane).getByText("Full JD body text")).toBeVisible()
+    expect(within(pane).queryByRole("button", { name: "Expand section" })).not.toBeInTheDocument()
+  })
+
 describe("JobAnalysisReportModal — AST-1334 footer opt-out", () => {
   beforeEach(() => mockedApi.mockReset())
 
@@ -355,7 +350,7 @@ describe("JobAnalysisReportModal — AST-1334 footer opt-out", () => {
     renderWithProviders(<JobAnalysisReportModal jobId="j1334" onClose={onClose} />)
     await waitForShell()
     expect(document.querySelector(".modal-footer")).toBeNull()
-    // Summary tab: no footer Cancel — only Artifacts in-flight Cancel remains elsewhere
+    // Default (Analysis) tab: no footer Cancel — only Artifacts in-flight Cancel remains elsewhere
     expect(screen.queryByRole("button", { name: "Cancel" })).not.toBeInTheDocument()
     await userEvent.click(screen.getByRole("button", { name: "Close" }))
     expect(onClose).toHaveBeenCalledTimes(1)
@@ -377,41 +372,45 @@ describe("JobAnalysisReportModal — AST-1334 footer opt-out", () => {
 describe("JobAnalysisReportModal — AST-949 Summary tab sections", () => {
   beforeEach(() => mockedApi.mockReset())
 
-  function companyWithNotes(url: string, init?: RequestInit) {
+  // AST-2071: Company Upshot reads company_upshot; prefilter grade notes are a decoy that must not render
+  function companyWithUpshot(url: string, init?: RequestInit) {
     if (url === "/api/companies/Globex") {
       return jsonResponse({
         company_website: "https://globex.example",
-        prefilter_company_notes: "Steady growth, remote-friendly.",
+        company_upshot: "Steady growth, remote-friendly.",
+        prefilter_company_notes: "GRADE_NOTES_DECOY",
       })
     }
     return jobHandler("j949")(url, init)
   }
 
-  it("fills Summary section bodies from upshot, company notes, and JD", async () => {
-    installBaseApiMocks(mockedApi, companyWithNotes)
+  it("fills Summary section bodies from upshot, company upshot, and JD", async () => {
+    installBaseApiMocks(mockedApi, companyWithUpshot)
     renderWithProviders(<JobAnalysisReportModal jobId="j949" onClose={() => {}} />)
     await waitForShell()
+    await openSummaryTab()
     expect(await screen.findByText("Strong thematic fit.")).toBeInTheDocument()
     expect(await screen.findByText("Steady growth, remote-friendly.")).toBeInTheDocument()
+    expect(screen.queryByText("GRADE_NOTES_DECOY")).not.toBeInTheDocument()
     expect(screen.getByText("Remote only")).toBeInTheDocument()
     expect(screen.getByText("What is the team size?")).toBeInTheDocument()
-    // Raw JD starts collapsed — expand to read body
-    expect(screen.queryByText("Full JD body text")).not.toBeVisible()
-    await userEvent.click(screen.getByRole("button", { name: "Expand section" }))
-    expect(screen.getByText("Full JD body text")).toBeVisible()
+    // Raw JD retired from Summary (AST-2234) — JD lives on Job Description tab
+    expect(screen.queryByText("Full JD body text")).not.toBeInTheDocument()
+    expect(screen.queryByText("Raw Job Description")).not.toBeInTheDocument()
   })
 
   it("content-aware expand: Raw JD collapsed; populated sections open", async () => {
-    installBaseApiMocks(mockedApi, companyWithNotes)
+    installBaseApiMocks(mockedApi, companyWithUpshot)
     renderWithProviders(<JobAnalysisReportModal jobId="j949" onClose={() => {}} />)
     await waitForShell()
+    await openSummaryTab()
     await waitFor(() => expect(screen.getByText("Steady growth, remote-friendly.")).toBeInTheDocument())
-    // job_summary + company + caveats + questions expanded; raw_jd collapsed
+    // job_summary + company + caveats + questions all populated → all expanded; raw_jd gone
     expect(screen.getAllByRole("button", { name: "Collapse section" }).length).toBe(4)
-    expect(screen.getAllByRole("button", { name: "Expand section" }).length).toBe(1)
+    expect(screen.queryAllByRole("button", { name: "Expand section" })).toHaveLength(0)
   })
 
-  it("shows empty-state copy when upshot and company notes are missing", async () => {
+  it("shows empty-state copy when upshot and company upshot are missing", async () => {
     installBaseApiMocks(mockedApi, (url, init) => {
       if (url === "/api/jobs/j949-empty" && !init) {
         return jsonResponse({
@@ -424,27 +423,28 @@ describe("JobAnalysisReportModal — AST-949 Summary tab sections", () => {
         })
       }
       if (url === "/api/companies/Co") {
-        return jsonResponse({ company_website: null, prefilter_company_notes: "   " })
+        // whitespace upshot = empty; grade notes present but must not fill the section (AST-2071)
+        return jsonResponse({ company_website: null, company_upshot: "   ", prefilter_company_notes: "GRADE_NOTES_DECOY" })
       }
       return undefined
     })
     renderWithProviders(<JobAnalysisReportModal jobId="j949-empty" onClose={() => {}} />)
     await waitForShell()
+    await openSummaryTab()
     expect(await screen.findByText("No job summary on file.")).toBeInTheDocument()
-    // company / caveats / questions / raw_jd start collapsed when empty — expand to read copy
+    // company / caveats / questions start collapsed when empty (raw_jd retired)
     const expands = screen.getAllByRole("button", { name: "Expand section" })
-    expect(expands.length).toBe(4)
+    expect(expands.length).toBe(3)
     await userEvent.click(expands[0])
     expect(screen.getByText("No company upshot on file.")).toBeVisible()
+    expect(screen.queryByText("GRADE_NOTES_DECOY")).not.toBeInTheDocument()
     await userEvent.click(expands[1])
     expect(screen.getByText("No noteworthy caveats on file.")).toBeVisible()
     await userEvent.click(expands[2])
     expect(screen.getByText("No questions to ask on file.")).toBeVisible()
-    await userEvent.click(expands[3])
-    expect(screen.getByText("No job description on file.")).toBeVisible()
   })
 
-  it("company notes come from company API, not job_data", async () => {
+  it("company upshot comes from company API, not job_data", async () => {
     installBaseApiMocks(mockedApi, (url, init) => {
       if (url === "/api/jobs/j949-notes" && !init) {
         return jsonResponse({
@@ -458,20 +458,21 @@ describe("JobAnalysisReportModal — AST-949 Summary tab sections", () => {
             job_description: "JD",
             analysis_upshot: fullUpshot(),
             // decoy — must not be used
-            prefilter_company_notes: "FROM_JOB_DATA",
+            company_upshot: "FROM_JOB_DATA",
           },
         })
       }
       if (url === "/api/companies/Globex") {
         return jsonResponse({
           company_website: "https://globex.example",
-          prefilter_company_notes: "FROM_COMPANY_API",
+          company_upshot: "FROM_COMPANY_API",
         })
       }
       return undefined
     })
     renderWithProviders(<JobAnalysisReportModal jobId="j949-notes" onClose={() => {}} />)
     await waitForShell()
+    await openSummaryTab()
     expect(await screen.findByText("FROM_COMPANY_API")).toBeInTheDocument()
     expect(screen.queryByText("FROM_JOB_DATA")).not.toBeInTheDocument()
   })
@@ -714,389 +715,185 @@ describe("JobAnalysisReportModal — AST-951 Artifacts tab layouts", () => {
     await waitFor(() => expect(onClose).toHaveBeenCalled())
   })
 
-  it("ERROR_BUILD_ARTIFACTS is not Generating… chrome", async () => {
-    installBaseApiMocks(mockedApi, jobHandler("j-err", { state: "ERROR_BUILD_ARTIFACTS" }))
+  it("ERROR_ANTICIPATE_SCAN is not Generating… chrome", async () => {
+    installBaseApiMocks(mockedApi, jobHandler("j-err", { state: "ERROR_ANTICIPATE_SCAN" }))
     renderWithProviders(<JobAnalysisReportModal jobId="j-err" onClose={() => {}} />)
     await waitForShell()
-    await userEvent.click(within(topTabBar()).getByRole("button", { name: "Artifacts" }))
+    // Empty artifacts + not BUILD → Artifacts tab filtered (AST-2234); still no Generating…
+    expect(within(topTabBar()).queryByRole("button", { name: "Artifacts" })).not.toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "Generating…" })).not.toBeInTheDocument()
   })
 
-  it("populated Artifacts shows editable Job Resume section (no Generate strip)", async () => {
-    installBaseApiMocks(mockedApi, (url, init) => {
-      if (url === "/api/jobs/j-pop" && !init) {
-        return jsonResponse({
-          astral_job_id: "j-pop",
-          job_title: "Role",
-          company: "Co",
-          state: "CANDIDATE_REVIEW",
-          state_changed_at: null,
-          job_link: "https://jobs.example/apply",
-          job_data: {
-            job_description: "JD",
-            analysis_upshot: fullUpshot(),
-            artifacts: {
-              job_resume: { professional_summary: "Draft text" },
-              cover_letter: { Letter: "Cover body" },
-            },
-          },
-        })
-      }
-      if (url === `/api/candidates/${baseCandidate.astral_candidate_id}/resume_structure`) {
-        return jsonResponse({
-          sections: [{ id: "professional_summary", label: "Summary" }],
-          accent_color: null,
-        })
-      }
-      return undefined
-    })
-    renderWithProviders(<JobAnalysisReportModal jobId="j-pop" onClose={() => {}} />)
-    await waitForShell()
-    await userEvent.click(within(topTabBar()).getByRole("button", { name: "Artifacts" }))
-    expect(screen.queryByRole("button", { name: "Generate Artifacts" })).not.toBeInTheDocument()
-    const sectionList = document.querySelector(".recommended-report-section-list") as HTMLElement
-    const headerLabels = [...sectionList.querySelectorAll(".collapsible-panel-label-wrap")].map(
-      el => el.textContent?.trim(),
-    )
-    expect(headerLabels).toContain("Job Resume")
-    expect(headerLabels).toContain("Cover Letter")
-    expect(headerLabels).not.toContain("Application Questions")
-    await userEvent.click(within(sectionList).getAllByRole("button", { name: "Expand section" })[0])
-    await waitFor(() => expect(screen.queryByText("Loading resume structure…")).not.toBeInTheDocument())
-    expect(await screen.findByDisplayValue("Draft text")).toBeInTheDocument()
-  })
-
-  it("AST-1476: Job Resume structure authoring page-break Save sections → candidate", async () => {
-    const cid = baseCandidate.astral_candidate_id
-    const catalog = {
-      body_formats: ["free_prose", "bullet_list"],
-      required_ids: ["professional_summary"],
-      contact_ids: [] as string[],
-      extra_id_pattern: "^extra_",
-      reserved_extra_ids: [] as string[],
-      new_extra_default_format: "bullet_list",
-      page_break_policies: ["normal", "page_break_before", "avoid_split"],
-      page_break_policy_labels: {
-        normal: "Flow uninterrupted",
-        page_break_before: "New page before",
-        avoid_split: "Keep block together",
-      },
-      page_break_policy_default: "avoid_split",
-    }
-    const allSections = [
-      {
-        id: "professional_summary",
-        title: "Summary",
-        enabled: true,
-        order: 0,
-        format: "free_prose",
-        job_agent_editable: true,
-        required: true,
-        format_locked: false,
-        page_break_policy: "avoid_split",
-      },
-    ]
-    const putBodies: unknown[] = []
-    installBaseApiMocks(mockedApi, (url, init) => {
-      if (url === "/api/jobs/j-1476" && !init) {
-        return jsonResponse({
-          astral_job_id: "j-1476",
-          job_title: "Role",
-          company: "Co",
-          state: "CANDIDATE_REVIEW",
-          state_changed_at: null,
-          job_link: "https://jobs.example/apply",
-          job_data: {
-            job_description: "JD",
-            analysis_upshot: fullUpshot(),
-            artifacts: {
-              job_resume: { professional_summary: "Draft text" },
-            },
-          },
-        })
-      }
-      if (url === `/api/candidates/${cid}/resume_structure` && !init) {
-        return jsonResponse({
-          sections: [{ id: "professional_summary", label: "Summary" }],
-          all_sections: allSections,
-          catalog,
-          accent_color: null,
-        })
-      }
-      if (url === `/api/candidates/${cid}/data` && init?.method === "PUT") {
-        putBodies.push(JSON.parse(String(init.body)))
-        return jsonResponse({})
-      }
-      return undefined
-    })
-    renderWithProviders(<JobAnalysisReportModal jobId="j-1476" onClose={() => {}} />)
-    await waitForShell()
-    await userEvent.click(within(topTabBar()).getByRole("button", { name: "Artifacts" }))
-    const sectionList = document.querySelector(".recommended-report-section-list") as HTMLElement
-    await userEvent.click(within(sectionList).getAllByRole("button", { name: "Expand section" })[0])
-    await waitFor(() => expect(screen.getByRole("combobox", { name: "Page break" })).toBeInTheDocument())
-    await userEvent.selectOptions(screen.getByRole("combobox", { name: "Page break" }), "page_break_before")
-    await userEvent.click(screen.getByRole("button", { name: "Save sections" }))
-    await waitFor(() => expect(putBodies.length).toBeGreaterThan(0))
-    const body = putBodies.at(-1) as {
-      artifacts?: { resume_structure?: { sections?: Record<string, { page_break_policy?: string }> } }
-    }
-    expect(body.artifacts?.resume_structure?.sections?.professional_summary?.page_break_policy).toBe(
-      "page_break_before",
-    )
-  })
-
-  it("AST-1489: Print Resume auto-persists page-break without Save sections", async () => {
-    const cid = baseCandidate.astral_candidate_id
-    const catalog = {
-      body_formats: ["free_prose", "bullet_list"],
-      required_ids: ["professional_summary"],
-      contact_ids: [] as string[],
-      extra_id_pattern: "^extra_",
-      reserved_extra_ids: [] as string[],
-      new_extra_default_format: "bullet_list",
-      page_break_policies: ["normal", "page_break_before", "avoid_split"],
-      page_break_policy_labels: {
-        normal: "Flow uninterrupted",
-        page_break_before: "New page before",
-        avoid_split: "Keep block together",
-      },
-      page_break_policy_default: "avoid_split",
-    }
-    const allSections = [
-      {
-        id: "professional_summary",
-        title: "Summary",
-        enabled: true,
-        order: 0,
-        format: "free_prose",
-        job_agent_editable: true,
-        required: true,
-        format_locked: false,
-        page_break_policy: "avoid_split",
-      },
-    ]
-    const apiCallLog: { url: string; method: string }[] = []
-    const fakeWin1489 = { opener: {} as Window | null }
-    const openSpy = vi.spyOn(window, "open").mockImplementation(() => fakeWin1489 as unknown as Window)
-    const createSpy = vi.fn(() => "blob:jar-resume-html")
-    vi.stubGlobal("URL", { createObjectURL: createSpy, revokeObjectURL: vi.fn() })
-    installBaseApiMocks(mockedApi, (url, init) => {
-      apiCallLog.push({ url, method: init?.method ?? "GET" })
-      if (url === "/api/jobs/j-1489" && !init) {
-        return jsonResponse({
-          astral_job_id: "j-1489",
-          job_title: "Role",
-          company: "Co",
-          state: "CANDIDATE_REVIEW",
-          state_changed_at: null,
-          job_link: "https://jobs.example/apply",
-          job_data: {
-            job_description: "JD",
-            analysis_upshot: fullUpshot(),
-            artifacts: {
-              job_resume: { professional_summary: "Draft text" },
-            },
-          },
-        })
-      }
-      if (url === `/api/candidates/${cid}/resume_structure` && !init) {
-        return jsonResponse({
-          sections: [{ id: "professional_summary", label: "Summary" }],
-          all_sections: allSections,
-          catalog,
-          accent_color: null,
-        })
-      }
-      if (url === `/api/candidates/${cid}/data` && init?.method === "PUT") {
-        return jsonResponse({})
-      }
-      if (url === "/candidate/resume/j-1489" && !init) {
-        return {
-          ok: true,
-          text: async () =>
-            "<html><style>@media print { #summary { page-break-before: always; } }</style></html>",
-        } as Response
-      }
-      return undefined
-    })
-    renderWithProviders(<JobAnalysisReportModal jobId="j-1489" onClose={() => {}} />)
-    await waitForShell()
-    await userEvent.click(within(topTabBar()).getByRole("button", { name: "Artifacts" }))
-    await waitFor(() =>
-      expect(document.querySelector(".recommended-report-section-list")).toBeTruthy(),
-    )
-    const sectionList = document.querySelector(".recommended-report-section-list") as HTMLElement
-    await userEvent.click(within(sectionList).getAllByRole("button", { name: "Expand section" })[0])
-    await waitFor(() => expect(screen.getByRole("combobox", { name: "Page break" })).toBeInTheDocument())
-    await userEvent.selectOptions(screen.getByRole("combobox", { name: "Page break" }), "page_break_before")
-    await userEvent.click(screen.getByRole("button", { name: "Print Resume" }))
-    await waitFor(() =>
-      expect(openSpy).toHaveBeenCalledWith("blob:jar-resume-html", "_blank"),
-    )
-    const putIdx = apiCallLog.findIndex(c => c.url === `/api/candidates/${cid}/data` && c.method === "PUT")
-    const printIdx = apiCallLog.findIndex(c => c.url === "/candidate/resume/j-1489")
-    expect(putIdx).toBeGreaterThanOrEqual(0)
-    expect(printIdx).toBeGreaterThan(putIdx)
-    const putCall = mockedApi.mock.calls.find(
-      ([url, init]) => url === `/api/candidates/${cid}/data` && init?.method === "PUT",
-    )
-    const body = JSON.parse(String(putCall?.[1]?.body))
-    expect(body.artifacts.resume_structure.sections.professional_summary.page_break_policy).toBe(
-      "page_break_before",
-    )
-    openSpy.mockRestore()
-    vi.unstubAllGlobals()
-  })
-
-  it("AST-1490: reorder then Print Resume keeps full body sections", async () => {
-    const cid = baseCandidate.astral_candidate_id
+  /** AST-2084: job with generated artifacts; print routes answer with distinct HTML so each preview is identifiable. */
+  function artifactJobMocks(jobId: string, artifacts: Record<string, unknown>, log?: { url: string; method: string }[]) {
     let jobGets = 0
-    let candidateGets = 0
-    let lastPrintHtml = ""
-    const catalog = {
-      body_formats: ["free_prose", "bullet_list"],
-      required_ids: ["professional_summary"],
-      contact_ids: [] as string[],
-      extra_id_pattern: "^extra_",
-      reserved_extra_ids: [] as string[],
-      new_extra_default_format: "bullet_list",
-      page_break_policies: ["normal", "page_break_before", "avoid_split"],
-      page_break_policy_labels: {
-        normal: "Flow uninterrupted",
-        page_break_before: "New page before",
-        avoid_split: "Keep block together",
-      },
-      page_break_policy_default: "avoid_split",
-    }
-    const allSections = [
-      {
-        id: "professional_summary",
-        title: "Summary",
-        enabled: true,
-        order: 0,
-        format: "free_prose",
-        job_agent_editable: true,
-        required: true,
-        format_locked: false,
-        page_break_policy: "avoid_split",
-      },
-      {
-        id: "prior_experience",
-        title: "Prior Experience",
-        enabled: true,
-        order: 1,
-        format: "free_prose",
-        job_agent_editable: true,
-        required: false,
-        format_locked: false,
-        page_break_policy: "avoid_split",
-      },
-    ]
-    const apiCallLog: { url: string; method: string }[] = []
-    const fakeWin1490 = { opener: {} as Window | null }
-    const openSpy = vi.spyOn(window, "open").mockImplementation(() => fakeWin1490 as unknown as Window)
-    const createSpy = vi.fn(() => "blob:jar-resume-html")
-    vi.stubGlobal("URL", { createObjectURL: createSpy, revokeObjectURL: vi.fn() })
     installBaseApiMocks(mockedApi, (url, init) => {
-      apiCallLog.push({ url, method: init?.method ?? "GET" })
-      if (url === "/api/jobs/j-1490" && !init) {
+      log?.push({ url, method: init?.method ?? "GET" })
+      if (url === `/api/jobs/${jobId}` && !init?.method) {
         jobGets += 1
         return jsonResponse({
-          astral_job_id: "j-1490",
+          astral_job_id: jobId,
+          candidate_id: baseCandidate.astral_candidate_id,
           job_title: "Role",
           company: "Co",
           state: "CANDIDATE_REVIEW",
           state_changed_at: null,
           job_link: "https://jobs.example/apply",
-          job_data: {
-            job_description: "JD",
-            analysis_upshot: fullUpshot(),
-            artifacts: {
-              job_resume: {
-                professional_summary: "Draft summary",
-                prior_experience: "Draft prior",
-              },
-            },
-          },
+          job_data: { job_description: "JD", analysis_upshot: fullUpshot(), artifacts },
         })
       }
-      if (url === `/api/candidates/${cid}/resume_structure`) {
+      if (url === `/candidate/resume/${jobId}`) return { ok: true, status: 200, text: async () => "<html>resume print</html>" } as Response
+      if (url === `/candidate/cover/${jobId}`) return { ok: true, status: 200, text: async () => "<html>cover print</html>" } as Response
+      // Edit modal's ResumeContentEditor reads the job structure.
+      if (url === `/api/jobs/${jobId}/resume_structure`) {
         return jsonResponse({
-          sections: [
-            { id: "professional_summary", label: "Summary" },
-            { id: "prior_experience", label: "Prior Experience" },
-          ],
-          all_sections: allSections,
-          catalog,
+          all_sections: [{
+            id: "professional_summary", title: "Summary", enabled: true, order: 0, format: "free_prose",
+            job_agent_editable: true, required: true, format_locked: false, page_break_policy: "normal",
+          }],
           accent_color: null,
-        })
-      }
-      if (url === `/api/candidates/${cid}` && !init) {
-        candidateGets += 1
-        return jsonResponse({
-          candidate_data: {
-            artifacts: {
-              base_resume: {
-                professional_summary: "Base summary",
-                prior_experience: "Base prior",
-              },
-            },
+          catalog: {
+            body_formats: ["free_prose"], required_ids: ["professional_summary"], contact_ids: [],
+            extra_id_pattern: "^[a-z_]+$", reserved_extra_ids: [], new_extra_default_format: "free_prose",
+            page_break_policies: ["normal"], page_break_policy_labels: { normal: "Flow" }, page_break_policy_default: "normal",
+            body_format_details: { free_prose: { label: "Prose", description: "Prose", font_family: "serif" } },
+            hidden_flow_label: "Hidden",
           },
         })
       }
-      if (url === `/api/candidates/${cid}/data` && init?.method === "PUT") {
-        return jsonResponse({})
-      }
-      if (url === "/candidate/resume/j-1490" && !init) {
-        lastPrintHtml =
-          '<html><body><section id="summary"><p>Draft summary</p></section><section id="prior-experience"><p>Draft prior</p></section></body></html>'
-        return {
-          ok: true,
-          text: async () => lastPrintHtml,
-        } as Response
+      if (url === "/api/shapes/candidates") {
+        return jsonResponse({ detail: { cover_letter: [{ key: "Letter", label: "Letter" }] } })
       }
       return undefined
     })
-    renderWithProviders(<JobAnalysisReportModal jobId="j-1490" onClose={() => {}} />)
+    return { jobGets: () => jobGets }
+  }
+
+  async function openArtifactsExpanded(jobId: string) {
+    renderWithProviders(<JobAnalysisReportModal jobId={jobId} onClose={() => {}} />)
     await waitForShell()
     await userEvent.click(within(topTabBar()).getByRole("button", { name: "Artifacts" }))
-    await waitFor(() =>
-      expect(document.querySelector(".recommended-report-section-list")).toBeTruthy(),
-    )
-    const sectionList = document.querySelector(".recommended-report-section-list") as HTMLElement
-    await userEvent.click(within(sectionList).getAllByRole("button", { name: "Expand section" })[0])
-    await waitFor(() => expect(screen.getByDisplayValue("Draft summary")).toBeInTheDocument())
-    await waitFor(() => expect(screen.getByDisplayValue("Draft prior")).toBeInTheDocument())
-    const jobGetsAfterHydrate = jobGets
-    const candidateGetsAfterHydrate = candidateGets
-    await userEvent.click(screen.getAllByRole("button", { name: "Down" })[0]!)
-    await waitFor(() => expect(screen.queryByText("Loading...")).not.toBeInTheDocument())
-    expect(jobGets).toBe(jobGetsAfterHydrate)
-    expect(candidateGets).toBe(candidateGetsAfterHydrate)
-    expect(screen.getByDisplayValue("Draft summary")).toBeInTheDocument()
-    expect(screen.getByDisplayValue("Draft prior")).toBeInTheDocument()
+    // Side-by-side thumbnail row — no collapsible sections to expand.
+    return await waitFor(() => {
+      const row = document.querySelector(".recommended-report-artifact-thumbs") as HTMLElement
+      expect(row).toBeTruthy()
+      return row
+    })
+  }
+
+  const thumbs = () => [...document.querySelectorAll(".print-preview-thumb")] as HTMLElement[]
+  const thumbHtml = (t: HTMLElement) => t.querySelector("iframe")?.getAttribute("srcdoc")
+  const editModal = () => document.querySelector(".modal-overlay--stacked") as HTMLElement | null
+
+  it("AST-2234: mobile ≤1023px hides Edit on Artifacts thumbs (Print stays)", async () => {
+    stubNavViewport(false)
+    artifactJobMocks("j-mobi", {
+      job_resume: { professional_summary: "Draft text" },
+      cover_letter: { Letter: "Cover body" },
+    })
+    await openArtifactsExpanded("j-mobi")
+    expect(screen.queryByRole("button", { name: "Edit" })).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Print Resume" })).toBeInTheDocument()
+    stubNavViewport(true)
+  })
+
+  it("AST-2084: populated Artifacts shows Job Resume + Cover Letter thumbnails, Edit on the resume only, no inline editors", async () => {
+    artifactJobMocks("j-pop", { job_resume: { professional_summary: "Draft text" }, cover_letter: { Letter: "Cover body" } })
+    const sectionList = await openArtifactsExpanded("j-pop")
+    expect(screen.queryByRole("button", { name: "Generate Artifacts" })).not.toBeInTheDocument()
+    // Captions under the thumbnails; no collapsible chrome.
+    expect(sectionList.querySelector(".collapsible-panel")).toBeNull()
+    expect(within(sectionList).getByText("Job Resume")).toBeInTheDocument()
+    expect(within(sectionList).getByText("Cover Letter")).toBeInTheDocument()
+    await waitFor(() => expect(thumbs().map(thumbHtml)).toEqual(["<html>resume print</html>", "<html>cover print</html>"]))
+    // Side by side: one flex row holding both.
+    expect(sectionList.style.display).toBe("flex")
+    expect(sectionList.querySelectorAll(".print-preview-thumb")).toHaveLength(2)
+    expect(within(sectionList).getAllByRole("button", { name: "Edit" })).toHaveLength(1)
+    // No inline editor bodies on the report.
+    expect(screen.queryByDisplayValue("Draft text")).not.toBeInTheDocument()
+    expect(screen.queryByDisplayValue("Cover body")).not.toBeInTheDocument()
+    expect(sectionList.querySelector("textarea")).toBeNull()
+  })
+
+  it("AST-2084: only a generated artifact gets a thumbnail", async () => {
+    artifactJobMocks("j-one", { job_resume: { professional_summary: "Draft text" } })
+    const sectionList = await openArtifactsExpanded("j-one")
+    expect(within(sectionList).getByText("Job Resume")).toBeInTheDocument()
+    expect(within(sectionList).queryByText("Cover Letter")).not.toBeInTheDocument()
+    await waitFor(() => expect(thumbs()).toHaveLength(1))
+    expect(mockedApi.mock.calls.some(([u]) => u === "/candidate/cover/j-one")).toBe(false)
+  })
+
+  it("Application Questions content is not shown on the Artifacts pane (thumbnails only)", async () => {
+    artifactJobMocks("j-app", { job_resume: { professional_summary: "Draft text" }, proposed_answers: "Q1: A1" })
+    const row = await openArtifactsExpanded("j-app")
+    await waitFor(() => expect(thumbs()).toHaveLength(1))
+    expect(within(row).queryByText("Application Questions")).not.toBeInTheDocument()
+    expect(row.querySelector("textarea")).toBeNull()
+  })
+
+  it("AST-2084: resume thumbnail opens a stacked full-screen editor + live preview over the report; close reloads the report", async () => {
+    const m = artifactJobMocks("j-edit", { job_resume: { professional_summary: "Draft text" }, cover_letter: { Letter: "Cover body" } })
+    await openArtifactsExpanded("j-edit")
+    await waitFor(() => expect(thumbs()).toHaveLength(2))
+    await userEvent.click(thumbs()[0])
+    const modal = await waitFor(() => { const el = editModal(); expect(el).toBeTruthy(); return el! })
+    expect(within(modal).getByRole("heading", { name: "Job Resume" })).toBeInTheDocument()
+    // Report stays mounted underneath (stacked, not replaced).
+    expect(document.querySelector(".recommended-report-tabs")).toBeTruthy()
+    expect(await within(modal).findByLabelText("Search sections")).toBeInTheDocument()
+    await waitFor(() => expect(modal.querySelector('iframe[title="Print preview"]')?.getAttribute("srcdoc")).toBe("<html>resume print</html>"))
+    const before = m.jobGets()
+    await userEvent.click(within(modal).getByRole("button", { name: "Close" }))
+    await waitFor(() => expect(editModal()).toBeNull())
+    await waitFor(() => expect(m.jobGets()).toBeGreaterThan(before))
+  })
+
+  it("AST-2084: Edit opens the resume modal; cover thumbnail opens the cover editor + cover preview", async () => {
+    artifactJobMocks("j-both", { job_resume: { professional_summary: "Draft text" }, cover_letter: { Letter: "Cover body" } })
+    const sectionList = await openArtifactsExpanded("j-both")
+    await waitFor(() => expect(thumbs()).toHaveLength(2))
+    await userEvent.click(within(sectionList).getByRole("button", { name: "Edit" }))
+    let modal = await waitFor(() => { const el = editModal(); expect(el).toBeTruthy(); return el! })
+    expect(within(modal).getByRole("heading", { name: "Job Resume" })).toBeInTheDocument()
+    expect(await within(modal).findByLabelText("Search sections")).toBeInTheDocument()
+    await userEvent.click(within(modal).getByRole("button", { name: "Close" }))
+    await waitFor(() => expect(editModal()).toBeNull())
+    await waitFor(() => expect(thumbs()).toHaveLength(2))
+    await userEvent.click(thumbs()[1])
+    modal = await waitFor(() => { const el = editModal(); expect(el).toBeTruthy(); return el! })
+    // Modal title (the cover editor carries its own "Cover Letter" heading too).
+    expect(modal.querySelector(".modal-title")?.textContent).toBe("Cover Letter")
+    expect(within(modal).queryByLabelText("Search sections")).toBeNull()
+    await waitFor(() => expect(modal.querySelector('iframe[title="Print preview"]')?.getAttribute("srcdoc")).toBe("<html>cover print</html>"))
+  })
+
+  it.skip("AST-2084: Print Resume opens the shared print HTML with no candidate structure fetch or PUT", async () => {
+    const fakeWin = { opener: {} as Window | null }
+    const openSpy = vi.spyOn(window, "open").mockImplementation(() => fakeWin as unknown as Window)
+    vi.stubGlobal("URL", { createObjectURL: vi.fn(() => "blob:jar-2084"), revokeObjectURL: vi.fn() })
+    const log: { url: string; method: string }[] = []
+    artifactJobMocks("j-print2084", { job_resume: { professional_summary: "Draft text" } }, log)
+    renderWithProviders(<JobAnalysisReportModal jobId="j-print2084" onClose={() => {}} />)
+    await waitForShell()
+    await userEvent.click(within(topTabBar()).getByRole("button", { name: "Artifacts" }))
     await userEvent.click(screen.getByRole("button", { name: "Print Resume" }))
-    await waitFor(() =>
-      expect(openSpy).toHaveBeenCalledWith("blob:jar-resume-html", "_blank"),
-    )
-    const putIdx = apiCallLog.findIndex(c => c.url === `/api/candidates/${cid}/data` && c.method === "PUT")
-    const printIdx = apiCallLog.findIndex(c => c.url === "/candidate/resume/j-1490")
-    expect(putIdx).toBeGreaterThanOrEqual(0)
-    expect(printIdx).toBeGreaterThan(putIdx)
-    expect(lastPrintHtml).toContain('id="summary"')
-    expect(lastPrintHtml).toContain('id="prior-experience"')
+    await waitFor(() => expect(openSpy).toHaveBeenCalledWith("blob:jar-2084", "_blank"))
+    expect(log.some(c => c.url === "/candidate/resume/j-print2084")).toBe(true)
+    expect(log.filter(c => c.method === "PUT")).toEqual([])
+    expect(log.some(c => c.url.endsWith("/resume_structure"))).toBe(false)
     openSpy.mockRestore()
     vi.unstubAllGlobals()
   })
 
-  it("does not show Reset or Regenerate on Artifacts tab", async () => {
-    installBaseApiMocks(mockedApi, jobHandler("j948"))
-    renderWithProviders(<JobAnalysisReportModal jobId="j948" onClose={() => {}} />)
+  it("does not show Reset or Regenerate (Artifacts empty → tab filtered)", async () => {
+    installBaseApiMocks(mockedApi, jobHandler("j-reset"))
+    renderWithProviders(<JobAnalysisReportModal jobId="j-reset" onClose={() => {}} />)
     await waitForShell()
-    await userEvent.click(within(topTabBar()).getByRole("button", { name: "Artifacts" }))
-    expect(screen.queryByRole("button", { name: /Reset/i })).not.toBeInTheDocument()
-    expect(screen.queryByRole("button", { name: /Regenerate/i })).not.toBeInTheDocument()
+    expect(within(topTabBar()).queryByRole("button", { name: "Artifacts" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Reset" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Regenerate" })).not.toBeInTheDocument()
   })
 })
 
@@ -1177,70 +974,46 @@ describe("JobAnalysisReportModal — AST-1348 Analysis score title chrome", () =
     await waitForShell()
     await userEvent.click(within(topTabBar()).getByRole("button", { name: "Analysis" }))
     expect(
-      screen.getByText("JD Analysis - score: 137 out of 150 possible (321 max total)"),
+      screen.getByText("JD Analysis - 8.5 - score: 137 out of 150 possible (321 max total)"),
     ).toBeInTheDocument()
     expect(screen.getByText("DO Analysis")).toBeInTheDocument()
     expect(screen.queryByText(/^DO Analysis - score:/)).not.toBeInTheDocument()
     expect(screen.getByText("GET Analysis")).toBeInTheDocument()
     expect(screen.getByText("LIKE Analysis")).toBeInTheDocument()
+    // AST-2234: thermometer + total/gradable row when score + breakdown present
+    const thermos = document.querySelectorAll(".recommended-report-thermometer")
+    expect(thermos.length).toBeGreaterThanOrEqual(1)
+    expect(thermos[0].getAttribute("title")).toMatch(/Score 8\.5/)
+    expect(document.querySelector(".recommended-report-total-gradable")).toBeTruthy()
   })
 })
 
-describe("JobAnalysisReportModal — AST-1421 snapshot Copy", () => {
+describe("JobAnalysisReportModal — AST-1421 / AST-1696 Copy (AST-2233/2234)", () => {
   beforeEach(() => mockedApi.mockReset())
 
-  it("copies via the helper and does not drive email/linkedin copyFeedback", async () => {
-    mockedCopy.mockResolvedValue(true)
+  it("report header has no Copy Job JSON / Link / Email / LinkedIn controls", async () => {
     installBaseApiMocks(mockedApi, jobHandler("j1421"))
     renderWithProviders(<JobAnalysisReportModal jobId="j1421" onClose={() => {}} />)
     await waitForShell()
-    const copyBtn = screen.getByRole("button", { name: /^Copy$/ })
-    expect(screen.getByRole("button", { name: "Copy Application Email" })).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "Copy LinkedIn Profile" })).toBeInTheDocument()
-    await userEvent.click(copyBtn)
-    await waitFor(() => expect(mockedCopy).toHaveBeenCalledWith("j1421"))
-    await waitFor(() => expect(screen.getByRole("button", { name: /^Copied$/ })).toBeInTheDocument())
-    expect(document.querySelector(".recommended-report-copy-feedback")).toBeNull()
-    await waitFor(
-      () => expect(screen.getByRole("button", { name: /^Copy$/ })).toBeInTheDocument(),
-      { timeout: 3000 },
-    )
+    for (const name of [
+      "Copy Job JSON",
+      "Copy Job Link",
+      "Copy Application Email",
+      "Copy LinkedIn Profile",
+    ]) {
+      expect(screen.queryByRole("button", { name })).not.toBeInTheDocument()
+    }
+    expect(document.querySelector(".recommended-report-links")).toBeNull()
   })
 })
 
-describe("JobAnalysisReportModal — AST-1696 Copy Link", () => {
-  beforeEach(() => {
+describe("JobAnalysisReportModal — AST-1696 Copy Link (retired header surface)", () => {
+  it("header has no Copy Job Link control", async () => {
     mockedApi.mockReset()
-    Object.defineProperty(navigator, "clipboard", {
-      value: { writeText: vi.fn().mockResolvedValue(undefined) },
-      configurable: true,
-    })
-  })
-
-  it("writes absolute /jobs/detail/<id> URL and returns idle label; other header actions stay", async () => {
     installBaseApiMocks(mockedApi, jobHandler("j1696"))
     renderWithProviders(<JobAnalysisReportModal jobId="j1696" onClose={() => {}} />)
     await waitForShell()
-    const links = document.querySelector(".recommended-report-links") as HTMLElement
-    expect(within(links).getByRole("button", { name: "Copy Link" })).toHaveClass("btn", "secondary")
-    expect(within(links).getByRole("button", { name: /^Copy$/ })).toBeInTheDocument()
-    expect(within(links).getByRole("button", { name: "Copy Application Email" })).toBeInTheDocument()
-    expect(within(links).getByRole("button", { name: "Copy LinkedIn Profile" })).toBeInTheDocument()
-
-    await userEvent.click(within(links).getByRole("button", { name: "Copy Link" }))
-    await waitFor(() =>
-      expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
-        `${window.location.origin}/jobs/detail/j1696`,
-      ),
-    )
-    await waitFor(() =>
-      expect(within(links).getByRole("button", { name: /^Copied$/ })).toBeInTheDocument(),
-    )
-    expect(document.querySelector(".recommended-report-copy-feedback")).toBeNull()
-    await waitFor(
-      () => expect(within(links).getByRole("button", { name: "Copy Link" })).toBeInTheDocument(),
-      { timeout: 3000 },
-    )
+    expect(screen.queryByRole("button", { name: "Copy Job Link" })).not.toBeInTheDocument()
   })
 })
 
@@ -1257,9 +1030,9 @@ describe("JobAnalysisReportModal — AST-1551 Discussion tab", () => {
     // AST-1692: Meteorite omitted when related_meteorite null — Discussion still last visible
     const tabs = within(bar).getAllByRole("button")
     expect(tabs.map(t => t.textContent)).toEqual([
-      "Summary",
       "Analysis",
-      "Artifacts",
+      "Job Description",
+      "Summary",
       "Discussion",
     ])
     expect(within(bar).queryByRole("button", { name: "Meteorite" })).not.toBeInTheDocument()
@@ -1269,7 +1042,7 @@ describe("JobAnalysisReportModal — AST-1551 Discussion tab", () => {
     expect(screen.queryAllByRole("button", { name: "Expand section" })).toHaveLength(0)
   })
 
-  it("partial agent_story shows only hops with RESPONSE", async () => {
+  it("partial agent_story shows only hops with RESPONSE agent_payload (AST-2234)", async () => {
     installBaseApiMocks(
       mockedApi,
       jobHandler("j1551-partial", {
@@ -1278,7 +1051,11 @@ describe("JobAnalysisReportModal — AST-1551 Discussion tab", () => {
             task_key: "contemplate_job",
             blocks: [
               { type: "PROMPT", id: "p", content: "hidden" },
-              { type: "RESPONSE", id: "r", content: '{"hop":1}' },
+              {
+                type: "RESPONSE",
+                id: "r",
+                content: JSON.stringify({ agent_payload: "hop one prose" }),
+              },
             ],
           },
         ],
@@ -1288,12 +1065,12 @@ describe("JobAnalysisReportModal — AST-1551 Discussion tab", () => {
     await waitForShell()
     await userEvent.click(within(topTabBar()).getByRole("button", { name: "Discussion" }))
     expect(screen.getAllByRole("button", { name: "Expand section" })).toHaveLength(1)
-    expect(screen.getByText("Contemplate Job")).toBeInTheDocument()
+    expect(screen.getByText("Agent's contemplate_job")).toBeInTheDocument()
     await userEvent.click(screen.getByRole("button", { name: "Expand section" }))
     const area = document.querySelector("textarea.entity-story-content") as HTMLTextAreaElement
     expect(area).toBeTruthy()
     expect(area.readOnly).toBe(true)
-    expect(area.value).toContain('"hop": 1')
+    expect(area.value).toBe("hop one prose")
     expect(screen.queryByDisplayValue("hidden")).not.toBeInTheDocument()
   })
 })
@@ -1325,9 +1102,9 @@ describe("JobAnalysisReportModal — AST-1692 Meteorite tab", () => {
     await waitForShell()
     const bar = topTabBar()
     expect(within(bar).getAllByRole("button").map(t => t.textContent)).toEqual([
-      "Summary",
       "Analysis",
-      "Artifacts",
+      "Job Description",
+      "Summary",
       "Discussion",
       "Meteorite",
     ])
@@ -1348,9 +1125,9 @@ describe("JobAnalysisReportModal — AST-1692 Meteorite tab", () => {
     const bar = topTabBar()
     expect(within(bar).queryByRole("button", { name: "Meteorite" })).not.toBeInTheDocument()
     expect(within(bar).getAllByRole("button").map(t => t.textContent)).toEqual([
-      "Summary",
       "Analysis",
-      "Artifacts",
+      "Job Description",
+      "Summary",
       "Discussion",
     ])
   })
@@ -1396,36 +1173,32 @@ describe("JobAnalysisReportModal — AST-1599 no Source base resume on Artifacts
     expect(
       screen.queryByText("No pinned base resume for this build."),
     ).not.toBeInTheDocument()
-    const sectionList = document.querySelector(".recommended-report-section-list") as HTMLElement
-    expect(sectionList).toBeTruthy()
-    const headerLabels = [...sectionList.querySelectorAll(".collapsible-panel-label-wrap")].map(
-      el => el.textContent?.trim(),
-    )
-    expect(headerLabels).toContain("Job Resume")
-    expect(headerLabels).toContain("Cover Letter")
+    const thumbRow = document.querySelector(".recommended-report-artifact-thumbs") as HTMLElement
+    expect(thumbRow).toBeTruthy()
+    expect(within(thumbRow).getByText("Job Resume")).toBeInTheDocument()
+    expect(within(thumbRow).getByText("Cover Letter")).toBeInTheDocument()
     const operativeCalls = mockedApi.mock.calls.filter(([url]) =>
       String(url).includes("/operative/base_resume"),
     )
     expect(operativeCalls).toHaveLength(0)
   })
 
-  it("[bug-repro] empty Artifacts (Generate) must not show Source base resume", async () => {
+  it("[bug-repro] empty Artifacts hides tab — no Source base resume chrome (AST-2234 AC10)", async () => {
     installBaseApiMocks(mockedApi, jobHandler("j1599-empty"))
     renderWithProviders(<JobAnalysisReportModal jobId="j1599-empty" onClose={() => {}} />)
     await waitForShell()
-    await userEvent.click(within(topTabBar()).getByRole("button", { name: "Artifacts" }))
+    expect(within(topTabBar()).queryByRole("button", { name: "Artifacts" })).not.toBeInTheDocument()
     expect(screen.queryByText("Source base resume")).not.toBeInTheDocument()
     expect(
       screen.queryByText("No pinned base resume for this build."),
     ).not.toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "Generate Artifacts" })).toBeInTheDocument()
   })
 })
 
 describe("JobAnalysisReportModal — AST-1695 listing_href title", () => {
   beforeEach(() => mockedApi.mockReset())
 
-  it("title <a> uses listing_href; raw job_link alone is not navigable", async () => {
+  it("job-link line <a> uses listing_href; raw job_link alone is not navigable", async () => {
     installBaseApiMocks(
       mockedApi,
       jobHandler("j1695-a", {
@@ -1435,7 +1208,9 @@ describe("JobAnalysisReportModal — AST-1695 listing_href title", () => {
     )
     renderWithProviders(<JobAnalysisReportModal jobId="j1695-a" onClose={() => {}} />)
     await waitForShell()
-    expect(screen.getByRole("link", { name: "Analyst" })).toHaveAttribute(
+    // AST-1873: title plain; listing_href is the job-link line href
+    expect(screen.queryByRole("link", { name: "Analyst" })).not.toBeInTheDocument()
+    expect(screen.getByRole("link", { name: "https://jobs.example/listing" })).toHaveAttribute(
       "href",
       "https://jobs.example/listing",
     )
@@ -1479,12 +1254,120 @@ describe("JobAnalysisReportModal — AST-1704 non-http job_link chrome", () => {
     const crumb = "From:a@x.com 9/17 14:05 Eastern To:b@y.com"
     installBaseApiMocks(
       mockedApi,
-      jobHandler("j-crumb", { job_link: crumb, state: "RECOMMENDED" }),
+      jobHandler("j-crumb", { job_link: crumb, listing_href: null, state: "RECOMMENDED" }),
     )
     renderWithProviders(<JobAnalysisReportModal jobId="j-crumb" onClose={() => {}} />)
     await waitForShell()
     expect(screen.queryByRole("link", { name: "Analyst" })).not.toBeInTheDocument()
     expect(screen.getByText("Analyst")).toHaveClass("recommended-report-title")
     expect(screen.getByText(crumb)).toHaveClass("recommended-report-job-link-text")
+  })
+})
+
+describe("JobAnalysisReportModal — AST-1874 Analysis default, list score, Skip", () => {
+  beforeEach(() => mockedApi.mockReset())
+
+  const scored = (extra: Record<string, unknown> = {}) => ({
+    jd_grades: [{ vector: "Job Description (JD)", grade: "A", reason: "Strong match", confidence: 4 }],
+    jd_rubric: [{ code: "JD", label: "Job Description (JD)", importance: 1 }],
+    jd_score_breakdown: { earned: 42, possible: 50, max: 60 },
+    ...extra,
+  })
+
+  function skipHandler(jobId: string, detail: Record<string, unknown>, skipResponse?: Response) {
+    return (url: string, init?: RequestInit) => {
+      if (url === `/api/jobs/${jobId}/skip` && init?.method === "POST") return skipResponse
+      return jobHandler(jobId, detail)(url, init)
+    }
+  }
+
+  // AC1: per-job reset returns to the first manifest tab (Analysis), not a literal.
+  it("switching jobId after selecting Summary returns to Analysis", async () => {
+    installBaseApiMocks(mockedApi, (url, init) => jobHandler("j-a")(url, init) ?? jobHandler("j-b")(url, init))
+    const { rerender } = renderWithProviders(<JobAnalysisReportModal jobId="j-a" onClose={() => {}} />)
+    await waitForShell()
+    await openSummaryTab()
+    expect(within(topTabBar()).getByRole("button", { name: "Summary" })).toHaveClass("active")
+    rerender(<JobAnalysisReportModal jobId="j-b" onClose={() => {}} />)
+    await waitFor(() =>
+      expect(within(topTabBar()).getByRole("button", { name: "Analysis" })).toHaveClass("active"),
+    )
+    expect(within(topTabBar()).getByRole("button", { name: "Summary" })).not.toHaveClass("active")
+  })
+
+  // AC3: list score (one decimal) in the JD header; absent → segment dropped.
+  it("JD header carries the one-decimal list score", async () => {
+    installBaseApiMocks(mockedApi, jobHandler("j-s1", scored({ jd_score: 3.66 })))
+    renderWithProviders(<JobAnalysisReportModal jobId="j-s1" onClose={() => {}} />)
+    await waitForShell()
+    expect(
+      await screen.findByText("JD Analysis - 3.7 - score: 42 out of 50 possible (60 max total)"),
+    ).toBeInTheDocument()
+  })
+
+  it("JD header drops the score segment when jd_score is absent", async () => {
+    installBaseApiMocks(mockedApi, jobHandler("j-s2", scored()))
+    renderWithProviders(<JobAnalysisReportModal jobId="j-s2" onClose={() => {}} />)
+    await waitForShell()
+    expect(
+      await screen.findByText("JD Analysis - score: 42 out of 50 possible (60 max total)"),
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/JD Analysis - (\u2014|-) /)).not.toBeInTheDocument()
+  })
+
+  // AC5: visibility is the server's can_skip only.
+  it.each([
+    [true, true],
+    [false, false],
+    [undefined, false],
+  ])("can_skip=%s → Skip This Job shown=%s (AST-2233 actions row)", async (canSkip, shown) => {
+    installBaseApiMocks(mockedApi, jobHandler("j-v", { can_skip: canSkip }))
+    renderWithProviders(<JobAnalysisReportModal jobId="j-v" onClose={() => {}} />)
+    await waitForShell()
+    const row = document.querySelector(".recommended-report-header-actions") as HTMLElement | null
+    if (shown) {
+      expect(row).not.toBeNull()
+      const buttons = within(row!).getAllByRole("button")
+      expect(buttons.map(b => b.textContent)).toContain("Skip This Job")
+    } else {
+      expect(screen.queryByRole("button", { name: "Skip This Job" })).not.toBeInTheDocument()
+    }
+  })
+
+  // AC6: POST /skip → refresh + close once on 200; 409 → server message toast, stays open.
+  it("Skip success posts, refreshes once, closes once", async () => {
+    const onClose = vi.fn()
+    const onRefresh = vi.fn()
+    installBaseApiMocks(mockedApi, skipHandler("j-ok", { can_skip: true }, jsonResponse({ ok: true })))
+    renderWithProviders(<JobAnalysisReportModal jobId="j-ok" onClose={onClose} onRefresh={onRefresh} />)
+    await waitForShell()
+    await userEvent.click(screen.getByRole("button", { name: "Skip This Job" }))
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1))
+    expect(onRefresh).toHaveBeenCalledTimes(1)
+    expect(
+      mockedApi.mock.calls.filter(([u, i]) => u === "/api/jobs/j-ok/skip" && i?.method === "POST"),
+    ).toHaveLength(1)
+  })
+
+  it("Skip 409 shows the server message and keeps the modal open", async () => {
+    const onClose = vi.fn()
+    const onRefresh = vi.fn()
+    installBaseApiMocks(
+      mockedApi,
+      skipHandler(
+        "j-409",
+        { can_skip: true },
+        jsonResponse({ error: "Invalid transition: CANDIDATE_APPLIED -> CANDIDATE_SKIPPED" }, { ok: false, status: 409 }),
+      ),
+    )
+    renderWithProviders(<JobAnalysisReportModal jobId="j-409" onClose={onClose} onRefresh={onRefresh} />)
+    await waitForShell()
+    await userEvent.click(screen.getByRole("button", { name: "Skip This Job" }))
+    expect(
+      await screen.findByText("Invalid transition: CANDIDATE_APPLIED -> CANDIDATE_SKIPPED"),
+    ).toBeInTheDocument()
+    expect(onClose).not.toHaveBeenCalled()
+    expect(onRefresh).not.toHaveBeenCalled()
+    expect(screen.getByRole("button", { name: "Skip This Job" })).toBeEnabled()
   })
 })

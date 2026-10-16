@@ -103,7 +103,7 @@ describe("CandidateSurferConsent — AST-1237", () => {
       expect(screen.getByRole("button", { name: disclosureDto.decline_label })).toBeInTheDocument(),
     )
     await userEvent.click(screen.getByRole("button", { name: disclosureDto.decline_label }))
-    expect(navigate).toHaveBeenCalledWith("/jobs/recommended")
+    expect(navigate).toHaveBeenCalledWith("/")
   })
 
   it("current consent shows ok chrome without opt-in controls", async () => {

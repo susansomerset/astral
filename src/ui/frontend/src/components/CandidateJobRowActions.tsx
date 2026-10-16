@@ -24,6 +24,8 @@ interface Props {
   showViewAnalysis?: boolean
   onResurrect?: () => void
   onAction?: (action: CandidateActionKey) => void
+  /** AST-1968: only passed by Recommended for rows whose state allows generate_artifacts. */
+  onGenerate?: () => void
 }
 
 /** AST-312: per-row candidate workflow icon buttons. */
@@ -34,6 +36,7 @@ export default function CandidateJobRowActions({
   showViewAnalysis = true,
   onResurrect,
   onAction,
+  onGenerate,
 }: Props) {
   if (state === "CANDIDATE_SKIPPED" && onResurrect) {
     return (
@@ -52,6 +55,10 @@ export default function CandidateJobRowActions({
         {onAction && PRE_APPLIED_MARK.has(state) && (
           <button type="button" className="icon-control" title="Applied" aria-label="Applied"
             onClick={() => onAction("applied")}>A</button>
+        )}
+        {onGenerate && (
+          <button type="button" className="icon-control" title="Generate Artifacts" aria-label="Generate Artifacts"
+            onClick={onGenerate}>G</button>
         )}
         {showViewAnalysis !== false && onViewAnalysis && (
           <button type="button" className="icon-control" title="View Job Analysis" aria-label="View Job Analysis"

@@ -3,19 +3,21 @@ Core tracker: job lifecycle management (AST-75).
 
 In-scope: ingest_jobs, save_meteorite_job, save_job_data, get_job_data, initialize_job,
 transition_job_state, get_new_job_batch, get_job_batch, clear_job_batch, assemble_job_copy_snapshot,
-save_job_artifact, get_job_current (AST-1592 catalog write/current-read for job keys).
+save_job_artifact, get_job_current (AST-1592 catalog write/current-read for job keys), get_job_effective_resume_structure (AST-2081). compose_job_description (AST-2133: preamble + scraped JD, read-only).
 All writes go through database.save_job (upsert); state transition logic lives here, not in data layer.
-get_job_data: coat-check pattern — return value if present, self-heal if missing (e.g. fetch JD via playwright).
+get_job_data: coat-check pattern — return value if present (JD key: the composed JD), self-heal if missing (e.g. fetch JD via playwright).
 AST-1518: contact-task read wrappers + get_job_by_pattern (candidate-scoped; no coat-check scrape).
 """
 
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Sequence, Tuple
+from urllib.parse import quote
 
 from src.core import candidate as candidate_mod
 from src.data import database
@@ -24,10 +26,13 @@ from src.utils.config import (
     BLOCK_TYPES,
     BUILD_CONFIG,
     BUILD_ARTIFACTS_BASE_STATE,
+    CONTACT_CONFIG,
     JOB_BUILD_ARTIFACT_CLEAR_KEYS,
     JOB_ARTIFACT_ENTITY_TYPE,
     JOB_EDITABLE_ARTIFACT_TYPES,
     JOB_STATES,
+    JOBS_DETAIL_ORIGIN_DOMAIN_ENV,
+    JOBS_DETAIL_ROUTE_PREFIX,
     METEORITE_CONFIG,
     RESUME_STRUCTURE_CONTACT_SECTION_IDS,
     SKIPPED_STATES,
@@ -37,18 +42,23 @@ from src.utils.config import (
     TRACKER_CONFIG,
     dispatch_chain_graduation_target,
     dispatch_hop_label,
+    format_contact_timezone_clock,
     parse_dispatch_hop_label,
     is_build_artifacts_in_progress,
+    is_registered_state,
     is_valid_job_batch_claim_state,
     legacy_build_artifacts_hop,
     source_entity_type_transition_allowed,
+    state_prior_states,
     validate_source_entity_type,
     validate_value,
 )
-from src.utils.logging import get_logger, truncate_debug_content
-from src.utils.formatting import _strip_json_markdown_fences, parse_text
+from src.utils.logging import get_logger, log_batch_id, truncate_debug_content
+from src.utils.formatting import _strip_json_markdown_fences, collapse_consecutive_blank_lines, parse_text
 
 logger = get_logger(__name__)
+
+_JOB_RESUME_STRUCTURE_KEY = "job.artifacts.job_resume_structure"
 
 _JOB_STATE_LIST = list(JOB_STATES.keys())
 _JOB_COLUMN_FIELDS = {"company_job_id", "job_title", "job_link"}  # initialize_job: parsed_job keys -> job table columns
@@ -405,14 +415,47 @@ def _candidate_data_for_job(astral_job_id: str) -> dict:
     return cd if isinstance(cd, dict) else {}
 
 
-def _prepare_job_resume_content(resume_content: Dict[str, Any], candidate_data: dict) -> Dict[str, Any]:
-    """Filter to candidate catalog; snapshot contact sections from payload or base_resume."""
+def get_job_effective_resume_structure(
+    astral_job_id: str | None,
+    candidate_data: dict | None = None,
+    *,
+    hydrate_from_base: bool = False,
+) -> dict:
+    """Job's effective resume structure (AST-2081 / patt.artifact.read-current).
+
+    Current job.artifacts.job_resume_structure row when one exists; else the owning candidate's
+    resolved structure. candidate_data: caller's loaded candidate blob for that fallback (None →
+    load the job's owner). hydrate_from_base applies to the fallback only: union base_resume
+    section keys exactly like the candidate structure GET, so an unedited job's editor payload
+    equals the candidate's. Read-only — never writes a row.
+    """
+    jid = (astral_job_id or "").strip()
+    own = get_job_current(jid, _JOB_RESUME_STRUCTURE_KEY) if jid else None
+    if isinstance(own, dict) and isinstance(own.get("sections"), dict) and own["sections"]:
+        return own
+    if isinstance(candidate_data, dict):
+        cd = candidate_data
+    else:
+        cd = _candidate_data_for_job(jid) if jid else {}
+    resolved = candidate_mod.resolve_resume_structure(cd)
+    if not hydrate_from_base:
+        return resolved
+    arts = cd.get("artifacts") if isinstance(cd.get("artifacts"), dict) else {}
+    return candidate_mod.hydrate_resume_structure_from_base_resume(resolved, arts.get("base_resume"))
+
+
+def _prepare_job_resume_content(
+    resume_content: Dict[str, Any],
+    candidate_data: dict,
+    astral_job_id: str | None = None,
+) -> Dict[str, Any]:
+    """Filter to the job's effective structure (AST-2081); snapshot contact sections from payload or base_resume."""
     cd = dict(candidate_data) if isinstance(candidate_data, dict) else {}
     cid = candidate_mod.candidate_id_for_current_read(cd)
     if cid:
         # AST-1680: same hydrate→resolve SoT as consult job drafting tokens.
         candidate_mod.hydrate_operative_resume_structure_for_response(cid, cd)
-    structure = candidate_mod.resolve_resume_structure(cd)
+    structure = get_job_effective_resume_structure(astral_job_id, cd)
     filtered = candidate_mod.filter_content_to_resume_structure(
         resume_content if isinstance(resume_content, dict) else {},
         structure,
@@ -512,13 +555,23 @@ def save_job_artifact(
     if key == "job.artifacts.job_resume":
         if not isinstance(blob, dict):
             raise ValueError("job_resume body must be a dict")
-        prepared: Any = _prepare_job_resume_content(blob, _candidate_data_for_job(jid))
+        prepared: Any = _prepare_job_resume_content(blob, _candidate_data_for_job(jid), jid)
         if not any(_resume_section_has_body(sid, val) for sid, val in prepared.items()):
             return None
     elif key == "job.artifacts.cover_letter":
         prepared = normalize_cover_letter_artifact(blob)
         if not _cover_letter_display_nonempty(prepared):
             return None
+    elif key == _JOB_RESUME_STRUCTURE_KEY:
+        # Same validation as the candidate structure PUT: merge over current effective, slug sections, normalize.
+        if not isinstance(blob, dict):
+            raise ValueError("job_resume_structure body must be a dict")
+        merged = dict(get_job_effective_resume_structure(jid))
+        if isinstance(blob.get("sections"), dict):
+            merged["sections"] = candidate_mod.prepare_resume_structure_sections_for_save(blob["sections"])
+        if "accent_color" in blob:
+            merged["accent_color"] = blob["accent_color"]
+        prepared = candidate_mod.normalize_resume_structure(merged)
     elif shape_name == "resume_content":
         if not isinstance(blob, dict) or not blob:
             raise ValueError("resume_content body must be a non-empty dict")
@@ -533,6 +586,10 @@ def save_job_artifact(
     cid = _candidate_id_for_job(jid)
     if not cid:
         raise ValueError("candidate_id required")
+    # AST-2066 / patt.artifact.write-operative #4: identical-to-current → existing pin, no retire+insert.
+    current_row = database.get_current_artifact(entry["entity_type"], jid, artifact_type)
+    if current_row is not None and current_row.get("artifact_data") == prepared:
+        return current_row.get("artifact_uuid")
     if key == "job.artifacts.job_resume":
         sources: Optional[Sequence[str]] = []
         base_row = database.get_current_artifact("candidate", cid, "base_resume")
@@ -552,25 +609,64 @@ def save_job_artifact(
     )
 
 
+def _job_catalog_entry(astral_job_id: str, artifact_key: str) -> Tuple[str, str, str]:
+    """Resolve (entity_type, astral_job_id, artifact_type) for a job catalog key (AST-2066)."""
+    key = (artifact_key or "").strip()
+    if not key:
+        raise ValueError("artifact_key required")
+    entry = ARTIFACT_CONFIG.get(key)
+    if entry is None:
+        raise ValueError(f"unknown catalog key: {key!r}")
+    if entry.get("entity_type") != JOB_ARTIFACT_ENTITY_TYPE:
+        raise ValueError(f"catalog key not job-scoped: {key!r}")
+    jid = (astral_job_id or "").strip()
+    if not jid:
+        raise ValueError("astral_job_id required")
+    return entry["entity_type"], jid, key.rsplit(".", 1)[-1]
+
+
+def list_job_artifact_versions(
+    astral_job_id: str, artifact_key: str
+) -> Dict[str, Dict[str, Any]]:
+    """Version map for a job catalog key, oldest first (AST-2066; mirrors get_job_current)."""
+    et, jid, at = _job_catalog_entry(astral_job_id, artifact_key)
+    return candidate_mod.artifact_versions_by_uuid(
+        database.list_artifacts(et, jid, at), "artifact_uuid"
+    )
+
+
+def set_job_artifact_current(
+    astral_job_id: str, artifact_key: str, artifact_uuid: str
+) -> str:
+    """Move current to artifact_uuid for a job catalog key; body untouched (AST-2066)."""
+    et, jid, at = _job_catalog_entry(astral_job_id, artifact_key)
+    return database.set_current_artifact(et, jid, at, artifact_uuid)
+
+
 def save_job_artifact_resume_content(astral_job_id: str, resume_content: Dict[str, Any]) -> None:
     """Merge resume_content into job_data.artifacts. AST-302; keys filtered to candidate structure."""
     cd = _candidate_data_for_job(astral_job_id)
-    prepared = _prepare_job_resume_content(resume_content, cd)
+    prepared = _prepare_job_resume_content(resume_content, cd, astral_job_id)
     save_job_data(astral_job_id, {"artifacts": {"resume_content": prepared}})
 
 
 def normalize_cover_letter_artifact(cover_letter: Any) -> Dict[str, str]:
-    """AST-309/518: stored cover_letter uses Subject, Letter, signature (legacy read aliases)."""
+    """AST-309/518: stored cover_letter uses Subject, Letter, signature (legacy read aliases)
+    plus optional Salutation — kept only when non-blank so existing bodies keep their shape."""
     if not isinstance(cover_letter, dict):
         return {"Subject": "", "Letter": "", "signature": ""}
-    return {
+    out = {
         "Subject": str(cover_letter.get("Subject") or cover_letter.get("re_line") or ""),
         "Letter": str(cover_letter.get("Letter") or cover_letter.get("body") or ""),
         "signature": str(cover_letter.get("signature") or ""),
     }
+    salutation = str(cover_letter.get("Salutation") or "")
+    if salutation.strip():
+        out["Salutation"] = salutation
+    return out
 
 
-_COVER_LETTER_FIELD_KEYS = frozenset({"Subject", "re_line", "Letter", "body", "signature"})
+_COVER_LETTER_FIELD_KEYS = frozenset({"Subject", "re_line", "Salutation", "Letter", "body", "signature"})
 
 
 def _cover_letter_display_nonempty(normalized: Dict[str, str]) -> bool:
@@ -944,7 +1040,7 @@ def parsed_matches_artifact_shape(parsed: Any, shape_name: str) -> bool:
 def slice_parsed_for_artifact_shape(parsed: Dict[str, Any], shape_name: str) -> Dict[str, Any]:
     if shape_name == "cover_letter":
         out: Dict[str, Any] = {}
-        for k in ("Subject", "Letter", "signature", "re_line", "body"):
+        for k in ("Subject", "Salutation", "Letter", "signature", "re_line", "body"):
             if k in parsed:
                 out[k] = parsed[k]
         return out
@@ -1036,6 +1132,22 @@ def cancel_artifact_build(astral_job_id: str) -> str:
     return "RECOMMENDED"
 
 
+def candidate_skip_job(astral_job_id: str) -> str:
+    """Candidate Skip: any state CANDIDATE_SKIPPED admits → CANDIDATE_SKIPPED; release a held batch claim first (AST-1974)."""
+    job = get_job(astral_job_id)
+    if not job:
+        raise ValueError(f"Job not found: {astral_job_id}")
+    state = job.get("state") or ""
+    # Legality first so an illegal skip (e.g. CANDIDATE_APPLIED) never drops a live claim.
+    if not job_state_admits_transition(state, "CANDIDATE_SKIPPED"):
+        raise ValueError(f"Invalid transition: {state} -> CANDIDATE_SKIPPED")
+    # Same lock release cancel_artifact_build does; a running chain hop can't land on a skipped job.
+    if job.get("batch_id"):
+        database.clear_job_batch_lock(astral_job_id)
+    transition_job_state([astral_job_id], "CANDIDATE_SKIPPED")
+    return "CANDIDATE_SKIPPED"
+
+
 def list_dispatch_tasks_for_candidate(
     candidate_id: str,
     *,
@@ -1084,34 +1196,66 @@ def save_job_data(
     replace=True overwrites the entire job_data blob; use only when intentionally replacing."""
     database.save_job(astral_job_id, job_data=job_data, merge=not replace)
 
+def compose_job_description(job: Dict[str, Any]) -> str:
+    """The complete JD every consumer reads (AST-2130): preamble (job_data.job_description — email /
+    pasted / agent-parsed text), then the scraped capture referenced by jd_web_data_id run
+    through the same collapse + prune rules fetch_jd gates on. Read-only — never saved back.
+
+    No reference -> exactly the stored preamble (pasted / meteorite / pre-AST-2130 jobs).
+    Reference whose row is gone -> preamble alone (resolve_telescope_value warns once)."""
+    # Lazy import: gazer imports tracker at module load (same cycle break as the self-heal below)
+    from src.core.gazer import _prune_jd, resolve_telescope_value
+
+    job_data = job.get("job_data") if isinstance(job.get("job_data"), dict) else {}
+    keys = TRACKER_CONFIG["job_data_keys"]
+    preamble = job_data.get(keys["job_description"]) or ""
+    ref = job_data.get(keys["jd_web_data_id"])
+    if not ref:
+        return preamble
+    logger.debug("Calling resolve_telescope_value: [%s]", ref)
+    raw = resolve_telescope_value(ref) or ""
+    logger.debug("Response from resolve_telescope_value: %s", raw)
+    # Stored capture is raw (AST-2132); collapse then prune, in _apply_jd_gates order
+    scraped = _prune_jd(collapse_consecutive_blank_lines(raw), job.get("job_title") or "")
+    # Blank halves drop so a preamble-less scraped job is just the pruned capture
+    return "\n\n".join(part for part in (preamble, scraped) if part.strip())
+
+
 async def get_job_data(job: Dict[str, Any], key: str) -> Any:
-    """Return job_data[key]. For job_description key (from config), if missing: fetch via playwright
-    get_visible_text with the job's job_link, save to job_data, then return. Caller gets value either
-    way (coat-check pattern). Returns None if key not present and not a self-healable key."""
+    """Return job_data[key]; for the job_description key (from config) return the composed JD
+    (compose_job_description). If that is short and a job_link exists: self-heal via
+    fetch_jd_batch(transition=False) — never moves state (AST-2145). Returns the composed JD once it is
+    >= jd_min_chars, else None. Returns None if key not present and not a self-healable key."""
     # Always read directly from job["job_data"] so Phase 1 write-backs are visible here
     if not isinstance(job.get("job_data"), dict):
         job["job_data"] = {}
     job_data = job["job_data"]
     jd_key = TRACKER_CONFIG.get("job_data_keys", {}).get("job_description", "job_description")
     min_chars = TRACKER_CONFIG.get("jd_min_chars", 200)
-    # Happy path: value already present and long enough
-    if key in job_data and job_data[key]:
-        if key != jd_key or len(job_data[key]) >= min_chars:
-            return job_data[key]
     if key != jd_key:
+        return job_data.get(key) or None
+    # Happy path: composed JD (preamble + referenced capture) already long enough
+    composed = compose_job_description(job)
+    if len(composed) >= min_chars:
+        return composed
+    astral_job_id = job.get("astral_job_id", "")
+    # Nothing to scrape (e.g. body-mode meteorite ingest): one warning, caller routes to its error_state
+    if not (job.get("job_link") or "").strip():
+        logger.warning(f"[{astral_job_id}] JD short, no job_link — cannot self-heal")
         return None
     # Self-heal: belt-and-suspenders before any agent call sees a missing JD.
-    # Delegates to fetch_jd_batch (single job) so prune rules live in one place.
-    astral_job_id = job.get("astral_job_id", "")
+    # Delegates to fetch_jd_batch (single job) so prune rules live in one place; transition=False because
+    # callers sit in downstream task states where fetch-stage transitions are illegal.
     logger.warning(f"[{astral_job_id}] coat-check self-heal: JD missing, invoking fetch_jd_batch")
     try:
         from src.core.gazer import fetch_jd_batch
-        await fetch_jd_batch(str(uuid.uuid4()), [job])
+        await fetch_jd_batch(str(uuid.uuid4()), [job], transition=False)
     except Exception as e:
         logger.warning(f"get_job_data: fetch_jd_batch self-heal failed for {astral_job_id}: {e}")
         return None
-    # job["job_data"] was written back by fetch_jd_batch if successful
-    return job["job_data"].get(jd_key)
+    # fetch_jd_batch wrote the jd_web_data_id reference back into job["job_data"] on pass
+    healed = compose_job_description(job)
+    return healed if len(healed) >= min_chars else None
 
 
 def get_job(astral_job_id: str) -> Optional[Dict[str, Any]]:
@@ -1352,27 +1496,69 @@ def _job_state_matches_prior(current_state: str, prior_states: Optional[List[str
     return False
 
 
-def legal_job_successor_states(from_state: str) -> List[str]:
-    """JOB_STATES keys that transition_job_state would accept from from_state, excluding from_state."""
-    current = (from_state or "").strip()
-    out: List[str] = []
-    for name, cfg in JOB_STATES.items():
-        if name == current:
+def job_state_admits_transition(current_state: str, to_state: str) -> bool:
+    """True when to_state's configured prior_states admit current_state (AST-1872).
+
+    Same rule transition_job_state enforces — hop sub-states resolve via their base.
+    Raises KeyError when to_state is not a registered JOB_STATES key (config error, fail loud).
+    """
+    return _job_state_matches_prior(current_state, state_prior_states(JOB_STATES, to_state))
+
+
+def job_discovered_at(job: Dict[str, Any]) -> Optional[str]:
+    """Date discovered = job.created_at (AST-2232)."""
+    value = job.get("created_at")
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+def job_first_state_history_at(job: Dict[str, Any], to_state: str) -> Optional[str]:
+    """Timestamp of the first state_history entry whose to_state equals to_state (AST-2232)."""
+    target = (to_state or "").strip()
+    if not target:
+        return None
+    for entry in job.get("state_history") or []:
+        if not isinstance(entry, dict):
             continue
-        if _job_state_matches_prior(current, cfg.get("prior_states")):
-            out.append(name)
-    return out
+        if (entry.get("to_state") or "").strip() != target:
+            continue
+        ts = entry.get("timestamp")
+        if ts is None:
+            return None
+        text = str(ts).strip()
+        return text or None
+    return None
+
+
+def job_recommended_at(job: Dict[str, Any]) -> Optional[str]:
+    """First RECOMMENDED timestamp in state_history (AST-2232)."""
+    return job_first_state_history_at(job, "RECOMMENDED")
+
+
+def job_applied_at(job: Dict[str, Any]) -> Optional[str]:
+    """First CANDIDATE_APPLIED timestamp in state_history, or None (AST-2232)."""
+    return job_first_state_history_at(job, "CANDIDATE_APPLIED")
+
+
+def legal_job_successor_states(from_state: str) -> List[str]:
+    """Skipped-edit targets: every JOB_STATES key except from_state (operator override; no prior_states filter)."""
+    current = (from_state or "").strip()
+    # Registry keys only — never implicit {base}_RETRY or dispatch-hop labels
+    return [name for name in JOB_STATES if name != current]
 
 
 def persist_skipped_job_edits(astral_job_id: str, fields: Dict[str, Any]) -> Dict[str, Any]:
-    """Persist title/link/JD (and optional state hop) only when job.state is in SKIPPED_STATES."""
+    """Persist title/link (and optional state hop) only when job.state is in SKIPPED_STATES.
+    The JD is read-only (AST-2133) — a job_description field is ignored."""
     job = get_job(astral_job_id)
     if not job:
         raise ValueError(f"Job not found: {astral_job_id}")
     if (job.get("state") or "") not in SKIPPED_STATES:
         raise ValueError("Job is not in a skipped state")
 
-    # Column + JD writes first so an illegal hop still keeps field edits
+    # Column writes first so an unregistered target still keeps field edits
     col: Dict[str, Any] = {}
     if "job_title" in fields:
         title = fields["job_title"] if fields["job_title"] is not None else ""
@@ -1386,10 +1572,6 @@ def persist_skipped_job_edits(astral_job_id: str, fields: Dict[str, Any]) -> Dic
         if not link:
             raise ValueError("job_link required")
         col["job_link"] = link
-    if "job_description" in fields:
-        text = "" if fields["job_description"] is None else str(fields["job_description"])
-        jd_key = TRACKER_CONFIG["job_data_keys"]["job_description"]
-        save_job_data(astral_job_id, {jd_key: text})
     if col:
         try:
             if save_job(astral_job_id, **col) is False:
@@ -1403,13 +1585,29 @@ def persist_skipped_job_edits(astral_job_id: str, fields: Dict[str, Any]) -> Dic
         to_state = str(fields["state"] or "").strip()
         if not to_state:
             raise ValueError("state required")
+        # Server accept set == dropdown list; "not in allowed list" maps to 409 in the PUT
+        if to_state not in JOB_STATES:
+            raise ValueError(f"Value {to_state!r} not in allowed list: {_JOB_STATE_LIST}")
         if to_state != (job.get("state") or ""):
-            transition_job_state([astral_job_id], to_state)
+            # Operator override on skipped jobs: registry check only, no prior_states
+            transition_job_state([astral_job_id], to_state, enforce_prior_states=False)
 
     out = get_job(astral_job_id)
     if not out:
         raise ValueError(f"Job not found: {astral_job_id}")
     return out
+
+
+def _stamp_run_id(entry: Dict[str, Any]) -> Dict[str, Any]:
+    """Add run_id = the active run's audit id (log_batch_id) to a job state_history entry (AST-1864).
+
+    Chained hops set log_batch_id to their own hop ledger id, so run_id can differ from the
+    claim batch_id. No active run (operator/API transition) -> key left absent, never None/"".
+    """
+    run_id = log_batch_id.get()
+    if run_id:
+        entry["run_id"] = run_id
+    return entry
 
 
 def write_job_dispatch_hop_label(job_id: str, trigger_state: str, completed_task_key: str) -> str:
@@ -1420,11 +1618,11 @@ def write_job_dispatch_hop_label(job_id: str, trigger_state: str, completed_task
         raise ValueError(f"Job not found: {job_id}")
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     history = job.get("state_history", [])
-    history.append({
+    history.append(_stamp_run_id({
         "to_state": label,
         "timestamp": now,
         "batch_id": job.get("batch_id"),
-    })
+    }))
     database.save_job(job_id, state=label, state_history=history, state_changed_at=now)
     return label
 
@@ -1451,21 +1649,27 @@ def graduate_job_from_dispatch_chain(job_id: str, trigger_state: str) -> str:
     return to_state
 
 
-def transition_job_state(job_ids: List[str], to_state: str, score: Optional[float] = None) -> None:
+def transition_job_state(
+    job_ids: List[str], to_state: str, score: Optional[float] = None, *, enforce_prior_states: bool = True
+) -> None:
     """Record state transition for jobs (AST-77). Appends to state_history; updates state.
     score: when provided, recorded in the state_history entry and written to latest_score column (AST-350).
-    Validates to_state against JOB_STATES and prior_states rules. Raises ValueError if invalid."""
-    validate_value(_JOB_STATE_LIST, to_state)
-    prior_states = JOB_STATES[to_state].get("prior_states")
+    run_id: stamped from log_batch_id when a run is active; absent otherwise (AST-1864).
+    Validates to_state against JOB_STATES and prior_states rules. Raises ValueError if invalid.
+    enforce_prior_states=False skips the prior_states check (skipped-job operator edit only)."""
+    # Implicit {base}_RETRY validates via its base (AST-1805); message kept for callers/tests.
+    if not is_registered_state(JOB_STATES, to_state):
+        raise ValueError(f"Value {to_state!r} not in allowed list: {_JOB_STATE_LIST}")
+    prior_states = state_prior_states(JOB_STATES, to_state)
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     for job_id in job_ids:
         job = database.get_job(job_id)
         if not job:
             raise ValueError(f"Job not found: {job_id}")
-        if not _job_state_matches_prior(job.get("state") or "", prior_states):
+        if enforce_prior_states and not _job_state_matches_prior(job.get("state") or "", prior_states):
             raise ValueError(f"Invalid transition: {job.get('state')} -> {to_state}")
         history = job.get("state_history", [])
-        entry: Dict[str, Any] = {"to_state": to_state, "timestamp": now, "batch_id": job.get("batch_id")}
+        entry: Dict[str, Any] = _stamp_run_id({"to_state": to_state, "timestamp": now, "batch_id": job.get("batch_id")})
         if score is not None:
             entry["score"] = score
         history.append(entry)
@@ -1507,11 +1711,9 @@ def get_new_job_batch(
     candidate_id: when provided, scopes claim to jobs whose company belongs to this candidate.
     batch_id: when provided, uses this batch_id instead of generating a new one.
     context: prefix for auto-generated batch_id (required when batch_id is not provided)."""
+    # Multi-state claim (states=): skip registry gate on companions (AST-1801).
     if states is None:
         _assert_valid_job_batch_claim_state(state)
-    else:
-        for s in states:
-            _assert_valid_job_batch_claim_state(s)
     limit_val = limit if limit is not None else 10
     sort_by_val = sort_by
     if not batch_id and not context:
@@ -1553,15 +1755,19 @@ def list_jobs(
     states: Optional[List[str]] = None,
     candidate_id: Optional[str] = None,
     order_by: str = "state_changed_at",
+    exclude_states: Optional[List[str]] = None,
 ) -> List[Dict[str, Any]]:
-    return database.list_jobs(states=states, candidate_id=candidate_id, order_by=order_by)
+    return database.list_jobs(
+        states=states, candidate_id=candidate_id, order_by=order_by, exclude_states=exclude_states
+    )
 
 
 def count_jobs(
     states: Optional[List[str]] = None,
     candidate_id: Optional[str] = None,
+    exclude_states: Optional[List[str]] = None,
 ) -> int:
-    return database.count_jobs(states=states, candidate_id=candidate_id)
+    return database.count_jobs(states=states, candidate_id=candidate_id, exclude_states=exclude_states)
 
 
 def save_job(astral_job_id: str, **kwargs: Any) -> bool:
@@ -1610,14 +1816,8 @@ def _contact_task_hydrate_job(job: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _job_owned_by_candidate(job: Dict[str, Any], cid: str) -> bool:
-    """True when job's company.candidate_id matches cid (not job['candidate_id'])."""
-    company_key = job.get("company")
-    if not isinstance(company_key, str) or not company_key.strip():
-        return False
-    company = get_company(company_key.strip())
-    if not company:
-        return False
-    owner = company.get("candidate_id")
+    """True when the job row's own candidate_id matches cid (AST-1598 scope key; company may be NULL — AST-1701)."""
+    owner = job.get("candidate_id")
     return isinstance(owner, str) and bool(owner.strip()) and owner.strip() == cid
 
 
@@ -1755,6 +1955,89 @@ def contact_task_get_job_by_pattern(
         debug=debug,
     )
     return row
+
+
+def _contact_job_clock(raw: Any, timezone_key: str) -> str:
+    """Job TEXT timestamp (UTC ``YYYY-MM-DD HH:MM:SS`` or ISO) → contact clock; ``-`` when absent/unparseable."""
+    log = get_logger(__name__)
+    try:
+        dt = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+    except ValueError:
+        return "-"
+    log.debug("Calling format_contact_timezone_clock: [dt=%s, timezone_key=%s]", dt.isoformat(), timezone_key)
+    clock = format_contact_timezone_clock(dt, timezone_key)
+    log.debug("Response from format_contact_timezone_clock: %s", clock)
+    return clock
+
+
+def contact_command_check_status(
+    candidate_id: str,
+    payload: str,
+    *,
+    source_id: str,
+    thread_ts: Optional[str] = None,
+    debug: bool = False,
+) -> dict:
+    """CONTACT_CONFIG["commands"] code handler: terse status + deeplink for the sender's matching job(s) (AST-2144).
+
+    Read-only. Returns {ok, meteorite_id (always None), error, reply_text}; Contact posts reply_text.
+    """
+    log = get_logger(__name__)
+    # Own registry row, found by handler path: no command-id literal in src/core (AST-2144 AC 14).
+    cmd_id, meta = next(
+        (k, m) for k, m in CONTACT_CONFIG["commands"].items()
+        if m["handler"] == f"{__name__}.contact_command_check_status"
+    )
+    cid = (candidate_id or "").strip()
+    pat = (payload or "").strip()
+    if not cid:
+        # Contact only runs commands for bound senders; no reply_text → Contact's hear-ack path.
+        return {"ok": False, "meteorite_id": None, "error": "no_candidate", "reply_text": None}
+
+    # Same candidate-scoped matcher + ownership check as contact_task_get_job_by_pattern; no hydration.
+    log.debug("Calling _match_jobs_by_pattern: [candidate_id=%s, pattern=%s]", cid, pat)
+    jobs = [j for j in _match_jobs_by_pattern(cid, pat) if _job_owned_by_candidate(j, cid)]
+    log.debug("Response from _match_jobs_by_pattern: %s", [j.get("astral_job_id") for j in jobs])
+    if not jobs:
+        return {
+            "ok": False, "meteorite_id": None, "error": "unmatched_pattern",
+            "reply_text": meta["no_match_reply_text"],
+        }
+
+    # Unset/empty origin → reply still goes out, just without links (one warning per reply).
+    domain = (os.environ.get(JOBS_DETAIL_ORIGIN_DOMAIN_ENV) or "").strip()
+    if not domain:
+        log.warning(
+            "%s | /%s deeplink missing — %s is unset\n  This reply goes out without job links",
+            cid, cmd_id, JOBS_DETAIL_ORIGIN_DOMAIN_ENV,
+        )
+    # Local import: meteorite imports tracker at module level.
+    from src.core.meteorite import _candidate_contact_timezone
+
+    log.debug("Calling _candidate_contact_timezone: [candidate_id=%s]", cid)
+    tz_key = _candidate_contact_timezone(cid)
+    log.debug("Response from _candidate_contact_timezone: %s", tz_key)
+
+    def _fields(job: Dict[str, Any]) -> Dict[str, str]:
+        # Same path as the job report modal's Copy Link: origin + route prefix + "/" + encoded id.
+        url = f"https://{domain}{JOBS_DETAIL_ROUTE_PREFIX}/{quote(str(job['astral_job_id']), safe='')}"
+        return {
+            "job_title": job.get("job_title") or "-",
+            "company": job.get("company") or "-",
+            "state": job.get("state") or "-",
+            "created_at": _contact_job_clock(job.get("created_at"), tz_key),
+            "state_changed_at": _contact_job_clock(job.get("state_changed_at"), tz_key),
+            "deeplink": meta["deeplink_template"].format(url=url) if domain else "",
+        }
+
+    if len(jobs) == 1:
+        reply = meta["match_reply_template"].format(**_fields(jobs[0]))
+    else:
+        log.debug("Beginning job status line loop on %s items", len(jobs))
+        lines = [meta["matches_line_template"].format(**_fields(j)) for j in jobs]
+        log.debug("End job status line loop after %s items", len(lines))
+        reply = "\n".join([meta["matches_header_template"].format(count=len(jobs)), *lines])
+    return {"ok": True, "meteorite_id": None, "error": None, "reply_text": reply}
 
 
 def contact_task_get_job_data(

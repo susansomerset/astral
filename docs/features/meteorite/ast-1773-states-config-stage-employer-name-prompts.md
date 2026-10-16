@@ -1,3 +1,99 @@
+<!-- linear-archive: AST-1773 archived 2026-10-02 -->
+
+## Linear archive (AST-1773)
+
+**Archived:** 2026-10-02  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1773/states-config-stage-employer-name-prompts-meteorite-state-check-unique  
+**Status at archive:** Archive  
+**Project:** Astral Meteorite  
+**Assignee:** ada  
+**Priority / estimate:** None / 3  
+**Parent:** AST-1762 — Meteorite state CHECK_UNIQUE before LANDED  
+**Blocked by / blocks / related:** parent: AST-1762; blocks: AST-1775; blocks: AST-1774
+
+### Description
+
+## What this implements
+
+Owns `METEORITE_STATES` (`CHECK_UNIQUE`, `DUPLICATE`), ingress dispatch retarget (stage/scrape success → `CHECK_UNIQUE`; land stays `READY`), optional `employer_name` prompts on `stage_meteorite` (existing schema key), Ruth duplicate-review catalog + `TASK_CONFIG`, and `check_unique_meteorite` dispatch seed. After AST-1753 lands (done). Does not implement SQL runner or Ruth invoke (#2 / #3).
+
+## Citations
+
+`astral.dispatch.entity-state-bound`, `astral.entity.required-metadata`, `stat.logging.debug`.
+
+## Scope
+
+`src/utils/config.py` — **modified** — add `CHECK_UNIQUE` and `DUPLICATE` to `METEORITE_STATES`; retarget stage/scrape success destinations and ingress dispatch config; add `TASK_CONFIG` + config block for Ruth duplicate-review; seed/assert `check_unique_meteorite`. / `src/utils/config.py` — **modified** `METEORITE_STATES` — new `CHECK_UNIQUE` (priors from stage/scrape landable-success writers: `NEW`, `SCRAPE_LINK` as applicable) and terminal `DUPLICATE`; update assert closed set. / `src/utils/config.py` — **modified** `METEORITE_INGRESS_DISPATCH_CONFIG` / scrape success map — success targets become `CHECK_UNIQUE`; add check-unique task key + trigger `CHECK_UNIQUE`; land trigger remains `READY`. / `src/utils/config.py` — **modified** `TASK_CONFIG["stage_meteorite"]` — confirm optional `employer_name` (`required: False`); no `company_name`. / `src/utils/config.py` — **new** Ruth duplicate-review `TASK_CONFIG` + config block. / `src/utils/config.py` — **modified** `SEED_CONFIG` + monitoring format strings. / `data/admin/agent_task.json` — **modified** `stage_meteorite` prompts for optional `employer_name`; **new** Ruth duplicate-review row. / `data/admin/dispatch_task.json` — **new** `check_unique_meteorite` row.
+
+## Acceptance criteria
+
+- [X] 1\. **employer_name at stage** — `TASK_CONFIG["stage_meteorite"]["response_schema"]["jobs"]["items_schema"]["employer_name"]["required"]` is False; prompts teach optional `employer_name`; no `company_name` key added. Fail: new `company_name` field or `employer_name` required=true.
+- [X] 2\. **No invent instruction** — `stage_meteorite` prompt section for employer forbids guessing/invention. Fail: prompts instruct Ruth to fill `employer_name` without content support.
+- [X] 3\. **CHECK_UNIQUE is row state only** — `STAGE_METEORITE_CONFIG["outcomes"]` still has exactly six literals; no `CHECK_UNIQUE` in Ruth outcome enum. Fail: seventh classify outcome or Ruth returning row state names.
+- [X] 4\. **Land unchanged gate** — `land_meteorite` trigger remains `READY`; `DUPLICATE` and `CHECK_UNIQUE` are not landable. Fail: land claims `DUPLICATE`/`CHECK_UNIQUE`.
+- [X] 5\. **Registry closed set** — `set(METEORITE_STATES)` includes `CHECK_UNIQUE` and `DUPLICATE`; `import src.utils.config` passes asserts. Fail: closed-set assert mismatch.
+
+## Boundaries
+
+- [X] Does not implement SQL runner or Ruth invoke (#2 / #3). Does not change `apply_paste` / BOT_BLOCKED READY writers.
+
+## Notes for planning
+
+Citations: `astral.dispatch.entity-state-bound`, `astral.entity.required-metadata`, `stat.logging.debug`. Estimate: 3. AST-1753 already Done.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/<parent-segment>`, child `sub/<parent-id>/<child-segment>`. Created at dispatch-parent.
+
+## QA test manifest
+
+ 1. Registry + ingress + review_duplicate + employer pin: `tests/component/utils/test_config.py::TestAst1773CheckUniqueRegistryAndCatalogs`
+ 2. Closed-set + priors (revised): `tests/component/utils/test_config.py::TestAst1557MeteoriteStates::test_seven_keys_and_new_entry`
+ 3. Ingress config + seed (revised): `tests/component/utils/test_config.py::TestAst1560IngressDispatchConfig`
+ 4. Classify closed set (revised): `tests/component/utils/test_config.py::TestAst1712MailboxKeyAndClassifyStates::test_classify_states_and_no_dispatch_triggers`
+ 5. Entity-type seed + retire (revised): `tests/component/utils/test_config.py::TestAst1621MeteoriteEntityTypeRegistry::test_ingress_and_bot_blocked_seeds_entity_type_meteorite`
+ 6. Catalog prompts + review row + dispatch + fixture: `tests/component/core/test_repo_admin_json.py::TestAst1773StageEmployerNameAndReviewDuplicateCatalog`
+ 7. Catalog membership 57: `tests/component/core/test_repo_admin_json.py::TestAst786AgentTaskRepoJsonSeed::test_repo_json_has_57_current_catalog_keys`
+ 8. Prior job_title prompts: `tests/component/core/test_repo_admin_json.py::TestAst1755StageMeteoriteJobTitlePrompts`
+ 9. Prior stage Ruth shell: `tests/component/core/test_repo_admin_json.py::TestAst1529StageMeteoriteCatalogRow`
+10. Fixture byte identity: `tests/component/core/test_repo_admin_json.py::TestAst1494QualifyMeteoriteCompanyStemCatalog::test_fixture_byte_identical_to_catalog`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1773CheckUniqueRegistryAndCatalogs \
+  tests/component/utils/test_config.py::TestAst1557MeteoriteStates::test_seven_keys_and_new_entry \
+  tests/component/utils/test_config.py::TestAst1560IngressDispatchConfig \
+  tests/component/utils/test_config.py::TestAst1712MailboxKeyAndClassifyStates::test_classify_states_and_no_dispatch_triggers \
+  tests/component/utils/test_config.py::TestAst1621MeteoriteEntityTypeRegistry::test_ingress_and_bot_blocked_seeds_entity_type_meteorite \
+  tests/component/core/test_repo_admin_json.py::TestAst1773StageEmployerNameAndReviewDuplicateCatalog \
+  tests/component/core/test_repo_admin_json.py::TestAst786AgentTaskRepoJsonSeed::test_repo_json_has_57_current_catalog_keys \
+  tests/component/core/test_repo_admin_json.py::TestAst1755StageMeteoriteJobTitlePrompts \
+  tests/component/core/test_repo_admin_json.py::TestAst1529StageMeteoriteCatalogRow \
+  tests/component/core/test_repo_admin_json.py::TestAst1494QualifyMeteoriteCompanyStemCatalog::test_fixture_byte_identical_to_catalog \
+  -q
+```
+
+**Bible shasums (publish tip):**
+
+* `docs/test-bible/utils/config.md` → `c3b17614eac3af12864588fe7212def938c93c57`
+* `docs/test-bible/core/repo_admin_json.md` → `73604ff6fc161cc6cb5195fd0235a8b25022c72f`
+
+### Comments
+
+#### radia — 2026-09-22T01:51:14.701Z
+[code-rubric] PROCEED (Commit: 9dc2f36e) registry+catalogs clean
+
+#### betty — 2026-09-22T01:47:24.927Z
+`origin/sub/AST-1762/AST-1773-states-config-stage-employer-name-prompts` @ `9dc2f36e` · CHECK_UNIQUE tests ready
+
+#### joan — 2026-09-22T01:34:04.529Z
+[plan-rubric] PROCEED (Commit: 4e0d2929) registry catalogs wired
+
+#### ada — 2026-09-22T01:31:07.064Z
+`origin/sub/AST-1762/AST-1773-states-config-stage-employer-name-prompts` @ `4e0d2929b0fa1461065d7c6050684f2b1ed268e5` · plan ready
+
+---
+
 # AST-1773 — States, config, stage employer_name prompts
 
 **Linear:** [AST-1773](https://linear.app/astralcareermatch/issue/AST-1773/states-config-stage-employer-name-prompts-meteorite-state-check-unique)  

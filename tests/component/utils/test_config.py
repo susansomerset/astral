@@ -68,6 +68,10 @@ class TestAst1348PhaseScoreHeaderTitleConfig:
         assert "{max}" in cfg.PHASE_SCORE_HEADER_TITLE_TEMPLATE
         rec = cfg.build_state_ui_manifest()["jobs"]["recommended"]
         assert rec["phase_score_header_title_template"] == cfg.PHASE_SCORE_HEADER_TITLE_TEMPLATE
+        # AST-1872: exact text — UI drops the literal " - {score}" segment as one unit when absent.
+        assert cfg.PHASE_SCORE_HEADER_TITLE_TEMPLATE == (
+            "{phase_label} - {score} - score: {earned} out of {possible} possible ({max} max total)"
+        )
         # Base phase nav labels unchanged
         assert [p["nav_label"] for p in rec["report_phase_tabs"]] == [
             "JD Analysis",
@@ -116,21 +120,17 @@ class TestGetManageAgentsTokens:
         assert not any(t.startswith("CALLER_") for t in agents)
 
 
-# Branches: missing task/schema; encoded variants; JSON example envelope.
+# Branches: missing task/schema; structured_output (grader) types; JSON example envelope.
 class TestStringifyResponseSchema:
     def test_returns_empty_for_unknown_task(self) -> None:
         assert cfg.stringify_response_schema("not-a-task") == ""
 
-    def test_encoded_meta_notes_and_default_encoded_examples(self) -> None:
-        meta = json.loads(cfg.stringify_response_schema("qualify_job_listings"))
-        assert isinstance(meta["agent_payload"], str)
-        assert "|" in meta["agent_payload"]
-
-        encoded = json.loads(cfg.stringify_response_schema("evaluate_jd"))
-        assert encoded["agent_payload"] == "000|ERC2|MEA3|PGA2"
-
-        notes = json.loads(cfg.stringify_response_schema("grade_do"))
-        assert "optional notes" in notes["agent_payload"]
+    def test_grader_types_show_agent_performance_only(self) -> None:
+        # AST-2177: grader rows go through the forced tool — the envelope keeps agent_performance, drops agent_payload.
+        for key in ("qualify_job_listings", "evaluate_jd", "grade_do", "vet_inflow_discovery"):
+            env = json.loads(cfg.stringify_response_schema(key))
+            assert set(env) == {"agent_performance"}, key
+            assert env["agent_performance"]["status"] == "success | failure", key
 
     def test_builds_schema_example_envelope(self) -> None:
         out = json.loads(cfg.stringify_response_schema("craft_resume_base"))
@@ -138,10 +138,11 @@ class TestStringifyResponseSchema:
         assert out["agent_payload"]["candidate_name"] == "<candidate_name>"
         assert out["agent_performance"]["status"] == "success | failure"
 
-    def test_prefilter_company_schema_shows_bracket_link_set_tails(self) -> None:
-        # AST-697: RESPONSE_SCHEMA example documents positional bracket link_set tails.
+    def test_prefilter_company_schema_has_no_encoded_link_tails(self) -> None:
+        # AST-2177 (replaces AST-697's bracket-tail example): link indices are tool extra_fields, not an encoded example.
         env = json.loads(cfg.stringify_response_schema("prefilter_company"))
-        assert env["agent_payload"] == "000|ERC2|MEA3|PGA2|[13]|[3,6,19]"
+        assert set(env) == {"agent_performance"}
+        assert "[3,6,19]" not in json.dumps(env)
 
 
 # Branches: default empty agent; explicit prompt.
@@ -194,7 +195,9 @@ class TestResolveTokens:
         assert "Hi Ada" in resolved
         assert "agent=agent body" in resolved
         assert "prior=prior" in resolved
-        assert '"agent_payload"' in resolved
+        # AST-2177: grade_get is a structured_output type — its schema example has no agent_payload.
+        assert '"agent_performance"' in resolved
+        assert '"agent_payload"' not in resolved
         assert "rubric=" in resolved
 
     def test_logs_and_returns_empty_for_missing_candidate_and_chain_values(self, caplog) -> None:
@@ -222,8 +225,11 @@ class TestResolveTokens:
         )
 
     def test_output_type_token_uses_task_instructions(self) -> None:
+        # AST-2177: grader instructions are semantics only — tool reporting + confidence scale, no encoded-line text.
         text = cfg.resolve_tokens("{$OUTPUT_INSTRUCTIONS}", {}, "evaluate_jd")
-        assert "grade segments" in text.lower() or "Each grade segment" in text
+        assert "provided tool" in text
+        assert "5: The source explicitly states it." in text
+        assert "grade segment" not in text.lower()
 
     def test_config_resolver_missing_name_returns_empty(self, monkeypatch) -> None:
         monkeypatch.setitem(cfg.TOKEN_SOURCES, "BROKEN_CONFIG", {"source": "config", "resolver": "missing"})
@@ -378,12 +384,11 @@ class TestAst479LikePassStates:
     def test_grade_like_pass_state_is_passed_like_not_build_artifacts(self) -> None:
         assert cfg.TASK_CONFIG["grade_like"]["pass_state"] == "PASSED_LIKE"
 
-    def test_recommended_job_states_post_synthesis_exclude_passed_like(self) -> None:
-        states = cfg.RECOMMENDED_JOB_STATES
-        assert states[0] == "RECOMMENDED"
-        assert states[-1] == "CANDIDATE_REVIEW"
-        assert "PASSED_LIKE" not in states
-        assert states[1:-1] == [cfg.BUILD_ARTIFACTS_BASE_STATE]
+    def test_ready_review_lists_post_synthesis_exclude_passed_like(self) -> None:
+        # AST-1974: RECOMMENDED_JOB_STATES split into Review / Ready; PASSED_LIKE stays Processing.
+        assert cfg.REVIEW_JOB_STATES == ["RECOMMENDED"]
+        assert cfg.READY_JOB_STATES == ["CANDIDATE_REVIEW"]
+        assert "PASSED_LIKE" not in cfg.JOBS_PROCESSING_EXCLUDED_STATES
 
 
 class TestAst309CoverLetterTaskConfig:
@@ -531,11 +536,8 @@ class TestBuildStateUiManifest:
     def test_ast522_recommended_manifest_sections_and_phase_columns(self) -> None:
         manifest = cfg.build_state_ui_manifest()
         rec = manifest["jobs"]["recommended"]
-        assert [row["state"] for row in rec["sections"]] == [
-            "RECOMMENDED",
-            cfg.BUILD_ARTIFACTS_BASE_STATE,
-            "CANDIDATE_REVIEW",
-        ]
+        # AST-1974: BUILD_ARTIFACTS row moved to processing_sections.
+        assert [row["state"] for row in rec["sections"]] == ["RECOMMENDED", "CANDIDATE_REVIEW"]
         assert [col["field"] for col in rec["phase_score_columns"]] == [
             "jd_score",
             "do_score",
@@ -555,24 +557,29 @@ class TestBuildStateUiManifest:
     def test_ast562_recommended_prior_states_allow_cancel_from_build(self) -> None:
         priors = cfg.JOB_STATES["RECOMMENDED"]["prior_states"]
         assert cfg.BUILD_ARTIFACTS_BASE_STATE in priors
-        assert cfg.ERROR_BUILD_ARTIFACTS_STATE in priors
+        # AST-2086: per-hop chain error states replace ERROR_BUILD_ARTIFACTS.
+        for st in cfg.BUILD_ARTIFACTS_CHAIN_ERROR_STATES:
+            assert st in priors, st
 
     def test_ast565_recommended_report_manifest_tabs(self) -> None:
         # AST-948 / AST-1550: report_top_tabs + report_summary_sections;
-        # Discussion follows Artifacts (AST-1550).
+        # Discussion follows Artifacts (AST-1550). AST-1872: Analysis first (default tab).
+        # AST-2232: Job Description tab between Analysis and Summary; raw_jd dropped from Summary.
         manifest = cfg.build_state_ui_manifest()
         rec = manifest["jobs"]["recommended"]
         assert "report_fixed_tabs" not in rec
         assert [t["tab_id"] for t in rec["report_top_tabs"]] == [
-            "summary",
             "analysis",
+            "job_description",
+            "summary",
             "artifacts",
             "discussion",
             "meteorite",
         ]
         assert [t["nav_label"] for t in rec["report_top_tabs"]] == [
-            "Summary",
             "Analysis",
+            "Job Description",
+            "Summary",
             "Artifacts",
             "Discussion",
             "Meteorite",
@@ -582,9 +589,8 @@ class TestBuildStateUiManifest:
             "company_upshot",
             "caveats",
             "questions",
-            "raw_jd",
         ]
-        assert rec["report_summary_sections"][-1]["default_expanded"] is False
+        assert "raw_jd" not in [s["section_id"] for s in rec["report_summary_sections"]]
         assert len(rec["report_phase_tabs"]) == 4
         assert rec["report_phase_tabs"][0]["take_key"] == "take_jd"
         assert [p["nav_label"] for p in rec["report_phase_tabs"]] == [
@@ -800,15 +806,17 @@ class TestAst803FlatBuildArtifactsChainDispatch:
 
     def test_flat_build_artifacts_registered_in_job_states(self) -> None:
         assert cfg.BUILD_ARTIFACTS_BASE_STATE in cfg.JOB_STATES
-        assert cfg.ERROR_BUILD_ARTIFACTS_STATE in cfg.JOB_STATES
+        for st in cfg.BUILD_ARTIFACTS_CHAIN_ERROR_STATES:
+            assert st in cfg.JOB_STATES, st
         assert cfg.JOB_STATES[cfg.BUILD_ARTIFACTS_BASE_STATE]["prior_states"] == ["RECOMMENDED"]
 
-    def test_recommended_job_states_uses_flat_build_artifacts(self) -> None:
-        assert cfg.RECOMMENDED_JOB_STATES == [
-            "RECOMMENDED",
-            cfg.BUILD_ARTIFACTS_BASE_STATE,
-            "CANDIDATE_REVIEW",
-        ]
+    def test_flat_build_artifacts_is_processing_section(self) -> None:
+        # AST-1974: flat BUILD_ARTIFACTS moved from Recommended to the last Processing section.
+        assert cfg.BUILD_ARTIFACTS_BASE_STATE not in cfg.JOBS_PROCESSING_EXCLUDED_STATES
+        assert cfg.JOBS_PROCESSING_UI_SECTIONS[-1] == {
+            "state": cfg.BUILD_ARTIFACTS_BASE_STATE,
+            "label": "Building Artifacts",
+        }
 
     def test_legacy_and_flat_build_artifacts_helpers(self) -> None:
         legacy = cfg.resume_artifact_compound_state("anticipate_scan")
@@ -827,11 +835,14 @@ class TestAst803FlatBuildArtifactsChainDispatch:
     def test_resume_hops_carry_chain_task_type(self) -> None:
         for tk in self.HOPS:
             assert cfg.TASK_CONFIG[tk]["task_type"] == "CHAIN"
-            assert cfg.TASK_CONFIG[tk]["error_state"] == cfg.ERROR_BUILD_ARTIFACTS_STATE
+            # AST-2086: each hop names its own ERROR_<HOP>.
+            assert cfg.TASK_CONFIG[tk]["error_state"] == cfg.error_state_for(tk)
 
     def test_build_failed_prior_includes_flat_build_artifacts(self) -> None:
-        priors = cfg.JOB_STATES["BUILD_FAILED"]["prior_states"]
-        assert cfg.BUILD_ARTIFACTS_BASE_STATE in priors
+        # AST-2086: dead BUILD_FAILED is deleted; per-hop chain errors carry the BUILD_ARTIFACTS prior.
+        assert "BUILD_FAILED" not in cfg.JOB_STATES
+        for st in cfg.BUILD_ARTIFACTS_CHAIN_ERROR_STATES:
+            assert cfg.JOB_STATES[st]["prior_states"] == [cfg.BUILD_ARTIFACTS_BASE_STATE], st
 
 
 class TestAst1111JobArtifactEntryShadowDeleted:
@@ -1086,8 +1097,11 @@ class TestAst1277ScoreFloorHelpers:
 # AST-641 — primary + companion *_RETRY union for dispatch claim/count (parent AST-630).
 class TestAst641DispatchClaimStates:
     def test_primary_job_includes_companion_retry(self) -> None:
-        # AST-898: VALID_TITLE.retry_state → NEW_RETRY (VALID_TITLE_RETRY drain-only)
-        assert cfg.dispatch_claim_states("VALID_TITLE", "job") == ["VALID_TITLE", "NEW_RETRY"]
+        # AST-1799: claim companions are always {ts}_RETRY (routing retry_state unchanged)
+        assert cfg.dispatch_claim_states("VALID_TITLE", "job") == [
+            "VALID_TITLE",
+            "VALID_TITLE_RETRY",
+        ]
         assert cfg.dispatch_claim_states("JD_READY", "job") == ["JD_READY", "JD_READY_RETRY"]
 
     def test_retry_only_job_single_state(self) -> None:
@@ -1100,10 +1114,13 @@ class TestAst641DispatchClaimStates:
             "WEBSITE_FOUND_RETRY",
         ]
 
-    def test_state_without_registry_companion_stays_single(self) -> None:
-        # NEW is no longer companion-less after AST-898 (see TestAst898 / TestAst797)
-        assert cfg.dispatch_claim_states("NEW", "company") == ["NEW"]
-        assert cfg.dispatch_claim_states("INVALID_TITLE", "job") == ["INVALID_TITLE"]
+    def test_primary_always_appends_suffix_companion(self) -> None:
+        # Suffix companion always, even when key absent from registry (AST-1798/1799)
+        assert cfg.dispatch_claim_states("NEW", "company") == ["NEW", "NEW_RETRY"]
+        assert cfg.dispatch_claim_states("INVALID_TITLE", "job") == [
+            "INVALID_TITLE",
+            "INVALID_TITLE_RETRY",
+        ]
 
     def test_guard_none_blank(self) -> None:
         assert cfg.dispatch_claim_states(None, "job") == []
@@ -1111,12 +1128,12 @@ class TestAst641DispatchClaimStates:
 
 
 class TestAst882DispatchClaimStates:
-    """AST-882: prefer registry retry_state (HOMEPAGE_READY → WEBSITE_FOUND_RETRY)."""
+    """AST-1799: suffix-always claim pairing (HOMEPAGE_READY → HOMEPAGE_READY_RETRY)."""
 
-    def test_homepage_ready_claims_website_found_retry(self) -> None:
+    def test_homepage_ready_claims_homepage_ready_retry(self) -> None:
         assert cfg.dispatch_claim_states("HOMEPAGE_READY", "company") == [
             "HOMEPAGE_READY",
-            "WEBSITE_FOUND_RETRY",
+            "HOMEPAGE_READY_RETRY",
         ]
 
     def test_website_found_companion_unchanged(self) -> None:
@@ -1125,103 +1142,51 @@ class TestAst882DispatchClaimStates:
             "WEBSITE_FOUND_RETRY",
         ]
 
-    def test_job_retry_state_still_unions(self) -> None:
-        assert cfg.dispatch_claim_states("VALID_TITLE", "job") == ["VALID_TITLE", "NEW_RETRY"]
+    def test_job_suffix_companion_unions(self) -> None:
+        assert cfg.dispatch_claim_states("VALID_TITLE", "job") == [
+            "VALID_TITLE",
+            "VALID_TITLE_RETRY",
+        ]
 
 
-# LLM_PROVIDER_CONFIG brain tiers, Anthropic / DeepSeek tier maps, startup env parity (AST-492).
+# Startup env parity + retired global provider symbols (AST-492). AST-1955 retired the brain-tier
+# maps (LLM_PROVIDER_CONFIG, BRAIN_*, tier → AGENT_CONFIG key) — see TestAst1955PlainAgentSettings.
 class TestAst492LlmBrainTierConfig:
-    def test_resolve_anthropic_tier_maps_to_agent_config_keys(self) -> None:
-        assert cfg.resolve_brain_setting_to_anthropic_agent_key(cfg.BRAIN_LITTLE) == "claude-haiku-4-5"
-        assert cfg.resolve_brain_setting_to_anthropic_agent_key(cfg.BRAIN_MEDIUM) == "claude-sonnet-4-6"
-        assert cfg.resolve_brain_setting_to_anthropic_agent_key(cfg.BRAIN_BIG) == "claude-opus-4-6"
-        for tier in (cfg.BRAIN_LITTLE, cfg.BRAIN_MEDIUM, cfg.BRAIN_BIG):
-            cfg.get_model(cfg.resolve_brain_setting_to_anthropic_agent_key(tier))
+    def test_deepseek_v4_catalog_skus(self) -> None:
+        # AST-1880: DeepSeek comes from the catalog. AST-1955: one model id per SKU.
+        for mid in ("deepseek-v4-flash", "deepseek-v4-pro"):
+            r = cfg.resolve_agent_settings(mid, {})
+            assert (r["server_id"], r["sku"]) == ("deepseek", mid)
 
-    def test_validate_allowed_brain_setting_rejects_unknown(self) -> None:
-        with pytest.raises(ValueError, match="Invalid brain_setting"):
-            cfg.validate_allowed_brain_setting("Small")
+    def test_legacy_global_provider_symbols_retired(self) -> None:
+        # AST-1880 (parent AC 1 / AC 11): no global active_provider, no DeepSeek-only resolvers or pricing.
+        assert "default_brain_setting" not in cfg.CONTACT_ESTELLE_CONFIG
+        for name in (
+            "get_active_llm_provider",
+            "resolve_brain_setting_to_deepseek_tier_meta",
+            "deepseek_brain_max_tokens_floor",
+            "DEEPSEEK_MODEL_PRICING",
+            "DEEPSEEK_CONCURRENCY",
+            "LLM_PROVIDER_CONFIG",
+        ):
+            assert not hasattr(cfg, name), name
 
-    def test_resolve_deepseek_tier_meta(self) -> None:
-        little = cfg.resolve_brain_setting_to_deepseek_tier_meta(cfg.BRAIN_LITTLE)
-        assert little["vendor_model"] == "deepseek-v4-flash"
-        assert little["thinking"] is False
-        medium = cfg.resolve_brain_setting_to_deepseek_tier_meta(cfg.BRAIN_MEDIUM)
-        assert medium["vendor_model"] == "deepseek-v4-pro"
-        assert medium["thinking"] is False
-        big = cfg.resolve_brain_setting_to_deepseek_tier_meta(cfg.BRAIN_BIG)
-        assert big["vendor_model"] == "deepseek-v4-pro"
-        assert big["thinking"] is False
+    def test_validate_llm_provider_environment_is_catalog_only(self) -> None:
+        # AST-1877: startup validates the catalogs only.
+        assert cfg.validate_llm_provider_environment() is None
 
-    def test_infer_brain_setting_from_legacy_model_code(self) -> None:
-        assert cfg.infer_brain_setting_from_legacy_model_code("claude-haiku-4-5") == cfg.BRAIN_LITTLE
-        assert cfg.infer_brain_setting_from_legacy_model_code("claude-sonnet-4-6") == cfg.BRAIN_MEDIUM
-        assert cfg.infer_brain_setting_from_legacy_model_code("claude-opus-4-6") == cfg.BRAIN_BIG
-        assert cfg.infer_brain_setting_from_legacy_model_code(None) == cfg.BRAIN_MEDIUM
-        assert cfg.infer_brain_setting_from_legacy_model_code("") == cfg.BRAIN_MEDIUM
-        assert cfg.infer_brain_setting_from_legacy_model_code("unknown-legacy-x") == cfg.BRAIN_MEDIUM
+    def test_anthropic_skus_carry_output_default_not_temperature(self) -> None:
+        # AGENT_CONFIG keeps default_max_tokens per Claude SKU; default_temperature is gone (AST-1947).
+        for mid in ("claude-haiku-4-5", "claude-sonnet-4-6", "claude-opus-4-6"):
+            m = cfg.get_model(cfg.get_llm_model(mid)["sku"])
+            assert isinstance(m["default_max_tokens"], int)
+            assert "default_temperature" not in m
 
-    def test_get_active_llm_provider_strips_and_rejects_invalid(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setitem(cfg.LLM_PROVIDER_CONFIG, "active_provider", " deepseek ")
-        assert cfg.get_active_llm_provider() == "deepseek"
-        monkeypatch.setitem(cfg.LLM_PROVIDER_CONFIG, "active_provider", "   ")
-        with pytest.raises(ValueError, match="invalid"):
-            cfg.get_active_llm_provider()
-        monkeypatch.setitem(cfg.LLM_PROVIDER_CONFIG, "active_provider", 999)  # type: ignore[arg-type]
-        with pytest.raises(ValueError, match="invalid"):
-            cfg.get_active_llm_provider()
-
-    def test_resolve_anthropic_raises_when_tier_maps_to_unknown_agent_config_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setitem(cfg.LLM_PROVIDER_CONFIG["tier_map"]["anthropic"], cfg.BRAIN_MEDIUM, {"agent_config_key": "__not_in_agent_config__"})
-        with pytest.raises(ValueError, match="No Anthropic tier mapping"):
-            cfg.resolve_brain_setting_to_anthropic_agent_key(cfg.BRAIN_MEDIUM)
-
-    def test_resolve_deepseek_raises_when_mapping_has_no_vendor_model(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setitem(cfg.LLM_PROVIDER_CONFIG["tier_map"]["deepseek"], cfg.BRAIN_LITTLE, {"thinking": False})
-        with pytest.raises(ValueError, match="No DeepSeek tier mapping"):
-            cfg.resolve_brain_setting_to_deepseek_tier_meta(cfg.BRAIN_LITTLE)
-
-    def test_validate_llm_provider_environment_unknown_active_provider(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setitem(cfg.LLM_PROVIDER_CONFIG, "active_provider", "other-vendor")
-        with pytest.raises(ValueError, match="Unknown LLM active_provider"):
-            cfg.validate_llm_provider_environment()
-
-    def test_brain_setting_for_anthropic_agent_key_inverse(self) -> None:
-        assert cfg.brain_setting_for_anthropic_agent_key("claude-haiku-4-5") == cfg.BRAIN_LITTLE
-        assert cfg.brain_setting_for_anthropic_agent_key("__no_such_alias__") is None
-
-    def test_manage_agents_catalog_shape_via_resolve_matches_three_tiers(self) -> None:
-        # Mirrors GET /agents/brain_settings payload using Ada-named tier resolution only.
-        rows: list[dict] = []
-        for tier in cfg.BRAIN_SETTINGS:
-            mk = cfg.resolve_brain_setting_to_anthropic_agent_key(tier)
-            m = cfg.get_model(mk)
-            rows.append(
-                {
-                    "brain_setting": tier,
-                    "label": tier,
-                    "default_temperature": m["default_temperature"],
-                    "default_max_tokens": m["default_max_tokens"],
-                }
-            )
-        assert [r["brain_setting"] for r in rows] == list(cfg.BRAIN_SETTINGS)
-
-    def test_validate_llm_provider_environment_deepseek_requires_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setitem(cfg.LLM_PROVIDER_CONFIG, "active_provider", "deepseek")
+    def test_validate_llm_provider_environment_needs_no_provider_env_keys(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # AST-1877: no platform key comes from env, so boot passes with every provider key unset.
         monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
-        with pytest.raises(KeyError):
-            cfg.validate_llm_provider_environment()
-        monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-test-ds")
-        cfg.validate_llm_provider_environment()
-        monkeypatch.setitem(cfg.LLM_PROVIDER_CONFIG, "active_provider", "anthropic")
-
-    def test_validate_llm_provider_environment_anthropic_requires_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setitem(cfg.LLM_PROVIDER_CONFIG, "active_provider", "anthropic")
         monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-        with pytest.raises(KeyError):
-            cfg.validate_llm_provider_environment()
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test-ant")
-        cfg.validate_llm_provider_environment()
+        assert cfg.validate_llm_provider_environment() is None
 
 
 class TestAst702PrefilterBatchConfig:
@@ -1230,13 +1195,17 @@ class TestAst702PrefilterBatchConfig:
     def test_prefilter_input_state_and_retry_on_homepage_ready(self) -> None:
         pf = cfg.ROSTER_CONFIG["prefilter"]
         assert pf["input_state"] == "HOMEPAGE_READY"
-        assert cfg.COMPANY_STATES["HOMEPAGE_READY"]["retry_state"] == "WEBSITE_FOUND_RETRY"
+        # AST-1839: parsing holding is prefilter's own HR_RETRY; envelope failures still re-scrape via WFR.
+        assert cfg.COMPANY_STATES["HOMEPAGE_READY"]["retry_state"] == "HOMEPAGE_READY_RETRY"
+        assert pf["retry_state"] == "HOMEPAGE_READY_RETRY"
+        assert pf["envelope_retry_state"] == "WEBSITE_FOUND_RETRY"
 
     def test_homepage_ready_evaluate_transitions(self) -> None:
         transitions = cfg.ASTRAL_CONFIG["company_state_transitions"]
         assert ("HOMEPAGE_READY", "PREFILTER_PASSED") in transitions
         assert ("HOMEPAGE_READY", "WEBSITE_FOUND_RETRY") in transitions
-        assert ("HOMEPAGE_READY", "CANNOT_READ_WEBSITE") in transitions
+        # AST-2086: prefilter terminals are ERROR_PREFILTER_COMPANY*.
+        assert ("HOMEPAGE_READY", "ERROR_PREFILTER_COMPANY_UNREADABLE") in transitions
 
     def test_prefilter_dispatch_batch_mode_and_defaults(self) -> None:
         from src.utils.config import (
@@ -1261,7 +1230,7 @@ class TestAst702PrefilterBatchConfig:
 
 
 class TestAst707EmbeddedPrefilterConfig:
-    """AST-707: embedded RC criterion for company_prefilter hydration."""
+    """AST-707 / AST-1881: embedded RC criterion (company-site scale) for company_prefilter."""
 
     def test_embedded_rc_registry(self) -> None:
         rows = cfg.EMBEDDED_COMPANY_PREFILTER_CRITERIA
@@ -1271,23 +1240,35 @@ class TestAst707EmbeddedPrefilterConfig:
         assert rc["label"] == "Reality Check"
         assert rc["importance"] == 8
         assert rc["content"] == (
-            "Reality Check — assess whether the company is real and operating as represented.\n"
-            "A == clearly real and verifiable\n"
-            "B == appears real with minor gaps\n"
-            "C == mixed signals; legitimacy uncertain\n"
-            "D == significant doubt about reality or representation\n"
-            "E == strong evidence of misrepresentation\n"
-            "F == not a real company or clearly fraudulent\n"
+            "Reality Check — Is this the website for a company that the candidate might work at?\n"
+            "A == It is a typical website with content about products or services, a link to a careers page, etc.\n"
+            "B == It is an elaborate website that isn't clearly a company website, but at least it's about the company, such as a VC portfolio page.\n"
+            "C == It is a social media site for the company, but not their website. Links might still be found to job openings from here.\n"
+            "D == This is a company website, but it doesn't look like the expected website for this company.\n"
+            "F == This is obviously not a company website, someone got confused in their previous research identifying the company.\n"
             "X == could not read the page (bot blocked or other network issue)"
         )
         by_grade = {g["grade"]: g["description"] for g in rc["grade_descriptions"]}
-        assert list(by_grade) == ["A", "B", "C", "D", "E", "F", "X"]
-        assert by_grade["A"] == "clearly real and verifiable"
-        assert by_grade["B"] == "appears real with minor gaps"
-        assert by_grade["C"] == "mixed signals; legitimacy uncertain"
-        assert by_grade["D"] == "significant doubt about reality or representation"
-        assert by_grade["E"] == "strong evidence of misrepresentation"
-        assert by_grade["F"] == "not a real company or clearly fraudulent"
+        # Company-site scale defines no E row (AST-1881).
+        assert list(by_grade) == ["A", "B", "C", "D", "F", "X"]
+        assert by_grade["A"] == (
+            "It is a typical website with content about products or services, a link to a careers page, etc."
+        )
+        assert by_grade["B"] == (
+            "It is an elaborate website that isn't clearly a company website, "
+            "but at least it's about the company, such as a VC portfolio page."
+        )
+        assert by_grade["C"] == (
+            "It is a social media site for the company, but not their website. "
+            "Links might still be found to job openings from here."
+        )
+        assert by_grade["D"] == (
+            "This is a company website, but it doesn't look like the expected website for this company."
+        )
+        assert by_grade["F"] == (
+            "This is obviously not a company website, "
+            "someone got confused in their previous research identifying the company."
+        )
         assert by_grade["X"] == "could not read the page (bot blocked or other network issue)"
 
 
@@ -1295,21 +1276,29 @@ class TestAst721ParseJobListConfig:
     """AST-721: JOBLIST_IDENTIFIED parse_job_list dispatch; find_job_page monolith removed."""
 
     def test_parse_states_and_transitions(self) -> None:
-        assert "JOBLIST_IDENTIFIED_RETRY" in cfg.COMPANY_STATES
-        assert "COULD_NOT_PARSE_JOBLIST" in cfg.COMPANY_STATES
+        # AST-1808: retry is an implicit substate — valid via its base, never a registry key.
+        assert cfg.is_registered_state(cfg.COMPANY_STATES, "JOBLIST_IDENTIFIED_RETRY")
+        assert "JOBLIST_IDENTIFIED_RETRY" not in cfg.COMPANY_STATES
+        # AST-2086: ERROR_PARSE_JOB_LIST_UNPARSEABLE → ERROR_PARSE_JOB_LIST_UNPARSEABLE (+ bare empty-token).
+        assert "ERROR_PARSE_JOB_LIST_UNPARSEABLE" in cfg.COMPANY_STATES
+        assert "ERROR_PARSE_JOB_LIST" in cfg.COMPANY_STATES
         transitions = cfg.ASTRAL_CONFIG["company_state_transitions"]
         assert ("JOBLIST_IDENTIFIED", "JOBLIST_IDENTIFIED_RETRY") in transitions
-        assert ("JOBLIST_IDENTIFIED", "COULD_NOT_PARSE_JOBLIST") in transitions
-        assert ("JOBLIST_IDENTIFIED_RETRY", "WATCH") in transitions
-        assert ("JOBLIST_IDENTIFIED_RETRY", "COULD_NOT_PARSE_JOBLIST") in transitions
+        assert ("JOBLIST_IDENTIFIED", "ERROR_PARSE_JOB_LIST_UNPARSEABLE") in transitions
+        assert ("JOBLIST_IDENTIFIED", "ERROR_PARSE_JOB_LIST") in transitions
+        # AST-2069: parse success lands in GET_UPSHOT (upshot hops precede WATCH)
+        assert ("JOBLIST_IDENTIFIED_RETRY", "GET_UPSHOT") in transitions
+        assert ("JOBLIST_IDENTIFIED_RETRY", "WATCH") not in transitions
+        assert ("JOBLIST_IDENTIFIED_RETRY", "ERROR_PARSE_JOB_LIST_UNPARSEABLE") in transitions
 
     def test_parse_job_list_roster_config(self) -> None:
         parse = cfg.ROSTER_CONFIG["parse_job_list"]
         assert parse["dispatch_trigger_state"] == "JOBLIST_IDENTIFIED"
         assert parse["retry_trigger_state"] == "JOBLIST_IDENTIFIED_RETRY"
-        assert parse["pass_state"] == "WATCH"
+        assert parse["pass_state"] == "GET_UPSHOT"  # AST-2069 (was WATCH)
         assert parse["retry_state"] == "JOBLIST_IDENTIFIED_RETRY"
-        assert parse["terminal_fail_state"] == "COULD_NOT_PARSE_JOBLIST"
+        assert parse["terminal_fail_state"] == "ERROR_PARSE_JOB_LIST_UNPARSEABLE"
+        assert parse["error_state"] == "ERROR_PARSE_JOB_LIST"  # AST-2086 empty-token / bare
         assert parse["selected_pjl_url_key"] == "selected_pjl_url"
         assert parse["max_concurrent"] == 3  # AST-891 batch semaphore
 
@@ -1330,12 +1319,14 @@ class TestAst720SelectJobPageConfig:
 
     def test_selection_states_and_transitions(self) -> None:
         assert "JOBLIST_IDENTIFIED" in cfg.COMPANY_STATES
-        assert "PREFILTER_PASSED_RETRY" in cfg.COMPANY_STATES
-        assert "NO_PJL_SELECTED" in cfg.COMPANY_STATES
+        # AST-1808: implicit retry substate.
+        assert cfg.is_registered_state(cfg.COMPANY_STATES, "PREFILTER_PASSED_RETRY")
+        assert "PREFILTER_PASSED_RETRY" not in cfg.COMPANY_STATES
+        assert "ERROR_SELECT_JOB_PAGE_NO_SELECTION" in cfg.COMPANY_STATES  # AST-2086 (was ERROR_SELECT_JOB_PAGE_NO_SELECTION)
         transitions = cfg.ASTRAL_CONFIG["company_state_transitions"]
         assert ("PJL_READY", "JOBLIST_IDENTIFIED") in transitions
         assert ("PJL_READY", "PREFILTER_PASSED_RETRY") in transitions
-        assert ("PJL_READY", "NO_PJL_SELECTED") in transitions
+        assert ("PJL_READY", "ERROR_SELECT_JOB_PAGE_NO_SELECTION") in transitions
         assert ("PREFILTER_PASSED_RETRY", "PJL_READY") in transitions
 
     def test_select_job_page_roster_config(self) -> None:
@@ -1343,7 +1334,7 @@ class TestAst720SelectJobPageConfig:
         assert sel["dispatch_trigger_state"] == "PJL_READY"
         assert sel["identified_state"] == "JOBLIST_IDENTIFIED"
         assert sel["retry_state"] == "PREFILTER_PASSED_RETRY"
-        assert sel["exhausted_state"] == "NO_PJL_SELECTED"
+        assert sel["exhausted_state"] == "ERROR_SELECT_JOB_PAGE_NO_SELECTION"
         assert sel["selected_pjl_url_key"] == "selected_pjl_url"
         keys = cfg.ROSTER_CONFIG["company_data_keys"]
         assert keys["selected_pjl_url"] == "selected_pjl_url"
@@ -1363,12 +1354,15 @@ class TestAst719FetchJobPagesConfig:
         assert "PJL_READY" in cfg.COMPANY_STATES
         transitions = cfg.ASTRAL_CONFIG["company_state_transitions"]
         assert ("PREFILTER_PASSED", "PJL_READY") in transitions
-        assert ("PREFILTER_PASSED", "JOBSITE_SCRAPE_ISSUE") in transitions
+        # AST-2086: fetch_job_pages fail splits into unreadable + bot wall.
+        assert ("PREFILTER_PASSED", "ERROR_FETCH_JOB_PAGES_UNREADABLE") in transitions
+        assert ("PREFILTER_PASSED", "BOT_BLOCKED_FETCH_JOB_PAGES") in transitions
 
     def test_gazer_fetch_job_pages_config(self) -> None:
         entry = cfg.GAZER_CONFIG["fetch_job_pages"]
         assert entry["pass_state"] == "PJL_READY"
-        assert entry["fail_state"] == "JOBSITE_SCRAPE_ISSUE"
+        assert entry["fail_state"] == "ERROR_FETCH_JOB_PAGES_UNREADABLE"
+        assert entry["bot_blocked_state"] == "BOT_BLOCKED_FETCH_JOB_PAGES"
         assert entry["fallback_batch_size"] == 10
 
     def test_dispatch_registry_and_pjl_data_keys(self) -> None:
@@ -1397,14 +1391,18 @@ class TestAst701FetchWebsiteConfig:
         assert "HOMEPAGE_READY" in cfg.COMPANY_STATES
         transitions = cfg.ASTRAL_CONFIG["company_state_transitions"]
         assert ("WEBSITE_FOUND", "HOMEPAGE_READY") in transitions
-        assert ("WEBSITE_FOUND", "CANNOT_READ_WEBSITE") in transitions
+        # AST-2086: fetch_website fail splits into unreadable + bot wall.
+        assert ("WEBSITE_FOUND", "ERROR_FETCH_WEBSITE_UNREADABLE") in transitions
+        assert ("WEBSITE_FOUND", "BOT_BLOCKED_FETCH_WEBSITE") in transitions
         assert ("WEBSITE_FOUND_RETRY", "HOMEPAGE_READY") in transitions
-        assert ("WEBSITE_FOUND_RETRY", "CANNOT_READ_WEBSITE") in transitions
+        assert ("WEBSITE_FOUND_RETRY", "ERROR_FETCH_WEBSITE_UNREADABLE") in transitions
+        assert ("WEBSITE_FOUND_RETRY", "BOT_BLOCKED_FETCH_WEBSITE") in transitions
 
     def test_gazer_fetch_website_config(self) -> None:
         entry = cfg.GAZER_CONFIG["fetch_website"]
         assert entry["pass_state"] == "HOMEPAGE_READY"
-        assert entry["fail_state"] == "CANNOT_READ_WEBSITE"
+        assert entry["fail_state"] == "ERROR_FETCH_WEBSITE_UNREADABLE"
+        assert entry["bot_blocked_state"] == "BOT_BLOCKED_FETCH_WEBSITE"
         assert entry["retry_state"] == "WEBSITE_FOUND_RETRY"
         assert entry["fallback_batch_size"] == 10
 
@@ -1429,27 +1427,34 @@ class TestAst874FetchCulturePagesConfig:
 
     def test_job_states_and_like_priors(self) -> None:
         # AST-1156: Skipped Retry lands LIKE fails back on CULTURE_READY.
+        # AST-2086: ERROR_GRADE_LIKE / NEED_WEBSITE_CONTENT split to per-task names.
         assert cfg.JOB_STATES["CULTURE_READY"]["prior_states"] == [
             "PASSED_GET",
             "FAILED_LIKE",
-            "FAILED_TECHNICAL_LIKE",
-            "NEED_WEBSITE_CONTENT",
+            "ERROR_GRADE_LIKE",
+            "ERROR_GRADE_LIKE_NO_WEBSITE_CONTENT",
+            "ERROR_ANALYSIS_UPSHOT_NO_WEBSITE_CONTENT",
         ]
-        assert cfg.JOB_STATES["NEED_CULTURE_CONTENT"]["prior_states"] == ["PASSED_GET"]
-        assert cfg.JOB_STATES["NO_CULTURE_LINKS"]["prior_states"] == ["PASSED_GET"]
-        # AST-1155: CULTURE_READY_RETRY is also a prior for LIKE outcomes.
-        assert cfg.JOB_STATES["PASSED_LIKE"]["prior_states"] == ["CULTURE_READY", "CULTURE_READY_RETRY"]
-        assert cfg.JOB_STATES["FAILED_LIKE"]["prior_states"] == ["CULTURE_READY", "CULTURE_READY_RETRY"]
-        assert cfg.JOB_STATES["FAILED_TECHNICAL_LIKE"]["prior_states"] == ["CULTURE_READY", "CULTURE_READY_RETRY"]
-        assert "CULTURE_READY" in cfg.JOB_STATES["NEED_WEBSITE_CONTENT"]["prior_states"]
+        for st in (
+            "ERROR_FETCH_CULTURE_PAGES_UNREADABLE",
+            "BOT_BLOCKED_FETCH_CULTURE_PAGES",
+            "ERROR_FETCH_CULTURE_PAGES_NO_CULTURE_LINKS",
+        ):
+            assert cfg.JOB_STATES[st]["prior_states"] == ["PASSED_GET"], st
+        # AST-1155: CULTURE_READY_RETRY is also a prior for LIKE outcomes — derived, not declared (AST-1808).
+        for t in ("PASSED_LIKE", "FAILED_LIKE", "ERROR_GRADE_LIKE"):
+            assert cfg.JOB_STATES[t]["prior_states"] == ["CULTURE_READY"], t
+            assert "CULTURE_READY_RETRY" in cfg.state_prior_states(cfg.JOB_STATES, t), t
+        assert "CULTURE_READY" in cfg.JOB_STATES["ERROR_GRADE_LIKE_NO_WEBSITE_CONTENT"]["prior_states"]
 
     def test_gazer_and_dispatch_registry(self) -> None:
         from src.utils.config import _dispatch_trigger_state_for_task_key
 
         entry = cfg.GAZER_CONFIG["fetch_culture_pages"]
         assert entry["pass_state"] == "CULTURE_READY"
-        assert entry["fail_state"] == "NEED_CULTURE_CONTENT"
-        assert entry["no_links_state"] == "NO_CULTURE_LINKS"
+        assert entry["fail_state"] == "ERROR_FETCH_CULTURE_PAGES_UNREADABLE"
+        assert entry["no_links_state"] == "ERROR_FETCH_CULTURE_PAGES_NO_CULTURE_LINKS"
+        assert entry["bot_blocked_state"] == "BOT_BLOCKED_FETCH_CULTURE_PAGES"
         assert entry["fallback_batch_size"] == 10
         # AST-960: fetch_culture_pages is gazer runtime — not TASK_CONFIG. AST-1214: defaults resolve.
         assert "fetch_culture_pages" not in cfg.TASK_CONFIG
@@ -1463,17 +1468,27 @@ class TestAst874FetchCulturePagesConfig:
 
     def test_score_gate_and_ui_manifests(self) -> None:
         assert "CULTURE_READY" in cfg.PASSED_SCORE_GATED_STATES
-        assert "CULTURE_READY" in cfg.IN_REVIEW_STATES
-        assert "NEED_CULTURE_CONTENT" in cfg.SKIPPED_STATES
-        assert "NO_CULTURE_LINKS" in cfg.SKIPPED_STATES
-        review_states = [row["state"] for row in cfg.JOBS_IN_REVIEW_UI_SECTIONS]
+        # AST-1974: Processing (ex In Review) = complement of the four explicit lists.
+        assert "CULTURE_READY" not in cfg.JOBS_PROCESSING_EXCLUDED_STATES
+        assert "ERROR_FETCH_CULTURE_PAGES_UNREADABLE" in cfg.SKIPPED_STATES
+        assert "ERROR_FETCH_CULTURE_PAGES_NO_CULTURE_LINKS" in cfg.SKIPPED_STATES
+        assert "BOT_BLOCKED_FETCH_CULTURE_PAGES" in cfg.SKIPPED_STATES
+        review_states = [row["state"] for row in cfg.JOBS_PROCESSING_UI_SECTIONS]
         assert review_states.index("PASSED_GET") < review_states.index("CULTURE_READY")
         assert review_states.index("CULTURE_READY") < review_states.index("PASSED_LIKE")
-        assert cfg.JOBS_SKIPPED_SECTION_ORDER.index("NEED_WEBSITE_CONTENT") < cfg.JOBS_SKIPPED_SECTION_ORDER.index(
-            "NEED_CULTURE_CONTENT"
+        order = cfg.JOBS_SKIPPED_SECTION_ORDER
+        assert order.index("ERROR_ANALYSIS_UPSHOT_NO_WEBSITE_CONTENT") < order.index(
+            "ERROR_FETCH_CULTURE_PAGES_UNREADABLE"
         )
-        assert cfg.JOBS_SKIPPED_SECTION_LABELS["NEED_CULTURE_CONTENT"] == "Need Culture Content"
-        assert cfg.JOBS_SKIPPED_SECTION_LABELS["NO_CULTURE_LINKS"] == "No Culture Links"
+        # Bot split sits right after the no-links key, labelled like the bare BOT_BLOCKED it split from.
+        assert order.index("BOT_BLOCKED_FETCH_CULTURE_PAGES") == order.index(
+            "ERROR_FETCH_CULTURE_PAGES_NO_CULTURE_LINKS"
+        ) + 1
+        labels = cfg.JOBS_SKIPPED_SECTION_LABELS
+        assert labels["ERROR_FETCH_CULTURE_PAGES_UNREADABLE"] == "Need Culture Content"
+        assert labels["ERROR_FETCH_CULTURE_PAGES_NO_CULTURE_LINKS"] == "No Culture Links"
+        assert labels["BOT_BLOCKED_FETCH_CULTURE_PAGES"] == "Bot Blocked"
+        assert cfg.JOBS_SKIPPED_BULK_RETRY_TO_STATE["BOT_BLOCKED_FETCH_CULTURE_PAGES"] == "PASSED_GET"
 
 
 
@@ -1514,10 +1529,19 @@ class TestAst507EncodedPrefilterConfig:
     def test_company_states_and_transitions(self) -> None:
         assert "PREFILTER_PASSED" in cfg.COMPANY_STATES
         assert "PREFILTER_FAILED" in cfg.COMPANY_STATES
-        assert "NO_PREFILTER_JOBLISTS" in cfg.COMPANY_STATES
-        assert "WEBSITE_FOUND_RETRY" in cfg.COMPANY_STATES
-        assert cfg.ROSTER_CONFIG["prefilter"]["retry_state"] == "WEBSITE_FOUND_RETRY"
-        assert cfg.ROSTER_CONFIG["prefilter"]["no_pjl_state"] == "NO_PREFILTER_JOBLISTS"
+        # AST-2086: prefilter terminals renamed onto ERROR_PREFILTER_COMPANY*.
+        assert "ERROR_PREFILTER_COMPANY_NO_JOBLIST_LINKS" in cfg.COMPANY_STATES
+        # AST-1808: implicit retry substate.
+        assert cfg.is_registered_state(cfg.COMPANY_STATES, "WEBSITE_FOUND_RETRY")
+        assert "WEBSITE_FOUND_RETRY" not in cfg.COMPANY_STATES
+        # AST-1839: HOMEPAGE_READY_RETRY registers implicitly through its base (no literal key).
+        assert cfg.COMPANY_STATES["HOMEPAGE_READY"]["retry_state"] == "HOMEPAGE_READY_RETRY"
+        assert cfg.is_registered_state(cfg.COMPANY_STATES, "HOMEPAGE_READY_RETRY")
+        assert "HOMEPAGE_READY_RETRY" not in cfg.COMPANY_STATES
+        assert cfg.ROSTER_CONFIG["prefilter"]["retry_state"] == "HOMEPAGE_READY_RETRY"
+        assert cfg.ROSTER_CONFIG["prefilter"]["no_pjl_state"] == "ERROR_PREFILTER_COMPANY_NO_JOBLIST_LINKS"
+        assert cfg.ROSTER_CONFIG["prefilter"]["error_state"] == "ERROR_PREFILTER_COMPANY"
+        assert cfg.ROSTER_CONFIG["prefilter"]["unreadable_state"] == "ERROR_PREFILTER_COMPANY_UNREADABLE"
         assert cfg.ROSTER_CONFIG["prefilter"]["pjl_url_data_key"] == "possible_joblist_links"
         assert (
             cfg.ROSTER_CONFIG["company_data_keys"]["possible_joblist_links"]
@@ -1526,11 +1550,19 @@ class TestAst507EncodedPrefilterConfig:
         transitions = cfg.ASTRAL_CONFIG["company_state_transitions"]
         assert ("WEBSITE_FOUND", "PREFILTER_PASSED") in transitions
         assert ("WEBSITE_FOUND", "PREFILTER_FAILED") in transitions
-        assert ("WEBSITE_FOUND", "NO_PREFILTER_JOBLISTS") in transitions
+        assert ("WEBSITE_FOUND", "ERROR_PREFILTER_COMPANY_NO_JOBLIST_LINKS") in transitions
         assert ("WEBSITE_FOUND", "WEBSITE_FOUND_RETRY") in transitions
-        assert ("WEBSITE_FOUND", "ERROR_PREFILTER") in transitions
-        assert ("HOMEPAGE_READY", "NO_PREFILTER_JOBLISTS") in transitions
-        assert "NO_PREFILTER_JOBLISTS" not in cfg.ROSTER_CONFIG["prefilter"]["pass_states"]
+        assert ("WEBSITE_FOUND", "ERROR_PREFILTER_COMPANY") in transitions
+        assert ("HOMEPAGE_READY", "ERROR_PREFILTER_COMPANY_NO_JOBLIST_LINKS") in transitions
+        # AST-1839: HR → HR_RETRY first strike; out of HR_RETRY to every evaluate/terminal outcome; envelope HR → WFR kept.
+        assert ("HOMEPAGE_READY", "HOMEPAGE_READY_RETRY") in transitions
+        assert ("HOMEPAGE_READY", "WEBSITE_FOUND_RETRY") in transitions
+        for dest in (
+            "PREFILTER_PASSED", "PREFILTER_FAILED", "ERROR_PREFILTER_COMPANY_NO_JOBLIST_LINKS", "TO_WATCH",
+            "IGNORE", "ERROR_PREFILTER_COMPANY", "ERROR_PREFILTER_COMPANY_UNREADABLE",
+        ):
+            assert ("HOMEPAGE_READY_RETRY", dest) in transitions, dest
+        assert "ERROR_PREFILTER_COMPANY_NO_JOBLIST_LINKS" not in cfg.ROSTER_CONFIG["prefilter"]["pass_states"]
 
     def test_prefilter_company_grades_encoded(self) -> None:
         entry = cfg.TASK_CONFIG["prefilter_company"]
@@ -1605,9 +1637,10 @@ class TestAst505InflowDiscoveryConfig:
         assert "DISCOVERED" in cfg.COMPANY_STATES
         transitions = cfg.ASTRAL_CONFIG["company_state_transitions"]
         assert ("NEW", "WEBSITE_FOUND") not in transitions
-        assert ("NEW", "NO_WEBSITE") not in transitions
+        # AST-2086: NO_WEBSITE → ERROR_INFLOW_RESOLVE_WEBSITE_NOT_FOUND on the inflow path.
+        assert ("NEW", "ERROR_INFLOW_RESOLVE_WEBSITE_NOT_FOUND") not in transitions
         assert ("DISCOVERED", "WEBSITE_FOUND") in transitions
-        assert ("DISCOVERED", "NO_WEBSITE") in transitions
+        assert ("DISCOVERED", "ERROR_INFLOW_RESOLVE_WEBSITE_NOT_FOUND") in transitions
 
     def test_vet_failed_state_and_transition(self) -> None:
         assert "VET_FAILED" in cfg.COMPANY_STATES
@@ -1628,8 +1661,14 @@ class TestAst505InflowDiscoveryConfig:
         assert v["grade_vector_code"] == "LT"
 
     def test_vet_grades_encoded_vet_meta_output_type(self) -> None:
+        # AST-2177: structured grader type — LT graded A–F (no X), confidence 1–5, website as a per-hit extra field.
         ot = cfg.ASTRAL_CONFIG["output_types"]["grades_encoded_vet_meta"]
-        assert "LT{grade}{conf}" in ot["payload_instructions"]
+        assert ot["structured_output"] is True
+        assert ot["extra_fields"] == {"website": {"type": "string"}}
+        assert ot["grade_letters"] == ["A", "B", "C", "D", "F"]
+        assert ot["confidence_range"] == (1, 5)
+        assert "LT" in ot["payload_instructions"]
+        assert "LT{grade}{conf}" not in ot["payload_instructions"]
         assert "required on every grade including F" in ot["payload_instructions"]
 
     def test_inflow_discovery_dispatch_admin_defaults(self) -> None:
@@ -1667,7 +1706,7 @@ class TestAst506InflowResolveConfig:
         assert "ai_task_key" not in r
         assert r["waiting_state"] == "WEBSITE_REVIEW"
         assert r["pass_state"] == "WEBSITE_REVIEW"
-        assert r["fail_state"] == "NO_WEBSITE"
+        assert r["fail_state"] == "ERROR_INFLOW_RESOLVE_WEBSITE_NOT_FOUND"  # AST-2086
         assert r["hit_list_data_key"] == "inflow_resolve_website_hits"
 
     def test_inflow_resolve_website_dispatch_admin_defaults(self) -> None:
@@ -1715,7 +1754,9 @@ class TestAst508InflowLocateConfig:
 
     def test_prefilter_passed_locate_transitions(self) -> None:
         transitions = cfg.ASTRAL_CONFIG["company_state_transitions"]
-        assert ("PREFILTER_PASSED", "WATCH") in transitions
+        # AST-2069: locate success lands in GET_UPSHOT, not WATCH
+        assert ("PREFILTER_PASSED", "GET_UPSHOT") in transitions
+        assert ("PREFILTER_PASSED", "WATCH") not in transitions
         assert ("PREFILTER_PASSED", "NO_OPENINGS") in transitions
 
 
@@ -2161,17 +2202,6 @@ class TestAst877OriginatingSearchTermShapes:
             keys = [c["key"] for c in companies[shape_key]]
             assert "originating_search_term" not in keys
 
-class TestAst892FetchWebsiteSecondStrikeFilter:
-    """AST-892: shared helper for claim/count exclusion keys."""
-
-    def test_returns_retry_state_and_homepage_text_key(self) -> None:
-        retry_state, ht_key = cfg.fetch_website_prefilter_second_strike_filter()
-        assert retry_state == cfg.GAZER_CONFIG["fetch_website"]["retry_state"]
-        assert ht_key == cfg.ROSTER_CONFIG["company_data_keys"]["homepage_text"]
-        assert retry_state == "WEBSITE_FOUND_RETRY"
-        assert ht_key == "homepage_text"
-
-
 class TestAst897ProviderBalanceRefusalConfig:
     """AST-897: PROVIDER_BALANCE_REFUSAL lives in config (status + substrings)."""
 
@@ -2224,47 +2254,44 @@ class TestAst903CraftRubricMaxTokens:
 
 
 class TestAst1391DeepseekBigMaxTokensFloor:
-    """AST-1391: 384000 lives on DeepSeek Big tier only — not the shared v4-pro SKU default."""
+    """AST-1391: 384000 was the DeepSeek Big tier floor. AST-1955 (parent Functional scope 4) moved it to the
+    agent's own max_tokens, so no catalog SKU carries a floor that could raise or lower an agent's budget."""
 
-    def test_big_tier_floor_and_helper(self) -> None:
-        big = cfg.resolve_brain_setting_to_deepseek_tier_meta(cfg.BRAIN_BIG)
-        little = cfg.resolve_brain_setting_to_deepseek_tier_meta(cfg.BRAIN_LITTLE)
-        medium = cfg.resolve_brain_setting_to_deepseek_tier_meta(cfg.BRAIN_MEDIUM)
-        assert big["max_tokens"] == 384000
-        assert "max_tokens" not in little
-        assert "max_tokens" not in medium
-        assert cfg.DEEPSEEK_MODEL_PRICING["deepseek-v4-pro"]["default_max_tokens"] == 16000
-        assert cfg.deepseek_brain_max_tokens_floor(cfg.BRAIN_BIG) == 384000
-        assert cfg.deepseek_brain_max_tokens_floor(cfg.BRAIN_MEDIUM) is None
-        assert cfg.deepseek_brain_max_tokens_floor(cfg.BRAIN_LITTLE) is None
-        with pytest.raises(ValueError, match="Invalid brain_setting"):
-            cfg.deepseek_brain_max_tokens_floor("Small")
+    def test_no_catalog_floor_on_v4_skus(self) -> None:
+        # AST-1955 AC 6 (catalog half; the wire max_tokens == 384000 check lives with AST-1956's call path).
+        pro = cfg.resolve_agent_settings("deepseek-v4-pro", {"max_tokens": 384000})["tier"]
+        assert (pro["max_tokens_floor"], pro["default_max_tokens"]) == (None, 16000)
+        assert cfg.resolve_agent_settings("deepseek-v4-flash", {})["tier"]["max_tokens_floor"] is None
 
 
 class TestAst898NewRetryQualifyHolding:
     """AST-898: NEW_RETRY qualify holding; retire VALID_TITLE_RETRY for new traffic."""
 
-    def test_new_and_valid_title_claim_new_retry(self) -> None:
+    def test_new_and_valid_title_claim_suffix_companions(self) -> None:
+        # Claim is suffix-always; VALID_TITLE.retry_state → NEW_RETRY remains routing-only
         assert cfg.dispatch_claim_states("NEW", "job") == ["NEW", "NEW_RETRY"]
-        assert cfg.dispatch_claim_states("VALID_TITLE", "job") == ["VALID_TITLE", "NEW_RETRY"]
+        assert cfg.dispatch_claim_states("VALID_TITLE", "job") == [
+            "VALID_TITLE",
+            "VALID_TITLE_RETRY",
+        ]
         assert cfg.dispatch_claim_states("VALID_TITLE_RETRY", "job") == ["VALID_TITLE_RETRY"]
         assert cfg.dispatch_claim_states("NEW_RETRY", "job") == ["NEW_RETRY"]
 
     def test_registry_retry_pointers_and_drain(self) -> None:
         assert cfg.JOB_STATES["NEW"]["retry_state"] == "NEW_RETRY"
         assert cfg.JOB_STATES["VALID_TITLE"]["retry_state"] == "NEW_RETRY"
-        assert "retry_state" not in cfg.JOB_STATES["NEW_RETRY"]
-        assert "retry_state" not in cfg.JOB_STATES["VALID_TITLE_RETRY"]
-        assert "VALID_TITLE_RETRY" in cfg.JOB_STATES
-        assert cfg.JOB_STATES["NEW_RETRY"]["prior_states"] == ["NEW", "VALID_TITLE"]
-        assert "NEW_RETRY" in cfg.JOB_STATES["PASSED_JOBLIST"]["prior_states"]
-        assert "NEW_RETRY" in cfg.JOB_STATES["FAILED_JOBLIST"]["prior_states"]
+        # AST-1808: retries are implicit substates — no registry keys; priors derived.
+        assert "NEW_RETRY" not in cfg.JOB_STATES
+        assert "VALID_TITLE_RETRY" not in cfg.JOB_STATES
+        assert set(cfg.state_prior_states(cfg.JOB_STATES, "NEW_RETRY")) == {"NEW", "NEW_RETRY", "VALID_TITLE"}
+        assert "NEW_RETRY" in cfg.state_prior_states(cfg.JOB_STATES, "PASSED_JOBLIST")
+        assert "NEW_RETRY" in cfg.state_prior_states(cfg.JOB_STATES, "FAILED_JOBLIST")
 
     def test_ui_sections_and_grade_field(self) -> None:
-        assert "NEW_RETRY" in cfg.IN_REVIEW_STATES
-        review = [row["state"] for row in cfg.JOBS_IN_REVIEW_UI_SECTIONS]
+        assert "NEW_RETRY" not in cfg.JOBS_PROCESSING_EXCLUDED_STATES
+        review = [row["state"] for row in cfg.JOBS_PROCESSING_UI_SECTIONS]
         assert review.index("VALID_TITLE_RETRY") < review.index("NEW_RETRY")
-        row = next(r for r in cfg.JOBS_IN_REVIEW_UI_SECTIONS if r["state"] == "NEW_RETRY")
+        row = next(r for r in cfg.JOBS_PROCESSING_UI_SECTIONS if r["state"] == "NEW_RETRY")
         assert row["label"] == "New (retry)"
         assert cfg.JOBS_IN_REVIEW_GRADE_FIELD["NEW_RETRY"] == "joblist_grades"
         assert cfg.JOBS_IN_REVIEW_GRADE_FIELD["VALID_TITLE_RETRY"] == "joblist_grades"
@@ -2272,11 +2299,12 @@ class TestAst898NewRetryQualifyHolding:
     def test_consult_batch_fail_dest_matrix(self) -> None:
         from src.core import consult as consult_mod
 
-        err = cfg.TASK_CONFIG["qualify_job_listings"]["error_state"]
-        assert consult_mod._consult_batch_fail_dest("VALID_TITLE", err) == "NEW_RETRY"
-        assert consult_mod._consult_batch_fail_dest("NEW", err) == "NEW_RETRY"
-        assert consult_mod._consult_batch_fail_dest("NEW_RETRY", err) == err
-        assert consult_mod._consult_batch_fail_dest("VALID_TITLE_RETRY", err) == err
+        tk = "qualify_job_listings"
+        err = cfg.TASK_CONFIG[tk]["error_state"]
+        assert consult_mod._consult_batch_fail_dest("VALID_TITLE", err, tk) == "NEW_RETRY"
+        assert consult_mod._consult_batch_fail_dest("NEW", err, tk) == "NEW_RETRY"
+        assert consult_mod._consult_batch_fail_dest("NEW_RETRY", err, tk) == err
+        assert consult_mod._consult_batch_fail_dest("VALID_TITLE_RETRY", err, tk) == err
 
 
 class TestAst1339MeteoriteNewRetryQualifyHolding:
@@ -2293,16 +2321,20 @@ class TestAst1339MeteoriteNewRetryQualifyHolding:
 
     def test_registry_retry_pointer_no_nested(self) -> None:
         assert cfg.JOB_STATES["METEORITE_NEW"]["retry_state"] == "METEORITE_NEW_RETRY"
-        assert "retry_state" not in cfg.JOB_STATES["METEORITE_NEW_RETRY"]
-        assert cfg.JOB_STATES["METEORITE_NEW_RETRY"]["prior_states"] == ["METEORITE_NEW"]
+        # AST-1808: implicit substate — no key (so no nested retry_state); priors derived.
+        assert "METEORITE_NEW_RETRY" not in cfg.JOB_STATES
+        assert set(cfg.state_prior_states(cfg.JOB_STATES, "METEORITE_NEW_RETRY")) == {
+            "METEORITE_NEW",
+            "METEORITE_NEW_RETRY",
+        }
 
     def test_ui_sections_label_no_grade_field(self) -> None:
-        assert "METEORITE_NEW_RETRY" in cfg.IN_REVIEW_STATES
-        review = [row["state"] for row in cfg.JOBS_IN_REVIEW_UI_SECTIONS]
+        assert "METEORITE_NEW_RETRY" not in cfg.JOBS_PROCESSING_EXCLUDED_STATES
+        review = [row["state"] for row in cfg.JOBS_PROCESSING_UI_SECTIONS]
         assert review.index("METEORITE_NEW") < review.index("METEORITE_NEW_RETRY")
         assert review.index("METEORITE_NEW_RETRY") < review.index("METEORITE_QUALIFIED")
         row = next(
-            r for r in cfg.JOBS_IN_REVIEW_UI_SECTIONS if r["state"] == "METEORITE_NEW_RETRY"
+            r for r in cfg.JOBS_PROCESSING_UI_SECTIONS if r["state"] == "METEORITE_NEW_RETRY"
         )
         assert row["label"] == "Meteorite New (retry)"
         assert "METEORITE_NEW_RETRY" not in cfg.JOBS_IN_REVIEW_GRADE_FIELD
@@ -2310,11 +2342,12 @@ class TestAst1339MeteoriteNewRetryQualifyHolding:
     def test_consult_batch_fail_dest_matrix(self) -> None:
         from src.core import consult as consult_mod
 
-        err = cfg.TASK_CONFIG["qualify_meteorite"]["error_state"]
-        assert consult_mod._consult_batch_fail_dest("METEORITE_NEW", err) == "METEORITE_NEW_RETRY"
+        tk = "qualify_meteorite"
+        err = cfg.TASK_CONFIG[tk]["error_state"]
+        assert consult_mod._consult_batch_fail_dest("METEORITE_NEW", err, tk) == "METEORITE_NEW_RETRY"
         assert (
-            consult_mod._consult_batch_fail_dest("METEORITE_NEW_RETRY", err)
-            == "METEORITE_ERROR_QUALIFY"
+            consult_mod._consult_batch_fail_dest("METEORITE_NEW_RETRY", err, tk)
+            == "ERROR_QUALIFY_METEORITE"  # AST-2086 (was ERROR_QUALIFY_METEORITE)
         )
 
 
@@ -2431,13 +2464,15 @@ class TestAst970CandidateStateRegistry:
         for name, entry in cfg.CANDIDATE_STATES.items():
             assert "prior_states" in entry, name
             assert "progress_rank" in entry, name
+            assert "stage" in entry, name  # AST-2228: stage on every registry state
 
     def test_happy_path_keys_present(self) -> None:
+        # AST-2228: PROFILE_READY / CONTEXT_READY revived; topic-ready keys retired.
         for key in (
             "NEW_CANDIDATE",
             "INTAKE_INITIATED",
-            "REQUIRED_TOPICS_READY",
-            "ALL_TOPICS_READY",
+            "PROFILE_READY",
+            "CONTEXT_READY",
             "REQUESTED_RESUME",
             "RESUME_READY",
             "REQUESTED_ARTIFACTS",
@@ -2448,16 +2483,27 @@ class TestAst970CandidateStateRegistry:
             "DELETED",
         ):
             assert key in cfg.CANDIDATE_STATES
+        assert not (
+            {
+                "REQUIRED_TOPICS_READY",
+                "REQUIRED_TOPICS_READY_STALE",
+                "ALL_TOPICS_READY",
+                "ALL_TOPICS_READY_STALE",
+            }
+            & set(cfg.CANDIDATE_STATES)
+        )
 
     def test_stale_companions_and_hours(self) -> None:
-        assert cfg.CANDIDATE_STATES["REQUIRED_TOPICS_READY"]["stale_after_hours"] == 72
-        assert cfg.CANDIDATE_STATES["REQUIRED_TOPICS_READY"]["stale_state"] == "REQUIRED_TOPICS_READY_STALE"
+        # AST-2228: profile/context have no stale companions; resume/artifacts waiting still do.
+        assert "stale_state" not in cfg.CANDIDATE_STATES["PROFILE_READY"]
+        assert "stale_state" not in cfg.CANDIDATE_STATES["CONTEXT_READY"]
         assert cfg.CANDIDATE_STATES["RESUME_READY"]["stale_after_hours"] == 168
+        assert cfg.CANDIDATE_STATES["RESUME_READY"]["stale_state"] == "RESUME_READY_STALE"
         assert cfg.CANDIDATE_STATES["DELETED"]["reap_after_hours"] == 720
 
     def test_stale_to_next_priors(self) -> None:
-        assert "REQUIRED_TOPICS_READY_STALE" in cfg.CANDIDATE_STATES["ALL_TOPICS_READY"]["prior_states"]
-        assert "ALL_TOPICS_READY_STALE" in cfg.CANDIDATE_STATES["REQUESTED_RESUME"]["prior_states"]
+        # AST-2228: REQUESTED_RESUME priors = CONTEXT_READY only (no topic-stale).
+        assert cfg.CANDIDATE_STATES["REQUESTED_RESUME"]["prior_states"] == ["CONTEXT_READY"]
         assert "RESUME_READY_STALE" in cfg.CANDIDATE_STATES["REQUESTED_ARTIFACTS"]["prior_states"]
         assert "ARTIFACTS_READY_STALE" in cfg.CANDIDATE_STATES["ACTIVE_SEARCH"]["prior_states"]
 
@@ -2474,13 +2520,16 @@ class TestAst970CandidateStateRegistry:
         assert "REQUESTED_ARTIFACTS_ERROR" not in art_priors
 
     def test_nav_and_gen_states_use_new_vocab(self) -> None:
-        jobs = next(g for g in cfg.NAV_CONFIG if g.get("label") == "Jobs")
-        companies = next(g for g in cfg.NAV_CONFIG if g.get("label") == "Companies")
-        artifacts = next(g for g in cfg.NAV_CONFIG if g.get("label") == "Artifacts")
-        # AST-1449: group-level candidate-state "visible" is not a NAV_CONFIG key.
-        assert "visible" not in jobs
-        assert "visible" not in companies
-        assert "visible" not in artifacts
+        # AST-2230: candidate-facing groups are Candidate / Criteria / Company / Job Opportunities.
+        facing = [g for g in cfg.NAV_CONFIG if not g.get("admin_only")]
+        assert [g.get("label") for g in facing] == [
+            "Candidate",
+            "Criteria",
+            "Company",
+            "Job Opportunities",
+        ]
+        for g in facing:
+            assert "visible" not in g  # AST-1449: no group-level visible
         gen = cfg.build_state_ui_manifest()["candidate"]["artifact_generate_states"]
         # AST-1253: Generate/Regenerate available through search states (not while chain claimed).
         assert gen == [
@@ -2494,8 +2543,11 @@ class TestAst970CandidateStateRegistry:
         assert all(s in cfg.CANDIDATE_STATES for s in gen)
 
     def test_retired_four_step_names_absent(self) -> None:
-        for retired in ("NEW", "PROFILE_READY", "CONTEXT_READY", "LIVE_PROMPTS"):
+        # AST-2228: PROFILE_READY / CONTEXT_READY revived; NEW + LIVE_PROMPTS stay retired labels.
+        for retired in ("NEW", "LIVE_PROMPTS"):
             assert retired not in cfg.CANDIDATE_STATES
+        assert "PROFILE_READY" in cfg.CANDIDATE_STATES
+        assert "CONTEXT_READY" in cfg.CANDIDATE_STATES
 
 
 @pytest.mark.skipif(
@@ -2506,7 +2558,7 @@ class TestAst972CandidateStageDispatch:
     """AST-972 → AST-1252: CANDIDATE_STAGE_DISPATCH artifacts entry + claim/trigger helpers."""
 
     def test_stage_dispatch_map_and_task_config(self) -> None:
-        assert "requested_resume" not in cfg.CANDIDATE_STAGE_DISPATCH
+        # AST-2221: requested_resume stage entry is live — assert shape in TestAst2221BaseResumeChainConfig.
         arts = cfg.CANDIDATE_STAGE_DISPATCH["requested_artifacts"]
         assert arts["task_key"] == "craft_get_rubric"
         assert arts["trigger_state"] == "REQUESTED_ARTIFACTS"
@@ -2526,7 +2578,10 @@ class TestAst972CandidateStageDispatch:
             "REQUESTED_ARTIFACTS",
             "REQUESTED_ARTIFACTS_RETRY",
         ]
-        assert cfg.dispatch_claim_states("ACTIVE_SEARCH", "candidate") == ["ACTIVE_SEARCH"]
+        assert cfg.dispatch_claim_states("ACTIVE_SEARCH", "candidate") == [
+            "ACTIVE_SEARCH",
+            "ACTIVE_SEARCH_RETRY",
+        ]
 
     def test_trigger_and_entity_helpers(self) -> None:
         from src.utils.config import (
@@ -2547,11 +2602,11 @@ class TestAst972CandidateStageDispatch:
     reason="AST-972 product not on this publish tip",
 )
 class TestAst1022HonorAutoOffStageDispatch:
-    """AST-1022 → AST-1252: remaining stage entry seeds AUTO off."""
+    """AST-1022 → AST-1252: every stage entry seeds AUTO off (AST-2221 adds requested_resume)."""
 
     def test_stage_dispatch_auto_mode_seed_false(self) -> None:
-        arts = cfg.CANDIDATE_STAGE_DISPATCH["requested_artifacts"]
-        assert arts["auto_mode"] is False
+        for stage_key, entry in cfg.CANDIDATE_STAGE_DISPATCH.items():
+            assert entry["auto_mode"] is False, stage_key
 
 
 class TestAst1252ArtifactsDispatchChainConfig:
@@ -2586,7 +2641,8 @@ class TestAst1253GenerateRegenerateHandoffConfig:
     """AST-1253: REQUESTED_ARTIFACTS re-entry priors + unordered NAV path map (no hop list)."""
 
     def test_requested_artifacts_priors_include_regenerate_states(self) -> None:
-        priors = cfg.CANDIDATE_STATES["REQUESTED_ARTIFACTS"]["prior_states"] or []
+        # AST-1808: REQUESTED_ARTIFACTS_RETRY re-entry is derived, not declared.
+        priors = cfg.state_prior_states(cfg.CANDIDATE_STATES, "REQUESTED_ARTIFACTS") or []
         for state in (
             "RESUME_READY",
             "RESUME_READY_STALE",
@@ -2628,7 +2684,7 @@ class TestAst1375ArtifactGenerateInflightHideStates:
         hide = cand["artifact_generate_inflight_hide_states"]
         assert hide == ["REQUESTED_ARTIFACTS", "REQUESTED_ARTIFACTS_RETRY"]
         assert "REQUESTED_ARTIFACTS_ERROR" not in hide
-        assert all(s in cfg.CANDIDATE_STATES for s in hide)
+        assert all(cfg.is_registered_state(cfg.CANDIDATE_STATES, s) for s in hide)
         # Generate allowlist unchanged (escape hatch is Base Resume–local, not a global expand).
         assert cand["artifact_generate_states"] == [
             "RESUME_READY",
@@ -2641,31 +2697,135 @@ class TestAst1375ArtifactGenerateInflightHideStates:
 
 
 class TestAst973LegacyCandidateRemap:
-    """AST-973: CANDIDATE_LEGACY_* map + remap_legacy_candidate_state."""
+    """AST-973: CANDIDATE_LEGACY_* map + remap_legacy_candidate_state (AST-2228 topic remap)."""
 
     def test_map_and_trigger_frozenset(self) -> None:
+        # AST-2228: topic labels → PROFILE_READY / CONTEXT_READY; live PROFILE/CONTEXT drop from map.
         assert cfg.CANDIDATE_LEGACY_STATE_MAP == {
             "LIVE_PROMPTS": "ACTIVE_SEARCH",
             "NEW": "NEW_CANDIDATE",
-            "PROFILE_READY": "NEW_CANDIDATE",
-            "CONTEXT_READY": "NEW_CANDIDATE",
+            "REQUIRED_TOPICS_READY": "PROFILE_READY",
+            "REQUIRED_TOPICS_READY_STALE": "PROFILE_READY",
+            "ALL_TOPICS_READY": "CONTEXT_READY",
+            "ALL_TOPICS_READY_STALE": "CONTEXT_READY",
         }
         assert "DELETED" not in cfg.CANDIDATE_LEGACY_STATE_MAP
+        assert "PROFILE_READY" not in cfg.CANDIDATE_LEGACY_STATE_MAP
+        assert "CONTEXT_READY" not in cfg.CANDIDATE_LEGACY_STATE_MAP
         assert cfg.CANDIDATE_LEGACY_TRIGGER_STATES == frozenset(
-            {"LIVE_PROMPTS", "PROFILE_READY", "CONTEXT_READY"}
+            {
+                "LIVE_PROMPTS",
+                "REQUIRED_TOPICS_READY",
+                "REQUIRED_TOPICS_READY_STALE",
+                "ALL_TOPICS_READY",
+                "ALL_TOPICS_READY_STALE",
+            }
         )
         assert all(v in cfg.CANDIDATE_STATES for v in cfg.CANDIDATE_LEGACY_STATE_MAP.values())
 
     def test_remap_helper(self) -> None:
         assert cfg.remap_legacy_candidate_state("LIVE_PROMPTS") == "ACTIVE_SEARCH"
         assert cfg.remap_legacy_candidate_state("NEW") == "NEW_CANDIDATE"
-        assert cfg.remap_legacy_candidate_state("PROFILE_READY") == "NEW_CANDIDATE"
-        assert cfg.remap_legacy_candidate_state("CONTEXT_READY") == "NEW_CANDIDATE"
+        # AST-2228: revived keys are live registry members → identity; topics land on revived path.
+        assert cfg.remap_legacy_candidate_state("PROFILE_READY") == "PROFILE_READY"
+        assert cfg.remap_legacy_candidate_state("CONTEXT_READY") == "CONTEXT_READY"
+        assert cfg.remap_legacy_candidate_state("REQUIRED_TOPICS_READY") == "PROFILE_READY"
+        assert cfg.remap_legacy_candidate_state("ALL_TOPICS_READY_STALE") == "CONTEXT_READY"
         assert cfg.remap_legacy_candidate_state("ACTIVE_SEARCH") == "ACTIVE_SEARCH"
         assert cfg.remap_legacy_candidate_state("") == cfg.CANDIDATE_CONFIG["initial_state"]
         assert cfg.remap_legacy_candidate_state("totally_unknown") == "NEW_CANDIDATE"
         # DELETED is a live registry key — remap is identity; Phase B never selects it
         assert cfg.remap_legacy_candidate_state("DELETED") == "DELETED"
+
+
+class TestAst2228CandidateStageRegistry:
+    """AST-2228: stage on every CANDIDATE_STATES entry + locked bands (AC 1–3)."""
+
+    def test_locked_stage_bands(self) -> None:
+        assert cfg.CANDIDATE_STATES["PAUSE_SEARCH"]["stage"] == 5
+        assert cfg.CANDIDATE_STATES["RESUME_READY"]["stage"] == 4
+        assert cfg.CANDIDATE_STATES["PROFILE_READY"]["stage"] == 2
+        assert cfg.CANDIDATE_STATES["DELETED"]["stage"] == 0
+        assert cfg.CANDIDATE_STATES["CONTEXT_READY"]["stage"] == 3
+        assert cfg.CANDIDATE_STATES["REQUESTED_RESUME"]["stage"] == 3
+        # Craft ERROR_* share artifact-craft waiting band (stage 4).
+        for name, entry in cfg.CANDIDATE_STATES.items():
+            if name.startswith("ERROR_CRAFT_"):
+                assert entry["stage"] == 4, name
+
+
+class TestAst2245BaseResumeErrorStage:
+    """AST-2245: BASE_RESUME_CHAIN_ERROR_STATES inherit stage 3 (resume-request band)."""
+
+    def test_every_registry_entry_has_stage(self) -> None:
+        assert all("stage" in v for v in cfg.CANDIDATE_STATES.values())
+
+    def test_base_resume_error_states_are_stage_3(self) -> None:
+        assert cfg.BASE_RESUME_CHAIN_ERROR_STATES
+        for st in cfg.BASE_RESUME_CHAIN_ERROR_STATES:
+            assert cfg.CANDIDATE_STATES[st]["stage"] == 3, st
+            # Priors / rank unchanged from AST-2221 — stage is the gap this ticket fills.
+            assert cfg.CANDIDATE_STATES[st]["prior_states"] == ["REQUESTED_RESUME"], st
+            assert cfg.CANDIDATE_STATES[st]["progress_rank"] == 4, st
+        # Artifact craft ERROR_* stay stage 4 (do not retarget).
+        for name, entry in cfg.CANDIDATE_STATES.items():
+            if name.startswith("ERROR_CRAFT_"):
+                assert entry["stage"] == 4, name
+
+
+class TestAst2230StageGatedNavConfig:
+    """AST-2230: NAV_CONFIG regroup + NAV_GROUP_RECENT_DEFAULTS (AC 5–6, AC 8 knobs)."""
+
+    _DROPPED = (
+        "Intake",
+        "Surfer",
+        "Surfer Consent",
+        "Watch History",
+        "New List",
+        "Inactive List",
+        "Processing",
+        "Review",
+    )
+
+    def test_candidate_facing_group_order_and_min_stages(self) -> None:
+        facing = [g for g in cfg.NAV_CONFIG if not g.get("admin_only")]
+        assert [g["label"] for g in facing] == [
+            "Candidate",
+            "Criteria",
+            "Company",
+            "Job Opportunities",
+        ]
+        criteria = next(g for g in facing if g["label"] == "Criteria")
+        assert all(it.get("enabled") == 4 for it in criteria["items"])
+        jobs = next(g for g in facing if g["label"] == "Job Opportunities")
+        assert [(it["label"], it["path"], it["enabled"]) for it in jobs["items"]] == [
+            ("Meteorites", "/jobs/meteorites", 5),
+            ("Recommendations", "/jobs/review", 5),
+            ("Ready to Apply", "/jobs/ready", 5),
+            ("Submitted Applications", "/jobs/applied", 5),
+            ("Skipped", "/jobs/skipped", 5),
+        ]
+
+    def test_dropped_labels_absent_from_candidate_facing(self) -> None:
+        labels = {
+            it.get("label")
+            for g in cfg.NAV_CONFIG
+            if not g.get("admin_only")
+            for it in g.get("items", [])
+        }
+        for gone in self._DROPPED:
+            assert gone not in labels, gone
+        assert "Jobs" not in {g.get("label") for g in cfg.NAV_CONFIG}
+        assert "Companies" not in {g.get("label") for g in cfg.NAV_CONFIG}
+        assert "Artifacts" not in {g.get("label") for g in cfg.NAV_CONFIG}
+
+    def test_nav_group_recent_defaults(self) -> None:
+        assert cfg.NAV_GROUP_RECENT_DEFAULTS == {
+            "Candidate": {"when": "incomplete_profile"},
+            "Criteria": {"when": "never"},
+            "Company": {"when": "any_item_count"},
+            "Job Opportunities": {"when": "any_item_count"},
+        }
 
 
 class TestAst996ExperienceJobArrayConfig:
@@ -2879,7 +3039,8 @@ class TestAst1037SimpleResumeParseConfig:
         assert simple["response_format"] == "json"
         assert simple["context_format"] == "simple_resume_parse_{index}"
         assert simple["entity_type"] is None
-        assert simple["requires_candidate_key"] is False
+        # AST-1877: every task runs on the candidate's platform key.
+        assert simple["requires_candidate_key"] is True
         assert simple["trigger_state"] is None
 
     def test_craft_resume_base_meta_unchanged(self) -> None:
@@ -3030,15 +3191,15 @@ class TestAst1053MeteoriteGdlJobStates:
     )
     _FAIL = (
         "METEORITE_FAILED_QUALIFY",  # AST-1060
-        "METEORITE_ERROR_QUALIFY",  # AST-1060
+        "ERROR_QUALIFY_METEORITE",  # AST-1060
         "METEORITE_FAILED_JD",
-        "METEORITE_ERROR_EVALUATE_JD",
+        "ERROR_EVALUATE_METEORITE",
         "METEORITE_FAILED_DO",
-        "METEORITE_FAILED_TECHNICAL_DO",
+        "ERROR_METEORITE_GRADE_DO",
         "METEORITE_FAILED_GET",
-        "METEORITE_FAILED_TECHNICAL_GET",
+        "ERROR_METEORITE_GRADE_GET",
         "METEORITE_FAILED_LIKE",
-        "METEORITE_FAILED_TECHNICAL_LIKE",
+        "ERROR_METEORITE_LIKE",
     )
 
     def test_job_states_priors(self) -> None:
@@ -3046,64 +3207,57 @@ class TestAst1053MeteoriteGdlJobStates:
         assert js["METEORITE_NEW"]["prior_states"] is None
         # AST-1060: GDL entry is METEORITE_QUALIFIED (not unenriched METEORITE_NEW).
         # AST-1156: Skipped Retry from meteorite JD fail/error → METEORITE_QUALIFIED.
-        # AST-1339 / AST-1338: METEORITE_NEW_RETRY is also a leave-holding prior.
-        assert js["METEORITE_QUALIFIED"]["prior_states"] == [
-            "METEORITE_NEW",
-            "METEORITE_NEW_RETRY",
-            "METEORITE_FAILED_JD",
-            "METEORITE_ERROR_EVALUATE_JD",
-        ]
-        assert js["METEORITE_FAILED_QUALIFY"]["prior_states"] == [
-            "METEORITE_NEW",
-            "METEORITE_NEW_RETRY",
-        ]
-        assert js["METEORITE_ERROR_QUALIFY"]["prior_states"] == [
-            "METEORITE_NEW",
-            "METEORITE_NEW_RETRY",
-        ]
-        # AST-1155: graded-trigger *_RETRY holdings are also priors on hop outcomes.
-        assert js["METEORITE_PASSED_JD"]["prior_states"] == [
-            "METEORITE_QUALIFIED",
-            "METEORITE_QUALIFIED_RETRY",
-            "METEORITE_FAILED_DO",
-            "METEORITE_FAILED_TECHNICAL_DO",
-        ]
-        assert js["METEORITE_FAILED_JD"]["prior_states"] == ["METEORITE_QUALIFIED", "METEORITE_QUALIFIED_RETRY"]
-        assert js["METEORITE_ERROR_EVALUATE_JD"]["prior_states"] == ["METEORITE_QUALIFIED", "METEORITE_QUALIFIED_RETRY"]
-        assert js["METEORITE_PASSED_DO"]["prior_states"] == [
-            "METEORITE_PASSED_JD",
-            "METEORITE_PASSED_JD_RETRY",
-            "METEORITE_FAILED_GET",
-            "METEORITE_FAILED_TECHNICAL_GET",
-        ]
-        assert js["METEORITE_FAILED_DO"]["prior_states"] == ["METEORITE_PASSED_JD", "METEORITE_PASSED_JD_RETRY"]
-        assert js["METEORITE_FAILED_TECHNICAL_DO"]["prior_states"] == ["METEORITE_PASSED_JD", "METEORITE_PASSED_JD_RETRY"]
-        assert js["METEORITE_PASSED_GET"]["prior_states"] == [
-            "METEORITE_PASSED_DO",
-            "METEORITE_PASSED_DO_RETRY",
-            "METEORITE_FAILED_LIKE",
-            "METEORITE_FAILED_TECHNICAL_LIKE",
-        ]
-        assert js["METEORITE_FAILED_GET"]["prior_states"] == ["METEORITE_PASSED_DO", "METEORITE_PASSED_DO_RETRY"]
-        assert js["METEORITE_FAILED_TECHNICAL_GET"]["prior_states"] == ["METEORITE_PASSED_DO", "METEORITE_PASSED_DO_RETRY"]
-        assert js["METEORITE_PASSED_LIKE"]["prior_states"] == ["METEORITE_PASSED_GET", "METEORITE_PASSED_GET_RETRY"]
-        assert js["METEORITE_FAILED_LIKE"]["prior_states"] == ["METEORITE_PASSED_GET", "METEORITE_PASSED_GET_RETRY"]
-        assert js["METEORITE_FAILED_TECHNICAL_LIKE"]["prior_states"] == ["METEORITE_PASSED_GET", "METEORITE_PASSED_GET_RETRY"]
-        assert js["METEORITE_PASSED_LIKE_RETRY"]["prior_states"] == ["METEORITE_PASSED_LIKE"]
+        # AST-1808: declared priors are base-only; each dropped *_RETRY holding is a derived prior
+        # (AST-1339 / AST-1338 METEORITE_NEW_RETRY leave-holding; AST-1155 graded-trigger holdings).
+        declared = {
+            "METEORITE_QUALIFIED": (["METEORITE_NEW", "METEORITE_FAILED_JD", "ERROR_EVALUATE_METEORITE"], "METEORITE_NEW_RETRY"),
+            "METEORITE_FAILED_QUALIFY": (["METEORITE_NEW"], "METEORITE_NEW_RETRY"),
+            "ERROR_QUALIFY_METEORITE": (["METEORITE_NEW"], "METEORITE_NEW_RETRY"),
+            "METEORITE_PASSED_JD": (
+                ["METEORITE_QUALIFIED", "METEORITE_FAILED_DO", "ERROR_METEORITE_GRADE_DO"],
+                "METEORITE_QUALIFIED_RETRY",
+            ),
+            "METEORITE_FAILED_JD": (["METEORITE_QUALIFIED"], "METEORITE_QUALIFIED_RETRY"),
+            "ERROR_EVALUATE_METEORITE": (["METEORITE_QUALIFIED"], "METEORITE_QUALIFIED_RETRY"),
+            "METEORITE_PASSED_DO": (
+                ["METEORITE_PASSED_JD", "METEORITE_FAILED_GET", "ERROR_METEORITE_GRADE_GET"],
+                "METEORITE_PASSED_JD_RETRY",
+            ),
+            "METEORITE_FAILED_DO": (["METEORITE_PASSED_JD"], "METEORITE_PASSED_JD_RETRY"),
+            "ERROR_METEORITE_GRADE_DO": (["METEORITE_PASSED_JD"], "METEORITE_PASSED_JD_RETRY"),
+            "METEORITE_PASSED_GET": (
+                ["METEORITE_PASSED_DO", "METEORITE_FAILED_LIKE", "ERROR_METEORITE_LIKE"],
+                "METEORITE_PASSED_DO_RETRY",
+            ),
+            "METEORITE_FAILED_GET": (["METEORITE_PASSED_DO"], "METEORITE_PASSED_DO_RETRY"),
+            "ERROR_METEORITE_GRADE_GET": (["METEORITE_PASSED_DO"], "METEORITE_PASSED_DO_RETRY"),
+            "METEORITE_PASSED_LIKE": (["METEORITE_PASSED_GET"], "METEORITE_PASSED_GET_RETRY"),
+            "METEORITE_FAILED_LIKE": (["METEORITE_PASSED_GET"], "METEORITE_PASSED_GET_RETRY"),
+            "ERROR_METEORITE_LIKE": (["METEORITE_PASSED_GET"], "METEORITE_PASSED_GET_RETRY"),
+            "PASSED_LIKE": (["CULTURE_READY"], "CULTURE_READY_RETRY"),
+        }
+        for target, (raw, retry) in declared.items():
+            assert js[target]["prior_states"] == raw, target
+            assert retry in cfg.state_prior_states(js, target), target
+        assert "METEORITE_PASSED_LIKE_RETRY" not in js
+        assert set(cfg.state_prior_states(js, "METEORITE_PASSED_LIKE_RETRY")) == {
+            "METEORITE_PASSED_LIKE",
+            "METEORITE_PASSED_LIKE_RETRY",
+        }
         # No CULTURE_READY hop on meteorite LIKE; no extra meteorite culture/need keys.
         assert "METEORITE_CULTURE_READY" not in js
-        assert js["PASSED_LIKE"]["prior_states"] == ["CULTURE_READY", "CULTURE_READY_RETRY"]
 
-    def test_in_review_and_skipped_membership(self) -> None:
+    def test_processing_and_skipped_membership(self) -> None:
+        # AST-1974: Processing (ex In Review) = complement of JOBS_PROCESSING_EXCLUDED_STATES.
         for state in self._PASS:
-            assert state in cfg.IN_REVIEW_STATES, state
+            assert state not in cfg.JOBS_PROCESSING_EXCLUDED_STATES, state
             assert state not in cfg.SKIPPED_STATES, state
         for state in self._FAIL:
             assert state in cfg.SKIPPED_STATES, state
-            assert state not in cfg.IN_REVIEW_STATES, state
+            assert state in cfg.JOBS_PROCESSING_EXCLUDED_STATES, state
 
     def test_ui_sections_labels_order_and_grades(self) -> None:
-        review = [row["state"] for row in cfg.JOBS_IN_REVIEW_UI_SECTIONS]
+        review = [row["state"] for row in cfg.JOBS_PROCESSING_UI_SECTIONS]
         for state in self._PASS:
             assert state in review, state
         assert review.index("PASSED_LIKE_RETRY") < review.index("METEORITE_NEW")
@@ -3111,7 +3265,7 @@ class TestAst1053MeteoriteGdlJobStates:
         assert review.index("METEORITE_NEW_RETRY") < review.index("METEORITE_QUALIFIED")
         assert review.index("METEORITE_QUALIFIED") < review.index("METEORITE_PASSED_JD")
         assert review.index("METEORITE_PASSED_GET") < review.index("METEORITE_PASSED_LIKE")
-        labels = {row["state"]: row["label"] for row in cfg.JOBS_IN_REVIEW_UI_SECTIONS}
+        labels = {row["state"]: row["label"] for row in cfg.JOBS_PROCESSING_UI_SECTIONS}
         assert labels["METEORITE_NEW"] == "Meteorite New (pre-AI)"
         assert labels["METEORITE_NEW_RETRY"] == "Meteorite New (retry)"
         assert labels["METEORITE_QUALIFIED"] == "Meteorite Qualified"
@@ -3122,14 +3276,14 @@ class TestAst1053MeteoriteGdlJobStates:
         for state in self._FAIL:
             assert state in order, state
             assert order.count(state) == 1, state
-        assert order.index("FAILED_TECHNICAL_LIKE") < order.index("METEORITE_FAILED_LIKE")
+        assert order.index("ERROR_GRADE_LIKE") < order.index("METEORITE_FAILED_LIKE")
         assert order.index("METEORITE_FAILED_LIKE") < order.index("FAILED_GET")
         assert order.index("FAILED_JD") < order.index("METEORITE_FAILED_JD")
         assert cfg.JOBS_SKIPPED_SECTION_LABELS["METEORITE_FAILED_JD"] == "Meteorite Failed JD"
-        assert cfg.JOBS_SKIPPED_SECTION_LABELS["METEORITE_ERROR_EVALUATE_JD"] == "Meteorite Error Evaluate JD"
+        assert cfg.JOBS_SKIPPED_SECTION_LABELS["ERROR_EVALUATE_METEORITE"] == "Meteorite Error Evaluate JD"
         assert cfg.JOBS_SKIPPED_SECTION_LABELS["METEORITE_FAILED_QUALIFY"] == "Meteorite Failed Qualify"
-        assert cfg.JOBS_SKIPPED_SECTION_LABELS["METEORITE_ERROR_QUALIFY"] == "Meteorite Error Qualify"
-        assert cfg.JOBS_SKIPPED_SECTION_LABELS["METEORITE_FAILED_TECHNICAL_LIKE"] == (
+        assert cfg.JOBS_SKIPPED_SECTION_LABELS["ERROR_QUALIFY_METEORITE"] == "Meteorite Error Qualify"
+        assert cfg.JOBS_SKIPPED_SECTION_LABELS["ERROR_METEORITE_LIKE"] == (
             "Meteorite Failed Technical LIKE"
         )
 
@@ -3144,10 +3298,10 @@ class TestAst1053MeteoriteGdlJobStates:
         assert cfg.JOBS_SKIPPED_GRADE_FIELD["METEORITE_FAILED_DO"] == "do_grades"
         assert cfg.JOBS_SKIPPED_GRADE_FIELD["METEORITE_FAILED_GET"] == "get_grades"
         assert cfg.JOBS_SKIPPED_GRADE_FIELD["METEORITE_FAILED_LIKE"] == "like_grades"
-        assert "METEORITE_FAILED_TECHNICAL_DO" not in cfg.JOBS_SKIPPED_GRADE_FIELD
-        assert "METEORITE_ERROR_EVALUATE_JD" not in cfg.JOBS_SKIPPED_GRADE_FIELD
+        assert "ERROR_METEORITE_GRADE_DO" not in cfg.JOBS_SKIPPED_GRADE_FIELD
+        assert "ERROR_EVALUATE_METEORITE" not in cfg.JOBS_SKIPPED_GRADE_FIELD
         assert "METEORITE_FAILED_QUALIFY" not in cfg.JOBS_SKIPPED_GRADE_FIELD
-        assert "METEORITE_ERROR_QUALIFY" not in cfg.JOBS_SKIPPED_GRADE_FIELD
+        assert "ERROR_QUALIFY_METEORITE" not in cfg.JOBS_SKIPPED_GRADE_FIELD
 
     def test_non_meteorite_gdl_and_recommended_untouched(self) -> None:
         # AC2 smoke: score-gated exceptions + non-meteorite GDL priors.
@@ -3164,14 +3318,15 @@ class TestAst1053MeteoriteGdlJobStates:
             assert state not in cfg.PASSED_SCORE_GATED_STATES, state
         rec_priors = cfg.JOB_STATES["RECOMMENDED"]["prior_states"] or []
         assert "PASSED_LIKE" in rec_priors
-        assert "PASSED_LIKE_RETRY" in rec_priors
+        # AST-1808: retry priors are derived, not declared.
+        assert "PASSED_LIKE_RETRY" in cfg.state_prior_states(cfg.JOB_STATES, "RECOMMENDED")
         # AST-1156: Skipped Retry from DO fail/technical → PASSED_JD.
         assert cfg.JOB_STATES["PASSED_JD"]["prior_states"] == [
             "JD_READY",
-            "JD_READY_RETRY",
             "FAILED_DO",
-            "FAILED_TECHNICAL_DO",
+            "ERROR_GRADE_DO",
         ]
+        assert "JD_READY_RETRY" in cfg.state_prior_states(cfg.JOB_STATES, "PASSED_JD")
         # Non-meteorite qualify path untouched (AST-1060 AC7 smoke).
         # qualify_job_listings has no agent_task key — do not invent one.
         qjl = cfg.TASK_CONFIG["qualify_job_listings"]
@@ -3269,7 +3424,7 @@ class TestAst1060QualifyMeteoriteConfig:
         assert tc["output_type"] == "fields"
         assert tc["pass_state"] == "METEORITE_QUALIFIED"
         assert tc["fail_state"] == "METEORITE_FAILED_QUALIFY"
-        assert tc["error_state"] == "METEORITE_ERROR_QUALIFY"
+        assert tc["error_state"] == "ERROR_QUALIFY_METEORITE"
         assert tc["agent_task"] == "qualify_meteorite"
         assert tc["entity_type"] == "job"
         assert tc["requires_candidate_key"] is True
@@ -3431,25 +3586,27 @@ class TestAst1195SchemaNullsAndBotBlocked:
     def test_bot_blocked_registry_and_skipped_ui(self) -> None:
         from src.utils import config as cfg
 
-        assert "BOT_BLOCKED" in cfg.JOB_STATES
+        # AST-2086: bare BOT_BLOCKED split per writing task (fetch_jd / fetch_relative_jd / qualify_meteorite).
+        bots = ("BOT_BLOCKED_FETCH_JD", "BOT_BLOCKED_FETCH_RELATIVE_JD", "BOT_BLOCKED_QUALIFY_METEORITE")
+        assert "BOT_BLOCKED" not in cfg.JOB_STATES
         assert "JD_SCRAPE_FAIL_BOT" not in cfg.JOB_STATES
-        assert cfg.JOB_STATES["BOT_BLOCKED"]["prior_states"] == [
-            "PASSED_JOBLIST",
-            "METEORITE_NEW",
-            "METEORITE_NEW_RETRY",
-        ]
-        assert "BOT_BLOCKED" in cfg.JOB_STATES["PASSED_JOBLIST"]["prior_states"]
-        assert "JD_SCRAPE_FAIL_BOT" not in cfg.JOB_STATES["PASSED_JOBLIST"]["prior_states"]
-        assert "BOT_BLOCKED" in cfg.SKIPPED_STATES
-        assert "BOT_BLOCKED" in cfg.JOBS_SKIPPED_SECTION_ORDER
-        assert cfg.JOBS_SKIPPED_BULK_RETRY_TO_STATE["BOT_BLOCKED"] == "PASSED_JOBLIST"
-        assert "JD_SCRAPE_FAIL_BOT" not in cfg.JOBS_SKIPPED_BULK_RETRY_TO_STATE
-        assert "BOT_BLOCKED" in cfg.GAZER_CONFIG["fetch_jd"]["error_states"]
-        assert "JD_SCRAPE_FAIL_BOT" not in cfg.GAZER_CONFIG["fetch_jd"]["error_states"]
-        # Title-case fallback — no explicit JOBS_SKIPPED_SECTION_LABELS pin required.
         skipped = cfg.build_state_ui_manifest()["jobs"]["skipped"]
-        assert skipped["section_labels"]["BOT_BLOCKED"] == "Bot Blocked"
-        assert skipped["bulk_retry_to_state_by_from_state"]["BOT_BLOCKED"] == "PASSED_JOBLIST"
+        for bot in bots:
+            # AST-2024: RELATIVE_JOB_LINK click-through fetch can also land a job bot-blocked (carried prior).
+            assert cfg.JOB_STATES[bot]["prior_states"] == ["PASSED_JOBLIST", "METEORITE_NEW", "RELATIVE_JOB_LINK"], bot
+            # AST-1808: METEORITE_NEW_RETRY prior is derived (AST-1339), not declared.
+            assert "METEORITE_NEW_RETRY" in cfg.state_prior_states(cfg.JOB_STATES, bot), bot
+            assert bot in cfg.JOB_STATES["PASSED_JOBLIST"]["prior_states"], bot
+            assert bot in cfg.SKIPPED_STATES, bot
+            assert bot in cfg.JOBS_SKIPPED_SECTION_ORDER, bot
+            assert cfg.JOBS_SKIPPED_BULK_RETRY_TO_STATE[bot] == "PASSED_JOBLIST", bot
+            # Effective label of the bare state it split from (title-case "Bot Blocked").
+            assert skipped["section_labels"][bot] == "Bot Blocked", bot
+            assert skipped["bulk_retry_to_state_by_from_state"][bot] == "PASSED_JOBLIST", bot
+        assert "JD_SCRAPE_FAIL_BOT" not in cfg.JOB_STATES["PASSED_JOBLIST"]["prior_states"]
+        assert "JD_SCRAPE_FAIL_BOT" not in cfg.JOBS_SKIPPED_BULK_RETRY_TO_STATE
+        assert cfg.GAZER_CONFIG["fetch_jd"]["classified_states"]["bot"] == "BOT_BLOCKED_FETCH_JD"
+        assert cfg.GAZER_CONFIG["fetch_relative_jd"]["classified_states"]["bot"] == "BOT_BLOCKED_FETCH_RELATIVE_JD"
 
 
 class TestAst1197QualifyMeteoriteApplyKnobs:
@@ -3460,9 +3617,9 @@ class TestAst1197QualifyMeteoriteApplyKnobs:
 
         tc = cfg.TASK_CONFIG["qualify_meteorite"]
         assert tc["email_link_prefix"] == "email-"
-        assert tc["bot_blocked_state"] == "BOT_BLOCKED"
-        assert "METEORITE_NEW" in cfg.JOB_STATES["BOT_BLOCKED"]["prior_states"]
-        assert "METEORITE_NEW_RETRY" in cfg.JOB_STATES["BOT_BLOCKED"]["prior_states"]
+        assert tc["bot_blocked_state"] == "BOT_BLOCKED_QUALIFY_METEORITE"  # AST-2086
+        assert "METEORITE_NEW" in cfg.JOB_STATES["BOT_BLOCKED_QUALIFY_METEORITE"]["prior_states"]
+        assert "METEORITE_NEW_RETRY" in cfg.state_prior_states(cfg.JOB_STATES, "BOT_BLOCKED_QUALIFY_METEORITE")
 
     def test_challenge_bot_signals_present(self) -> None:
         from src.utils import config as cfg
@@ -3526,7 +3683,7 @@ class TestAst1066ContactConfig:
         assert cc["listen_enabled"] is False
         assert cc["bot_token_env"] == "SLACK_BOT_TOKEN"
         assert cc["signing_secret_env"] == "SLACK_SIGNING_SECRET"
-        assert cc["non_production_reply_prefix_template"] == "[{environment}] "
+        assert "non_production_reply_prefix_template" not in cc
         assert isinstance(cc["skills"], dict)
         for skill_key in cc["skills"]:
             assert skill_key not in cfg.TASK_CONFIG
@@ -3538,33 +3695,53 @@ class TestAst1066ContactConfig:
         assert "first" in luc["name_paths"]
 
 
-class TestAst1071ContactSkillsConfig:
-    """AST-1071: CONTACT_CONFIG skills ACL — two candidate entity-save skills."""
+# Branches: skills map kept but empty — candidate is read-only to Contact (AST-2061).
+class TestAst2061ContactSkillsEmpty:
+    def test_skills_registry_empty(self) -> None:
+        assert cfg.CONTACT_CONFIG["skills"] == {}
 
-    def test_two_skills_not_in_task_config(self) -> None:
-        skills = cfg.CONTACT_CONFIG["skills"]
-        assert set(skills.keys()) == {"save_candidate_profile", "save_candidate_contact"}
-        for key, meta in skills.items():
-            assert key not in cfg.TASK_CONFIG
-            assert meta["entity"] == "candidate"
-            assert meta["write"] is True
-            assert isinstance(meta["description"], str) and meta["description"].strip()
-            assert isinstance(meta["allowed_paths"], tuple) and meta["allowed_paths"]
 
-    def test_allowlisted_paths_no_slack_user_id(self) -> None:
-        skills = cfg.CONTACT_CONFIG["skills"]
-        assert skills["save_candidate_profile"]["allowed_paths"] == (
-            "profile.first",
-            "profile.last",
-            "profile.pronoun_preference",
-            "profile.contact_email",
+# Branches: allowed channel types; retired task key; handler allowlist; real import-time assert fires (AST-2061).
+class TestAst2061ContactPinholeConfig:
+    def test_allowed_channel_types(self) -> None:
+        assert cfg.CONTACT_CONFIG["allowed_channel_types"] == ("im", "group")
+
+    def test_create_contact_meteorite_retired(self) -> None:
+        # [bug-repro] AST-2061: the job-writing Contact task is gone from the registry.
+        assert "create_contact_meteorite" not in cfg.CONTACT_TASK_CONFIG
+
+    def test_every_contact_handler_in_pinhole(self) -> None:
+        pinhole = cfg._CONTACT_PINHOLE_HANDLERS
+        handlers = [m["handler"] for m in cfg.CONTACT_TASK_CONFIG.values()] + [
+            m["handler"] for m in cfg.CONTACT_CONFIG["commands"].values()
+        ]
+        for handler in handlers:
+            assert handler in pinhole, handler
+        # AST-2206 amendment: writes are meteorites (under src.core.meteorite.) or artifact versions.
+        for handler, kind in pinhole.items():
+            if kind.startswith("write"):
+                assert (
+                    kind.startswith("write meteorite") and handler.startswith("src.core.meteorite.")
+                ) or kind.startswith("write artifact"), (handler, kind)
+        assert pinhole["src.core.candidate.contact_command_save_context"] == "write artifact"
+        assert "src.core.meteorite.create_meteorite_job" not in pinhole
+        assert "src.core.meteorite.land_meteorite" not in pinhole
+
+    def test_pinhole_assert_rejects_job_writer(self) -> None:
+        # Splice a leaking handler into the real config source so the shipped assert (not a copy) fires.
+        from pathlib import Path
+
+        text = Path(cfg.__file__).read_text(encoding="utf-8")
+        anchor = "# AST-2061 pinhole:"
+        # A moved/renamed anchor must fail loudly, not let the splice pass vacuously.
+        assert text.count(anchor) == 1
+        leak = (
+            'CONTACT_TASK_CONFIG["leak"] = {"handler": "src.core.meteorite.create_meteorite_job", '
+            '"description": "x", "param_hint": "x", "requires_candidate": True}\n'
         )
-        assert skills["save_candidate_contact"]["allowed_paths"] == (
-            "contact.contact_email",
-            "contact.reply_email",
-        )
-        for meta in skills.values():
-            assert "contact.slack_user_id" not in meta["allowed_paths"]
+        spliced = text.replace(anchor, leak + anchor, 1)
+        with pytest.raises(AssertionError, match="Contact handler outside pinhole"):
+            exec(compile(spliced, "config_spliced", "exec"), {"__name__": "config_spliced", "__file__": cfg.__file__})  # noqa: S102
 
 
 # Branches: Events/Socket Mode contracts on CONTACT_CONFIG (AST-1069).
@@ -3627,7 +3804,7 @@ class TestAst1055MeteoriteLikeUpshotTasks:
 
         assert like["pass_state"] == "METEORITE_PASSED_LIKE"
         assert like["fail_state"] == "METEORITE_FAILED_LIKE"
-        assert like["error_state"] == "METEORITE_FAILED_TECHNICAL_LIKE"
+        assert like["error_state"] == "ERROR_METEORITE_LIKE"
         assert like["requires_company"] is False
         assert like["rubric_artifact"] == "like_rubric"
         assert like["grades_key"] == "like_grades"
@@ -3642,48 +3819,37 @@ class TestAst1055MeteoriteLikeUpshotTasks:
         assert analysis["requires_company"] is True
 
     def test_recommended_priors_include_meteorite_like_states(self) -> None:
-        priors = cfg.JOB_STATES["RECOMMENDED"]["prior_states"] or []
+        # AST-1808: effective (derived) priors — retry holdings are implicit.
+        priors = cfg.state_prior_states(cfg.JOB_STATES, "RECOMMENDED") or []
         assert "METEORITE_PASSED_LIKE" in priors
         assert "METEORITE_PASSED_LIKE_RETRY" in priors
         assert "PASSED_LIKE" in priors
         assert "PASSED_LIKE_RETRY" in priors
 
     def test_rubric_owner_batch_and_encoded_membership(self) -> None:
-        from src.core import agent as agent_mod
         from src.core import dispatcher as dispatcher_mod
 
         assert cfg.rubric_owner_task_key("meteorite_like") == "grade_like"
         assert cfg.rubric_owner_task_key("grade_like") == "grade_like"
         assert "meteorite_like" in cfg._DISPATCH_BATCH_CALL_MODE_ONE
         assert "meteorite_upshot" not in cfg._DISPATCH_BATCH_CALL_MODE_ONE
-        assert "meteorite_like" in agent_mod._STRICT_ENCODED_BATCH_CONSULT_KEYS
+        # AST-2180: the strict encoded-batch set is gone; meteorite_like is a structured grader via its output type.
+        ot = cfg.TASK_CONFIG["meteorite_like"]["output_type"]
+        assert cfg.ASTRAL_CONFIG["output_types"][ot]["structured_output"] is True
         assert "meteorite_like" in dispatcher_mod._CHUNK_EXHAUST_CONSULT_JOB_KEYS
 
 
 class TestAst1057MeteoriteRecommendedSection:
-    """AST-1057: Recommended Meteorites section config + state UI manifest."""
+    """AST-1057 Recommended Meteorites section — retired by AST-1974 (Jobs → Meteorites list owns it)."""
 
-    def test_jobs_recommended_meteorite_section_block(self) -> None:
-        sec = cfg.JOBS_RECOMMENDED_METEORITE_SECTION
-        assert sec["section_id"] == "meteorites"
-        assert sec["label"] == "Meteorites"
-        assert sec["company_prefix"] == cfg.METEORITE_CONFIG["short_name_prefix"]
-        assert sec["company_prefix"] == "meteorite-"
+    def test_jobs_recommended_meteorite_section_constant_removed(self) -> None:
+        assert not hasattr(cfg, "JOBS_RECOMMENDED_METEORITE_SECTION")
 
-    def test_manifest_exposes_meteorite_section(self) -> None:
+    def test_manifest_drops_meteorite_section(self) -> None:
         rec = cfg.build_state_ui_manifest()["jobs"]["recommended"]
-        ms = rec["meteorite_section"]
-        assert ms == {
-            "section_id": "meteorites",
-            "label": "Meteorites",
-            "company_prefix": "meteorite-",
-        }
-        # Non-meteorite Recommended section contract unchanged (AST-522 smoke).
-        assert [row["state"] for row in rec["sections"]] == [
-            "RECOMMENDED",
-            cfg.BUILD_ARTIFACTS_BASE_STATE,
-            "CANDIDATE_REVIEW",
-        ]
+        assert "meteorite_section" not in rec
+        # AST-1974 Recommended sections: Review then Ready (BUILD_ARTIFACTS moved to Processing).
+        assert [row["state"] for row in rec["sections"]] == ["RECOMMENDED", "CANDIDATE_REVIEW"]
 
 
 
@@ -3718,9 +3884,10 @@ class TestAst1072ConversationalEnvelopeConfig:
         # Global BASE_SCHEMA stays binary — concern is CHAT-only.
         assert "concern" not in cfg.BASE_SCHEMA["status"]["enum"]
 
-    def test_contact_estelle_config_medium_brain(self) -> None:
+    def test_contact_estelle_config_has_no_brain_override(self) -> None:
+        # AST-1880: the turn runs at contact_recruiter_estelle's own model + brain (no Medium override).
         assert cfg.CONTACT_ESTELLE_CONFIG["task_key"] == "contact_estelle_turn"
-        assert cfg.CONTACT_ESTELLE_CONFIG["default_brain_setting"] == cfg.BRAIN_MEDIUM
+        assert "default_brain_setting" not in cfg.CONTACT_ESTELLE_CONFIG
 
     def test_contact_estelle_turn_task_registration(self) -> None:
         entry = cfg.TASK_CONFIG["contact_estelle_turn"]
@@ -3729,7 +3896,8 @@ class TestAst1072ConversationalEnvelopeConfig:
         assert entry["response_format"] == "json"
         assert entry["response_schema"]["reply"]["required"] is True
         assert entry["trigger_state"] is None
-        assert entry["requires_candidate_key"] is False
+        # AST-1877: every task runs on the candidate's platform key.
+        assert entry["requires_candidate_key"] is True
 
     def test_is_conversational_task_chat_only(self) -> None:
         assert cfg.is_conversational_task("contact_estelle_turn") is True
@@ -3746,14 +3914,13 @@ class TestAst1072ConversationalEnvelopeConfig:
         assert other["agent_performance"]["status"] == "success | failure"
 
 
-# Branches: CONTACT_TASK_CONFIG six keys + collision guards (AST-1515).
+# Branches: CONTACT_TASK_CONFIG five keys + collision guards (AST-1515; create_contact_meteorite retired AST-2061).
 class TestAst1515ContactTaskConfig:
     """AST-1515: allowlisted contact-task keys distinct from TASK_CONFIG and skills ACL."""
 
     _EXPECTED_KEYS = frozenset(
         {
             "gazer_scrape",
-            "create_contact_meteorite",
             "get_job_by_pattern",
             "get_job_data",
             "get_company_data",
@@ -3761,7 +3928,7 @@ class TestAst1515ContactTaskConfig:
         }
     )
 
-    def test_six_keys_handler_metadata_and_collision_guards(self) -> None:
+    def test_five_keys_handler_metadata_and_collision_guards(self) -> None:
         block = cfg.CONTACT_TASK_CONFIG
         assert set(block.keys()) == self._EXPECTED_KEYS
         for key, meta in block.items():
@@ -3781,7 +3948,6 @@ class TestAst1073ContactEstelleTurnConfig:
     def test_turn_context_trim_keys(self) -> None:
         assert cfg.CONTACT_ESTELLE_CONFIG["turn_context_message_limit"] == 40
         assert cfg.CONTACT_ESTELLE_CONFIG["turn_context_text_max_chars"] == 500
-        assert cfg.CONTACT_ESTELLE_CONFIG["default_brain_setting"] == cfg.BRAIN_MEDIUM
 
     def test_skill_calls_optional_on_chat_schema(self) -> None:
         schema = cfg.TASK_CONFIG["contact_estelle_turn"]["response_schema"]
@@ -4113,6 +4279,22 @@ class TestAst1084EvaluateJdCriteria:
             assert f"{letter} = {desc}" in gc["content"]
         assert "Gut Check — is this even plausible for this candidate?" in gc["content"]
 
+    def test_qc_content_forbids_x_and_grade_table_stays_abcf(self) -> None:
+        # AST-1910 / AST-1911: QC never X; rule line sits above the A row so the trailing table stays A/B/C/F.
+        from src.utils.rubric_text import parse_trailing_grade_table_lines
+
+        qc = cfg.EMBEDDED_EVALUATE_JD_CRITERIA[0]
+        rule = (
+            "Never grade Quality Check X — X is not a valid grade for this vector. "
+            "If there is not enough to analyze, grade it F (confidence 1–5, never 0)."
+        )
+        lines = qc["content"].split("\n")
+        assert lines[0] == "Quality Check — is this enough of a JD to analyze?"
+        assert lines[1] == rule
+        assert lines[2].startswith("A = ")
+        assert [r["grade"] for r in parse_trailing_grade_table_lines(qc["content"])] == ["A", "B", "C", "F"]
+        assert [g["grade"] for g in qc["grade_descriptions"]] == ["A", "B", "C", "F"]
+
 
 # Branches: METEORITE_EMAIL_MAILBOX_CONFIG (AST-1467 rehome of AST-1088/1134 gaze shell).
 @pytest.mark.skipif(
@@ -4404,17 +4586,14 @@ class TestAst1105ProfileSlackFields:
         keys = [f["key"] for f in self._contact_fields()]
         assert keys.index("contact.slack_user_id") < keys.index("contact.contact_email")
         assert keys.index("contact.slack_username") == keys.index("contact.slack_user_id") + 1
-        # Resolve owns writes — not Contact skill ACL
-        paths = cfg.CONTACT_CONFIG["skills"]["save_candidate_contact"]["allowed_paths"]
-        assert "contact.slack_user_id" not in paths
-        assert "contact.slack_username" not in paths
 
 class TestAst1101HearAckConfig:
     """AST-1101: CONTACT_CONFIG hear_ack_reply_text non-empty."""
 
     def test_hear_ack_reply_text(self) -> None:
         text = cfg.CONTACT_CONFIG["hear_ack_reply_text"]
-        assert isinstance(text, str) and text.strip()
+        # AST-2072: Susan's verbatim fallback wording (double space after "planned.").
+        assert text == "That didn't work as planned.  Let's ask @susan."
 
 
 class TestAst1094ActivityConfig:
@@ -4615,7 +4794,8 @@ class TestAst1147CoverFromBlockTokenTemplateConfig:
         assert block["default_template"] == (
             "{$FULL_NAME} | {$LOCATION}\n{$CONTACT_EMAIL} | {$PHONE}"
         )
-        assert block["allowed_token_ids"] == (
+        # Original four stay first; the rest are the contact.* tokens (see sync test below).
+        assert block["allowed_token_ids"][:4] == (
             "FULL_NAME",
             "LOCATION",
             "CONTACT_EMAIL",
@@ -4645,6 +4825,77 @@ class TestAst1147CoverFromBlockTokenTemplateConfig:
             assert tid in cfg.TOKEN_SOURCES
 
 
+
+
+class TestPageTitleConfig:
+    """Printed-page <title> templates: config defaults, profile tabs, and {$ lookup lists stay in step."""
+
+    def test_defaults_contact_keys_and_profile_tabs(self) -> None:
+        pt = cfg.PAGE_TITLE_CONFIG
+        assert pt["resume"]["default"] == "{$FULL_NAME} Resume ({$JOB_ID})"
+        assert pt["cover"]["default"] == "{$FULL_NAME} Cover Letter {$JOB_ID}"
+        assert pt["job_id_fallback_chars"] == 6
+        for kind in ("resume", "cover"):
+            key = f"contact.{pt[kind]['contact_key']}"
+            assert pt[kind]["contact_key"] in cfg.CANDIDATE_LIBRARY_CONFIG["contact_keys"]
+            assert cfg.FIELD_TOKEN_LOOKUP[key] == pt["tokens"] == ("FULL_NAME", "JOB_ID")
+            # Each template is its own profile section (tabs read fields[0]) with the default as placeholder.
+            fields = [
+                f for sec in cfg.DATA_SHAPES["candidates"]["detail"]["profile"] for f in sec["fields"] if f["key"] == key
+            ]
+            assert len(fields) == 1 and fields[0]["placeholder"] == pt[kind]["default"]
+
+
+class TestCoverFromBlockAllowlistAndFieldTokenLookup:
+    """From-block allowlist = FULL_NAME + every candidate contact.* data-field token; per-field lookup lists."""
+
+    def test_allowlist_matches_token_sources_contact_tokens(self) -> None:
+        derived = {"FULL_NAME"} | {
+            name
+            for name, spec in cfg.TOKEN_SOURCES.items()
+            if spec.get("source") == "candidate"
+            and spec.get("source_type") == "data_field"
+            and str(spec.get("path", "")).startswith("contact.")
+        }
+        allowed = cfg.COVER_FROM_BLOCK_CONFIG["allowed_token_ids"]
+        assert set(allowed) == derived
+        assert len(allowed) == len(set(allowed))
+        assert "LINKEDIN_URL" in allowed
+
+    def test_help_lists_every_allowed_token(self) -> None:
+        for tid in cfg.COVER_FROM_BLOCK_CONFIG["allowed_token_ids"]:
+            assert "{$" + tid + "}" in cfg.COVER_FROM_BLOCK_CONFIG["authoring_help"]
+            assert "{$" + tid + "}" in cfg.COVER_FROM_BLOCK_CONFIG["session_authoring_help"]
+        assert "{$SIGNATURE_IMAGE}" in cfg.COVER_FROM_BLOCK_CONFIG["session_authoring_help"]
+
+    def test_field_token_lookup_contents(self) -> None:
+        lookup = cfg.FIELD_TOKEN_LOOKUP
+        from_ids = cfg.COVER_FROM_BLOCK_CONFIG["allowed_token_ids"]
+        render_ids = tuple(cfg.BUILD_CONFIG["cover_letter_render_tokens"])
+        assert render_ids == ("SIGNATURE_IMAGE",)
+        assert lookup["contact.cover_letter_from_block"] == from_ids
+        assert lookup["session_cover_letter.from_block"] == from_ids
+        for key in (
+            "contact.cover_letter_signature",
+            "cover_letter.signature",
+            "session_cover_letter.signature",
+        ):
+            assert lookup[key] == render_ids
+
+    def test_lookup_keys_match_real_fields(self) -> None:
+        profile = cfg.DATA_SHAPES["candidates"]["detail"]["profile"]
+        profile_keys = {f["key"] for s in profile for f in s["fields"]}
+        # ArtifactEditor derives "<shapes_key>.<field key>" for the job cover letter tabs.
+        cover_keys = {
+            "cover_letter." + f["key"]
+            for f in cfg.DATA_SHAPES["candidates"]["detail"]["cover_letter"]
+        }
+        valid = profile_keys | cover_keys | {
+            "session_cover_letter." + k
+            for k in cfg.BUILD_CONFIG["session_cover_letter"]["fields"]
+        }
+        for key in cfg.FIELD_TOKEN_LOOKUP:
+            assert key in valid, key
 
 
 class TestAst1149CoverFromBlockAuthoringHelpConfig:
@@ -4705,7 +4956,8 @@ class TestAst1138JobCoverSomersetConfig:
 
 
 class TestAst1154EncodedGradeSetCompleteness:
-    """AST-1154: multi-vector encoded payload_instructions require full grade-set."""
+    """AST-1154: multi-vector grader payload_instructions require a full grade set.
+    AST-2177 retired the encoded-line clause; the never-omit rule now lives in _GRADE_SEMANTICS."""
 
     _MARKER = "GRADE SET COMPLETENESS (AST-1154)"
     _MULTI = (
@@ -4719,15 +4971,20 @@ class TestAst1154EncodedGradeSetCompleteness:
         ots = cfg.ASTRAL_CONFIG["output_types"]
         for key in self._MULTI:
             text = ots[key]["payload_instructions"]
-            assert self._MARKER in text, key
-            # Silence → {code}X0; inventing letter grades to fill gaps is forbidden.
-            assert "{code}X0" in text, key
-            assert "never skip that segment" in text, key
+            assert self._MARKER not in text, key
+            # Silence → X with confidence 0; never drop a vector.
+            assert "grade it X with confidence 0 — never leave a vector out" in text, key
 
     def test_clause_absent_from_vet_meta_and_grades_json(self) -> None:
         ots = cfg.ASTRAL_CONFIG["output_types"]
         assert self._MARKER not in ots["grades_encoded_vet_meta"]["payload_instructions"]
         assert self._MARKER not in ots["grades_json"]["payload_instructions"]
+
+    def test_grade_count_not_template_on_multi_vector_types(self) -> None:
+        # AST-2177: no example lines left to read as a count template — the shared constant and its phrase are gone.
+        assert not hasattr(cfg, "_ENCODED_GRADE_SET_COMPLETENESS")
+        for key, ot in cfg.ASTRAL_CONFIG["output_types"].items():
+            assert "code count is not a template" not in ot["payload_instructions"], key
 
 
 class TestAst1155GradedRetryHoldings:
@@ -4746,16 +5003,17 @@ class TestAst1155GradedRetryHoldings:
     def test_retry_state_and_dispatch_claim_companions(self) -> None:
         for primary, holding in self._PAIRS:
             assert cfg.JOB_STATES[primary]["retry_state"] == holding, primary
-            assert holding in cfg.JOB_STATES
-            assert "retry_state" not in cfg.JOB_STATES[holding], holding
+            # AST-1808: holding is an implicit substate of its primary (no key → no nested retry_state).
+            assert holding not in cfg.JOB_STATES, holding
+            assert cfg.registered_base(cfg.JOB_STATES, holding) == primary, holding
             assert cfg.dispatch_claim_states(primary, "job") == [primary, holding], primary
             assert cfg.dispatch_claim_states(holding, "job") == [holding], holding
 
-    def test_in_review_ui_labels_and_grade_fields(self) -> None:
-        review = [row["state"] for row in cfg.JOBS_IN_REVIEW_UI_SECTIONS]
-        labels = {row["state"]: row["label"] for row in cfg.JOBS_IN_REVIEW_UI_SECTIONS}
+    def test_processing_ui_labels_and_grade_fields(self) -> None:
+        review = [row["state"] for row in cfg.JOBS_PROCESSING_UI_SECTIONS]
+        labels = {row["state"]: row["label"] for row in cfg.JOBS_PROCESSING_UI_SECTIONS}
         for primary, holding in self._PAIRS:
-            assert holding in cfg.IN_REVIEW_STATES, holding
+            assert holding not in cfg.JOBS_PROCESSING_EXCLUDED_STATES, holding
             assert holding in review, holding
             assert review.index(primary) < review.index(holding), (primary, holding)
         assert labels["PASSED_JD_RETRY"] == "Passed JD (retry)"
@@ -4787,13 +5045,13 @@ class TestAst1156SkippedBulkRetryMap:
     def test_ac_critical_hop_targets(self) -> None:
         m = cfg.JOBS_SKIPPED_BULK_RETRY_TO_STATE
         assert m["METEORITE_FAILED_DO"] == "METEORITE_PASSED_JD"
-        assert m["METEORITE_FAILED_TECHNICAL_DO"] == "METEORITE_PASSED_JD"
+        assert m["ERROR_METEORITE_GRADE_DO"] == "METEORITE_PASSED_JD"
         assert m["FAILED_DO"] == "PASSED_JD"
         assert m["FAILED_GET"] == "PASSED_DO"
         assert m["FAILED_LIKE"] == "CULTURE_READY"
         assert m["METEORITE_FAILED_LIKE"] == "METEORITE_PASSED_GET"
         # Primaries only — not AST-1155 *_RETRY holdings.
-        assert m["FAILED_TECHNICAL_LIKE"] == "CULTURE_READY"
+        assert m["ERROR_GRADE_LIKE"] == "CULTURE_READY"
         assert "RETRY" not in m["METEORITE_FAILED_DO"]
 
     def test_manifest_exposes_map_not_scalar_new(self) -> None:
@@ -4867,7 +5125,7 @@ class TestAst1220TaskAliasConfigContract:
         assert do["master_task_key"] == "grade_do"
         assert do["pass_state"] == "METEORITE_PASSED_DO"
         assert do["fail_state"] == "METEORITE_FAILED_DO"
-        assert do["error_state"] == "METEORITE_FAILED_TECHNICAL_DO"
+        assert do["error_state"] == "ERROR_METEORITE_GRADE_DO"
         assert do["trigger_state"] == "METEORITE_PASSED_JD"
         assert do["entity_type"] == "job"
         assert do["scored"] is True
@@ -4875,7 +5133,7 @@ class TestAst1220TaskAliasConfigContract:
         assert get["master_task_key"] == "grade_get"
         assert get["pass_state"] == "METEORITE_PASSED_GET"
         assert get["fail_state"] == "METEORITE_FAILED_GET"
-        assert get["error_state"] == "METEORITE_FAILED_TECHNICAL_GET"
+        assert get["error_state"] == "ERROR_METEORITE_GRADE_GET"
         assert get["trigger_state"] == "METEORITE_PASSED_DO"
         assert "agent_task" not in get
         # AST-1221: symbol deleted (AST-1220 had emptied the dict).
@@ -4894,9 +5152,9 @@ class TestAst1220TaskAliasConfigContract:
         assert "meteorite_grade_get" in cfg._DISPATCH_BATCH_CALL_MODE_ONE
         for st in (
             "METEORITE_FAILED_DO",
-            "METEORITE_FAILED_TECHNICAL_DO",
+            "ERROR_METEORITE_GRADE_DO",
             "METEORITE_FAILED_GET",
-            "METEORITE_FAILED_TECHNICAL_GET",
+            "ERROR_METEORITE_GRADE_GET",
         ):
             assert st in cfg._TRANSITION_STATES_USED_BY_SCORED_TASKS
             assert cfg.dispatch_claim_uses_score_floor(st) is True
@@ -5110,6 +5368,7 @@ class TestAst1303ResumeStructureCatalog:
             "dual_column",
             "indented_bold_single",
             "experience_detail",
+            "line",  # AST-2081
         )
         assert cfg.RESUME_STRUCTURE_DEFAULT_FORMAT_BY_ID == {
             "professional_summary": "free_prose",
@@ -5363,10 +5622,12 @@ class TestAst1386ThreeSegmentAdminNav:
         "/admin/task_prompts",
         "/admin/scheduled_queries",
         "/admin/agent_timesheets",
+        "/admin/task_performance",
     ]
     _TOOLS_PATHS = [
         "/admin/data_management",
         "/admin/anthropic_ad_hoc",
+        "/admin/telescope",
         "/admin/cost_reconciliation",
         "/admin/session_resume_paste",
         "/admin/session_cover_letter",
@@ -5374,8 +5635,10 @@ class TestAst1386ThreeSegmentAdminNav:
 
     def test_three_admin_only_groups_order_membership_and_paste_labels(self) -> None:
         labels = [g.get("label") for g in cfg.NAV_CONFIG]
-        cand_i = labels.index("Candidate")
-        assert labels[cand_i + 1 : cand_i + 4] == ["Operations", "Admin", "Tools"]
+        # AST-2230: four candidate-facing groups precede Operations / Admin / Tools.
+        assert labels[:4] == ["Candidate", "Criteria", "Company", "Job Opportunities"]
+        ops_i = labels.index("Operations")
+        assert labels[ops_i : ops_i + 3] == ["Operations", "Admin", "Tools"]
         expected = {
             "Operations": self._OPS_PATHS,
             "Admin": self._ADMIN_PATHS,
@@ -5396,10 +5659,10 @@ class TestAst1386ThreeSegmentAdminNav:
         )
 
     def test_non_admin_candidate_groups_still_present(self) -> None:
-        # Jobs / Companies / Artifacts / Candidate unchanged for this ticket.
+        # AST-2230: Candidate / Criteria / Company / Job Opportunities (not Jobs/Companies/Artifacts).
         labels = {g.get("label") for g in cfg.NAV_CONFIG}
-        assert {"Jobs", "Companies", "Artifacts", "Candidate"} <= labels
-        for name in ("Jobs", "Companies", "Artifacts", "Candidate"):
+        assert {"Candidate", "Criteria", "Company", "Job Opportunities"} <= labels
+        for name in ("Candidate", "Criteria", "Company", "Job Opportunities"):
             group = next(g for g in cfg.NAV_CONFIG if g.get("label") == name)
             assert not group.get("admin_only")
 
@@ -5418,43 +5681,46 @@ class TestAst1479AppliedJobStatesAndNav:
         assert all(s in cfg.JOB_STATES for s in cfg.APPLIED_JOB_STATES)
 
     def test_jobs_applied_nav_enabled(self) -> None:
-        jobs = next(g for g in cfg.NAV_CONFIG if g.get("label") == "Jobs")
+        # AST-2230: path stays under Job Opportunities; label → Submitted Applications.
+        jobs = next(g for g in cfg.NAV_CONFIG if g.get("label") == "Job Opportunities")
         applied = next(it for it in jobs["items"] if it.get("path") == "/jobs/applied")
-        assert applied.get("label") == "Applied"
-        assert applied.get("enabled") is not False
+        assert applied.get("label") == "Submitted Applications"
+        assert applied.get("enabled") == 5
 
 
 class TestAst1495MeteoriteCompaniesNav:
-    """AST-1495: Companies → Meteorite nav item for meteorite_list view."""
+    """AST-1495: Companies → Meteorite — dropped from candidate-facing nav (AST-2230 AC6)."""
 
     def test_companies_meteorite_nav_item(self) -> None:
-        companies = next(g for g in cfg.NAV_CONFIG if g.get("label") == "Companies")
-        paths = [it.get("path") for it in companies.get("items", [])]
-        assert "/companies/meteorite_list" in paths
-        meteorite = next(
-            it for it in companies["items"] if it.get("path") == "/companies/meteorite_list"
-        )
-        assert meteorite.get("label") == "Meteorite"
+        paths = [
+            it.get("path")
+            for g in cfg.NAV_CONFIG
+            for it in g.get("items", [])
+            if not g.get("admin_only")
+        ]
+        assert "/companies/meteorite_list" not in paths
 
 
 class TestAst1749JobsMeteoritesNav:
-    """AST-1749: Jobs → Meteorites nav; Companies → Meteorite untouched."""
+    """AST-1749: Jobs → Meteorites under Job Opportunities; Companies → Meteorite dropped (AST-2230)."""
 
     def test_jobs_meteorites_nav_enabled(self) -> None:
-        jobs = next(g for g in cfg.NAV_CONFIG if g.get("label") == "Jobs")
+        jobs = next(g for g in cfg.NAV_CONFIG if g.get("label") == "Job Opportunities")
         item = next(it for it in jobs["items"] if it.get("path") == "/jobs/meteorites")
         assert item.get("label") == "Meteorites"
-        assert item.get("enabled") is not False
+        assert item.get("enabled") == 5
         labels = [it.get("label") for it in jobs["items"]]
-        assert labels.index("Meteorites") > labels.index("Applied")
-        assert labels.index("Meteorites") < labels.index("Responded")
+        assert labels[0] == "Meteorites"
+        assert labels[-1] == "Skipped"
 
     def test_companies_meteorite_still_present(self) -> None:
-        companies = next(g for g in cfg.NAV_CONFIG if g.get("label") == "Companies")
-        meteorite = next(
-            it for it in companies["items"] if it.get("path") == "/companies/meteorite_list"
-        )
-        assert meteorite.get("label") == "Meteorite"
+        paths = [
+            it.get("path")
+            for g in cfg.NAV_CONFIG
+            for it in g.get("items", [])
+            if not g.get("admin_only")
+        ]
+        assert "/companies/meteorite_list" not in paths
 
 class TestAst1534AdhocImportConfigKeys:
     """AST-1534: UI_CONFIG import-list cap + picker visible-row literals."""
@@ -5468,14 +5734,18 @@ class TestAst1550DiscussionHopKeys:
     """AST-1550: Discussion top tab + live run_next hop walk for section order."""
 
     def test_top_tabs_discussion_after_artifacts(self) -> None:
+        # AST-1872: Analysis leads; Discussion still follows Artifacts.
+        # AST-2232: job_description sits between analysis and summary.
         tabs = cfg.JOBS_RECOMMENDED_REPORT_TOP_TABS
         assert [t["tab_id"] for t in tabs] == [
-            "summary",
             "analysis",
+            "job_description",
+            "summary",
             "artifacts",
             "discussion",
             "meteorite",
         ]
+        assert tabs[1]["nav_label"] == "Job Description"
         assert tabs[-2]["nav_label"] == "Discussion"
         assert tabs[-1]["nav_label"] == "Meteorite"
 
@@ -5562,16 +5832,31 @@ class TestAst1557MeteoriteStates:
 
     def test_seven_keys_and_new_entry(self) -> None:
         # AST-1773: CHECK_UNIQUE + DUPLICATE join the closed set; READY priors via uniqueness hop.
+        # AST-2086: BOT_BLOCKED / SCRAPE_ERROR / LINK_EXPIRED / NEW_EMAIL_ERROR renamed per writing task;
+        # scrape gains its explicit SCRAPE_LINK_RETRY companion + ERROR_SCRAPE_METEORITE terminal.
         assert set(cfg.METEORITE_STATES) == {
-            "NEW", "SCRAPE_LINK", "CHECK_UNIQUE", "READY", "BOT_BLOCKED", "SCRAPE_ERROR",
-            "LINK_EXPIRED", "NOT_A_JOB", "NEW_EMAIL_ERROR", "DUPLICATE", "LANDED", "ABANDONED",
+            "NEW", "SCRAPE_LINK", "SCRAPE_LINK_RETRY", "ERROR_SCRAPE_METEORITE", "CHECK_UNIQUE", "READY",
+            "BOT_BLOCKED_SCRAPE_METEORITE", "JD_SCRAPE_FAIL_CLOSED", "JD_SCRAPE_FAIL_MISSING",
+            "ERROR_STAGE_METEORITE_UNPARSEABLE", "ERROR_LAND_METEORITE", "NOT_A_JOB", "ERROR_STAGE_METEORITE",
+            "DUPLICATE", "LANDED", "ABANDONED",
         }
         assert "ERROR" not in cfg.METEORITE_STATES
-        assert cfg.METEORITE_STATES["NEW"]["prior_states"] == ["NEW_EMAIL_ERROR"]
-        assert cfg.METEORITE_STATES["LINK_EXPIRED"]["prior_states"] == ["SCRAPE_LINK"]
+        assert cfg.METEORITE_STATES["NEW"]["prior_states"] == ["ERROR_STAGE_METEORITE"]
+        assert cfg.METEORITE_STATES["JD_SCRAPE_FAIL_CLOSED"]["prior_states"] == ["SCRAPE_LINK"]
+        assert cfg.METEORITE_STATES["JD_SCRAPE_FAIL_MISSING"]["prior_states"] == ["SCRAPE_LINK"]
+        assert cfg.METEORITE_STATES["SCRAPE_LINK_RETRY"]["prior_states"] == ["SCRAPE_LINK"]
+        assert cfg.METEORITE_STATES["ERROR_SCRAPE_METEORITE"]["prior_states"] == ["SCRAPE_LINK_RETRY"]
+        assert cfg.METEORITE_STATES["SCRAPE_LINK"]["prior_states"] == [
+            "NEW", "SCRAPE_LINK_RETRY", "ERROR_STAGE_METEORITE_UNPARSEABLE", "ERROR_LAND_METEORITE",
+            "ERROR_SCRAPE_METEORITE",
+        ]
         assert cfg.METEORITE_STATES["CHECK_UNIQUE"]["prior_states"] == ["NEW", "SCRAPE_LINK"]
         assert cfg.METEORITE_STATES["DUPLICATE"]["prior_states"] == ["CHECK_UNIQUE"]
-        assert cfg.METEORITE_STATES["READY"]["prior_states"] == ["CHECK_UNIQUE", "BOT_BLOCKED"]
+        assert cfg.METEORITE_STATES["READY"]["prior_states"] == ["CHECK_UNIQUE", "BOT_BLOCKED_SCRAPE_METEORITE"]
+        assert cfg.METEORITE_STATES["ABANDONED"]["prior_states"] == [
+            "BOT_BLOCKED_SCRAPE_METEORITE", "SCRAPE_LINK_RETRY", "ERROR_STAGE_METEORITE_UNPARSEABLE",
+            "ERROR_LAND_METEORITE",
+        ]
         assert all("prior_states" in entry for entry in cfg.METEORITE_STATES.values())
 
     def test_distinct_from_job_states_meteorite_labels(self) -> None:
@@ -5620,17 +5905,28 @@ class TestAst1560IngressDispatchConfig:
             "land_trigger_state",
         ):
             assert ingress[tr] in cfg.METEORITE_STATES
-        assert set(ingress["scrape_page_status_states"].values()) <= {
+        # AST-2086: closed / missing split onto JD_SCRAPE_FAIL_*; blocked → BOT_BLOCKED_SCRAPE_METEORITE.
+        assert set(ingress["scrape_page_status_states"].values()) == {
             "CHECK_UNIQUE",
-            "BOT_BLOCKED",
-            "SCRAPE_ERROR",
-            "LINK_EXPIRED",
+            "BOT_BLOCKED_SCRAPE_METEORITE",
+            "JD_SCRAPE_FAIL_CLOSED",
+            "JD_SCRAPE_FAIL_MISSING",
         }
         page = ingress["scrape_page_status_states"]
-        assert page["closed"] == "LINK_EXPIRED"
-        assert page["missing"] == "LINK_EXPIRED"
-        assert page["blocked"] == "BOT_BLOCKED"
+        assert page["closed"] == "JD_SCRAPE_FAIL_CLOSED"
+        assert page["missing"] == "JD_SCRAPE_FAIL_MISSING"
+        assert page["blocked"] == "BOT_BLOCKED_SCRAPE_METEORITE"
         assert page["ok"] == "CHECK_UNIQUE"
+        assert ingress["scrape_retry_state"] == "SCRAPE_LINK_RETRY"
+        assert ingress["scrape_error_state"] == "ERROR_SCRAPE_METEORITE"
+        assert ingress["stage_error_state"] == "ERROR_STAGE_METEORITE"
+        assert ingress["stage_unparseable_state"] == "ERROR_STAGE_METEORITE_UNPARSEABLE"
+        assert ingress["land_error_state"] == "ERROR_LAND_METEORITE"
+        for k in ("scrape_retry_state", "scrape_error_state", "stage_error_state",
+                  "stage_unparseable_state", "land_error_state"):
+            assert ingress[k] in cfg.METEORITE_STATES, k
+        # Scrape claims both its trigger and the retry companion (patt.task.dispatch-retry).
+        assert cfg.dispatch_claim_states("SCRAPE_LINK", "meteorite") == ["SCRAPE_LINK", "SCRAPE_LINK_RETRY"]
 
     def test_seed_catalog_has_ingress_dispatch_rows(self) -> None:
         assert "dispatch_task-meteorite-ingress" in cfg.SEED_CONFIG
@@ -5649,7 +5945,7 @@ class TestAst1561BotBlockedNotifyConfig:
     def test_notify_config_literals(self) -> None:
         notify = cfg.METEORITE_BOT_BLOCKED_NOTIFY_CONFIG
         assert notify["task_key"] == "meteorite_bot_blocked_notify"
-        assert notify["trigger_state"] == "BOT_BLOCKED"
+        assert notify["trigger_state"] == "BOT_BLOCKED_SCRAPE_METEORITE"  # AST-2086
         assert notify["trigger_state"] in cfg.METEORITE_STATES
         assert "{link}" in notify["dm_first_template"]
         assert "{nag_count}" in notify["dm_nag_template"]
@@ -5660,7 +5956,7 @@ class TestAst1561BotBlockedNotifyConfig:
         sql = cfg.SEED_CONFIG["dispatch_task-meteorite-bot-blocked-notify"]
         blob = sql if isinstance(sql, str) else "\n".join(sql)
         assert "meteorite_bot_blocked_notify" in blob
-        assert "BOT_BLOCKED" in blob
+        assert "'BOT_BLOCKED_SCRAPE_METEORITE'" in blob
 
 
 class TestAst1562RetentionConfig:
@@ -5747,6 +6043,7 @@ class TestAst1590JobArtifactCatalogKeys:
             "candidate.artifacts.resume_structure",
             "job.artifacts.job_resume",
             "job.artifacts.cover_letter",
+            "job.artifacts.job_resume_structure",  # AST-2081
             "candidate.context.strengths",
             "candidate.context.priorities",
             "candidate.context.deal_breakers",
@@ -6434,10 +6731,16 @@ class TestAst1621MeteoriteEntityTypeRegistry:
             cfg.dispatch_entity_state_registry("not_a_type")
 
     def test_dispatch_claim_states_meteorite(self) -> None:
-        # No *_RETRY companions on METEORITE_STATES today — primary only.
-        assert cfg.dispatch_claim_states("NEW", "meteorite") == ["NEW"]
-        assert cfg.dispatch_claim_states("SCRAPE_LINK", "meteorite") == ["SCRAPE_LINK"]
-        assert cfg.dispatch_claim_states("BOT_BLOCKED", "meteorite") == ["BOT_BLOCKED"]
+        # Suffix companions always (need not exist in METEORITE_STATES registry)
+        assert cfg.dispatch_claim_states("NEW", "meteorite") == ["NEW", "NEW_RETRY"]
+        assert cfg.dispatch_claim_states("SCRAPE_LINK", "meteorite") == [
+            "SCRAPE_LINK",
+            "SCRAPE_LINK_RETRY",
+        ]
+        assert cfg.dispatch_claim_states("BOT_BLOCKED_SCRAPE_METEORITE", "meteorite") == [
+            "BOT_BLOCKED_SCRAPE_METEORITE",
+            "BOT_BLOCKED_SCRAPE_METEORITE_RETRY",
+        ]
 
     def test_dispatch_sort_by_meteorite(self) -> None:
         assert cfg._dispatch_sort_by_for("meteorite", "NEW") == "updated_at"
@@ -6458,7 +6761,7 @@ class TestAst1621MeteoriteEntityTypeRegistry:
 
         notify = cfg.SEED_CONFIG["dispatch_task-meteorite-bot-blocked-notify"]
         notify_blob = notify if isinstance(notify, str) else "\n".join(notify)
-        assert ", 'meteorite_bot_blocked_notify', 'meteorite', 'BOT_BLOCKED'" in notify_blob
+        assert ", 'meteorite_bot_blocked_notify', 'meteorite', 'BOT_BLOCKED_SCRAPE_METEORITE'" in notify_blob
         assert ", 'meteorite_bot_blocked_notify', NULL," not in notify_blob
 
         retire = cfg.SEED_CONFIG["dispatch_task-meteorite-ingress-retire-null-pool"]
@@ -6556,13 +6859,204 @@ class TestAst1678CatalogResumeStructureBodyShape:
 
 
 class TestAst1668RecognitionReplyConfig:
-    """AST-1668: CONTACT_CONFIG known/unknown recognition reply text."""
+    """AST-1668 / AST-2072: unknown recognition reply text; known recognition key retired."""
 
     def test_recognition_reply_defaults(self) -> None:
-        known = cfg.CONTACT_CONFIG["known_recognition_reply_text"]
+        assert "known_recognition_reply_text" not in cfg.CONTACT_CONFIG
         unknown = cfg.CONTACT_CONFIG["unknown_recognition_reply_text"]
-        assert isinstance(known, str) and known.strip() == "I know who that is"
-        assert isinstance(unknown, str) and unknown.strip() == "I don't recognize you"
+        # Susan's verbatim wording: double space after "yet.", no trailing period.
+        assert unknown == "Sorry, I don't recognize you, yet.  Let's check with @susan"
+
+
+# Branches: thread_response default; import-time vocabulary assert rejects / accepts (AST-2072).
+class TestAst2072ThreadResponseConfig:
+    """AST-2072: CONTACT_CONFIG["thread_response"] placement setting."""
+
+    _LINE = '"thread_response": "threads_only",'
+
+    def _exec_with(self, value: str) -> None:
+        # Splice the value into the real config source so the shipped assert (not a copy) runs.
+        from pathlib import Path
+
+        text = Path(cfg.__file__).read_text(encoding="utf-8")
+        # A moved/renamed line must fail loudly, not let the splice pass vacuously.
+        assert text.count(self._LINE) == 1
+        spliced = text.replace(self._LINE, f'"thread_response": "{value}",', 1)
+        exec(compile(spliced, "config_spliced", "exec"), {"__name__": "config_spliced", "__file__": cfg.__file__})  # noqa: S102
+
+    def test_default_threads_only(self) -> None:
+        assert cfg.CONTACT_CONFIG["thread_response"] == "threads_only"
+
+    def test_assert_rejects_unknown_value(self) -> None:
+        with pytest.raises(AssertionError, match="sometimes"):
+            self._exec_with("sometimes")
+
+    @pytest.mark.parametrize("value", ["always_no_share", "always_with_share"])
+    def test_assert_accepts_other_vocabulary(self, value: str) -> None:
+        self._exec_with(value)
+
+
+# Branches (AST-2151): check-status entry + pinhole + origin env name; registry asserts — optional
+# ack (absent ok, present needs {meteorite_id}), template placeholders, job-lookup all-or-none group,
+# reply_placement vocabulary. Spliced re-exec so the shipped asserts (not copies) fire.
+class TestAst2151CheckStatusRegistry:
+    """AST-2151: CONTACT_CONFIG["commands"]["check-status"] + relaxed/extended registry asserts."""
+
+    HANDLER = "src.core.tracker.contact_command_check_status"
+
+    @staticmethod
+    def _splice_exec(old: str, new: str) -> None:
+        import types
+        from pathlib import Path
+
+        src = Path(cfg.__file__).read_text(encoding="utf-8")
+        # A moved/renamed anchor must fail loudly, not let the splice pass vacuously.
+        assert src.count(old) == 1, old
+        mod = types.ModuleType("config_ast2151")
+        mod.__file__ = cfg.__file__
+        # Fake filename keeps coverage from attributing probe lines to config.py.
+        exec(compile(src.replace(old, new, 1), "<config_ast2151>", "exec"), mod.__dict__)  # noqa: S102
+
+    def test_ac1_entry_code_mode_with_share_placement(self) -> None:
+        e = cfg.CONTACT_CONFIG["commands"]["check-status"]
+        assert e["mode"] == "code"
+        assert e["reply_placement"] == "always_with_share"
+        assert e["handler"] == self.HANDLER
+        assert "ack_reply_template" not in e
+        # add-job keeps its ack unchanged.
+        assert cfg.CONTACT_CONFIG["commands"]["add-job"]["ack_reply_template"] == (
+            "Got it. Saved as meteorite {meteorite_id}; I'll stage it from here."
+        )
+
+    def test_ac2_pinhole_read_job(self) -> None:
+        handler = cfg.CONTACT_CONFIG["commands"]["check-status"]["handler"]
+        assert cfg._CONTACT_PINHOLE_HANDLERS[handler] == "read job"
+
+    def test_origin_env_contract_beside_route_prefix(self) -> None:
+        assert cfg.JOBS_DETAIL_ORIGIN_DOMAIN_ENV == "RAILWAY_PUBLIC_DOMAIN"
+        assert cfg.JOBS_DETAIL_ROUTE_PREFIX == "/jobs/detail"
+
+    def test_ack_template_optional(self) -> None:
+        # Dropping add-job's ack entirely still imports.
+        self._splice_exec(
+            '"ack_reply_template": "Got it. Saved as meteorite {meteorite_id}; I\'ll stage it from here.",', ""
+        )
+
+    def test_ack_template_when_present_needs_meteorite_id(self) -> None:
+        with pytest.raises(AssertionError, match="ack_reply_template"):
+            self._splice_exec("Saved as meteorite {meteorite_id};", "Saved;")
+
+    def test_match_template_missing_placeholder_fails_import(self) -> None:
+        with pytest.raises(AssertionError, match="match_reply_template"):
+            self._splice_exec('since {state_changed_at}{deeplink}",', 'since {state_changed_at}",')
+
+    def test_half_declared_job_lookup_group_fails_import(self) -> None:
+        with pytest.raises(AssertionError, match="check-status"):
+            self._splice_exec(
+                '"no_match_reply_text": "Nothing matched that. Try a job link, title, or company.",', ""
+            )
+
+    def test_reply_placement_outside_vocabulary_fails_import(self) -> None:
+        with pytest.raises(AssertionError, match="check-status"):
+            self._splice_exec('"reply_placement": "always_with_share",', '"reply_placement": "sometimes",')
+
+
+# Branches (AST-2210): 18 context commands generated from CONTACT_CONTEXT_COMMAND_CONFIG x verbs;
+# optional fields present/absent per verb; draft/revise tasks + draft-thread config; reply texts;
+# pinhole rows. Spliced re-exec (AST-2151 helper) so the shipped import-time asserts fire.
+_AST2210_VERB_HANDLERS = {
+    "draft": "src.core.contact.contact_command_draft_context",
+    "save": "src.core.candidate.contact_command_save_context",
+    "show": "src.core.candidate.contact_command_show_context",
+}
+
+
+class TestAst2210ContextCommandRegistry:
+    """AST-2210: context command registry, generated /draft- /save- /show- entries, pinhole amendment."""
+
+    SUFFIXES = ("backstory", "bio-summary", "dealbreakers", "ideal-day", "priorities", "strengths")
+    HANDLERS = _AST2210_VERB_HANDLERS
+    _splice_exec = staticmethod(TestAst2151CheckStatusRegistry._splice_exec)
+
+    def test_ac1_exactly_eighteen_context_ids(self) -> None:
+        got = {k for k in cfg.CONTACT_CONFIG["commands"] if k.split("-", 1)[0] in self.HANDLERS}
+        assert got == {f"{v}-{s}" for v in self.HANDLERS for s in self.SUFFIXES}
+        assert set(cfg.CONTACT_CONTEXT_COMMAND_CONFIG) == set(self.SUFFIXES)
+
+    def test_ac2_ids_generated_not_hand_listed(self) -> None:
+        import re
+        from pathlib import Path
+
+        src = Path(cfg.__file__).read_text(encoding="utf-8")
+        assert not re.search(r'"(draft|save|show)-(strengths|dealbreakers|priorities|ideal-day|bio-summary|backstory)"', src)
+
+    def test_entry_fields_per_verb(self) -> None:
+        for suffix, ctx in cfg.CONTACT_CONTEXT_COMMAND_CONFIG.items():
+            for verb, handler in self.HANDLERS.items():
+                e = cfg.CONTACT_CONFIG["commands"][f"{verb}-{suffix}"]
+                assert e["handler"] == handler and e["mode"] == "code"
+                assert e["artifact_key"] == ctx["artifact_key"]
+                assert e["private_channel_only"] is True
+                assert f"/{verb}-{suffix}" in e["usage_reply_text"]
+                assert ctx["label"] in e["description"]
+                # draft-/show- run on an empty payload; save- keeps the usage reply (absent == False).
+                assert e.get("payload_optional", False) is (verb != "save")
+                # Only draft- threads its reply under the command message.
+                assert e.get("reply_placement") == ("always_no_share" if verb == "draft" else None)
+
+    def test_registry_rows_resolve_and_drafts_never_save(self) -> None:
+        for ctx in cfg.CONTACT_CONTEXT_COMMAND_CONFIG.values():
+            assert ctx["artifact_key"] in cfg.ARTIFACT_CONFIG
+            task = cfg.TASK_CONFIG[ctx["draft_task"]]
+            # No artifact_key: agent.do_task's auto-land / craft-persist branches must never fire on a draft.
+            assert "artifact_key" not in task
+            assert task["response_schema"]["draft"]["required"] is True
+        revise = cfg.TASK_CONFIG[cfg.CONTACT_DRAFT_THREAD_CONFIG["revise_task_key"]]
+        assert cfg.CONTACT_DRAFT_THREAD_CONFIG["revise_task_key"] == "contact_draft_revise"
+        assert revise["task_type"] == "CHAT" and "artifact_key" not in revise
+        assert revise["response_schema"]["reply"]["required"] is True
+        assert revise["response_schema"]["revised_draft"]["required"] is False
+
+    def test_reply_texts(self) -> None:
+        cc = cfg.CONTACT_CONFIG
+        assert cc["private_channel_only_reply_text"] == "I can only do that in the candidate's private channel."
+        # Double space is deliberate (matches unknown_recognition_reply_text).
+        assert cc["unmapped_channel_reply_text"] == "This channel isn't linked to a candidate yet.  Let's check with @susan"
+
+    def test_ac4_pinhole_rows(self) -> None:
+        pinhole = cfg._CONTACT_PINHOLE_HANDLERS
+        assert pinhole[self.HANDLERS["show"]] == "read artifact"
+        assert pinhole[self.HANDLERS["save"]] == "write artifact"
+        assert pinhole[self.HANDLERS["draft"]].startswith("read artifact")
+
+    def test_non_bool_payload_optional_fails_import(self) -> None:
+        with pytest.raises(AssertionError, match="payload_optional"):
+            self._splice_exec(
+                '/show-{suffix}",\n        "payload_optional": True,', '/show-{suffix}",\n        "payload_optional": "yes",'
+            )
+
+    def test_unregistered_artifact_key_fails_import(self) -> None:
+        with pytest.raises(AssertionError, match="backstory"):
+            self._splice_exec(
+                '"artifact_key": "candidate.context.backstory",\n        "draft_task"',
+                '"artifact_key": "candidate.context.nope",\n        "draft_task"',
+            )
+
+    def test_duplicate_artifact_key_fails_import(self) -> None:
+        # The draft handler finds its draft_task by artifact_key, so two rows may not share one.
+        with pytest.raises(AssertionError):
+            self._splice_exec(
+                '"artifact_key": "candidate.context.backstory",\n        "draft_task"',
+                '"artifact_key": "candidate.context.bio_summary",\n        "draft_task"',
+            )
+
+    def test_write_kind_outside_meteorite_or_artifact_fails_import(self) -> None:
+        # The amendment opens artifact writes only; any other write kind still fails at import.
+        with pytest.raises(AssertionError):
+            self._splice_exec(
+                '"src.core.tracker.contact_task_get_candidate_data": "read candidate",',
+                '"src.core.tracker.contact_task_get_candidate_data": "write candidate",',
+            )
 
 
 # Branches: DISCOVERED land/vet; CSE-only resolve; resolve_website SA + WEBSITE_REVIEW edges (AST-1672).
@@ -6577,14 +7071,14 @@ class TestAst1672DiscoveredResolveRegistrySsot:
             ("DISCOVERED", "WEBSITE_FOUND"),
             ("DISCOVERED", "VET_FAILED"),
             ("DISCOVERED", "WEBSITE_REVIEW"),
-            ("DISCOVERED", "NO_WEBSITE"),
+            ("DISCOVERED", "ERROR_INFLOW_RESOLVE_WEBSITE_NOT_FOUND"),
             ("WEBSITE_REVIEW", "WEBSITE_FOUND"),
-            ("WEBSITE_REVIEW", "NO_WEBSITE"),
+            ("WEBSITE_REVIEW", "ERROR_RESOLVE_WEBSITE_NOT_FOUND"),
         ):
             assert edge in transitions
         for gone in (
             ("NEW", "WEBSITE_FOUND"),
-            ("NEW", "NO_WEBSITE"),
+            ("NEW", "ERROR_INFLOW_RESOLVE_WEBSITE_NOT_FOUND"),
             ("NEW", "VET_FAILED"),
         ):
             assert gone not in transitions
@@ -6597,7 +7091,7 @@ class TestAst1672DiscoveredResolveRegistrySsot:
         assert entry["trigger_state"] == "WEBSITE_REVIEW"
         assert entry["agent_task"] == "find_company_website"
         assert entry["pass_state"] == "WEBSITE_FOUND"
-        assert entry["fail_state"] == "NO_WEBSITE"
+        assert entry["fail_state"] == "ERROR_RESOLVE_WEBSITE_NOT_FOUND"  # AST-2086
         assert entry["context_format"] == "find_company_website_{index}"
         # Agent identity stays agent-only; SA is resolve_website.
         assert cfg.TASK_CONFIG["find_company_website"]["trigger_state"] is None
@@ -6724,21 +7218,23 @@ class TestAst1712MailboxKeyAndClassifyStates:
 
     def test_classify_states_and_no_dispatch_triggers(self) -> None:
         # AST-1773: closed set includes CHECK_UNIQUE / DUPLICATE; scrape ok → CHECK_UNIQUE.
+        # AST-2086: renamed set (see TestAst1557MeteoriteStates for the full prior pins).
         assert set(cfg.METEORITE_STATES) == {
-            "NEW", "SCRAPE_LINK", "CHECK_UNIQUE", "READY", "BOT_BLOCKED", "SCRAPE_ERROR",
-            "LINK_EXPIRED", "NOT_A_JOB", "NEW_EMAIL_ERROR", "DUPLICATE", "LANDED", "ABANDONED",
+            "NEW", "SCRAPE_LINK", "SCRAPE_LINK_RETRY", "ERROR_SCRAPE_METEORITE", "CHECK_UNIQUE", "READY",
+            "BOT_BLOCKED_SCRAPE_METEORITE", "JD_SCRAPE_FAIL_CLOSED", "JD_SCRAPE_FAIL_MISSING",
+            "ERROR_STAGE_METEORITE_UNPARSEABLE", "ERROR_LAND_METEORITE", "NOT_A_JOB", "ERROR_STAGE_METEORITE",
+            "DUPLICATE", "LANDED", "ABANDONED",
         }
         assert "ERROR" not in cfg.METEORITE_STATES
-        assert cfg.METEORITE_STATES["NEW"]["prior_states"] == ["NEW_EMAIL_ERROR"]
+        assert cfg.METEORITE_STATES["NEW"]["prior_states"] == ["ERROR_STAGE_METEORITE"]
         assert cfg.METEORITE_STATES["NOT_A_JOB"]["prior_states"] is None
-        assert cfg.METEORITE_STATES["NEW_EMAIL_ERROR"]["prior_states"] is None
-        assert cfg.METEORITE_STATES["SCRAPE_LINK"]["prior_states"] == ["NEW", "SCRAPE_ERROR"]
-        assert cfg.METEORITE_STATES["LINK_EXPIRED"]["prior_states"] == ["SCRAPE_LINK"]
+        assert cfg.METEORITE_STATES["ERROR_STAGE_METEORITE"]["prior_states"] is None
+        assert cfg.METEORITE_STATES["ERROR_STAGE_METEORITE_UNPARSEABLE"]["prior_states"] == ["NEW"]
         page = cfg.METEORITE_INGRESS_DISPATCH_CONFIG["scrape_page_status_states"]
-        assert page["closed"] == "LINK_EXPIRED"
-        assert page["missing"] == "LINK_EXPIRED"
+        assert page["closed"] == "JD_SCRAPE_FAIL_CLOSED"
+        assert page["missing"] == "JD_SCRAPE_FAIL_MISSING"
         assert page["ok"] == "CHECK_UNIQUE"
-        forbidden = {"NEW_EMAIL_ERROR", "NOT_A_JOB"}
+        forbidden = {"ERROR_STAGE_METEORITE", "NOT_A_JOB"}
         for entry in cfg.METEORITE_DISPATCH_TASKS:
             assert entry.get("trigger_state") not in forbidden
         ingress = cfg.METEORITE_INGRESS_DISPATCH_CONFIG
@@ -6880,18 +7376,81 @@ class TestAst1779EmptyRenderForPrompts:
             "empty_tokens": ["FIRST_NAME", "FULL_NAME"],
         }
 
-    def test_rubric_scored_only_via_entity_contexts(self) -> None:
-        # Non-job seam: rubric ignored by default; scored blank when key is in entity_contexts.
+    def test_rubric_scored_by_default_and_via_entity_contexts(self) -> None:
+        # AST-2092: rubric is candidate-keyed, so it is scored by default; the seam still scores it.
         texts = ["{$GET_RUBRIC}"]
         cd = {"first": "Ada"}  # no _astral_candidate_id → resolve ""
         assert cfg.empty_render_for_prompts(texts, cd, self._TASK) == {
-            "empty_render": False,
-            "empty_tokens": [],
+            "empty_render": True,
+            "empty_tokens": ["GET_RUBRIC"],
         }
         out = cfg.empty_render_for_prompts(
             texts, cd, self._TASK, entity_contexts={"rubric": {}}
         )
         assert out == {"empty_render": True, "empty_tokens": ["GET_RUBRIC"]}
+
+    # build_candidate_token_view shape; qualify_job_listings owns its rubric (no embedded-criteria merge).
+    _RUBRIC_VIEW = {
+        "first": "Abrams", "last": "", "full": "Abrams", "pronouns": "", "contact": {},
+        "context": {}, "artifacts": {}, "_astral_candidate_id": "cand-abrams",
+    }
+    _RUBRIC_TEXTS = ["Rubric:\n{$RUBRIC_VECTORS}"]
+
+    def test_empty_rubric_vectors_sets_empty_render(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # [bug-repro] AST-2092 AC1: candidate has no current rubric rows for the owner → flagged.
+        monkeypatch.setattr("src.core.candidate.rubric_criteria_for_token", lambda cid, owner: [])
+        out = cfg.empty_render_for_prompts(self._RUBRIC_TEXTS, dict(self._RUBRIC_VIEW), "qualify_job_listings")
+        assert out == {"empty_render": True, "empty_tokens": ["RUBRIC_VECTORS"]}
+
+    def test_filled_rubric_vectors_validates(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # AST-2092 AC3 control: one current criterion renders non-empty → not flagged.
+        monkeypatch.setattr(
+            "src.core.candidate.rubric_criteria_for_token",
+            lambda cid, owner: [{"code": "T1", "label": "Title fit", "importance": 5}],
+        )
+        out = cfg.empty_render_for_prompts(self._RUBRIC_TEXTS, dict(self._RUBRIC_VIEW), "qualify_job_listings")
+        assert out == {"empty_render": False, "empty_tokens": []}
+
+
+class TestAst2006ResolveTokensEmptyCollector:
+    """AST-2006 / AST-2000: resolve_tokens(empty_tokens=[...]) collects blank recognized names quietly."""
+
+    _TASK = "grade_get"
+
+    def test_collects_blank_names_ordered_unique_across_sources(self, caplog) -> None:
+        # candidate + job + mid-chain CALLER_* blanks, FIRST_NAME repeated; collector path never warns.
+        import logging
+
+        got: list = []
+        with caplog.at_level(logging.WARNING):
+            out = cfg.resolve_tokens(
+                "{$FIRST_NAME} {$VISIBLE_JD} {$FIRST_NAME} {$CALLER_RESPONSE} {$LAST_NAME}",
+                {"first": "", "last": "Lee"},
+                self._TASK,
+                chain_context={"CALLER_RESPONSE": ""},
+                job_context={"VISIBLE_JD": "  "},
+                empty_tokens=got,
+            )
+        assert got == ["FIRST_NAME", "VISIBLE_JD", "CALLER_RESPONSE"]
+        assert out.endswith("Lee")
+        assert not [r for r in caplog.records if r.levelno >= logging.WARNING]
+
+    def test_unrecognized_token_stays_literal_and_is_not_collected(self) -> None:
+        got: list = []
+        out = cfg.resolve_tokens("{$NOT_A_TOKEN} {$FIRST_NAME}", {"first": "Ada"}, self._TASK, empty_tokens=got)
+        assert out == "{$NOT_A_TOKEN} Ada"
+        assert got == []
+
+    def test_default_call_unchanged_still_warns(self, caplog) -> None:
+        # No collector → same substitution and the existing per-token WARNING.
+        import logging
+
+        with caplog.at_level(logging.WARNING):
+            out = cfg.resolve_tokens("Hi {$FIRST_NAME}", {"first": "", "full": ""}, self._TASK)
+        assert out == "Hi "
+        assert [r.message for r in caplog.records if "resolved to empty" in r.message] == [
+            "Token {$FIRST_NAME} resolved to empty (path=first, task=grade_get)"
+        ]
 
 
 class TestAst1788ManageListAndProfileSlackChannelShapes:
@@ -6919,3 +7478,1644 @@ class TestAst1788ManageListAndProfileSlackChannelShapes:
         keys = [f["key"] for f in section["fields"]]
         assert keys.index("contact.slack_channel_id") == keys.index("contact.slack_username") + 1
         assert keys.index("contact.slack_channel_name") == keys.index("contact.slack_channel_id") + 1
+
+
+# AST-1807 · AST-1805: implicit {base}_RETRY substate helpers + derived-prior rule.
+# Probe states (PASSED_GET_RETRY, RESUME_READY_RETRY, …) are never registry keys, so these
+# stay green through AST-1806's purge of the explicit *_RETRY keys.
+class TestAst1807ImplicitRetryHelpers:
+    def test_retry_of(self) -> None:
+        assert cfg.retry_of("PASSED_GET") == "PASSED_GET_RETRY"
+
+    def test_retry_base(self) -> None:
+        assert cfg.retry_base("PASSED_GET_RETRY") == "PASSED_GET"
+        assert cfg.retry_base(" PASSED_GET_RETRY ") == "PASSED_GET"
+        assert cfg.retry_base("PASSED_GET") is None
+        # Bare suffix has no base.
+        assert cfg.retry_base("_RETRY") is None
+        assert cfg.retry_base(None) is None
+
+    def test_registered_base_and_is_registered_state(self) -> None:
+        js = cfg.JOB_STATES
+        assert cfg.registered_base(js, "PASSED_GET") == "PASSED_GET"
+        assert cfg.registered_base(js, "PASSED_GET_RETRY") == "PASSED_GET"
+        # Suffix alone never validates: the base must be registered.
+        assert cfg.registered_base(js, "NOPE_RETRY") is None
+        assert cfg.is_registered_state(js, "PASSED_GET") is True
+        assert cfg.is_registered_state(js, "PASSED_GET_RETRY") is True
+        assert cfg.is_registered_state(js, "NOPE_RETRY") is False
+
+    def test_state_prior_states_cross_base_feeders(self) -> None:
+        # VALID_TITLE.retry_state == NEW_RETRY (cross-base). AST-1839: HOMEPAGE_READY.retry_state is its own
+        # HOMEPAGE_READY_RETRY, so HOMEPAGE_READY no longer feeds WEBSITE_FOUND_RETRY.
+        assert cfg.state_prior_states(cfg.JOB_STATES, "NEW_RETRY") == ["NEW", "NEW_RETRY", "VALID_TITLE"]
+        assert cfg.state_prior_states(cfg.COMPANY_STATES, "WEBSITE_FOUND_RETRY") == [
+            "WEBSITE_FOUND",
+            "WEBSITE_FOUND_RETRY",
+        ]
+        assert "HOMEPAGE_READY" in cfg.state_prior_states(cfg.COMPANY_STATES, "HOMEPAGE_READY_RETRY")
+        assert cfg.state_prior_states(cfg.JOB_STATES, "PASSED_GET_RETRY") == ["PASSED_GET", "PASSED_GET_RETRY"]
+
+    def test_state_prior_states_self_drain_and_unrestricted(self) -> None:
+        assert "JD_READY_RETRY" in cfg.state_prior_states(cfg.JOB_STATES, "JD_READY")
+        assert "REQUESTED_RESUME_RETRY" in cfg.state_prior_states(cfg.CANDIDATE_STATES, "REQUESTED_RESUME")
+        # prior_states None stays None (unrestricted entry).
+        assert cfg.state_prior_states(cfg.JOB_STATES, "NEW") is None
+
+    def test_state_prior_states_rejects_unregistered(self) -> None:
+        for state in ("NOPE", "NOPE_RETRY"):
+            with pytest.raises(KeyError, match="unregistered state"):
+                cfg.state_prior_states(cfg.JOB_STATES, state)
+
+
+# AST-1807 · AST-1805: config validators resolve {base}_RETRY through the base.
+class TestAst1807ImplicitRetryConfigValidators:
+    def test_batch_claim_state_validators(self) -> None:
+        assert cfg.is_valid_job_batch_claim_state("PASSED_GET_RETRY") is True
+        assert cfg.is_valid_job_batch_claim_state("NOPE_RETRY") is False
+        assert cfg.is_valid_candidate_batch_claim_state("RESUME_READY_RETRY") is True
+        assert cfg.is_valid_candidate_batch_claim_state("NOPE_RETRY") is False
+
+    def test_dispatch_sort_by_for_job_retry(self) -> None:
+        assert cfg._dispatch_sort_by_for("job", "PASSED_JOBLIST_RETRY") == "updated_at"
+        with pytest.raises(KeyError, match="unknown job trigger_state"):
+            cfg._dispatch_sort_by_for("job", "NOPE_RETRY")
+
+    def test_dispatch_sort_by_for_company_retry_reads_base_criteria(self) -> None:
+        assert cfg._dispatch_sort_by_for("company", "TO_WATCH_RETRY") == "updated_at"
+
+
+# AST-1808 · AST-1806: explicit *_RETRY registry keys purged; behavior pinned to the pre-purge tree.
+class TestAst1808RetryRegistryPurge:
+    _REGISTRIES = ("JOB_STATES", "COMPANY_STATES", "CANDIDATE_STATES")
+
+    def test_no_explicit_retry_keys_in_entity_registries(self) -> None:
+        # [bug-repro] AST-1808: red pre-purge (18 keys), green once AST-1806 lands.
+        for name in self._REGISTRIES:
+            reg = getattr(cfg, name)
+            assert not [k for k in reg if k.endswith(cfg.RETRY_SUFFIX)], name
+            assert not [
+                (k, p) for k, v in reg.items() for p in (v.get("prior_states") or []) if p.endswith(cfg.RETRY_SUFFIX)
+            ], name
+
+    def test_prior_snapshot_pinned(self) -> None:
+        # Fixture = AST-1806 gate snapshot captured on pre-purge ftr 65e3ca6f (can't be recomputed after
+        # the purge). *_RETRY_RETRY priors only exist while legacy retry keys do, so both sides drop them.
+        from pathlib import Path
+
+        pinned = json.loads((Path(__file__).parent / "fixtures" / "ast1806_prior_snapshot.json").read_text())
+        # AST-2004 renamed company BOT_BLOCK → BOT_BLOCKED after the snapshot; translate keys + priors.
+        ren = lambda s: s.replace("BOT_BLOCK", "BOT_BLOCKED")  # noqa: E731
+        pinned["COMPANY_STATES"] = {
+            ren(k): (None if v is None else [ren(p) for p in v]) for k, v in pinned["COMPANY_STATES"].items()
+        }
+        # AST-2024 added RELATIVE_JOB_LINK / RELATIVE_LINK_FAIL after the snapshot: six JD-outcome
+        # states gain RELATIVE_JOB_LINK (+ derived _RETRY) as a prior; four new targets pinned exactly.
+        js = pinned["JOB_STATES"]
+        rel = ["RELATIVE_JOB_LINK", "RELATIVE_JOB_LINK_RETRY"]
+        for s in ("JD_READY", "JD_SCRAPE_FAIL", "JD_SCRAPE_FAIL_COOKIE", "BOT_BLOCKED",
+                  "JD_SCRAPE_FAIL_MISSING", "JD_SCRAPE_FAIL_CLOSED"):
+            js[s] = js[s] + rel
+        js["RELATIVE_JOB_LINK"] = ["NEW", "NEW_RETRY", "RELATIVE_JOB_LINK_RETRY", "RELATIVE_LINK_FAIL", "RELATIVE_LINK_FAIL_RETRY"]
+        js["RELATIVE_JOB_LINK_RETRY"] = rel
+        js["RELATIVE_LINK_FAIL"] = rel + ["RELATIVE_LINK_FAIL_RETRY"]
+        js["RELATIVE_LINK_FAIL_RETRY"] = ["RELATIVE_LINK_FAIL", "RELATIVE_LINK_FAIL_RETRY"]
+        # AST-2069 added company GET_UPSHOT / UPSHOT_READY / ERROR_UPSHOT after the snapshot:
+        # bases unrestricted (None); each derived _RETRY pinned to its own base pair.
+        cs = pinned["COMPANY_STATES"]
+        for b in ("GET_UPSHOT", "UPSHOT_READY", "ERROR_UPSHOT"):
+            cs[b] = None
+            cs[f"{b}_RETRY"] = [b, f"{b}_RETRY"]
+        # AST-2096 added six scored-task {fail_state}_ALL_X terminals: priors = base fail_state's trigger (+ _RETRY).
+        for s, trig in (("FAILED_DO_ALL_X", "PASSED_JD"), ("FAILED_GET_ALL_X", "PASSED_DO"),
+                        ("FAILED_LIKE_ALL_X", "CULTURE_READY"), ("METEORITE_FAILED_DO_ALL_X", "METEORITE_PASSED_JD"),
+                        ("METEORITE_FAILED_GET_ALL_X", "METEORITE_PASSED_DO"),
+                        ("METEORITE_FAILED_LIKE_ALL_X", "METEORITE_PASSED_GET")):
+            js[s] = [trig, f"{trig}_RETRY", f"{s}_RETRY"]
+            js[f"{s}_RETRY"] = [s, f"{s}_RETRY"]
+        # AST-2086 renamed terminals through RETIRED_TERMINAL_STATE_MAP (pinned literally in
+        # TestAst2086RetiredTerminalStateMap): each old key/prior → all its new names; dead keys dropped.
+        for name, entity in (("JOB_STATES", "job"), ("COMPANY_STATES", "company"), ("CANDIDATE_STATES", "candidate")):
+            pinned[name] = self._ast2086_translate(pinned[name], cfg.RETIRED_TERMINAL_STATE_MAP[entity])
+        self._ast2086_additions(pinned)
+        # AST-2228: retire topic-ready(+stale) keys; revive PROFILE_READY / CONTEXT_READY on the happy path.
+        self._ast2228_candidate_topic_cutover(pinned)
+        for name in self._REGISTRIES:
+            reg = getattr(cfg, name)
+            targets = list(reg) + [cfg.retry_of(b) for b in reg]
+            assert set(targets) == set(pinned[name]), name
+            for t in targets:
+                # AST-1974 deliberately widened CANDIDATE_SKIPPED priors (pinned in TestAst1974JobsListPartition).
+                if name == "JOB_STATES" and cfg.registered_base(reg, t) == "CANDIDATE_SKIPPED":
+                    continue
+                derived = cfg.state_prior_states(reg, t)
+                want = pinned[name][t]
+                if want is None:
+                    assert derived is None, (name, t)
+                else:
+                    assert {p for p in derived if not p.endswith("_RETRY_RETRY")} == set(want), (name, t)
+
+    def test_consult_fail_dest_for_retry_job_states(self) -> None:
+        # AST-642 routing after the purge (Radia, AST-1806): primary → holding, holding → terminal.
+        from src.core import consult as consult_mod
+
+        err = "ERROR_EVALUATE_JD"
+        for primary, holding in TestAst1155GradedRetryHoldings._PAIRS:
+            assert consult_mod._consult_batch_fail_dest(primary, err, "evaluate_jd") == holding, primary
+            assert consult_mod._consult_batch_fail_dest(holding, err, "evaluate_jd") == err, holding
+        # analysis_upshot: error_state IS the retry holding → second failure is the task's bare
+        # ERROR_<TASK_KEY> (AST-2086; was generic FAILED_TECHNICAL).
+        assert (
+            consult_mod._consult_batch_fail_dest("PASSED_LIKE_RETRY", "PASSED_LIKE_RETRY", "analysis_upshot")
+            == "ERROR_ANALYSIS_UPSHOT"
+        )
+        assert (
+            consult_mod._consult_batch_fail_dest("PASSED_LIKE_RETRY", "PASSED_LIKE_RETRY", "meteorite_upshot")
+            == "ERROR_METEORITE_UPSHOT"
+        )
+
+    @staticmethod
+    def _ast2086_translate(reg: dict, rmap: dict) -> dict:
+        dead = {"PREFILTER_UNKNOWN", "HARD_PARSE", "BUILD_FAILED"}
+
+        def split(s: str) -> tuple:
+            base = s[: -len(cfg.RETRY_SUFFIX)] if s.endswith(cfg.RETRY_SUFFIX) else s
+            return base, s[len(base):]
+
+        def tr(s: str, own: tuple = ("", "")) -> list:
+            base, suffix = split(s)
+            if base in dead:
+                return []
+            # A key's reference to itself (X / X_RETRY) follows that key's own new name only.
+            if own[0] and base == split(own[0])[0]:
+                return [split(own[1])[0] + suffix]
+            if base in rmap:
+                return [n + suffix for n in rmap[base].values()]
+            return [s]
+
+        out: dict = {}
+        for k, v in reg.items():
+            for nk in tr(k):
+                priors = None if v is None else [n for p in v for n in tr(p, (k, nk))]
+                if nk in out and out[nk] is not None and priors is not None:
+                    priors = list(dict.fromkeys(out[nk] + priors))
+                out[nk] = priors
+        return out
+
+    @staticmethod
+    def _ast2086_additions(pinned: dict) -> None:
+        """Deliberate AST-2086 registry additions beyond the 1:N rename (plan Stage 2)."""
+        js, cs = pinned["JOB_STATES"], pinned["COMPANY_STATES"]
+        # Culture-pages bot split: new terminal off PASSED_GET; Skipped retry re-enters PASSED_GET.
+        bot, sib = "BOT_BLOCKED_FETCH_CULTURE_PAGES", "ERROR_FETCH_CULTURE_PAGES_UNREADABLE"
+        js[bot] = [bot if p == sib else f"{bot}_RETRY" if p == f"{sib}_RETRY" else p for p in js[sib]]
+        js[f"{bot}_RETRY"] = [bot, f"{bot}_RETRY"]
+        js["PASSED_GET"] = js["PASSED_GET"] + [bot, f"{bot}_RETRY"]
+        # New company terminals (fetch_website / fetch_job_pages bot walls, parse empty-token): unrestricted.
+        for b in ("BOT_BLOCKED_FETCH_WEBSITE", "BOT_BLOCKED_FETCH_JOB_PAGES", "ERROR_PARSE_JOB_LIST"):
+            cs[b] = None
+            cs[f"{b}_RETRY"] = [b, f"{b}_RETRY"]
+
+    @staticmethod
+    def _ast2228_candidate_topic_cutover(pinned: dict) -> None:
+        """AST-2228: drop topic-ready keys; pin PROFILE/CONTEXT + REQUESTED_RESUME priors."""
+        cs = pinned["CANDIDATE_STATES"]
+        for dead in (
+            "REQUIRED_TOPICS_READY",
+            "REQUIRED_TOPICS_READY_RETRY",
+            "REQUIRED_TOPICS_READY_STALE",
+            "REQUIRED_TOPICS_READY_STALE_RETRY",
+            "ALL_TOPICS_READY",
+            "ALL_TOPICS_READY_RETRY",
+            "ALL_TOPICS_READY_STALE",
+            "ALL_TOPICS_READY_STALE_RETRY",
+        ):
+            cs.pop(dead, None)
+        cs["PROFILE_READY"] = [
+            "INTAKE_INITIATED",
+            "INTAKE_INITIATED_RETRY",
+            "PROFILE_READY_RETRY",
+        ]
+        cs["PROFILE_READY_RETRY"] = ["PROFILE_READY", "PROFILE_READY_RETRY"]
+        cs["CONTEXT_READY"] = [
+            "PROFILE_READY",
+            "PROFILE_READY_RETRY",
+            "CONTEXT_READY_RETRY",
+        ]
+        cs["CONTEXT_READY_RETRY"] = ["CONTEXT_READY", "CONTEXT_READY_RETRY"]
+        cs["REQUESTED_RESUME"] = [
+            "CONTEXT_READY",
+            "CONTEXT_READY_RETRY",
+            "REQUESTED_RESUME_RETRY",
+        ]
+
+
+class TestAst1877LlmCatalogConfig:
+    """AST-1877: LLM_SERVER_CONFIG / LLM_MODEL_CONFIG, catalog resolvers, startup catalog validation.
+
+    Branches: get_llm_server / get_llm_model hit + unknown; get_sku_pricing single hit / server narrowing /
+    unknown / ambiguous; validate_llm_provider_environment each raise (protocol, auth, compat base_url,
+    unknown server, unpriced SKU) + clean pass. AST-1955 retired the brain-size branches and moved the
+    resolver to resolve_agent_settings (TestAst1955PlainAgentSettings).
+    """
+
+    def test_timesheet_providers_derive_from_server_ids(self) -> None:
+        assert cfg.ALLOWED_TIMESHEET_PROVIDERS == tuple(cfg.LLM_SERVER_CONFIG)
+        # Existing ledger values stay valid for database.insert_agent_timesheet callers.
+        assert {"anthropic", "deepseek"} <= set(cfg.ALLOWED_TIMESHEET_PROVIDERS)
+
+    def test_shipped_openrouter_sends_no_zdr(self) -> None:
+        # AC 9: ZDR enforcement is future scope — no provider.zdr in this release.
+        assert "provider" not in cfg.LLM_SERVER_CONFIG["openrouter"]["request_extras"]
+
+    def test_every_task_requires_candidate_key(self) -> None:
+        assert [k for k, v in cfg.TASK_CONFIG.items() if v.get("requires_candidate_key") is not True] == []
+        for key in ("simple_resume_parse", "select_job_page", "contact_estelle_turn"):
+            assert cfg.TASK_CONFIG[key]["requires_candidate_key"] is True
+
+    def test_get_llm_server_and_model_hit_and_unknown(self) -> None:
+        assert cfg.get_llm_server("openrouter") is cfg.LLM_SERVER_CONFIG["openrouter"]
+        assert cfg.get_llm_model("claude-sonnet-4-6") is cfg.LLM_MODEL_CONFIG["claude-sonnet-4-6"]
+        with pytest.raises(ValueError, match="Unknown LLM server"):
+            cfg.get_llm_server("__nope__")
+        with pytest.raises(ValueError, match="Unknown LLM model"):
+            cfg.get_llm_model("__nope__")
+
+    def test_get_sku_pricing_hit_narrowing_unknown(self) -> None:
+        assert cfg.get_sku_pricing("kimi-k2.6") is cfg.LLM_MODEL_CONFIG["kimi-k2.6"]["pricing"]["kimi-k2.6"]
+        assert cfg.get_sku_pricing("kimi-k2.6", "kimi")["cpm_input"] == 0.95
+        with pytest.raises(ValueError, match="Unknown SKU"):
+            cfg.get_sku_pricing("kimi-k2.6", "openrouter")
+        with pytest.raises(ValueError, match="Unknown SKU"):
+            cfg.get_sku_pricing("__no_sku__")
+
+    def test_get_sku_pricing_ambiguous_raises_unless_server_given(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        row = {"model_label": "dup", "cpm_input": 9.0, "cpm_output": 9.0, "cpm_cache_read": 0.0,
+               "cpm_cache_write": 0.0, "cache_min_tokens": 0}
+        monkeypatch.setitem(cfg.LLM_MODEL_CONFIG, "__dup__", {"server": "openrouter", "pricing": {"kimi-k2.6": row}})
+        with pytest.raises(ValueError, match="more than one server"):
+            cfg.get_sku_pricing("kimi-k2.6")
+        assert cfg.get_sku_pricing("kimi-k2.6", "openrouter") is row
+
+    def test_shipped_catalog_passes_startup_validation(self) -> None:
+        assert cfg.validate_llm_provider_environment() is None
+
+    @pytest.mark.parametrize(
+        ("patch", "match"),
+        [
+            ({"protocol": "grpc"}, "protocol 'grpc' not in"),
+            ({"auth": "cookie"}, "auth 'cookie' not in"),
+            ({"protocol": "anthropic_compat", "base_url": None}, "anthropic_compat requires base_url"),
+        ],
+    )
+    def test_startup_rejects_bad_server_entry(self, monkeypatch: pytest.MonkeyPatch, patch: dict, match: str) -> None:
+        monkeypatch.setitem(cfg.LLM_SERVER_CONFIG, "__bad__", {**cfg.LLM_SERVER_CONFIG["kimi"], **patch})
+        with pytest.raises(ValueError, match=match):
+            cfg.validate_llm_provider_environment()
+
+    def test_startup_rejects_model_on_unknown_server(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setitem(cfg.LLM_MODEL_CONFIG, "__bad__", {**cfg.LLM_MODEL_CONFIG["kimi-k2.6"], "server": "__nope__"})
+        with pytest.raises(ValueError, match="Unknown LLM server '__nope__'"):
+            cfg.validate_llm_provider_environment()
+
+    def test_startup_rejects_unpriced_sku(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setitem(cfg.LLM_MODEL_CONFIG, "__bad__", {**cfg.LLM_MODEL_CONFIG["kimi-k2.6"], "pricing": {}})
+        with pytest.raises(ValueError, match="SKU 'kimi-k2.6' has no pricing row"):
+            cfg.validate_llm_provider_environment()
+
+
+class TestAst1959ServerProbeFlag:
+    """AST-1959: `probe` bool on every LLM_SERVER_CONFIG entry (OpenRouter only), probe message constant,
+    startup check. Branches: validator probe bool → pass; missing / non-bool → raise.
+    """
+
+    def test_probe_flag_is_bool_everywhere_and_true_on_openrouter_only(self) -> None:
+        assert all(isinstance(s["probe"], bool) for s in cfg.LLM_SERVER_CONFIG.values())
+        assert {sid for sid, s in cfg.LLM_SERVER_CONFIG.items() if s["probe"]} == {"openrouter"}
+
+    def test_probe_message_constant(self) -> None:
+        assert cfg.LLM_PROBE_MESSAGE == "Respond with 1."
+
+    @pytest.mark.parametrize("probe", [None, "yes", 1, "__missing__"])
+    def test_startup_rejects_missing_or_non_bool_probe(self, monkeypatch: pytest.MonkeyPatch, probe: object) -> None:
+        bad = {**cfg.LLM_SERVER_CONFIG["kimi"], "probe": probe}
+        if probe == "__missing__":
+            del bad["probe"]
+        monkeypatch.setitem(cfg.LLM_SERVER_CONFIG, "__bad__", bad)
+        with pytest.raises(ValueError, match="'__bad__': probe must be True or False"):
+            cfg.validate_llm_provider_environment()
+
+
+class TestAst2010OpenRouterRetryConfig:
+    """AST-2010: OpenRouter retry-only block (no cap / ceiling) with the batch-stop opt-in;
+    DeepSeek block unchanged and not opted in; PROVIDER_RATE_LIMIT registry."""
+
+    def test_openrouter_retry_block(self) -> None:
+        assert cfg.LLM_SERVER_CONFIG["openrouter"]["concurrency"] == {
+            "rate_limit_retries": 5, "backoff_base_seconds": 10.0, "exhausted_stops_batch": True,
+        }
+
+    def test_deepseek_block_unchanged_and_not_opted_in(self) -> None:
+        assert cfg.LLM_SERVER_CONFIG["deepseek"]["concurrency"] == {
+            "max_concurrent": 20, "rate_limit_retries": 4, "backoff_base_seconds": 2.0, "backoff_max_seconds": 30.0,
+        }
+        # only OpenRouter stops the batch on an exhausted 429
+        assert {
+            sid for sid, s in cfg.LLM_SERVER_CONFIG.items() if (s["concurrency"] or {}).get("exhausted_stops_batch")
+        } == {"openrouter"}
+
+    def test_provider_rate_limit_registry(self) -> None:
+        assert cfg.PROVIDER_RATE_LIMIT == {
+            "failure_class": "provider_rate_limit",
+            "http_status_codes": (429,),
+            "message_substrings": ("error code: 429", "rate_limit_error"),
+        }
+
+
+def _ast1946_brief() -> dict[str, tuple[str, str, float, float, float]]:
+    """slug → (PROVIDER, QUANT, IN, OUT, CACHE) from Susan's verbatim AST-1946 brief (fixture, not config)."""
+    from pathlib import Path
+
+    rows = (Path(__file__).parent / "fixtures" / "ast1946_openrouter_brief.txt").read_text().splitlines()[1:]
+    out = {}
+    for line in rows:
+        # PROVIDER may hold a space ("Mancer 2"), so peel QUANT + the five numeric columns off the right.
+        slug, *mid = line.split()
+        out[slug] = (" ".join(mid[:-6]), mid[-6], *map(float, mid[-5:-2]))
+    return out
+
+
+class TestAst1938OpenRouterShortlist:
+    """AST-1938: startup check added with the OpenRouter table. Catalog content (table, pricing) is
+    AST-1947's, per-SKU shape and count AST-1955's. AST-1955 retired the per-tier request_extras check
+    (no tier rows, no host pin).
+
+    Branches: same-server ambiguous SKU raise.
+    """
+
+    def test_startup_rejects_same_server_ambiguous_sku(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        dup = {**cfg.LLM_MODEL_CONFIG["qwen/qwen3-32b"]}
+        monkeypatch.setitem(cfg.LLM_MODEL_CONFIG, "__dup__", dup)
+        with pytest.raises(ValueError, match="'qwen/qwen3-32b' is priced on more than one server"):
+            cfg.validate_llm_provider_environment()
+
+
+class TestAst1947CatalogByQuantization:
+    """AST-1947: OpenRouter catalog = AST-1946 brief (95 slugs) with brief pricing. AST-1955 retired the
+    quantization → brain size map, the host pin, can_think and the mode resolver (TestAst1955PlainAgentSettings).
+    """
+
+    BRIEF = _ast1946_brief()
+
+    def test_brief_fixture_has_95_slugs(self) -> None:
+        assert len(self.BRIEF) == 95
+
+    def test_openrouter_catalog_equals_brief(self) -> None:
+        # AC 1 — both set differences empty.
+        or_ids = {k for k, m in cfg.LLM_MODEL_CONFIG.items() if m["server"] == "openrouter"}
+        assert or_ids - set(self.BRIEF) == set()
+        assert set(self.BRIEF) - or_ids == set()
+
+    def test_pricing_matches_brief(self) -> None:
+        # AC 3
+        bad = []
+        for slug, (_p, _q, cpm_in, cpm_out, cpm_cache) in self.BRIEF.items():
+            p = cfg.get_sku_pricing(slug, "openrouter")
+            got = (p["cpm_input"], p["cpm_output"], p["cpm_cache_read"], p["cpm_cache_write"])
+            if got != (cpm_in, cpm_out, cpm_cache, 0):
+                bad.append((slug, got))
+        assert bad == []
+
+
+# AST-1955 seed starting values (parent Functional scope 8, plan Stage 3 table), kept literal:
+# agent_id → (model_id, max_tokens, temperature, reasoning_effort).
+# AST-2232: display names for Discussion headers (both Estelle ids share Estelle).
+_AST2232_AGENT_NAMES = {
+    "job_analyst_grace": "Grace",
+    "ats_expert_atlas": "Atlas",
+    "content_writer_judith": "Judith",
+    "web_scraper_laslo": "Laslo",
+    "principal_recruiter_estelle": "Estelle",
+    "college_intern_ruth": "Ruth",
+    "contact_recruiter_estelle": "Estelle",
+    "antagonist_kent": "Kent",
+    "fact_checker_marta": "Marta",
+    "job_filter_lucy": "Lucy",
+}
+_AST1955_SETTINGS = (
+    "quantization", "temperature", "reasoning_effort", "provider_allow_fallbacks",
+    "provider_only", "provider_ignore", "provider_sort",
+)
+# AST-2181 adds requires_structured_output; AST-2232 inserts agent_name after agent_id.
+_AST2232_AGENT_REPO_COLUMNS = (
+    "agent_id", "agent_name", "content", "model_id", "max_tokens",
+    *_AST1955_SETTINGS, "requires_structured_output", "updated_at",
+)
+
+
+class TestAst1955PlainAgentSettings:
+    """AST-1955: per-SKU direct models, slim OpenRouter table, resolve_agent_settings, agent repo-JSON columns + seed.
+
+    Branches (resolve_agent_settings): OpenRouter vs direct (provider object vs None); each provider key set /
+    empty (omitted); every provider key empty → None; temperature / effort passed through as stored (0.0 kept,
+    "" → None). _build_openrouter_models default = min(16000, max output) on both sides of the cap.
+    """
+
+    def test_direct_models_one_id_per_sku(self) -> None:
+        # AC 6 — id → (label, server, sku, max_tokens_floor, default_max_tokens); pricing rows unchanged (AST-1947 pins).
+        want = {
+            "kimi-k2.6": ("Kimi K2.6", "kimi", "kimi-k2.6", None, 16000),
+            "claude-haiku-4-5": ("Claude Haiku 4.5", "anthropic", "claude-haiku-4-5", None, 8192),
+            "claude-sonnet-4-6": ("Claude Sonnet 4.6", "anthropic", "claude-sonnet-4-6", None, 16000),
+            "claude-opus-4-6": ("Claude Opus 4.6", "anthropic", "claude-opus-4-6", None, 16000),
+            "deepseek-v4-flash": ("DeepSeek V4 Flash", "deepseek", "deepseek-v4-flash", None, 8192),
+            "deepseek-v4-pro": ("DeepSeek V4 Pro", "deepseek", "deepseek-v4-pro", None, 16000),
+        }
+        pricing = {
+            "claude-haiku-4-5": ("Haiku", 1.0, 5.0, 0.1, 1.25, 4096),
+            "claude-sonnet-4-6": ("Sonnet", 3.0, 15.0, 0.3, 3.75, 2048),
+            "claude-opus-4-6": ("Opus", 5.0, 25.0, 0.5, 6.25, 4096),
+            "kimi-k2.6": ("Kimi K2.6", 0.95, 4.0, 0.16, 0.0, 0),
+            "deepseek-v4-flash": ("DeepSeek V4 Flash", 0.14, 0.28, 0.0028, 0.0, 0),
+            "deepseek-v4-pro": ("DeepSeek V4 Pro", 0.435, 0.87, 3.625, 0.0, 0),
+        }
+        fields = ("model_label", "cpm_input", "cpm_output", "cpm_cache_read", "cpm_cache_write", "cache_min_tokens")
+        direct = {k: m for k, m in cfg.LLM_MODEL_CONFIG.items() if m["server"] != "openrouter"}
+        # dict order = picker order.
+        assert list(direct) == list(want)
+        for mid, m in direct.items():
+            assert (m["label"], m["server"], m["sku"], m["max_tokens_floor"], m["default_max_tokens"]) == want[mid]
+            assert {k: tuple(v[f] for f in fields) for k, v in m["pricing"].items()} == {mid: pricing[mid]}
+        assert "claude" not in cfg.LLM_MODEL_CONFIG and "deepseek-v4" not in cfg.LLM_MODEL_CONFIG
+        assert len(cfg.LLM_MODEL_CONFIG) == 101
+        assert cfg.validate_llm_provider_environment() is None
+
+    def test_no_model_carries_brain_layer_or_thinking_fields(self) -> None:
+        # Scope § Modified direct models / OpenRouter builder: brain_sizes, can_think, thinking_params gone everywhere.
+        retired = ("brain_sizes", "can_think", "thinking_params", "max_output_tokens")
+        assert [(mid, k) for mid, m in cfg.LLM_MODEL_CONFIG.items() for k in retired if k in m] == []
+
+    def test_retired_symbols_absent(self) -> None:
+        # AC 5 (config half — the full src/ rg closes on ftr after AST-1956 / AST-1957).
+        for name in (
+            "AGENT_MODE_CONFIG", "AGENT_MODE_DETERMINISTIC", "AGENT_MODE_CREATIVE", "AGENT_MODES",
+            "validate_agent_mode", "OPENROUTER_QUANT_BRAIN_SIZE", "OPENROUTER_THINKING_PARAMS", "_openrouter_pin",
+            "resolve_model_brain", "model_brain_sizes", "validate_brain_setting_for_model",
+            "BRAIN_LITTLE", "BRAIN_MEDIUM", "BRAIN_BIG", "BRAIN_SETTINGS", "LLM_PROVIDER_CONFIG",
+            "validate_allowed_brain_setting", "resolve_brain_setting_to_anthropic_agent_key",
+            "anthropic_agent_key_for_brain_setting",
+        ):
+            assert not hasattr(cfg, name), name
+
+    def test_openrouter_table_keeps_price_and_max_output_only(self) -> None:
+        # Host slug / quantization / reasoning columns gone: (cpm_in, cpm_out, cpm_cache, max_out).
+        assert len(cfg.OPENROUTER_MODEL_TABLE) == 95
+        assert {len(row) for row in cfg.OPENROUTER_MODEL_TABLE.values()} == {4}
+        assert cfg.OPENROUTER_MODEL_TABLE["z-ai/glm-4.6"] == (0.43, 1.75, 0.08, 16384)
+
+    def test_default_output_budget(self) -> None:
+        # AC 7 — OpenRouter default = min(16000, max output) for every slug; direct = the SKU's existing default.
+        assert cfg.OPENROUTER_DEFAULT_MAX_TOKENS == 16000
+        bad = [s for s, row in cfg.OPENROUTER_MODEL_TABLE.items()
+               if cfg.LLM_MODEL_CONFIG[s]["default_max_tokens"] != min(16000, row[3])]
+        assert bad == []
+        out = lambda mid: cfg.resolve_agent_settings(mid, {"max_tokens": None})["tier"]["default_max_tokens"]  # noqa: E731
+        assert out("gryphe/mythomax-l2-13b") == 3686
+        assert out("qwen/qwen3.5-27b") == 16000
+        assert out("claude-sonnet-4-6") == cfg.AGENT_CONFIG["claude-sonnet-4-6"]["default_max_tokens"] == 16000
+
+    def test_resolver_shape_direct_model(self) -> None:
+        # Same top-level keys as the retired resolve_model_brain; direct servers get no provider object.
+        out = cfg.resolve_agent_settings("claude-sonnet-4-6", {"temperature": 0.3, "reasoning_effort": "high"})
+        assert out == {
+            "model_id": "claude-sonnet-4-6",
+            "server_id": "anthropic",
+            "server": cfg.LLM_SERVER_CONFIG["anthropic"],
+            "sku": "claude-sonnet-4-6",
+            "tier": {
+                "sku": "claude-sonnet-4-6",
+                "max_tokens_floor": None,
+                "default_max_tokens": 16000,
+                "temperature": 0.3,
+                "reasoning_effort": "high",
+                "provider": None,
+            },
+            "pricing": cfg.AGENT_CONFIG["claude-sonnet-4-6"],
+        }
+
+    @pytest.mark.parametrize(
+        ("agent", "want"),
+        [
+            # AC 1 (catalog half) — quantization + fallbacks only; no order pin.
+            ({"quantization": "bf16", "provider_allow_fallbacks": True},
+             {"quantizations": ["bf16"], "allow_fallbacks": True}),
+            ({"quantization": "bf16", "provider_allow_fallbacks": True, "provider_only": ["crusoe"], "provider_sort": "price"},
+             {"quantizations": ["bf16"], "allow_fallbacks": True, "only": ["crusoe"], "sort": "price"}),
+            # AC 2 (catalog half) — every setting empty except fallbacks.
+            ({"quantization": "", "provider_allow_fallbacks": True, "provider_only": [], "provider_ignore": None,
+              "provider_sort": None}, {"allow_fallbacks": True}),
+            ({"provider_allow_fallbacks": False, "provider_ignore": ["dekallm"]},
+             {"allow_fallbacks": False, "ignore": ["dekallm"]}),
+            # Nothing set at all → no provider object.
+            ({}, None),
+        ],
+    )
+    def test_resolver_provider_object_from_agent_row(self, agent: dict, want: dict | None) -> None:
+        assert cfg.resolve_agent_settings("openai/gpt-oss-120b", agent)["tier"]["provider"] == want
+
+    def test_resolver_passes_temperature_and_effort_as_stored(self) -> None:
+        # AC 3 (catalog half) — no gating: 0.0 is a value, "none" is passed through, a model whose old config
+        # said it couldn't think (microsoft/phi-4) still carries "high"; empty → None.
+        tier = lambda mid, a: cfg.resolve_agent_settings(mid, a)["tier"]  # noqa: E731
+        assert tier("openai/gpt-oss-120b", {"temperature": 0.0})["temperature"] == 0.0
+        assert tier("z-ai/glm-4.6", {"reasoning_effort": "none"})["reasoning_effort"] == "none"
+        assert tier("microsoft/phi-4", {"reasoning_effort": "high"})["reasoning_effort"] == "high"
+        empty = tier("microsoft/phi-4", {"temperature": None, "reasoning_effort": ""})
+        assert (empty["temperature"], empty["reasoning_effort"]) == (None, None)
+        with pytest.raises(ValueError, match="Unknown LLM model 'claude'"):
+            cfg.resolve_agent_settings("claude", {})
+
+    def test_agent_repo_json_columns_and_seed(self) -> None:
+        # AC 8 (config + seed + fixture). Revert-from-seed runs in tests/component/data/database/test_agents.py.
+        # AST-2232: agent_name column + non-empty seed names; AST-2181: requires_structured_output in columns.
+        import json
+        from pathlib import Path
+
+        cols = cfg.REPO_ADMIN_JSON_CONFIG["tables"]["agent"]["columns"]
+        assert cols == _AST2232_AGENT_REPO_COLUMNS
+        root = Path(__file__).resolve().parents[3]
+        seed = json.loads((root / "data/admin/agent.json").read_text())
+        assert [tuple(r) for r in seed] == [cols] * len(seed)
+        assert {r["agent_id"]: r["agent_name"] for r in seed} == _AST2232_AGENT_NAMES
+        assert all((r["agent_name"] or "").strip() for r in seed)
+        assert not any("brain_setting" in r or "mode" in r for r in seed)
+        # Fixture: same settings fields, same Functional scope 8 rule (Claude SKUs couldn't think) — plan Stage 3
+        # step 2 meaning of "field-for-field"; it keeps its 6 rows, model_code and stale content (AST-1947 precedent).
+        fixture = json.loads((root / "docs/uat-fixtures/AST-756/expected-agent.json").read_text())
+        assert [r for r in fixture if "brain_setting" in r or "mode" in r or not set(_AST1955_SETTINGS) <= set(r)] == []
+        assert {r["agent_id"]: r["temperature"] for r in fixture} == {
+            "job_analyst_grace": 0.2, "ats_expert_atlas": 0.6, "content_writer_judith": 0.6,
+            "web_scraper_laslo": 0.2, "principal_recruiter_estelle": 0.6, "college_intern_ruth": 0.2,
+        }
+        assert {(r["quantization"], r["reasoning_effort"], r["provider_allow_fallbacks"], r["provider_only"],
+                 r["provider_ignore"], r["provider_sort"]) for r in fixture} == {(None, None, True, None, None, None)}
+
+
+class TestAst1964ModelRouting:
+    """AST-1964: `routing` (direct / openrouter) on every LLM_MODEL_CONFIG entry is the source of truth for
+    "this call went through OpenRouter"; get_model_routing for a timesheet row's (server, SKU); reconcile constants.
+
+    Branches: validator routing allowed → pass; missing / None / off-vocabulary → raise. resolve_agent_settings
+    provider object keyed on routing, not server (both mismatched directions). get_model_routing hit / unknown.
+    """
+
+    DIRECT = ["kimi-k2.6", "claude-haiku-4-5", "claude-sonnet-4-6", "claude-opus-4-6", "deepseek-v4-flash", "deepseek-v4-pro"]
+
+    def test_routing_values_per_model(self) -> None:
+        # AC 1 — table-built entries are openrouter, the six hand-written entries direct, nothing else.
+        assert cfg.LLM_MODEL_ROUTING_TYPES == ("direct", "openrouter")
+        assert [s for s in cfg.OPENROUTER_MODEL_TABLE if cfg.LLM_MODEL_CONFIG[s]["routing"] != "openrouter"] == []
+        assert [k for k, m in cfg.LLM_MODEL_CONFIG.items() if m["routing"] == "direct"] == self.DIRECT
+        assert {m["routing"] for m in cfg.LLM_MODEL_CONFIG.values()} == set(cfg.LLM_MODEL_ROUTING_TYPES)
+
+    @pytest.mark.parametrize("routing", ["__missing__", None, "", "proxy", "OpenRouter"])
+    def test_startup_rejects_missing_or_unknown_routing(self, monkeypatch: pytest.MonkeyPatch, routing: object) -> None:
+        # AC 1 — missing key raises the routing ValueError (not KeyError); case matters. Own SKU so the real
+        # kimi-k2.6 entry earlier in the loop doesn't trip the ambiguous-SKU check first.
+        row = cfg.LLM_MODEL_CONFIG["kimi-k2.6"]["pricing"]["kimi-k2.6"]
+        bad = {**cfg.LLM_MODEL_CONFIG["kimi-k2.6"], "sku": "__bad_sku__", "pricing": {"__bad_sku__": row}, "routing": routing}
+        if routing == "__missing__":
+            del bad["routing"]
+        monkeypatch.setitem(cfg.LLM_MODEL_CONFIG, "__bad__", bad)
+        with pytest.raises(ValueError, match=r"LLM model '__bad__': routing .* not in \('direct', 'openrouter'\)"):
+            cfg.validate_llm_provider_environment()
+
+    def test_resolver_provider_object_follows_routing_not_server(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # AC 1 — the provider object is keyed on routing: an openrouter-server model routed direct gets none,
+        # a non-openrouter server routed openrouter gets one.
+        agent = {"quantization": "bf16", "provider_allow_fallbacks": True}
+        monkeypatch.setitem(cfg.LLM_MODEL_CONFIG, "__or_direct__", {**cfg.LLM_MODEL_CONFIG["openai/gpt-oss-120b"], "routing": "direct"})
+        monkeypatch.setitem(cfg.LLM_MODEL_CONFIG, "__kimi_or__", {**cfg.LLM_MODEL_CONFIG["kimi-k2.6"], "routing": "openrouter"})
+        assert cfg.resolve_agent_settings("__or_direct__", agent)["tier"]["provider"] is None
+        assert cfg.resolve_agent_settings("__kimi_or__", agent)["tier"]["provider"] == {"quantizations": ["bf16"], "allow_fallbacks": True}
+        # Shipped models: same answer as before the switch.
+        assert cfg.resolve_agent_settings("openai/gpt-oss-120b", agent)["tier"]["provider"] == {"quantizations": ["bf16"], "allow_fallbacks": True}
+        assert cfg.resolve_agent_settings("kimi-k2.6", agent)["tier"]["provider"] is None
+
+    def test_get_model_routing_hit_and_unknown(self) -> None:
+        assert cfg.get_model_routing("openrouter", "z-ai/glm-4.7") == "openrouter"
+        assert cfg.get_model_routing("deepseek", "deepseek-v4-pro") == "direct"
+        assert cfg.get_model_routing("anthropic", "claude-sonnet-4-6") == "direct"
+        assert cfg.get_model_routing("kimi", "kimi-k2.6") == "direct"
+        # Both values must match one model: a real SKU on the wrong server is unknown.
+        with pytest.raises(ValueError, match="No LLM model for server 'kimi' and SKU 'z-ai/glm-4.7'"):
+            cfg.get_model_routing("kimi", "z-ai/glm-4.7")
+        with pytest.raises(ValueError, match="No LLM model for server 'openrouter' and SKU 'kimi-k2.6'"):
+            cfg.get_model_routing("openrouter", "kimi-k2.6")
+        with pytest.raises(ValueError, match="No LLM model"):
+            cfg.get_model_routing("__nope__", "__nope__")
+
+    def test_reconcile_retry_constants(self) -> None:
+        # AC 3 — 5 total tries; base wait 2 s (doubling is the reconcile's, AST-1966).
+        assert cfg.TIMESHEET_RECONCILE_RETRIES == 5
+        assert cfg.TIMESHEET_RECONCILE_BACKOFF_BASE_SECONDS == 2
+
+    def test_reconcile_ships_disabled(self) -> None:
+        # AST-2008: platform-cost reconcile off pending a new epic (AST-2007); rows keep catalog cost.
+        assert cfg.TIMESHEET_RECONCILE_ENABLED is False
+
+
+# AST-1974 · AST-1970: Jobs nav re-cut — six lists, four explicit + Processing complement.
+class TestAst1974JobsListPartition:
+    """AC 1 nav shape, AC 5 Skipped build-failure states, AC 7 disjoint lists + derived priors."""
+
+    def test_nav_jobs_items_exact(self) -> None:
+        # AST-2230: Job Opportunities labels/order; Processing / New List dropped from sidebar.
+        jobs = next(g for g in cfg.NAV_CONFIG if g.get("label") == "Job Opportunities")
+        assert [(it["label"], it["path"]) for it in jobs["items"]] == [
+            ("Meteorites", "/jobs/meteorites"),
+            ("Recommendations", "/jobs/review"),
+            ("Ready to Apply", "/jobs/ready"),
+            ("Submitted Applications", "/jobs/applied"),
+            ("Skipped", "/jobs/skipped"),
+        ]
+
+    def test_ready_review_lists_and_retired_constants(self) -> None:
+        assert cfg.READY_JOB_STATES == ["CANDIDATE_REVIEW"]
+        assert cfg.REVIEW_JOB_STATES == ["RECOMMENDED"]
+        # AC 7 — no hand-typed Processing / legacy In Review registry survives.
+        for gone in ("IN_REVIEW_STATES", "RECOMMENDED_JOB_STATES", "JOBS_IN_REVIEW_UI_SECTIONS",
+                     "JOBS_RECOMMENDED_METEORITE_SECTION"):
+            assert not hasattr(cfg, gone), gone
+
+    def test_skipped_gains_build_failure_states(self) -> None:
+        # AC 5 — terminal build failures live on Skipped with labels + only-legal-successor retry.
+        # AST-2086: ERROR_BUILD_ARTIFACTS split per chain hop (same label + retry); dead BUILD_FAILED deleted.
+        chain = list(cfg.BUILD_ARTIFACTS_CHAIN_ERROR_STATES)
+        assert len(chain) == 10
+        for s in chain:
+            assert s in cfg.SKIPPED_STATES, s
+            assert cfg.JOBS_SKIPPED_SECTION_LABELS[s] == "Error Build Artifacts", s
+            assert cfg.JOBS_SKIPPED_BULK_RETRY_TO_STATE[s] == "RECOMMENDED", s
+        assert cfg.JOBS_SKIPPED_SECTION_ORDER[:10] == chain
+        for gone in ("ERROR_BUILD_ARTIFACTS", "BUILD_FAILED"):
+            assert gone not in cfg.SKIPPED_STATES, gone
+            assert gone not in cfg.JOBS_SKIPPED_SECTION_ORDER, gone
+            assert gone not in cfg.JOBS_SKIPPED_SECTION_LABELS, gone
+            assert gone not in cfg.JOBS_SKIPPED_BULK_RETRY_TO_STATE, gone
+
+    def test_excluded_list_is_disjoint_concatenation(self) -> None:
+        # AC 6 / AC 7 — Processing exclusion is derived from the four explicit lists, no overlap.
+        assert cfg.JOBS_PROCESSING_EXCLUDED_STATES == [
+            *cfg.READY_JOB_STATES, *cfg.REVIEW_JOB_STATES, *cfg.APPLIED_JOB_STATES, *cfg.SKIPPED_STATES,
+        ]
+        assert len(set(cfg.JOBS_PROCESSING_EXCLUDED_STATES)) == len(cfg.JOBS_PROCESSING_EXCLUDED_STATES)
+
+    def test_overlap_raises_at_import(self) -> None:
+        # AC 7 — re-exec config source with CANDIDATE_REVIEW also on Skipped; the guard must fire.
+        import re
+        import types
+        from pathlib import Path
+
+        src = Path(cfg.__file__).read_text()
+        probe, n = re.subn(r"(?m)^SKIPPED_STATES = \[", 'SKIPPED_STATES = [\n    "CANDIDATE_REVIEW",', src, count=1)
+        assert n == 1
+        mod = types.ModuleType("cfg_ast1974_overlap_probe")
+        mod.__file__ = cfg.__file__  # config resolves repo paths from __file__ at import
+        # Fake filename keeps coverage from attributing probe lines to config.py.
+        with pytest.raises(AssertionError, match="Jobs lists overlap"):
+            exec(compile(probe, "<ast1974-overlap-probe>", "exec"), mod.__dict__)
+
+    def test_candidate_skipped_priors_derived(self) -> None:
+        # AC 7 / AC 8 — skip legal from every state outside Applied + Skipped; derived, not literal.
+        priors = cfg.JOB_STATES["CANDIDATE_SKIPPED"]["prior_states"]
+        assert priors == [
+            s for s in cfg.JOB_STATES if s not in cfg.APPLIED_JOB_STATES and s not in cfg.SKIPPED_STATES
+        ]
+        for s in ("NEW", "PASSED_JD", "METEORITE_QUALIFIED", cfg.BUILD_ARTIFACTS_BASE_STATE,
+                  "CANDIDATE_REVIEW", "RECOMMENDED"):
+            assert s in priors, s
+        for s in ("CANDIDATE_APPLIED", *cfg.BUILD_ARTIFACTS_CHAIN_ERROR_STATES, "CANDIDATE_SKIPPED"):
+            assert s not in priors, s
+
+    def test_processing_sections_end_with_build_and_avoid_explicit_lists(self) -> None:
+        assert cfg.JOBS_PROCESSING_UI_SECTIONS[-1] == {
+            "state": cfg.BUILD_ARTIFACTS_BASE_STATE, "label": "Building Artifacts",
+        }
+        assert not [r for r in cfg.JOBS_PROCESSING_UI_SECTIONS if r["state"] in cfg.JOBS_PROCESSING_EXCLUDED_STATES]
+
+    def test_manifest_jobs_block_contract(self) -> None:
+        # Sibling contract (AST-1975 / AST-1976): processing_sections rename, recommended reshape.
+        jobs = cfg.build_state_ui_manifest()["jobs"]
+        assert "in_review_sections" not in jobs
+        assert jobs["processing_sections"] == list(cfg.JOBS_PROCESSING_UI_SECTIONS)
+        rec = jobs["recommended"]
+        assert rec["sections"] == [
+            {"state": "RECOMMENDED", "label": "Review"},
+            {"state": "CANDIDATE_REVIEW", "label": "Ready"},
+        ]
+        assert "meteorite_section" not in rec
+        # Report modal still offers Cancel on a running build.
+        assert rec["primary_actions_by_state"][cfg.BUILD_ARTIFACTS_BASE_STATE][0]["action_key"] == "cancel_build"
+        sk = jobs["skipped"]
+        chain = list(cfg.BUILD_ARTIFACTS_CHAIN_ERROR_STATES)
+        assert sk["section_order"][:10] == chain
+        assert "BUILD_FAILED" not in sk["section_labels"]
+        for s in chain:
+            assert sk["section_labels"][s] == "Error Build Artifacts", s
+            assert sk["bulk_retry_to_state_by_from_state"][s] == "RECOMMENDED", s
+
+    def test_meteorites_columns_gain_job_state_after_job(self) -> None:
+        keys = [c["key"] for c in cfg.JOBS_METEORITES_LIST_COLUMNS]
+        assert keys[keys.index("astral_job_id") + 1] == "job_state"
+        col = next(c for c in cfg.JOBS_METEORITES_LIST_COLUMNS if c["key"] == "job_state")
+        assert col == {"key": "job_state", "label": "Job State", "sortable": True}
+
+    def test_meteorites_columns_gain_created_before_state_changed_ast1980(self) -> None:
+        # AST-1980 AC 7: sortable datetime Created (landed job's created_at) immediately left of State Changed.
+        keys = [c["key"] for c in cfg.JOBS_METEORITES_LIST_COLUMNS]
+        assert keys[keys.index("state_changed_at") - 1] == "job_created_at"
+        col = next(c for c in cfg.JOBS_METEORITES_LIST_COLUMNS if c["key"] == "job_created_at")
+        assert col == {"key": "job_created_at", "label": "Created", "sortable": True, "type": "datetime"}
+
+
+# AST-2004 · AST-1998: company BOT_BLOCK → BOT_BLOCKED (terminal) + PJL_READY → BOT_BLOCKED transition.
+# AST-2086: the select-side company bot state is now BOT_BLOCKED_SELECT_JOB_PAGE.
+class TestAst2004CompanyBotBlocked:
+    def test_rename_complete_and_terminal(self) -> None:
+        assert "BOT_BLOCKED_SELECT_JOB_PAGE" in cfg.COMPANY_STATES
+        assert "BOT_BLOCKED" not in cfg.COMPANY_STATES and "BOT_BLOCK" not in cfg.COMPANY_STATES
+        assert cfg.COMPANY_STATES["BOT_BLOCKED_SELECT_JOB_PAGE"] == {}
+
+    def test_transitions_renamed_and_pjl_ready_added(self) -> None:
+        transitions = cfg.ASTRAL_CONFIG["company_state_transitions"]
+        assert not [t for t in transitions if "BOT_BLOCK" in t and not any(
+            x.startswith("BOT_BLOCKED_") for x in t if "BOT_BLOCK" in x)]
+        for src in ("TO_WATCH", "JOBS_FOUND", "PREFILTER_PASSED", "PJL_READY"):
+            assert (src, "BOT_BLOCKED_SELECT_JOB_PAGE") in transitions, src
+
+
+# AST-2024 · AST-2022: RELATIVE_JOB_LINK / ERROR_FETCH_RELATIVE_JD_CLICK registry + fetch_relative_jd wiring.
+# Branches: AC1 registry (exact priors, no VALID_TITLE); skipped list / order / label / bulk retry +
+# manifest; processing section + manifest order; GAZER_CONFIG block; dispatch trigger / entity rules;
+# qualify relative_link_state; no score floor on RELATIVE_JOB_LINK (plan decision).
+class TestAst2024RelativeJobLinkRegistry:
+    # AST-2086: bare BOT_BLOCKED / JD_SCRAPE_FAIL / _COOKIE split per fetch task (both carry the prior).
+    _JD_OUTCOMES = ("JD_READY", "BOT_BLOCKED_FETCH_JD", "BOT_BLOCKED_FETCH_RELATIVE_JD",
+                    "ERROR_FETCH_JD_UNREADABLE", "ERROR_FETCH_RELATIVE_JD_UNREADABLE",
+                    "ERROR_FETCH_JD_COOKIE", "ERROR_FETCH_RELATIVE_JD_COOKIE",
+                    "JD_SCRAPE_FAIL_MISSING", "JD_SCRAPE_FAIL_CLOSED")
+
+    def test_ac1_registry(self) -> None:
+        j = cfg.JOB_STATES
+        assert set(j["RELATIVE_JOB_LINK"]["prior_states"]) == {"NEW", "ERROR_FETCH_RELATIVE_JD_CLICK"}
+        assert j["ERROR_FETCH_RELATIVE_JD_CLICK"]["prior_states"] == ["RELATIVE_JOB_LINK"]
+        for s in ("RELATIVE_JOB_LINK", "ERROR_FETCH_RELATIVE_JD_CLICK"):
+            assert "VALID_TITLE" not in j[s]["prior_states"], s
+        for s in self._JD_OUTCOMES:
+            assert "RELATIVE_JOB_LINK" in j[s]["prior_states"], s
+        # NEW_RETRY reaches RELATIVE_JOB_LINK through its base (not declared).
+        assert "NEW_RETRY" in cfg.state_prior_states(j, "RELATIVE_JOB_LINK")
+
+    def test_relative_link_fail_skipped_with_bulk_retry(self) -> None:
+        assert "ERROR_FETCH_RELATIVE_JD_CLICK" in cfg.SKIPPED_STATES
+        assert "ERROR_FETCH_RELATIVE_JD_CLICK" in cfg.JOBS_SKIPPED_SECTION_ORDER
+        assert "RELATIVE_JOB_LINK" not in cfg.SKIPPED_STATES
+        assert cfg.JOBS_SKIPPED_BULK_RETRY_TO_STATE["ERROR_FETCH_RELATIVE_JD_CLICK"] == "RELATIVE_JOB_LINK"
+        sk = cfg.build_state_ui_manifest()["jobs"]["skipped"]
+        assert "ERROR_FETCH_RELATIVE_JD_CLICK" in sk["section_order"]
+        assert sk["section_labels"]["ERROR_FETCH_RELATIVE_JD_CLICK"] == "Relative Link Fail"
+        assert sk["bulk_retry_to_state_by_from_state"]["ERROR_FETCH_RELATIVE_JD_CLICK"] == "RELATIVE_JOB_LINK"
+
+    def test_relative_job_link_processing_section_after_passed_joblist(self) -> None:
+        ps = cfg.build_state_ui_manifest()["jobs"]["processing_sections"]
+        states = [p["state"] for p in ps]
+        i = states.index("RELATIVE_JOB_LINK")
+        assert ps[i] == {"state": "RELATIVE_JOB_LINK", "label": "Relative Job Link"}
+        assert states[i - 1] == "PASSED_JOBLIST" and states[i + 1] == "JD_READY"
+
+    def test_gazer_config_fetch_relative_jd(self) -> None:
+        g = cfg.GAZER_CONFIG["fetch_relative_jd"]
+        assert g["trigger_state"] == "RELATIVE_JOB_LINK"
+        assert g["pass_state"] == "JD_READY"
+        assert g["fail_state"] == "ERROR_FETCH_RELATIVE_JD_CLICK"
+        # AST-2086: click reached a page → this task's own unreadable + classified names (shared
+        # JD_SCRAPE_FAIL_CLOSED / _MISSING); fail_state is reserved for the click itself failing.
+        assert g["unreadable_state"] == "ERROR_FETCH_RELATIVE_JD_UNREADABLE"
+        assert g["classified_states"] == {
+            "cookie": "ERROR_FETCH_RELATIVE_JD_COOKIE",
+            "bot": "BOT_BLOCKED_FETCH_RELATIVE_JD",
+            "missing": "JD_SCRAPE_FAIL_MISSING",
+            "closed": "JD_SCRAPE_FAIL_CLOSED",
+        }
+        assert "error_states" not in g
+        assert isinstance(g["fallback_batch_size"], int) and g["fallback_batch_size"] > 0
+        # Every outcome state is legal from the trigger state.
+        for s in [g["pass_state"], g["fail_state"], g["unreadable_state"], *g["classified_states"].values()]:
+            assert "RELATIVE_JOB_LINK" in cfg.JOB_STATES[s]["prior_states"], s
+
+    def test_dispatch_rules_and_qualify_key(self) -> None:
+        assert cfg._dispatch_trigger_state_for_task_key("fetch_relative_jd") == "RELATIVE_JOB_LINK"
+        assert cfg._dispatch_entity_type_for_task_key("fetch_relative_jd") == "job"
+        assert cfg.TASK_CONFIG["qualify_job_listings"]["relative_link_state"] == "RELATIVE_JOB_LINK"
+        # Plan decision: relative_link_state is not a transition key → claim sorts by updated_at.
+        assert cfg.dispatch_claim_uses_score_floor("RELATIVE_JOB_LINK") is False
+        assert cfg._dispatch_sort_by_for("job", "RELATIVE_JOB_LINK") == "updated_at"
+
+
+class TestAst2047ThemeRegistry:
+    """AST-2047: UI_CONFIG theme registry drives the profile Theme select and App.css blocks.
+    AST-2122: the examples-only alternates, grade-color sets and Tools examples item are retired."""
+
+    def test_registry_ids_selectable_and_default(self) -> None:
+        themes = cfg.UI_CONFIG["themes"]
+        # AST-2129 AC1: the two Shapes twins join Dark/Light, all four profile-selectable; default unchanged.
+        ids = ["dark", "light", "shapes_light", "shapes_dark"]
+        assert list(themes) == ids
+        assert [tid for tid, t in themes.items() if t["profile_selectable"]] == ids
+        assert cfg.UI_CONFIG["default_theme"] == "dark"
+
+    def test_profile_theme_select_options_are_the_selectable_entries(self) -> None:
+        # AC2: one list of themes — options generated from the registry, not a second hard-coded list.
+        contact = next(
+            s for s in cfg.DATA_SHAPES["candidates"]["detail"]["profile"] if s["label"] == "Contact Information"
+        )
+        theme = next(f for f in contact["fields"] if f["key"] == "theme")
+        assert theme["type"] == "select"
+        assert theme["options"] == [
+            {"value": tid, "label": t["label"]} for tid, t in cfg.UI_CONFIG["themes"].items() if t["profile_selectable"]
+        ]
+        assert [o["label"] for o in theme["options"]] == ["Dark", "Light", "Shapes - Light", "Shapes - Dark"]
+
+    def test_tools_nav_admin_only_six_items(self) -> None:
+        # AST-2122 AC8: the examples item is gone; the other six Tools items stay, in order.
+        tools = next(g for g in cfg.NAV_CONFIG if g.get("label") == "Tools")
+        assert tools.get("admin_only") is True
+        assert [i["label"] for i in tools["items"]] == [
+            "Data Management", "Agent Ad Hoc", "Telescope", "Cost Reconciliation", "Resume Paste", "Cover Letter Paste",
+        ]
+
+    def test_no_grade_set_candidates_key(self) -> None:
+        # AST-2122 AC9: the examples-only grade-color candidates left UI_CONFIG with their page.
+        # Suffix match, not the literal key: AC8 requires the retired key name to be absent from tests/.
+        assert [k for k in cfg.UI_CONFIG if k.endswith("_grade_sets")] == []
+
+    def test_every_registry_id_has_an_app_css_block(self) -> None:
+        # Adding a palette = one registry entry + one [data-theme] selector on a token block (AST-2129: a Shapes
+        # twin rides its sibling's block); a missing selector would render unthemed. Block shape: test_AppCss.
+        from pathlib import Path
+
+        css = (Path(__file__).resolve().parents[3] / "src/ui/frontend/src/App.css").read_text()
+        for tid in cfg.UI_CONFIG["themes"]:
+            assert f'[data-theme="{tid}"]' in css, tid
+
+
+# AST-2069 (parent AST-2054): upshot states, transitions, dispatch registration, agent_task rows.
+# Registration only — runtime WATCH writes in roster.py move in AST-2070.
+class TestAst2069UpshotRegistration:
+    def test_states_registered(self) -> None:
+        # AC1
+        for s in ("GET_UPSHOT", "UPSHOT_READY", "ERROR_COMPANY_UPSHOT"):
+            assert s in cfg.COMPANY_STATES, s
+        assert cfg.COMPANY_STATES["UPSHOT_READY"]["retry_state"] == "UPSHOT_READY_RETRY"
+
+    def test_only_upshot_hop_enters_watch(self) -> None:
+        # AC2: every (X, "WATCH") pair starts from UPSHOT_READY or its retry
+        transitions = cfg.ASTRAL_CONFIG["company_state_transitions"]
+        into_watch = {src for src, dst in transitions if dst == "WATCH"}
+        assert into_watch == {"UPSHOT_READY", "UPSHOT_READY_RETRY"}
+        for pair in (("WATCH", "GET_UPSHOT"), ("GET_UPSHOT", "UPSHOT_READY"), ("UPSHOT_READY", "WATCH")):
+            assert pair in transitions, pair
+        assert cfg.ROSTER_CONFIG["locate_job_page"]["pass_states"] == ["GET_UPSHOT"]
+
+    def test_dispatch_registrable(self) -> None:
+        # AC4
+        from src.utils.config import (
+            _dispatch_entity_type_for_task_key,
+            _dispatch_trigger_state_for_task_key,
+        )
+
+        want = {"fetch_company_culture_pages": "GET_UPSHOT", "company_upshot": "UPSHOT_READY"}
+        for tk, trigger in want.items():
+            assert _dispatch_entity_type_for_task_key(tk) == "company", tk
+            assert _dispatch_trigger_state_for_task_key(tk) == trigger, tk
+
+    def test_agent_task_rows(self) -> None:
+        # AC3: Estelle upshot row with the 200-word cap; telescope row for the GET_UPSHOT fetch
+        from pathlib import Path
+
+        rows = json.loads((Path(__file__).resolve().parents[3] / "data/admin/agent_task.json").read_text())
+        by_key = {r["task_key"]: r for r in rows}
+        upshot = by_key["company_upshot"]
+        assert upshot["agent_id"] == "principal_recruiter_estelle"
+        assert "200 words" in upshot["cache_prompt"] + upshot["user_prompt"] + upshot["nocache_prompt"]
+        assert by_key["fetch_company_culture_pages"]["agent_id"] == "telescope"
+
+    def test_upshot_contract_carries_optional_company_name(self) -> None:
+        # AST-2088: optional item field (a missing name must not fail the batch) + prompt asks for it
+        from pathlib import Path
+
+        items = cfg.TASK_CONFIG["company_upshot"]["response_schema"]["companies"]["items_schema"]
+        assert items["company_name"] == {"type": "str", "required": False}
+        assert items["company_id"]["required"] is True and items["upshot"]["required"] is True
+        rows = json.loads((Path(__file__).resolve().parents[3] / "data/admin/agent_task.json").read_text())
+        prompt = {r["task_key"]: r for r in rows}["company_upshot"]["cache_prompt"]
+        assert '"company_name":' in prompt
+
+
+class TestAst2096AllXFailStates:
+    """AST-2096 [bug-repro]: second all-X strike lands {fail_state}_ALL_X — one explicit JOB_STATES row
+    per scored task's fail_state, priors copied from the base (so *_RETRY is admitted), listed Skipped."""
+
+    _ALL_X = (
+        "FAILED_DO_ALL_X", "FAILED_GET_ALL_X", "FAILED_LIKE_ALL_X",
+        "METEORITE_FAILED_DO_ALL_X", "METEORITE_FAILED_GET_ALL_X", "METEORITE_FAILED_LIKE_ALL_X",
+    )
+
+    def test_rows_registered_with_base_priors(self) -> None:
+        for state in self._ALL_X:
+            assert state in cfg.JOB_STATES, state
+            base = state.removesuffix("_ALL_X")
+            assert cfg.JOB_STATES[state]["prior_states"] == cfg.JOB_STATES[base]["prior_states"], state
+        # Second strike comes from the trigger's *_RETRY holding; first strike never lands here but is admitted.
+        priors = cfg.state_prior_states(cfg.JOB_STATES, "METEORITE_FAILED_DO_ALL_X")
+        assert "METEORITE_PASSED_JD_RETRY" in priors
+        assert "METEORITE_PASSED_JD" in priors
+
+    def test_helper_and_list_derive_from_scored_fail_states(self) -> None:
+        assert cfg.ALL_X_SUFFIX == "_ALL_X"
+        assert cfg.all_x_of("METEORITE_FAILED_DO") == "METEORITE_FAILED_DO_ALL_X"
+        scored = {tc["fail_state"] for tc in cfg.TASK_CONFIG.values() if tc.get("grading_mode") == "scored"}
+        assert sorted(cfg.ALL_X_FAIL_STATES) == sorted(self._ALL_X)
+        assert set(cfg.ALL_X_FAIL_STATES) == {cfg.all_x_of(b) for b in scored}
+        assert len(set(cfg.ALL_X_FAIL_STATES)) == len(cfg.ALL_X_FAIL_STATES)
+
+    def test_terminal_all_x_is_skipped_not_processing(self) -> None:
+        for state in self._ALL_X:
+            assert state in cfg.SKIPPED_STATES, state
+            assert state in cfg.JOBS_PROCESSING_EXCLUDED_STATES, state
+
+
+# Branches: none (config literals + import-time asserts). AST-2081: line format, per-format editor
+# metadata (label / description / font stack), Hidden flow label, job resume structure catalog key,
+# preview_thumbnail on the recommended-job artifact tabs.
+class TestAst2081FormatCatalogAndJobStructureKey:
+    def test_line_format_appended_and_details_cover_every_format(self) -> None:
+        # AC13: line joins the tuple; no existing format dropped.
+        assert cfg.RESUME_STRUCTURE_BODY_FORMATS[-1] == "line"
+        assert set(cfg.RESUME_STRUCTURE_BODY_FORMAT_DETAILS) == set(cfg.RESUME_STRUCTURE_BODY_FORMATS)
+        fonts = cfg.BUILD_CONFIG["default_style"]["fonts"]
+        for fmt, d in cfg.RESUME_STRUCTURE_BODY_FORMAT_DETAILS.items():
+            assert set(d) == {"label", "description", "font_stack"}, fmt
+            assert d["label"].strip() and d["description"].strip(), fmt
+            assert d["font_stack"] in fonts, fmt
+
+    def test_labels_and_fonts_match_builder_css(self) -> None:
+        # AC14 data half: the strings the UI must not hardcode live here.
+        d = cfg.RESUME_STRUCTURE_BODY_FORMAT_DETAILS
+        assert {f: d[f]["label"] for f in d} == {
+            "free_prose": "Prose",
+            "bullet_list": "Bullet List",
+            "word_cloud": "Word Cloud",
+            "dual_column": "Dual Column",
+            "indented_bold_single": "Indented Bold",
+            "experience_detail": "Experience",
+            "line": "Line",
+        }
+        # Word cloud + dual column print in the list font; everything else in the body font.
+        assert {f for f in d if d[f]["font_stack"] == "list_stack"} == {"word_cloud", "dual_column"}
+        assert cfg.RESUME_STRUCTURE_HIDDEN_FLOW_LABEL == "Hidden"
+        assert cfg.RESUME_STRUCTURE_PAGE_BREAK_POLICY_LABELS["normal"] == "Flow uninterrupted"
+
+    def test_job_resume_structure_catalog_metadata(self) -> None:
+        entry = cfg.ARTIFACT_CONFIG["job.artifacts.job_resume_structure"]
+        assert entry == {
+            "entity_type": "job",
+            "candidate_scoped": True,
+            "body_shape": "resume_structure",
+            "ingestion_owner": "tracker",
+        }
+        assert entry["body_shape"] in cfg.BUILD_CONFIG["artifact_shapes"]
+        # AST-1678 sibling key stays absent; the job key is the job_resume_structure leaf.
+        assert "job.artifacts.resume_structure" not in cfg.ARTIFACT_CONFIG
+
+    def test_preview_thumbnail_on_resume_and_cover_tabs_only(self) -> None:
+        by_id = {t["tab_id"]: t["preview_thumbnail"] for t in cfg.JOBS_RECOMMENDED_ARTIFACT_TABS}
+        assert by_id == {"artifact_resume": True, "artifact_cover": True, "artifact_application": False}
+
+
+# AST-2086 · AST-2073: terminal-state grammar — ERROR_<TASK_KEY>[_<CONDITION>] / BOT_BLOCKED_<TASK_KEY>.
+# Branches: naming helpers (bare / condition / bad condition / blank key) + parse (bot / longest-suffix
+# error / bare error / non-terminal); AC 1 registry grammar; retired-name map pinned literally (AC 2 / AC 7
+# source); AC 6 chain dispatch rule; AC 7 bulk-retry + label carry-over vs origin/dev; AC 8 seed JSON;
+# candidate craft-chain per-hop errors; is_build_artifacts_in_progress on per-hop chain errors.
+class TestAst2086TerminalStateGrammar:
+    _CONDITIONS = (
+        "UNREADABLE", "COOKIE", "NOT_FOUND", "NO_JOBLIST", "NO_JOBLIST_LINKS", "NO_SELECTION",
+        "NO_CULTURE_LINKS", "NO_WEBSITE_CONTENT", "UNPARSEABLE", "CLICK",
+    )
+    _RETIRED = (
+        "FAILED_TECHNICAL", "FAILED_TECHNICAL_DO", "FAILED_TECHNICAL_GET", "FAILED_TECHNICAL_LIKE",
+        "BOT_BLOCKED", "JD_SCRAPE_FAIL", "JD_SCRAPE_FAIL_COOKIE", "PREFILTER_UNKNOWN", "HARD_PARSE",
+        "BUILD_FAILED", "LINK_EXPIRED", "SCRAPE_ERROR", "NEW_EMAIL_ERROR", "ERROR_BUILD_ARTIFACTS",
+        "REQUESTED_RESUME_ERROR", "REQUESTED_ARTIFACTS_ERROR", "NO_WEBSITE", "ERROR_UPSHOT",
+    )
+
+    def test_condition_vocabulary_closed(self) -> None:
+        assert cfg.TERMINAL_CONDITIONS == self._CONDITIONS
+        assert cfg.ERROR_STATE_PREFIX == "ERROR_"
+        assert cfg.BOT_BLOCKED_STATE_PREFIX == "BOT_BLOCKED_"
+
+    def test_builders(self) -> None:
+        assert cfg.error_state_for("select_job_page") == "ERROR_SELECT_JOB_PAGE"
+        assert cfg.error_state_for(" select_job_page ", "NO_JOBLIST") == "ERROR_SELECT_JOB_PAGE_NO_JOBLIST"
+        assert cfg.bot_blocked_state_for("fetch_jd") == "BOT_BLOCKED_FETCH_JD"
+        for bad in ("", "   "):
+            with pytest.raises(ValueError):
+                cfg.error_state_for(bad)
+            with pytest.raises(ValueError):
+                cfg.bot_blocked_state_for(bad)
+        # TECHNICAL is not a vocabulary word — a generic catch-all can't be minted.
+        with pytest.raises(ValueError):
+            cfg.error_state_for("grade_do", "TECHNICAL")
+
+    def test_parse_round_trip(self) -> None:
+        assert cfg.parse_terminal_state("BOT_BLOCKED_FETCH_JD") == ("bot_blocked", "fetch_jd", None)
+        # Longest condition suffix wins (NO_JOBLIST_LINKS over NO_JOBLIST).
+        assert cfg.parse_terminal_state("ERROR_PREFILTER_COMPANY_NO_JOBLIST_LINKS") == (
+            "error", "prefilter_company", "NO_JOBLIST_LINKS",
+        )
+        assert cfg.parse_terminal_state("ERROR_SELECT_JOB_PAGE_NO_JOBLIST") == (
+            "error", "select_job_page", "NO_JOBLIST",
+        )
+        assert cfg.parse_terminal_state("ERROR_GRADE_DO") == ("error", "grade_do", None)
+        for other in ("JD_SCRAPE_FAIL_CLOSED", "PASSED_JD", "BOT_BLOCKED"):
+            assert cfg.parse_terminal_state(other) is None, other
+
+    def test_ac1_registries_follow_grammar(self) -> None:
+        def is_task(k: str) -> bool:
+            try:
+                cfg._dispatch_trigger_state_for_task_key(k)
+                return True
+            except KeyError:
+                return k in cfg.TASK_CONFIG
+
+        bad = []
+        for reg in (cfg.JOB_STATES, cfg.COMPANY_STATES, cfg.CANDIDATE_STATES, cfg.METEORITE_STATES):
+            for s in reg:
+                if "FAILED_TECHNICAL" in s or ("ERROR" in s and not s.startswith("ERROR_")) or s == "BOT_BLOCKED":
+                    bad.append(("shape", s))
+                if s.startswith("BOT_BLOCKED_") and not is_task(s[12:].lower()):
+                    bad.append(("bot", s))
+                if s.startswith("ERROR_") and not is_task(s[6:].lower()) and not any(
+                    s.endswith("_" + v) and is_task(s[6:-len(v) - 1].lower()) for v in self._CONDITIONS
+                ):
+                    bad.append(("err", s))
+                if s in self._RETIRED:
+                    bad.append(("retired", s))
+        assert bad == []
+
+    def test_retired_map_pinned(self) -> None:
+        cl = {"closed": "JD_SCRAPE_FAIL_CLOSED", "missing": "JD_SCRAPE_FAIL_MISSING"}
+        chain = {k: cfg.error_state_for(k) for k in (
+            "anticipate_scan", "contemplate_job", "advise_job_resume", "draft_job_resume", "check_job_resume",
+            "finalize_job_resume", "draft_cover_letter", "check_cover_letter", "finalize_cover_letter",
+            "propose_application_responses",
+        )}
+        craft = {k: cfg.error_state_for(k) for k in (
+            "craft_get_rubric", "craft_do_rubric", "craft_like_rubric", "craft_evaluate_meteorite_rubric",
+            "craft_jobdesc_rubric", "craft_prefilter_rubric", "craft_company_search_terms", "craft_joblist_rubric",
+        )}
+        assert cfg.RETIRED_TERMINAL_STATE_MAP == {
+            "job": {
+                "FAILED_TECHNICAL": {"analysis_upshot": "ERROR_ANALYSIS_UPSHOT", "meteorite_upshot": "ERROR_METEORITE_UPSHOT"},
+                "FAILED_TECHNICAL_DO": {"grade_do": "ERROR_GRADE_DO"},
+                "FAILED_TECHNICAL_GET": {"grade_get": "ERROR_GRADE_GET"},
+                "FAILED_TECHNICAL_LIKE": {"grade_like": "ERROR_GRADE_LIKE"},
+                "METEORITE_FAILED_TECHNICAL_DO": {"meteorite_grade_do": "ERROR_METEORITE_GRADE_DO"},
+                "METEORITE_FAILED_TECHNICAL_GET": {"meteorite_grade_get": "ERROR_METEORITE_GRADE_GET"},
+                "METEORITE_FAILED_TECHNICAL_LIKE": {"meteorite_like": "ERROR_METEORITE_LIKE"},
+                "METEORITE_ERROR_QUALIFY": {"qualify_meteorite": "ERROR_QUALIFY_METEORITE"},
+                "METEORITE_ERROR_EVALUATE_JD": {"evaluate_meteorite": "ERROR_EVALUATE_METEORITE"},
+                "JD_SCRAPE_FAIL": {"fetch_jd": "ERROR_FETCH_JD_UNREADABLE", "fetch_relative_jd": "ERROR_FETCH_RELATIVE_JD_UNREADABLE"},
+                "JD_SCRAPE_FAIL_COOKIE": {"fetch_jd": "ERROR_FETCH_JD_COOKIE", "fetch_relative_jd": "ERROR_FETCH_RELATIVE_JD_COOKIE"},
+                "BOT_BLOCKED": {
+                    "fetch_jd": "BOT_BLOCKED_FETCH_JD",
+                    "fetch_relative_jd": "BOT_BLOCKED_FETCH_RELATIVE_JD",
+                    "qualify_meteorite": "BOT_BLOCKED_QUALIFY_METEORITE",
+                },
+                "RELATIVE_LINK_FAIL": {"fetch_relative_jd": "ERROR_FETCH_RELATIVE_JD_CLICK"},
+                "NEED_CULTURE_CONTENT": {"fetch_culture_pages": "ERROR_FETCH_CULTURE_PAGES_UNREADABLE"},
+                "NO_CULTURE_LINKS": {"fetch_culture_pages": "ERROR_FETCH_CULTURE_PAGES_NO_CULTURE_LINKS"},
+                "NEED_WEBSITE_CONTENT": {
+                    "grade_like": "ERROR_GRADE_LIKE_NO_WEBSITE_CONTENT",
+                    "analysis_upshot": "ERROR_ANALYSIS_UPSHOT_NO_WEBSITE_CONTENT",
+                },
+                "ERROR_BUILD_ARTIFACTS": chain,
+            },
+            "company": {
+                "NO_WEBSITE": {
+                    "inflow_resolve_website": "ERROR_INFLOW_RESOLVE_WEBSITE_NOT_FOUND",
+                    "resolve_website": "ERROR_RESOLVE_WEBSITE_NOT_FOUND",
+                },
+                "CANNOT_READ_WEBSITE": {
+                    "fetch_website": "ERROR_FETCH_WEBSITE_UNREADABLE",
+                    "prefilter_company": "ERROR_PREFILTER_COMPANY_UNREADABLE",
+                },
+                "ERROR_PREFILTER": {"prefilter_company": "ERROR_PREFILTER_COMPANY"},
+                "NO_PREFILTER_JOBLISTS": {"prefilter_company": "ERROR_PREFILTER_COMPANY_NO_JOBLIST_LINKS"},
+                "JOBSITE_SCRAPE_ISSUE": {
+                    "select_job_page": "ERROR_SELECT_JOB_PAGE_UNREADABLE",
+                    "fetch_job_pages": "ERROR_FETCH_JOB_PAGES_UNREADABLE",
+                },
+                "ERROR_LOCATE_JOB_PAGE": {"select_job_page": "ERROR_SELECT_JOB_PAGE"},
+                "CANNOT_PARSE_JOB_SITE": {"select_job_page": "ERROR_SELECT_JOB_PAGE_UNPARSEABLE"},
+                "NO_JOBLIST": {"select_job_page": "ERROR_SELECT_JOB_PAGE_NO_JOBLIST"},
+                "NO_PJL_SELECTED": {"select_job_page": "ERROR_SELECT_JOB_PAGE_NO_SELECTION"},
+                "BOT_BLOCKED": {"select_job_page": "BOT_BLOCKED_SELECT_JOB_PAGE"},
+                "COULD_NOT_PARSE_JOBLIST": {"parse_job_list": "ERROR_PARSE_JOB_LIST_UNPARSEABLE"},
+                "ERROR_UPSHOT": {"company_upshot": "ERROR_COMPANY_UPSHOT"},
+            },
+            "candidate": {"REQUESTED_RESUME_ERROR": craft, "REQUESTED_ARTIFACTS_ERROR": craft},
+            "meteorite": {
+                "BOT_BLOCKED": {"scrape_meteorite": "BOT_BLOCKED_SCRAPE_METEORITE"},
+                "LINK_EXPIRED": cl,
+                "SCRAPE_ERROR": {
+                    "stage_meteorite": "ERROR_STAGE_METEORITE_UNPARSEABLE",
+                    "scrape_meteorite": "ERROR_SCRAPE_METEORITE",
+                    "land_meteorite": "ERROR_LAND_METEORITE",
+                },
+                "NEW_EMAIL_ERROR": {"stage_meteorite": "ERROR_STAGE_METEORITE"},
+            },
+        }
+        # Dead states are never listed (deleted, not renamed).
+        flat = {old for ent in cfg.RETIRED_TERMINAL_STATE_MAP.values() for old in ent}
+        assert flat.isdisjoint({"PREFILTER_UNKNOWN", "HARD_PARSE", "BUILD_FAILED"})
+
+    def test_ac6_chain_dispatch_on_membership(self) -> None:
+        assert cfg.BUILD_ARTIFACTS_CHAIN_TASK_KEYS == (
+            "anticipate_scan", "contemplate_job", "advise_job_resume", "draft_job_resume", "check_job_resume",
+            "finalize_job_resume", "draft_cover_letter", "check_cover_letter", "finalize_cover_letter",
+            "propose_application_responses",
+        )
+        assert cfg.BUILD_ARTIFACTS_CHAIN_ERROR_STATES == tuple(
+            cfg.error_state_for(k) for k in cfg.BUILD_ARTIFACTS_CHAIN_TASK_KEYS
+        )
+        for k in cfg.BUILD_ARTIFACTS_CHAIN_TASK_KEYS:
+            assert cfg._dispatch_trigger_state_for_task_key(k) == "BUILD_ARTIFACTS", k
+            assert cfg.TASK_CONFIG[k]["error_state"] == cfg.error_state_for(k), k
+        assert not hasattr(cfg, "ERROR_BUILD_ARTIFACTS_STATE")
+        for st in cfg.BUILD_ARTIFACTS_CHAIN_ERROR_STATES:
+            assert cfg.is_build_artifacts_in_progress(st) is True, st
+        assert cfg.is_build_artifacts_in_progress("ERROR_GRADE_DO") is False
+
+    def test_ac7_bulk_retry_and_label_carried(self) -> None:
+        # origin/dev values (pre-AST-2086) for every retired key that had a bulk-retry target.
+        old = {
+            "FAILED_TECHNICAL": ("NEW", "Failed Technical"),
+            "FAILED_TECHNICAL_DO": ("PASSED_JD", "Failed Technical DO"),
+            "FAILED_TECHNICAL_GET": ("PASSED_DO", "Failed Technical GET"),
+            "FAILED_TECHNICAL_LIKE": ("CULTURE_READY", "Failed Technical LIKE"),
+            "METEORITE_FAILED_TECHNICAL_DO": ("METEORITE_PASSED_JD", "Meteorite Failed Technical DO"),
+            "METEORITE_FAILED_TECHNICAL_GET": ("METEORITE_PASSED_DO", "Meteorite Failed Technical GET"),
+            "METEORITE_FAILED_TECHNICAL_LIKE": ("METEORITE_PASSED_GET", "Meteorite Failed Technical LIKE"),
+            "METEORITE_ERROR_QUALIFY": ("METEORITE_NEW", "Meteorite Error Qualify"),
+            "METEORITE_ERROR_EVALUATE_JD": ("METEORITE_QUALIFIED", "Meteorite Error Evaluate JD"),
+            "JD_SCRAPE_FAIL": ("PASSED_JOBLIST", "Jd Scrape Fail"),
+            "JD_SCRAPE_FAIL_COOKIE": ("PASSED_JOBLIST", "Jd Scrape Fail Cookie"),
+            "BOT_BLOCKED": ("PASSED_JOBLIST", "Bot Blocked"),
+            "RELATIVE_LINK_FAIL": ("RELATIVE_JOB_LINK", "Relative Link Fail"),
+            "NEED_CULTURE_CONTENT": ("PASSED_GET", "Need Culture Content"),
+            "NO_CULTURE_LINKS": ("PASSED_GET", "No Culture Links"),
+            "NEED_WEBSITE_CONTENT": ("CULTURE_READY", "Need Website Content"),
+            "ERROR_BUILD_ARTIFACTS": ("RECOMMENDED", "Error Build Artifacts"),
+        }
+        manifest = cfg.build_state_ui_manifest()["jobs"]["skipped"]
+        for old_name, (target, label) in old.items():
+            for new in cfg.RETIRED_TERMINAL_STATE_MAP["job"][old_name].values():
+                assert cfg.JOBS_SKIPPED_BULK_RETRY_TO_STATE[new] == target, new
+                assert manifest["section_labels"][new] == label, new
+                assert new in cfg.SKIPPED_STATES, new
+                assert new in cfg.JOBS_SKIPPED_SECTION_ORDER, new
+
+    def test_ac8_notify_seed_json(self) -> None:
+        from pathlib import Path
+
+        rows = json.loads((Path(cfg.__file__).resolve().parents[2] / "data/admin/dispatch_task.json").read_text())
+        trig = [r["trigger_state"] for r in rows if r.get("task_key") == "meteorite_bot_blocked_notify"]
+        assert trig == ["BOT_BLOCKED_SCRAPE_METEORITE"]
+
+    def test_candidate_craft_chain_errors(self) -> None:
+        assert cfg.CANDIDATE_CRAFT_CHAIN_TASK_KEYS == (
+            "craft_get_rubric", "craft_do_rubric", "craft_like_rubric", "craft_evaluate_meteorite_rubric",
+            "craft_jobdesc_rubric", "craft_prefilter_rubric", "craft_company_search_terms", "craft_joblist_rubric",
+        )
+        for k in cfg.CANDIDATE_CRAFT_CHAIN_TASK_KEYS:
+            st = cfg.error_state_for(k)
+            assert cfg.TASK_CONFIG[k]["error_state"] == st, k
+            assert cfg.CANDIDATE_STATES[st]["prior_states"] == ["REQUESTED_RESUME", "REQUESTED_ARTIFACTS"], k
+            assert cfg.CANDIDATE_STATES[st]["progress_rank"] == 6, k
+        for gone in ("REQUESTED_RESUME_ERROR", "REQUESTED_ARTIFACTS_ERROR"):
+            assert gone not in cfg.CANDIDATE_STATES, gone
+        for base in ("REQUESTED_RESUME", "REQUESTED_ARTIFACTS"):
+            assert "error_state" not in cfg.CANDIDATE_STATES[base], base
+
+    def test_gazer_and_roster_task_terminals(self) -> None:
+        g, r = cfg.GAZER_CONFIG, cfg.ROSTER_CONFIG
+        assert g["fetch_jd"]["fail_state"] == "ERROR_FETCH_JD_UNREADABLE"
+        assert g["fetch_jd"]["classified_states"] == {
+            "cookie": "ERROR_FETCH_JD_COOKIE", "bot": "BOT_BLOCKED_FETCH_JD",
+            "missing": "JD_SCRAPE_FAIL_MISSING", "closed": "JD_SCRAPE_FAIL_CLOSED",
+        }
+        assert "error_states" not in g["fetch_jd"]
+        loc = r["locate_job_page"]
+        assert loc["error_state"] == "ERROR_SELECT_JOB_PAGE"
+        assert loc["scrape_issue_state"] == "ERROR_SELECT_JOB_PAGE_UNREADABLE"
+        assert loc["no_joblist_state"] == "ERROR_SELECT_JOB_PAGE_NO_JOBLIST"
+        assert loc["unparseable_state"] == "ERROR_SELECT_JOB_PAGE_UNPARSEABLE"
+        assert loc["bot_blocked_state"] == "BOT_BLOCKED_SELECT_JOB_PAGE"
+        assert r["gaze"]["error_state"] == "ERROR_GAZE"
+        assert g["gaze"]["error_state"] == "ERROR_GAZE"
+
+
+# Branches: AC1 manifest groups (order, keys, labels, prefixes, members); AC2 rule partition leaves
+# only INVALID_TITLE in Other; manifest lists are copies; AC3 member guard + catch-all-last guard fire.
+class TestAst2105SkippedGroupRules:
+    """AST-2105: JOBS_SKIPPED_GROUPS registry, import guards, manifest jobs.skipped.groups."""
+
+    @staticmethod
+    def _splice_exec(old: str, new: str, probe_name: str) -> None:
+        # Re-exec the real config source with one line swapped, so the shipped assert (not a copy) fires.
+        import types
+        from pathlib import Path
+
+        src = Path(cfg.__file__).read_text(encoding="utf-8")
+        # A moved/renamed anchor must fail loudly, not let the splice pass vacuously.
+        assert src.count(old) == 1, old
+        mod = types.ModuleType(probe_name)
+        mod.__file__ = cfg.__file__  # config resolves repo paths from __file__ at import
+        # Fake filename keeps coverage from attributing probe lines to config.py.
+        exec(compile(src.replace(old, new, 1), f"<{probe_name}>", "exec"), mod.__dict__)  # noqa: S102
+
+    def test_ac1_manifest_groups_exact(self) -> None:
+        sk = cfg.build_state_ui_manifest()["jobs"]["skipped"]
+        assert sk["groups"] == [
+            {"key": "error", "label": "Error", "prefixes": ["ERROR_"], "members": []},
+            {"key": "bot_block", "label": "Bot block", "prefixes": ["BOT_BLOCKED_"], "members": []},
+            {
+                "key": "fail",
+                "label": "Fail",
+                "prefixes": ["FAILED_", "METEORITE_FAILED_", "JD_SCRAPE_FAIL_"],
+                "members": ["CANDIDATE_SKIPPED", sk["below_dispatch_key"]],
+            },
+            {"key": "other", "label": "Other", "prefixes": [], "members": []},
+        ]
+        # Registry is the only source: manifest rows mirror JOBS_SKIPPED_GROUPS in insertion order.
+        assert [g["key"] for g in sk["groups"]] == list(cfg.JOBS_SKIPPED_GROUPS)
+
+    def test_ac2_rules_leave_only_invalid_title_in_other(self) -> None:
+        # Ticket AC 2 rule, verbatim: members first, then prefixes, else the last (catch-all) group.
+        g = cfg.build_state_ui_manifest()["jobs"]["skipped"]["groups"]
+
+        def grp(s: str) -> str:
+            for x in g:
+                if s in x["members"]:
+                    return x["label"]
+            for x in g:
+                if any(s.startswith(p) for p in x["prefixes"]):
+                    return x["label"]
+            return g[-1]["label"]
+
+        assert sorted(s for s in cfg.SKIPPED_STATES if grp(s) == "Other") == ["INVALID_TITLE"]
+
+    def test_manifest_lists_are_copies(self) -> None:
+        # Mutating one manifest build must not leak into the registry or the next build.
+        groups = cfg.build_state_ui_manifest()["jobs"]["skipped"]["groups"]
+        groups[2]["prefixes"].append("X_")
+        groups[2]["members"].append("X")
+        assert cfg.JOBS_SKIPPED_GROUPS["fail"]["prefixes"] == ["FAILED_", "METEORITE_FAILED_", "JD_SCRAPE_FAIL_"]
+        assert "X" not in cfg.build_state_ui_manifest()["jobs"]["skipped"]["groups"][2]["members"]
+
+    def test_ac3_guard_rejects_non_skipped_member(self) -> None:
+        line = '"members": ["CANDIDATE_SKIPPED", JOBS_SKIPPED_BELOW_DISPATCH_KEY],'
+        with pytest.raises(AssertionError, match="member is not a Skipped state"):
+            self._splice_exec(
+                line,
+                '"members": ["CANDIDATE_SKIPPED", JOBS_SKIPPED_BELOW_DISPATCH_KEY, "NOT_A_STATE"],',
+                "cfg_ast2105_member_probe",
+            )
+
+    def test_guard_rejects_catch_all_not_last(self) -> None:
+        # A group after Other makes Other unreachable-as-last; the second guard must fire.
+        line = '"other": {"label": "Other", "prefixes": [], "members": []},'
+        with pytest.raises(AssertionError, match="only the last group may be the catch-all"):
+            self._splice_exec(
+                line,
+                line + '\n    "extra": {"label": "Extra", "prefixes": ["X_"], "members": []},',
+                "cfg_ast2105_catchall_probe",
+            )
+
+
+class TestAst2131WebDataConfig:
+    """AST-2131: WEB_DATA_CONFIG names + id-key guard; jd_web_data_id job key."""
+
+    def test_data_types_and_id_keys(self) -> None:
+        dt = cfg.WEB_DATA_CONFIG["data_types"]
+        # id → value shape, same as company_data_keys.
+        assert dt == {k: k for k in ("VISIBLE_TEXT", "PAGE_LINKS", "DOM_CONTENT")}
+        keys = cfg.WEB_DATA_CONFIG["company_data_id_keys"]
+        assert keys == ("homepage_text", "nav_links", "website_content", "job_list_visible", "pjl_scrape_pages")
+        assert set(keys) <= set(cfg.ROSTER_CONFIG["company_data_keys"])
+
+    def test_job_data_keys_gain_jd_web_data_id(self) -> None:
+        jk = cfg.TRACKER_CONFIG["job_data_keys"]
+        assert jk["jd_web_data_id"] == "jd_web_data_id"
+        assert jk["job_description"] == "job_description"
+
+    def test_guard_rejects_id_key_missing_from_company_data_keys(self) -> None:
+        # Drop homepage_text from ROSTER_CONFIG; the shipped module assert must fire on import.
+        with pytest.raises(AssertionError, match="homepage_text"):
+            TestAst2105SkippedGroupRules._splice_exec(
+                '        "homepage_text": "homepage_text",\n',
+                "",
+                "cfg_ast2131_id_key_probe",
+            )
+
+
+# Branches: SEARCH_ENTITY_CONFIG field lists (Susan-confirmed, define round 1); SEARCH_JOB_MODAL_BY_LIST + its assert.
+class TestAst2173SearchConfig:
+    def test_registry_types_and_field_lists_exact(self) -> None:
+        reg = cfg.SEARCH_ENTITY_CONFIG
+        assert list(reg) == ["job", "company", "meteorite"]
+        assert reg["job"]["base_fields"] == [
+            "astral_job_id", "company_job_id", "job_title", "job_link",
+            "company_id", "source_entity_id", "state", "batch_id",
+        ]
+        assert reg["job"]["payload_fields"] == ["job_data"]
+        assert reg["company"]["base_fields"] == [
+            "short_name", "company_name", "company_website", "job_site",
+            "originating_search_term", "state", "batch_id",
+        ]
+        assert reg["company"]["payload_fields"] == ["company_data"]
+        assert reg["meteorite"]["base_fields"] == [
+            "id", "astral_job_id", "job_title", "employer_name", "link",
+            "electronic_contact", "source_id", "source_ref", "state", "batch_id",
+        ]
+        assert reg["meteorite"]["payload_fields"] == ["content", "classify_outcome", "error"]
+
+    def test_id_field_is_a_base_field_and_entries_complete(self) -> None:
+        for entry in cfg.SEARCH_ENTITY_CONFIG.values():
+            assert set(entry) == {"label", "id_field", "name_fields", "base_fields", "payload_fields"}
+            assert entry["id_field"] in entry["base_fields"]
+            # A column is in one tier only, or tier assignment would be ambiguous.
+            assert not set(entry["base_fields"]) & set(entry["payload_fields"])
+
+    def test_job_modal_by_list(self) -> None:
+        assert cfg.SEARCH_JOB_MODAL_BY_LIST == {
+            "ready": "report", "review": "report", "applied": "report",
+            "processing": "detail", "skipped": "detail",
+        }
+
+    def test_assert_fires_when_a_jobs_list_has_no_modal_kind(self) -> None:
+        with pytest.raises(AssertionError, match="search modal kind"):
+            TestAst2105SkippedGroupRules._splice_exec('    "skipped": "detail",\n', "", "cfg_ast2173_modal_probe")
+
+    def test_assert_fires_on_unknown_modal_kind(self) -> None:
+        with pytest.raises(AssertionError, match="search modal kind"):
+            TestAst2105SkippedGroupRules._splice_exec(
+                '    "skipped": "detail",\n', '    "skipped": "drawer",\n', "cfg_ast2173_kind_probe"
+            )
+
+
+# Branches: get_structured_output_capability model override vs server fallback; unknown model.
+class TestAst2177StructuredOutputConfig:
+    """AST-2177: structured-output capability registry, grader output-type marker, prompt_prefix split."""
+
+    _GRADER_TYPES = (
+        "grades_encoded",
+        "grades_encoded_meta",
+        "grades_encoded_notes",
+        "grades_encoded_prefilter_links",
+        "grades_encoded_vet_meta",
+    )
+    _SCALE = (
+        "5: The source explicitly states it.",
+        "4: The source strongly suggests it.",
+        "3: The source hints about it.",
+        "2: The source makes a vague reference.",
+        "1: The source doesn't say it out loud, but it's possible.",
+    )
+
+    def test_capability_values_are_allowed_everywhere(self) -> None:
+        allowed = cfg.LLM_STRUCTURED_OUTPUT_CAPABILITIES
+        assert allowed == ("enforced", "advisory", None)
+        for name, server in cfg.LLM_SERVER_CONFIG.items():
+            assert server["structured_output_capability"] in allowed, name
+        for model_id, model in cfg.LLM_MODEL_CONFIG.items():
+            if "structured_output_capability" in model:
+                assert model["structured_output_capability"] in allowed, model_id
+
+    def test_current_grader_models_stay_selectable(self) -> None:
+        # Susan (AST-2172, 2026-10-13): Grace/Lucy (qwen) and Kent (gpt-oss) must stay selectable as graders.
+        for slug in ("qwen/qwen3-235b-a22b-2507", "openai/gpt-oss-120b"):
+            assert cfg.get_structured_output_capability(slug) is not None, slug
+            assert cfg.get_structured_output_capability(slug) == cfg.OPENROUTER_STRUCTURED_OUTPUT_OVERRIDES[slug]
+
+    def test_lookup_falls_back_to_server_value(self) -> None:
+        # Unlisted OpenRouter slug and a direct model with no override both inherit their server's value.
+        assert cfg.get_structured_output_capability("google/gemma-3-4b-it") is None
+        haiku = cfg.get_llm_model("claude-haiku-4-5")
+        assert "structured_output_capability" not in haiku
+        assert cfg.get_structured_output_capability("claude-haiku-4-5") == (
+            cfg.LLM_SERVER_CONFIG[haiku["server"]]["structured_output_capability"]
+        )
+
+    def test_model_override_wins_over_server(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setitem(cfg.LLM_MODEL_CONFIG["claude-haiku-4-5"], "structured_output_capability", "enforced")
+        assert cfg.get_structured_output_capability("claude-haiku-4-5") == "enforced"
+
+    def test_unknown_model_raises(self) -> None:
+        with pytest.raises(ValueError, match="Unknown LLM model"):
+            cfg.get_structured_output_capability("not-a/model")
+
+    def test_structured_output_marker_is_exactly_the_grader_types(self) -> None:
+        ots = cfg.ASTRAL_CONFIG["output_types"]
+        assert sorted(k for k, v in ots.items() if v.get("structured_output")) == list(self._GRADER_TYPES)
+        assert "structured_output" not in ots["grades_json"]
+
+    def test_extra_field_declarations(self) -> None:
+        ots = cfg.ASTRAL_CONFIG["output_types"]
+        s, i = {"type": "string"}, {"type": "array", "items": {"type": "integer"}}
+        assert ots["grades_encoded"]["extra_fields"] == {}
+        assert ots["grades_encoded_notes"]["extra_fields"] == {"notes": s}
+        assert ots["grades_encoded_meta"]["extra_fields"] == {
+            "company_job_id": s,
+            "job_title": s,
+            "job_link": s,
+            "job_data": {"type": "object", "additionalProperties": s},
+        }
+        assert ots["grades_encoded_prefilter_links"]["extra_fields"] == {
+            "possible_job_links": i,
+            "culture_links_to_explore": i,
+        }
+
+    def test_grader_instructions_keep_confidence_scale_without_encoding(self) -> None:
+        # stat.agent.confidence-bounds: 1–5 scale with a letter; 0 only with X (vet: 1–5, no X).
+        for key in self._GRADER_TYPES:
+            text = cfg.ASTRAL_CONFIG["output_types"][key]["payload_instructions"]
+            for line in self._SCALE:
+                assert line in text, (key, line)
+            for banned in ("{pos}", "exactly 4 characters", "GRADE SET COMPLETENESS", "agent_payload"):
+                assert banned not in text, (key, banned)
+            assert ("0: Use only with grade X" in text) is (key != "grades_encoded_vet_meta"), key
+
+    def test_prompt_prefix_split(self) -> None:
+        prefix = cfg.ASTRAL_CONFIG["prompt_prefix"]
+        structured = cfg.ASTRAL_CONFIG["prompt_prefix_structured"]
+        # Non-grader calls keep the two-key envelope sentence; structured calls get the agent_performance rules alone.
+        assert prefix.startswith("Your JSON response must use the two-key envelope")
+        assert structured in prefix
+        assert "agent_payload" in prefix
+        assert "agent_payload" not in structured
+        assert structured.startswith("agent_performance refers ONLY") and "failure_note" in structured
+
+class TestAst2217FetchTimesheetRegistries:
+    """AST-2217: fetch_timesheet dispatch-row defaults + request/receipt/ledger registries."""
+
+    def test_fetch_timesheet_config_poller_defaults(self) -> None:
+        from src.utils import config as cfg
+        ft = cfg.FETCH_TIMESHEET_CONFIG
+        assert ft["task_key"] == "fetch_timesheet"
+        assert ft["entity_type"] is None and ft["trigger_state"] is None and ft["freq_hrs"] is None
+        assert ft["auto_mode"] is False
+        assert ft["min_count"] == 1 and ft["batch_size"] == 1
+
+    def test_request_receipt_ledger_registries(self) -> None:
+        from src.utils import config as cfg
+        assert set(cfg.TIMESHEET_REQUEST_TYPES) == {"DISPATCH_AGENT", "DISPATCH_SEARCH", "CONTACT_AGENT"}
+        assert set(cfg.LEDGER_TIMESHEET_STATES) == {"NEW", "FETCHING", "RECEIPTED"}
+        assert "platform_cost" in cfg.TIMESHEET_RECEIPT_FIELDS
+        assert cfg.TIMESHEET_SEARCH_SERVER_ID == "google_cse"
+        # Reconcile constants left in place for AST-2218 (byte-stable shape).
+        assert hasattr(cfg, "TIMESHEET_RECONCILE_ENABLED")
+        assert hasattr(cfg, "TIMESHEET_BATCH_RECONCILE_ENABLED")
+
+class TestAst2218FetchTimesheetAdminDefaults:
+    """AST-2218: dispatch_task_admin_defaults fold + is_fetch_timesheet_task_key."""
+
+    def test_fold_returns_null_entity_trigger(self) -> None:
+        from src.utils import config as cfg
+        d = cfg.dispatch_task_admin_defaults("fetch_timesheet")
+        assert d["entity_type"] is None and d["trigger_state"] is None
+        assert d["sort_by"] is None and d["batch_call_mode"] == 0
+
+    def test_is_fetch_timesheet_task_key(self) -> None:
+        from src.utils import config as cfg
+        assert cfg.is_fetch_timesheet_task_key("fetch_timesheet") is True
+        assert cfg.is_fetch_timesheet_task_key(" fetch_timesheet ") is True
+        assert cfg.is_fetch_timesheet_task_key("evaluate_jd") is False
+
+
+# Branches: nine hops + schemas; assembler schema identity; ERROR priors; stage entry;
+# stage-generic resolvers (entry hop + craft regression); hop-label claim validation.
+class TestAst2221BaseResumeChainConfig:
+    """AST-2221: BASE_RESUME_CHAIN registry, requested_resume stage, stage-generic resolvers."""
+
+    def test_nine_hops_registered(self) -> None:
+        assert cfg.BASE_RESUME_CHAIN_TASK_KEYS == (
+            "shape_the_story",
+            "draft_resume_experiences",
+            "draft_supporting_sections",
+            "draft_highlights",
+            "draft_core_competencies",
+            "draft_professional_summary",
+            "draft_keywords",
+            "draft_resume_base",
+            "draft_title_patterns",
+        )
+        for k in cfg.BASE_RESUME_CHAIN_TASK_KEYS:
+            t = cfg.TASK_CONFIG[k]
+            assert t["entity_type"] == "candidate", k
+            assert t["requires_candidate_key"] is True, k
+            assert t["response_format"] == "json", k
+            assert t["trigger_state"] is None, k
+            assert t["response_schema"], k
+
+    def test_assembler_reuses_craft_schema_and_artifact_key(self) -> None:
+        t = cfg.TASK_CONFIG["draft_resume_base"]
+        assert t["response_schema"] is cfg._CRAFT_RESUME_BASE_RESPONSE_SCHEMA
+        assert t["artifact_key"] == "candidate.artifacts.base_resume"
+        # experience field object identity (not a copied dict)
+        exp = cfg.TASK_CONFIG["draft_resume_experiences"]["response_schema"]["experience"]
+        assert exp is cfg._EXPERIENCE_JOB_ARRAY_FIELD
+
+    def test_error_states_and_priors(self) -> None:
+        assert cfg.BASE_RESUME_CHAIN_ERROR_STATES == tuple(
+            cfg.error_state_for(k) for k in cfg.BASE_RESUME_CHAIN_TASK_KEYS
+        )
+        for k in cfg.BASE_RESUME_CHAIN_TASK_KEYS:
+            st = cfg.error_state_for(k)
+            assert cfg.TASK_CONFIG[k]["error_state"] == st, k
+            assert cfg.CANDIDATE_STATES[st]["prior_states"] == ["REQUESTED_RESUME"], k
+            assert cfg.CANDIDATE_STATES[st]["progress_rank"] == 4, k
+            # AST-2245: resume-request ERROR_* inherit stage 3 (REQUESTED_RESUME band).
+            assert cfg.CANDIDATE_STATES[st]["stage"] == 3, k
+
+    def test_requested_resume_stage_entry(self) -> None:
+        assert cfg.CANDIDATE_STAGE_DISPATCH["requested_resume"] == {
+            "task_key": "shape_the_story",
+            "trigger_state": "REQUESTED_RESUME",
+            "pass_state": "RESUME_READY",
+            "auto_mode": False,
+        }
+        # Every stage entry task_key is in TASK_CONFIG (import-time assert twin).
+        for entry in cfg.CANDIDATE_STAGE_DISPATCH.values():
+            assert entry["task_key"] in cfg.TASK_CONFIG
+
+    def test_stage_generic_resolvers(self) -> None:
+        from src.utils.config import (
+            _dispatch_entity_type_for_task_key,
+            _dispatch_trigger_state_for_task_key,
+        )
+
+        assert _dispatch_trigger_state_for_task_key("shape_the_story") == "REQUESTED_RESUME"
+        assert _dispatch_entity_type_for_task_key("shape_the_story") == "candidate"
+        # Existing artifacts stage must not regress.
+        assert _dispatch_trigger_state_for_task_key("craft_get_rubric") == "REQUESTED_ARTIFACTS"
+        assert _dispatch_entity_type_for_task_key("craft_get_rubric") == "candidate"
+        # Mid-chain hops stay stage-trigger-less (sibling owns claim/resume).
+        with pytest.raises(KeyError):
+            _dispatch_trigger_state_for_task_key("draft_highlights")
+
+    def test_hop_label_claim_validation(self) -> None:
+        # Stage-generic claim validator accepts REQUESTED_RESUME.<hop> like REQUESTED_ARTIFACTS.<hop>.
+        assert cfg.is_valid_candidate_batch_claim_state(
+            cfg.dispatch_hop_label("REQUESTED_RESUME", "shape_the_story"),
+        ) is True
+        assert cfg.is_valid_candidate_batch_claim_state(
+            cfg.dispatch_hop_label("REQUESTED_ARTIFACTS", "craft_get_rubric"),
+        ) is True
+
+
+class TestAst2223CandidateMeteoriteEditConfig:
+    """AST-2223: CANDIDATE_METEORITE_EDIT_CONFIG — locked / pick-list / default / editable fields."""
+
+    def test_config_is_source_of_truth(self) -> None:
+        cme = cfg.CANDIDATE_METEORITE_EDIT_CONFIG
+        assert cme["locked_states"] == ("LANDED",)
+        assert cme["default_save_state"] == "CHECK_UNIQUE"
+        assert cme["default_save_state"] in cme["state_options"]
+        assert set(cme["locked_states"]).isdisjoint(cme["state_options"])
+        assert set(cme["state_options"]) == set(cfg.METEORITE_STATES) - set(cme["locked_states"])
+        assert "LANDED" not in cme["state_options"]
+        assert "state" in cme["editable_fields"] and "content" in cme["editable_fields"]
+        assert cfg.METEORITE_CONFIG["electronic_contact_column"] in cme["editable_fields"]
+        # Editable list is exactly the six plan columns (electronic contact from METEORITE_CONFIG).
+        assert list(cme["editable_fields"]) == [
+            "state",
+            "content",
+            "link",
+            "job_title",
+            "employer_name",
+            cfg.METEORITE_CONFIG["electronic_contact_column"],
+        ]

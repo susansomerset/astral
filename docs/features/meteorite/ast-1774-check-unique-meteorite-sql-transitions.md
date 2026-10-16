@@ -1,3 +1,120 @@
+<!-- linear-archive: AST-1774 archived 2026-10-02 -->
+
+## Linear archive (AST-1774)
+
+**Archived:** 2026-10-02  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1774/check-unique-meteorite-sql-transitions-meteorite-state-check-unique  
+**Status at archive:** Archive  
+**Project:** Astral Meteorite  
+**Assignee:** hedy  
+**Priority / estimate:** None / 5  
+**Parent:** AST-1762 — Meteorite state CHECK_UNIQUE before LANDED  
+**Blocked by / blocks / related:** parent: AST-1762; blocks: AST-1775
+
+### Description
+
+## What this implements
+
+Owns `run_stage_meteorite` / `run_scrape_meteorite` landable success → `CHECK_UNIQUE`, `run_check_unique_meteorite` (SQL match + null-field peer detection + hook for Ruth), and dispatcher registration. Does not own Ruth `do_task` / outcome map (#3) or `apply_paste`. After #1.
+
+## Citations
+
+`patt.entity.batch-processing`, `patt.entity.batch-criteria`, `astral.batch.claim-process-release`, `stat.logging.info.entity`, `stat.logging.info.dispatcher`.
+
+## Scope
+
+- [X] `src/core/meteorite.py` — **modified** `run_stage_meteorite` / `run_scrape_meteorite` landable success → `CHECK_UNIQUE` (not `apply_paste`).
+- [X] `src/core/meteorite.py` — **new** `run_check_unique_meteorite` — claim batch; SQL match by title + `employer_name` among same-candidate `LANDED`; no peers → `READY`; detect null-field multi-peer case and delegate Ruth hook; unique SQL path → `READY`.
+- [X] `src/core/dispatcher.py` — **modified** — route `check_unique_meteorite`.
+
+## Acceptance criteria
+
+- [X] 3\. **CHECK_UNIQUE on stage/scrape success only** — After `run_stage_meteorite` / `run_scrape_meteorite` landable success, `meteorite.state` is `CHECK_UNIQUE`. Fail: those runners still write `READY`, or `apply_paste` / other out-of-scope writers changed to `CHECK_UNIQUE`.
+- [X] 4\. **SQL match keys** — Peer selection uses same `candidate_id` + equal non-empty `job_title` + equal non-empty `employer_name` among `LANDED` only. Fail: match on email ids, message ids, or JD text equality.
+- [X] 5\. **Unique → READY** — CHECK_UNIQUE row with no matching LANDED title+employer peer and no null-field Ruth trigger becomes `READY` and is claimable by `land_meteorite`. Fail: unique rows stuck in `CHECK_UNIQUE` or skip to `LANDED`.
+- [X] 6\. **Land unchanged gate** — `land_meteorite` trigger remains `READY`; `DUPLICATE` and `CHECK_UNIQUE` are not landable. Fail: land claims `DUPLICATE`/`CHECK_UNIQUE`.
+
+## Boundaries
+
+- [X] Does not own Ruth `do_task` / outcome map (#3) or `apply_paste`. After #1.
+
+## Notes for planning
+
+Citations as above. Estimate: 5. After #1.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/<parent-segment>`, child `sub/<parent-id>/<child-segment>`. Created at dispatch-parent.
+
+## QA test manifest
+
+See `docs/test-bible/core/meteorite.md` § AST-1774 (dispatcher twin: `docs/test-bible/core/dispatcher.md`).
+
+### AST-1774 · AST-1762
+
+**Parent:** [AST-1762](https://linear.app/astralcareermatch/issue/AST-1762/meteorite-state-check-unique-before-landed). **Publish:** `origin/sub/AST-1762/AST-1774-check-unique-meteorite-sql-transitions`.
+
+`run_stage_meteorite` / `run_scrape_meteorite` landable success → `CHECK_UNIQUE`; `run_check_unique_meteorite` (unique → READY; SQL / null peers → Ruth hook stub); dispatcher route + provision. Config: **AST-1773**. Ruth outcomes: **AST-1775**.
+
+| Area | Source | Component tests |
+| -- | -- | -- |
+| Stage/scrape → CHECK_UNIQUE | `src/core/meteorite.py` | revised `TestAst1560RunStageMeteorite::test_text_outcome_to_ready`, `TestAst1560RunScrapeMeteorite::test_ok_visible_text_to_ready`, `…::test_sibling_rows_do_not_abort_batch` |
+| Unique / SQL / null / land gate / paste | same | `TestAst1774RunCheckUniqueMeteorite` |
+| Dispatch route + provision + click max_runs | `src/core/dispatcher.py` | `TestAst1560IngressTransitionDispatchOne` (`test_routes_stage…`, `test_click_loops_to_max_runs`, `test_routes_check_unique…`, `test_ensure_ingress_includes_check_unique`) |
+
+**Broken / obsolete this pass:**
+
+* Stage/scrape landable success asserting `READY` — revised to `CHECK_UNIQUE`.
+* Ingress stage route asserting direct runner await (tip uses `_run_dispatch_loop`) — revised.
+
+**Integration:** none.
+
+## QA test manifest
+
+1. Stage text → CHECK_UNIQUE: `tests/component/core/test_meteorite.py::TestAst1560RunStageMeteorite::test_text_outcome_to_ready`
+2. Scrape ok → CHECK_UNIQUE: `tests/component/core/test_meteorite.py::TestAst1560RunScrapeMeteorite::test_ok_visible_text_to_ready`
+3. Scrape sibling ok → CHECK_UNIQUE: `tests/component/core/test_meteorite.py::TestAst1560RunScrapeMeteorite::test_sibling_rows_do_not_abort_batch`
+4. Check-unique hop: `tests/component/core/test_meteorite.py::TestAst1774RunCheckUniqueMeteorite`
+5. Paste still READY: `tests/component/core/test_meteorite.py::TestAst1561ApplyPaste::test_moves_bot_blocked_to_ready`
+6. Dispatch route: `tests/component/core/test_dispatcher.py::TestAst1560IngressTransitionDispatchOne::test_routes_check_unique_runner_with_entity_batch_id`
+7. Provision twin: `tests/component/core/test_dispatcher.py::TestAst1560IngressTransitionDispatchOne::test_ensure_ingress_includes_check_unique`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_meteorite.py::TestAst1560RunStageMeteorite::test_text_outcome_to_ready \
+  tests/component/core/test_meteorite.py::TestAst1560RunScrapeMeteorite::test_ok_visible_text_to_ready \
+  tests/component/core/test_meteorite.py::TestAst1560RunScrapeMeteorite::test_sibling_rows_do_not_abort_batch \
+  tests/component/core/test_meteorite.py::TestAst1774RunCheckUniqueMeteorite \
+  tests/component/core/test_meteorite.py::TestAst1561ApplyPaste::test_moves_bot_blocked_to_ready \
+  tests/component/core/test_dispatcher.py::TestAst1560IngressTransitionDispatchOne::test_routes_check_unique_runner_with_entity_batch_id \
+  tests/component/core/test_dispatcher.py::TestAst1560IngressTransitionDispatchOne::test_ensure_ingress_includes_check_unique \
+  -q
+```
+
+**Bible shasums (publish tip):**
+
+* `docs/test-bible/core/meteorite.md` → `42b863c1e61970bd3aa53249e6724b89ac6ea01a`
+* `docs/test-bible/core/dispatcher.md` → `30b13f815ac3382e8e9ebc66b3b7f72fa3532386`
+
+### Comments
+
+#### chuckles — 2026-09-22T02:28:38.126Z
+[merge-child] blocked: sub not stacked on ftr after refresh-ftr — republish from ftr first. @Hedy Lamarr run sync-child.sh sub/AST-1762/AST-1774-check-unique-meteorite-sql-transitions --ftr AST-1762 --worktree /home/susan/astral-AST-1762/ then push origin/sub/AST-1762/AST-1774-check-unique-meteorite-sql-transitions (stay User Testing).
+
+#### radia — 2026-09-22T02:26:20.623Z
+[code-rubric] PROCEED (Commit: 15723c96) SQL hop+routes clean
+
+#### betty — 2026-09-22T02:12:54.464Z
+`origin/sub/AST-1762/AST-1774-check-unique-meteorite-sql-transitions` @ `15723c96` · check_unique tests ready
+
+#### joan — 2026-09-22T02:00:28.698Z
+[plan-rubric] PROCEED (Commit: ee50f95f) SQL gate runners clear
+
+#### hedy — 2026-09-22T01:57:42.931Z
+`origin/sub/AST-1762/AST-1774-check-unique-meteorite-sql-transitions` @ `ee50f95f102cbccea49e6bebbc901b9659d7d747` · plan ready
+
+---
+
 # AST-1774 — check_unique_meteorite SQL + transitions
 
 **Linear:** [AST-1774](https://linear.app/astralcareermatch/issue/AST-1774/check-unique-meteorite-sql-transitions-meteorite-state-check-unique)  

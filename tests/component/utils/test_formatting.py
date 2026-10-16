@@ -219,6 +219,73 @@ class TestFindJobContainers:
         assert joined.count("<a ") >= 2
 
 
+# Branches (AST-1840 linear rewrite): whitespace-only string 345→350; comment/non-main string
+# 356→353; special-string-container fallback 375→377; Phase 2 sibling union; large DOM.
+# Structural asserts only — bs4 whitespace serialization varies across the >=4.12 floor.
+class TestAst1840FindJobContainersEquivalence:
+    _TITLES = ["Senior Engineer", "Nurse"]
+
+    @pytest.mark.parametrize(
+        ("dom", "prefix"),
+        [
+            pytest.param(
+                '<div id="w"><section>\n  <!-- Nurse -->\n  <p>Senior Engineer</p>\n</section>'
+                "<p>Nurse</p></div>",
+                '<div id="w">',
+                id="comment_ws",
+            ),
+            pytest.param(
+                "<main><div><p>Senior Engineer</p><script>Nurse</script></div><p>Nurse</p></main>",
+                "<main>",
+                id="script",
+            ),
+            pytest.param(
+                "<main><div><p>Senior Engineer</p><style>Nurse</style></div><p>Nurse</p></main>",
+                "<main>",
+                id="style",
+            ),
+            pytest.param(
+                '<div id="r"><p><ruby>Senior Engineer<rt>Nurse</rt></ruby></p><p>Nurse</p></div>',
+                '<div id="r">',
+                id="ruby_rt",
+            ),
+            pytest.param(
+                '<div id="q"><p><ruby>Lead<rp>(Nurse)</rp></ruby> Senior Engineer</p>'
+                "<p>Nurse</p></div>",
+                '<div id="q">',
+                id="ruby_rp",
+            ),
+        ],
+    )
+    def test_single_deepest_container(self, dom: str, prefix: str) -> None:
+        # Text a parent's get_text excludes (comments, special strings) must not make a child all-match
+        out = fmt.find_job_containers(dom, self._TITLES)
+        assert len(out) == 1
+        assert out[0].startswith(prefix)
+
+    def test_template_sibling_union(self) -> None:
+        dom = "<ul><li>Senior Engineer</li><template><li>Nurse</li></template></ul>"
+        out = fmt.find_job_containers(dom, self._TITLES)
+        assert len(out) == 2
+        assert "<li>Senior Engineer</li>" in out
+        assert any(chunk.startswith("<template>") for chunk in out)
+
+    def test_large_dom_same_containers(self) -> None:
+        # Equivalence only — no timing assertion, no size cap
+        dom = (
+            '<div id="app"><ul>'
+            + "".join(
+                '<li class="job-row"><div class="c1"><h3><a href="/job/E_%d">Engineer %d</a></h3>'
+                "</div><span>Pittsburgh</span></li>" % (i, i)
+                for i in range(8000)
+            )
+            + "</ul></div>"
+        )
+        out = fmt.find_job_containers(dom, ["Engineer 7999", "Engineer 12"])
+        assert len(out) == 1
+        assert out[0].startswith('<ul><li class="job-row">')
+
+
 # Branches: invalid input; missing key; closed string; truncated payload; fence stripping.
 class TestHealAgentPayloadEnvelope:
     def test_returns_none_for_non_string_or_blank(self) -> None:
@@ -353,3 +420,93 @@ class TestNormalizePastedListEmailHtml:
     def test_empty_input_returns_empty(self) -> None:
         assert fmt.normalize_pasted_list_email_html("") == ""
         assert fmt.normalize_pasted_list_email_html(None) == ""  # type: ignore[arg-type]
+
+
+# AST-2029 — storage-only positional → [entity_id=<id>] labels.
+# Branches: empty text / no ids early return; bare NNN: / [index=NNN]: / NNN| forms; quote and literal "\n"
+# boundaries (JSON envelope); out-of-range position kept (D5); mid-line / 4-digit / colonless index untouched.
+class TestAst2029HydrateEntityLabels:
+    def test_empty_text_or_no_ids_returns_input(self) -> None:
+        assert fmt.hydrate_entity_labels("000: a", None) == "000: a"
+        assert fmt.hydrate_entity_labels("000: a", []) == "000: a"
+        assert fmt.hydrate_entity_labels("", ["A"]) == ""
+
+    def test_bare_colon_labels_become_entity_tags(self) -> None:
+        # AC1 shape: ids replace positions; unlabeled header line left alone.
+        out = fmt.hydrate_entity_labels("Jobs:\n000: alpha\n001: beta\n002: gamma", ["A", "B", "C"])
+        assert out == "Jobs:\n[entity_id=A]: alpha\n[entity_id=B]: beta\n[entity_id=C]: gamma"
+        assert "000:" not in out
+
+    def test_enumerate_index_form_hydrated(self) -> None:
+        # AC2: [index=NNN]: → [entity_id=<id>]:, no index=000 left.
+        out = fmt.hydrate_entity_labels("[index=000]: alpha\n[index=001]: beta", ["A", "B"])
+        assert out == "[entity_id=A]: alpha\n[entity_id=B]: beta"
+        assert "index=" not in out
+
+    def test_pipe_form_hydrated(self) -> None:
+        # AC3: failed raw response 000|… keeps the pipe separator.
+        assert fmt.hydrate_entity_labels("000|DTA5\n001|GCA4", ["A", "B"]) == "[entity_id=A]|DTA5\n[entity_id=B]|GCA4"
+
+    def test_json_envelope_boundaries_hydrated_in_place(self) -> None:
+        # D2: after a quote and after a literal two-char \n escape; rest of the raw text byte-identical.
+        raw = '{"agent_payload":"000|DTA5\\n001|GCA4"}'
+        assert fmt.hydrate_entity_labels(raw, ["A", "B"]) == '{"agent_payload":"[entity_id=A]|DTA5\\n[entity_id=B]|GCA4"}'
+        assert fmt.hydrate_entity_labels('["000|x","001|y"]', ["A", "B"]) == '["[entity_id=A]|x","[entity_id=B]|y"]'
+
+    def test_out_of_range_position_left_as_is(self) -> None:
+        # D5: model 1-indexes the last row → that label is not rewritten.
+        assert fmt.hydrate_entity_labels("001|a\n002|b", ["A", "B"]) == "[entity_id=B]|a\n002|b"
+
+    def test_non_boundary_and_non_label_digits_untouched(self) -> None:
+        text = "note 000: mid-line\n1000: four digits\n[index=000] no colon\n00: two digits"
+        assert fmt.hydrate_entity_labels(text, ["A"]) == text
+
+
+# AST-2029 — split a stored block into per-entity segments (sibling read path).
+# Branches: empty; JSON companies (preferred) / jobs / empty list / non-dict + id-less rows skipped;
+# JSON dict without arrays and non-dict JSON fall through to tag scan; preamble unowned; repeated id joined;
+# trailing whitespace + literal "\n" escapes stripped; legacy positional → {}.
+class TestAst2029SplitEntitySegments:
+    def test_empty_text_returns_empty(self) -> None:
+        assert fmt.split_entity_segments("") == {}
+
+    def test_tag_segments_exclude_preamble(self) -> None:
+        text = "HDR\n[entity_id=A]: a\n[entity_id=B]: b\n"
+        assert fmt.split_entity_segments(text) == {"A": "[entity_id=A]: a", "B": "[entity_id=B]: b"}
+
+    def test_jobs_json_keyed_by_astral_job_id(self) -> None:
+        item = {"astral_job_id": "A", "x": 1}
+        text = json.dumps({"jobs": [item, {"astral_job_id": ""}, "junk", {"x": 2}]})
+        assert fmt.split_entity_segments(text) == {"A": json.dumps(item, indent=2)}
+
+    def test_companies_preferred_over_jobs(self) -> None:
+        co = {"company_id": 7, "g": "A"}
+        text = json.dumps({"companies": [co], "jobs": [{"astral_job_id": "J"}]})
+        assert fmt.split_entity_segments(text) == {"7": json.dumps(co, indent=2)}
+
+    def test_first_list_key_wins_even_when_empty(self) -> None:
+        assert fmt.split_entity_segments(json.dumps({"companies": [], "jobs": [{"astral_job_id": "J"}]})) == {}
+
+    def test_json_dict_without_arrays_falls_through_to_tags(self) -> None:
+        assert fmt.split_entity_segments(json.dumps({"companies": "n/a"})) == {}
+
+    def test_json_list_form_split_on_quote_boundary(self) -> None:
+        out = fmt.split_entity_segments('["[entity_id=A]|x","[entity_id=B]|y"]')
+        # D7: a segment runs to the next tag's start, so list punctuation rides along for display.
+        assert out == {"A": '[entity_id=A]|x","', "B": '[entity_id=B]|y"]'}
+
+    def test_envelope_strips_trailing_escapes_keeps_closing(self) -> None:
+        # D7: trailing literal \n escapes stripped; envelope's closing "} accepted on the last segment.
+        raw = '{"agent_payload":"[entity_id=A]|DTA5\\n\\n[entity_id=B]|GCA4"}'
+        assert fmt.split_entity_segments(raw) == {"A": "[entity_id=A]|DTA5", "B": '[entity_id=B]|GCA4"}'}
+
+    def test_repeated_id_segments_joined(self) -> None:
+        text = "[entity_id=A]: one\n[entity_id=B]: two\n[entity_id=A]: three"
+        assert fmt.split_entity_segments(text)["A"] == "[entity_id=A]: one\n[entity_id=A]: three"
+
+    def test_legacy_positional_text_returns_empty(self) -> None:
+        assert fmt.split_entity_segments("000: legacy\n001|x") == {}
+
+    def test_hydrate_then_split_round_trip(self) -> None:
+        stored = fmt.hydrate_entity_labels("000|DTA5\n001|GCA4", ["job-a", "job-b"])
+        assert fmt.split_entity_segments(stored) == {"job-a": "[entity_id=job-a]|DTA5", "job-b": "[entity_id=job-b]|GCA4"}

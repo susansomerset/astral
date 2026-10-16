@@ -1,3 +1,70 @@
+<!-- linear-archive: AST-1789 archived 2026-10-07 -->
+
+## Linear archive (AST-1789)
+
+**Archived:** 2026-10-07  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1789/manage-candidates-channel-column-select-warning-s-snapshot-manage  
+**Status at archive:** Archive  
+**Project:** Astral Contact  
+**Assignee:** katherine  
+**Priority / estimate:** None / 2  
+**Parent:** AST-1786 — Manage Candidates Snapshot Slack Channel + candidate mapping  
+**Blocked by / blocks / related:** parent: AST-1786
+
+### Description
+
+## What this implements
+
+Owns Manage Candidates UI: Slack username column, channel select with membership warning, **S** icon-control clipboard snapshot via sibling APIs. Does not own external helpers or admin route bodies. After #2.
+
+## Citations
+
+`stat.logging.info.api`, `stat.logging.error`.
+
+## Scope
+
+- [X] `src/ui/frontend/src/pages/AdminManageCandidates.tsx` — username column, channel select + warning, **S** clipboard
+- [X] `src/ui/frontend/src/pages/CandidateProfile.tsx` — only if shapes-driven render needs a page touch (prefer none) — none needed
+
+## Acceptance criteria
+
+- [X] 1 (username column display)
+- [X] 2 (channel select + stamp both fields)
+- [X] 3–5 (membership warnings)
+- [X] 6 (**S** icon-control + ascending JSON clipboard)
+- [X] 8 (no Slack Web API in TSX)
+
+## Boundaries
+
+- [X] Does not own external helpers (#1) or admin route / shapes bodies (#2).
+
+## Notes for planning
+
+Consumes sibling #2 admin APIs. Follow existing `icon-control` class on Manage Candidates row actions.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/<parent-segment>`, child `sub/<parent-id>/<child-segment>`. Created at dispatch-parent.
+
+### Comments
+
+#### chuckles — 2026-09-24T19:24:22.183Z
+[merge-child] blocked: validate-sub-log — git pull merge on sub (Merge remote-tracking branch reachable via sync(ftr) first-parent; ftr behind origin/dev). @Katherine Johnson restack AST-1789 commits (plan→…→Radia review + Betty merge-tests) cleanly onto origin/ftr/AST-1786-manage-candidates-snapshot-slack-channel as first-parent (no Merge remote-tracking subjects in ftr..sub), force-with-lease push origin/sub/AST-1786/AST-1789-manage-candidates-channel-column-s-snapshot; Chuckles retries merge-child.
+
+#### radia — 2026-09-24T19:21:05.196Z
+[code-rubric] PROCEED (Commit: a5cbf620538ba1a52e469b49b10591b156e3af01) Manage Candidates UI clean
+
+#### betty — 2026-09-24T19:18:49.569Z
+`origin/sub/AST-1786/AST-1789-manage-candidates-channel-column-s-snapshot` @ `a5cbf620538ba1a52e469b49b10591b156e3af01` · Manage Candidates UI tests ready
+
+#### joan — 2026-09-24T19:12:23.864Z
+[plan-rubric] PROCEED (Commit: d48d96ff49746b28fd4277caaeb0e53904ad6cb0) Manage Candidates UI sound
+
+#### katherine — 2026-09-24T19:10:29.062Z
+`origin/sub/AST-1786/AST-1789-manage-candidates-channel-column-s-snapshot` @ `d48d96ff49746b28fd4277caaeb0e53904ad6cb0` · plan ready
+
+---
+
 # AST-1789 — Manage Candidates channel column, select warning, S snapshot
 
 **Linear:** [AST-1789](https://linear.app/astralcareermatch/issue/AST-1789/manage-candidates-channel-column-select-warning-s-snapshot-manage)  

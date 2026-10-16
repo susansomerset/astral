@@ -70,7 +70,7 @@ Parent UAT on **`origin/ftr/AST-436-quickie-bugs`** surfaced gaps when manifests
 | --- | --- | --- | --- |
 | Candidate Profile | `src/ui/frontend/src/pages/CandidateProfile.tsx` | `tests/component/frontend/pages/test_CandidateProfile.test.tsx` — must render page + open signature-image tab | `/api/shapes/candidates`, `/api/ui_config`, `/api/candidates/{id}`, `/api/state_ui_manifest` (reject OK) |
 | Execution History | `src/ui/frontend/src/pages/AdminPerformanceMonitor.tsx` | `tests/component/frontend/pages/test_AdminPerformanceMonitor.test.tsx` — include date blur / clear behavior per **§6c** | `/api/candidates`, `/api/admin/dispatch_ledger`, ledger logs as needed |
-| Scheduled Actions | `src/ui/frontend/src/pages/AdminScheduledActions.tsx` | `tests/component/frontend/pages/test_AdminScheduledActions.test.tsx` | candidates, dispatch tasks, thread status |
+| Scheduled Actions | `src/ui/frontend/src/pages/AdminScheduledActions.tsx` | `tests/component/frontend/pages/test_AdminScheduledActions.test.tsx`; header cap dropdown in `test_AdminScheduledActions_AST1917.test.tsx` | candidates, dispatch tasks, thread status, `/api/admin/scheduler/auto_thread_cap` (unmocked → caught, dropdown hidden) |
 | Signature image tab wiring | `TabbedTextArea.tsx` + `CandidateProfile.tsx` | **Both** `test_TabbedTextArea.test.tsx` (panel slot) **and** `test_CandidateProfile.test.tsx` (routed page) | see Candidate Profile row |
 
 ---
@@ -98,6 +98,8 @@ Generic **`apply_copy_output_table_upsert(table_name, json_payload)`**: parse JS
 ---
 
 ### AST-522 · AST-498
+
+**Revised by AST-1975.** `JobsRecommended.tsx` now serves Jobs → Review (`view=review`) and Jobs → Ready (`view=ready`), one state section each; the three-section page is gone. Current coverage: § AST-1975 below.
 
 Rebuild **`JobsRecommended.tsx`**: config-driven sections (**Recommended** / **In Progress** / **Ready**), plain numeric **JD / DO / GET / LIKE** from flattened API fields (no LIKE rubric grade-dot columns, no **`latest_score`** column). **`build_state_ui_manifest()["jobs"]["recommended"]`** + **`StateUiContext`** defaults mirror **`JOBS_RECOMMENDED_UI_SECTIONS`** / **`JOBS_RECOMMENDED_PHASE_SCORE_COLUMNS`**.
 
@@ -287,6 +289,8 @@ Dispatch-only Execution History regression when parent UAT runs full epic: full 
 
 ### AST-549 · AST-550 · AST-484
 
+**AST-1975:** `JobsInReview.tsx` became `JobsProcessing.tsx` and `test_JobsInReview.test.tsx` was renamed `test_JobsProcessing.test.tsx` (`view=processing`). The legacy unmapped-state case moved with it. Fixture key `in_review_sections` is now `processing_sections`. See § AST-1975.
+
 **AST-484 (parent):** Admin dispatch and job/company UI vocabulary must track live config — no parallel seed dicts or hardcoded frontend manifest. **AST-549** removes **`_DISPATCH_TASK_SEED`**, **`dispatch_task_seed_templates()`**, and **`_DISPATCH_TASK_TRIGGER_SEED`** / **`DISPATCH_TASK_SEED_KEYS`**. **`dispatch_task_admin_defaults(task_key)`** derives **`entity_type`**, **`trigger_state`**, **`sort_by`**, **`batch_call_mode`** from **`TASK_CONFIG`**, roster/inflow/board config blocks, and state registries; **`DISPATCH_SCHEDULABLE_TASK_KEYS`** bounds schedulable rows (artifact-only keys like **`anticipate_scan`** stay out). **`GET /api/admin/dispatch_tasks/task_keys`** is **TASK_CONFIG-first** with schedulable merge — seed cannot override config. **AST-550** deletes **`StateUiContext.EMPTY`** (duplicate of **`build_state_ui_manifest()`**); runtime vocabulary from **`GET /api/state_ui_manifest`** only; **`loadState`** loading/error guards on manifest consumers; legacy sections for row states absent from the current manifest.
 
 | Child | Behavior | Sources | Manifest tests |
@@ -465,7 +469,9 @@ cd src/ui/frontend && npm run test:component -- \
 | --- | --- | --- | --- |
 | **AST-634** | Hook + label helpers; three routed admin pages | `src/ui/frontend/src/hooks/useAdminCandidateFilter.ts`, `src/ui/frontend/src/components/AdminCandidateFilterControl.tsx`, `src/ui/frontend/src/lib/candidateLabel.ts`, `AdminScheduledActions.tsx`, `AdminPerformanceMonitor.tsx`, `AdminAgentTimesheets.tsx` | `tests/component/frontend/hooks/test_useAdminCandidateFilter.test.tsx`; `tests/component/frontend/lib/test_candidateLabel.test.ts`; **`AST-634`** describe in `test_AdminScheduledActions.test.tsx`, `test_AdminPerformanceMonitor.test.tsx`, `test_AdminAgentTimesheets.test.tsx` |
 
-**RTL note (Execution History):** page tests seed **`candidate_id`** on the initial route when **`urlPresentDisablesSync`** applies — bare mount without URL param can hang on nav-sync effects.
+> **AST-2150:** Scheduled Actions and Execution History no longer use **`useAdminCandidateFilter`** — both default to **All** and ignore the left nav (see **AST-2150 · AST-2148** below). The nav-default sentence above now applies to **Agent Timesheets** only. The two Scheduled Actions nav-default / nav-sync cases were replaced by the **`AST-2150`** describe; the Execution History **`AST-634`** describe (global option list, URL scoping, direct c1→c2 switch) still holds.
+
+~~**RTL note (Execution History):** page tests seed **`candidate_id`** on the initial route when **`urlPresentDisablesSync`** applies.~~ Retired by **AST-2150** — no nav sync on that page, so **`renderPerformanceMonitor()`** mounts the path as given.
 
 **AST-634** narrowed run:
 
@@ -479,7 +485,37 @@ cd src/ui/frontend && npm run test:component -- \
   -t "AST-634|useAdminCandidateFilter|candidateLabel"
 ```
 
-**Regression guard:** full **`test_AdminPerformanceMonitor.test.tsx`** after **`merge-tests(AST-634)`** — existing cases use **`renderPerformanceMonitor()`** helper (adds **`candidate_id=c1`** when absent).
+**Regression guard:** full **`test_AdminPerformanceMonitor.test.tsx`** after **`merge-tests(AST-634)`** — existing cases use **`renderPerformanceMonitor()`** helper (~~adds **`candidate_id=c1`** when absent~~ — **AST-2150**: no injection, cases run on the All default).
+
+---
+
+### AST-2150 · AST-2148
+
+**AST-2148 (parent):** Scheduled Actions and Execution History open on **All** candidates and narrow only when the operator picks one; the left-nav candidate no longer seeds or syncs the Candidate filter. Execution History still honors an explicit **`?candidate_id=`** bookmark. Hook, shared control, Agent Timesheets / Vector Feedback / Task Performance, Add Task pre-fill, Execution History timezone, and API untouched.
+
+| Child | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| **AST-2150** | SA: page-local filter state starting at All. EH: filter read/written only via URL **`candidate_id`**; first-visit nav→URL effect removed | `AdminScheduledActions.tsx`, `AdminPerformanceMonitor.tsx` | **`AST-2150 candidate filter defaults to All`** describe in `test_AdminScheduledActions.test.tsx` (3 cases); **`AST-2150 candidate filter is URL-only, defaults to All`** describe in `test_AdminPerformanceMonitor.test.tsx` (4 cases) |
+
+#### QA test manifest
+
+1. **AC3 / AC4 / AC8 (SA):** **`AST-2150 candidate filter defaults to All`** — nav c1 first load shows All + both candidates' sections; nav c1→c2 leaves dropdown and sections unchanged; pick c2 narrows, pick All restores.
+2. **AC5 / AC6 / AC7 / AC8 (EH):** **`AST-2150 candidate filter is URL-only, defaults to All`** — no URL param ⇒ ledger fetch + URL unscoped, dropdown All; nav c1→c2 adds nothing; **`?candidate_id=c2`** with nav c1 scopes to c2; pick c2 writes URL + fetch, pick All clears both.
+3. **AC9 (Add Task pre-fill, existing):** **`AST-1619 editable Entity Type`** › **`Add Task Entity Type is a select (not readOnly text)`** (Candidate input = **c1**) and **`save disabled on add when no candidate selected`** in `test_AdminScheduledActions.test.tsx`.
+4. **Hook unchanged (existing):** full `tests/component/frontend/hooks/test_useAdminCandidateFilter.test.tsx`.
+5. **Regression (§6c routed page):** full `test_AdminScheduledActions.test.tsx` and `test_AdminPerformanceMonitor.test.tsx` — every EH case now mounts without an injected **`candidate_id`**.
+6. **AC1 / AC2 / AC10:** engineer greps + build + plan's lint-baseline gate (no new findings) — not Vitest.
+
+**Broken / obsolete (revised this pass):** SA **`AST-634 admin candidate filter`** describe (2 nav-default / nav-sync cases) → replaced by the **`AST-2150`** describe. EH **`withCandidateQuery`** helper (forced **`candidate_id=c1`**) → removed. No integration scenario touches these pages.
+
+Red-on-old check: against `origin/dev` pages, SA cases 1–2 and EH cases 1–2 fail; the bookmark and manual-pick cases pass on both (regression guards).
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminPerformanceMonitor.test.tsx \
+  ../../../tests/component/frontend/hooks/test_useAdminCandidateFilter.test.tsx
+```
 
 ---
 
@@ -697,7 +733,7 @@ cd src/ui/frontend && npm run test:component -- \
   --testNamePattern="AST-746|AST-647"
 ```
 
-**Manual UAT (Susan):** Scheduled Actions with multiple phase sections — expand each; confirm no gap between Candidate/Task, Entity does not cover State, horizontal scroll keeps three frozen columns aligned.
+**Manual UAT (Susan):** Scheduled Actions with multiple phase sections — expand each; confirm no gap between Candidate/Task, Entity does not cover State, horizontal scroll keeps three frozen columns aligned. *(Superseded by **AST-1818**: only Task is frozen.)*
 
 **Pass criterion:** Vitest green on narrowed run (items above) + Susan manual multi-phase UAT.
 
@@ -844,7 +880,7 @@ cd src/ui/frontend && npm run test:component -- \
 
 ### AST-887 · AST-885
 
-Scheduled Actions: **Avail** filter control (`All` / `> 0`) on the existing client-side filter bar; when `gt0`, `filteredRows` keeps only `(available_count ?? 0) > 0` (excludes em-dash Avail: `0` or `null`). ANDs with Candidate / Section/Group / Task / Floor / AUTO / Debug / Freq / Min count / Batch size / Run counts. Empty sections omit via existing `filteredRows` bucketing; section AUTO summaries inherit. **Default engaged as `gt0` (AST-894)** — was All under AST-887 alone. No API / Available math / column-format change.
+Scheduled Actions: **Avail** filter control (`All` / `> 0`) on the existing client-side filter bar; when `gt0`, `filteredRows` keeps only `(available_count ?? 0) > 0` (excludes em-dash Avail: `0` or `null`). ANDs with Candidate / Section/Group / Task / Floor / AUTO / Debug / Freq / Min count / Batch size / Run counts. Empty sections omit via existing `filteredRows` bucketing; section AUTO summaries inherit. **Default engaged as `gt0` (AST-894)** — was All under AST-887 alone. *(Superseded by **AST-1818**: default is All again.)* No API / Available math / column-format change.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
@@ -955,6 +991,8 @@ Plus config:
 
 ### AST-893 · AST-886
 
+**AST-1975:** `JobsInReview.tsx` became `JobsProcessing.tsx` and `test_JobsInReview.test.tsx` was renamed `test_JobsProcessing.test.tsx` (`view=processing`). The **`AST-893 Expand One default`** describe moved with it unchanged.
+
 Optional Expand All policy on sectioned lists: **Expand One** default (Manage Tasks list, In Review, Skipped) vs **Expand All** opt-in (Scheduled Actions) with **Expand all** / **Collapse all** chrome. Hook + chrome maps: `docs/test-bible/frontend/hooks.md`, `docs/test-bible/frontend/components.md`.
 
 | # | Scenario | Sources | Manifest tests |
@@ -987,7 +1025,7 @@ cd src/ui/frontend && npm run test:component -- \
 
 ### AST-894 · AST-888
 
-Scheduled Actions landing defaults: Avail filter initial state `"gt0"`; one-shot `expandAllSections()` behind `didAutoOpenSectionRef` (replaces AST-785 first-section-only auto-open). Operator collapse after landing is not overwritten. Avail → All restores zero/empty Avail rows; empty-section omission follows the filtered set. Frontend-only; reuses AST-886/893 Expand All policy.
+Scheduled Actions landing defaults: Avail filter initial state `"gt0"` *(superseded by **AST-1818**: `""` / All)*; one-shot `expandAllSections()` behind `didAutoOpenSectionRef` (replaces AST-785 first-section-only auto-open). Operator collapse after landing is not overwritten. Avail → All restores zero/empty Avail rows; empty-section omission follows the filtered set. Frontend-only; reuses AST-886/893 Expand All policy.
 
 | # | Scenario | Sources | Manifest tests |
 | --- | --- | --- | --- |
@@ -1270,6 +1308,8 @@ UAT (historical): **Create** on matched list-row **Actions** column. **AST-1142*
 
 ### AST-1057 · AST-1052
 
+**Retired by AST-1975.** Meteorite-track jobs stay in their state section; the Meteorites sub-section, manifest `meteorite_section`, and the AST-1057 cases are gone. Current coverage: § AST-1975 below (no Meteorites heading; Source column).
+
 **Parent:** [AST-1052 — Processing meteorites](https://linear.app/astralcareermatch/issue/AST-1052/processing-meteorites). **Publish:** `origin/sub/AST-1052/AST-1057-recommended-page-meteorites-section`.
 
 Recommended list partitions jobs whose `company` starts with manifest `meteorite_section.company_prefix` into a prepended **Meteorites** section; vetted-company Recommended / In Progress / Ready unchanged. Config: **`docs/test-bible/utils/config.md`** (**AST-1057**). Fixture: **`stateUiManifestFixture.ts`** carries `meteorite_section`.
@@ -1288,6 +1328,8 @@ cd src/ui/frontend && npm run test:component -- \
 ```
 
 ### AST-1709 · AST-1707
+
+**Retired by AST-1975.** The meteorite partition is gone; the null-company no-throw check lives on in § AST-1975's **`AST-1975: no Meteorites sub-section…`** case.
 
 **Parent:** [AST-1707](https://linear.app/astralcareermatch/issue/AST-1707). **Publish:** `origin/sub/AST-1707/AST-1709-null-company-recommended-partition-test`. **Sibling product guard:** AST-1708 (`(job.company ?? "").startsWith(prefix)` on `JobsRecommended.tsx`).
 
@@ -1347,6 +1389,8 @@ cd src/ui/frontend && npm run test:component -- \
 
 ### AST-1064 · AST-1059
 
+**AST-1975:** `JobsInReview.tsx` became `JobsProcessing.tsx` and `test_JobsInReview.test.tsx` was renamed `test_JobsProcessing.test.tsx` (`view=processing`). The **`AST-1064`** describe moved with it unchanged.
+
 **Parent:** [AST-1059 — Issue with the rubric grade displays on the Jobs List pages](https://linear.app/astralcareermatch/issue/AST-1059/issue-with-the-rubric-grade-displays-on-the-jobs-list-pages). **Publish:** `origin/sub/AST-1059/AST-1064-group-by-aligned-rubric-jobs-list-tables`.
 
 Skipped + In Review list tables group by job-carried rubric fingerprint; columns from `*_rubric` (grades fallback); Score from `{prefix}_score` then `latest_score`. Helpers: **`docs/test-bible/frontend/components.md`** (**AST-1064**). Hydration payload: sibling **AST-1063**.
@@ -1371,6 +1415,8 @@ cd src/ui/frontend && npm run test:component -- \
 ---
 
 ### AST-1086 · AST-1078
+
+**AST-1975:** `JobsInReview.tsx` became `JobsProcessing.tsx` and `test_JobsInReview.test.tsx` was renamed `test_JobsProcessing.test.tsx` (`view=processing`). The **`AST-1086`** describe moved with it (tooltip job title now `Tooltip Processing`).
 
 **Parent:** [AST-1078 — Small bug: Headers for Job Lists](https://linear.app/astralcareermatch/issue/AST-1078/small-bug-headers-for-job-lists). **Publish:** `origin/sub/AST-1078/AST-1086-compact-vector-codes-grade-dot-tooltips`.
 
@@ -1399,7 +1445,7 @@ cd src/ui/frontend && npm run test:component -- \
 
 **Parent:** [AST-1043 — Slack Bot Agent](https://linear.app/astralcareermatch/issue/AST-1043/slack-bot-agent). **Publish:** `origin/sub/AST-1043/AST-1067-manage-slack-admin-listen-switch`.
 
-Admin **Manage Slack** page (§6c): first-paint listen state via `GET /api/admin/contact/listen`; toggle `PUT` enables/disables listen for this environment; non-prod copy notes `[<environment>]` reply prefix. API: **`docs/test-bible/ui/api/api_contact.md`**. Nav: **`docs/test-bible/utils/config.md`**.
+Admin **Manage Slack** page (§6c): first-paint listen state via `GET /api/admin/contact/listen`; toggle `PUT` enables/disables listen for this environment; no reply-prefix copy (AST-2085 retired the `[<environment>]` prefix). API: **`docs/test-bible/ui/api/api_contact.md`**. Nav: **`docs/test-bible/utils/config.md`**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
@@ -1577,7 +1623,7 @@ cd src/ui/frontend && npm run test:component -- \
 
 **Parent:** [AST-1087](https://linear.app/astralcareermatch/issue/AST-1087/add-gaze-email-as-a-dispatch-task). **Publish:** `origin/sub/AST-1087/AST-1106-uat-gaze-email-missing-from-scheduled-actions-default-view`.
 
-Scheduled Actions Avail **gt0** keeps rows where API `always_visible_under_avail_gt0` is true (mailbox shell with intentional zero avail); other zero-avail rows still omitted. Default remains `gt0` (AST-894). Candidate cell is null-safe (`candidate_id || "—"`) so shared mailbox rows do not crash. No React `"gaze_email"` set.
+Scheduled Actions Avail **gt0** keeps rows where API `always_visible_under_avail_gt0` is true (mailbox shell with intentional zero avail); other zero-avail rows still omitted. Default remains `gt0` (AST-894) *(superseded by **AST-1818**: default All)*. Candidate cell is null-safe (`candidate_id || "—"`) so shared mailbox rows do not crash. No React `"gaze_email"` set.
 
 | # | Area | Source | Component tests |
 | --- | --- | --- | --- |
@@ -1654,6 +1700,8 @@ cd src/ui/frontend && npm run test:component -- \
 
 
 ### AST-1237 · AST-1173
+
+**AST-1975:** **Not now** navigates to `/` (Jobs home redirect), not `/jobs/recommended`.
 
 **Parent:** [AST-1173 — Consent — install disclosure, affirmative opt-in, and off-switch](https://linear.app/astralcareermatch/issue/AST-1173/consent-install-disclosure-affirmative-opt-in-and-off-switch). **Publish:** `origin/sub/AST-1173/AST-1237-install-disclosure-and-affirmative-opt-in`.
 
@@ -2066,6 +2114,8 @@ npm run test:component -- \
 
 ### AST-1410 · AST-1406
 
+**AST-1975:** `JobsInReview.tsx` became `JobsProcessing.tsx` and `test_JobsInReview.test.tsx` was renamed `test_JobsProcessing.test.tsx` (`view=processing`). Its **`AST-1410 silent refetch`** case matches `view=processing`; the Recommended case matches `view=review`.
+
 **Parent:** [AST-1406 — Page refreshes and modals are closed (lost!)](https://linear.app/astralcareermatch/issue/AST-1406). **Publish:** `origin/sub/AST-1406/AST-1410-apply-silent-refetch-on-remaining-loading-gate-surfaces`.
 
 Remaining authenticated list surfaces consume `useInPlaceLiveRefresh` from **AST-1409**: first paint (and query-identity) may show `Loading…`; post-mutation / poll / modal-close `load*` is silent. Manage Tasks edit overlay stays outside the list gate. Artifact Cancel with no snapshot re-GETs last-saved tabs (no `window.location.reload`). Company Search Terms Cancel chrome stays snapshot-gated (`inReview = snapshot !== null`); the no-snapshot re-GET branch is covered on **`ArtifactEditor`**. Session-shell is **AST-1408**. Scheduled Actions is **AST-1409**.
@@ -2292,6 +2342,8 @@ cd src/ui/frontend && npm run test:component -- \
 
 ### AST-1454 · AST-1446
 
+**AST-1975:** `JobsInReview.tsx` became `JobsProcessing.tsx` and `test_JobsInReview.test.tsx` was renamed `test_JobsProcessing.test.tsx` (`view=processing`). Drift: the **`AST-1454`** case cited below was already absent from `test_JobsInReview.test.tsx` before the rename (`git log -S AST-1454` on the file finds nothing); not reconstructed.
+
 **Parent:** [AST-1446 — When a job is in a Skipped state, make all fields editable](https://linear.app/astralcareermatch/issue/AST-1446/when-a-job-is-in-a-skipped-state-make-all-fields-editable). **Publish:** `origin/sub/AST-1446/AST-1454-job-detail-skipped-field-editors`.
 
 `JobsSkipped` / `JobsInReview` pass `onRefresh={load}` into `JobDetailModal` so Save refreshes the list. Editor chrome: **`docs/test-bible/frontend/components.md`** § AST-1454.
@@ -2374,6 +2426,8 @@ cd src/ui/frontend && npm run test:component -- \
 **Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
 
 ### AST-1481 · AST-1463
+
+**AST-1975:** blank jobId and modal close navigate to `/`; the error link reads **Back to Jobs** (`href="/"`).
 
 **Parent:** [AST-1463 — Candidate single page job report](https://linear.app/astralcareermatch/issue/AST-1463). **Publish:** `origin/sub/AST-1463/AST-1481-detail-deeplink-opens-existing-report-modal`.
 
@@ -2579,7 +2633,7 @@ Base Resume Content passes `bodyShape="resume_content"` (drops `useCandidateResu
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Routed page (**§6c**) bodyShape + leaf Save | `ArtifactsBaseResumeContent.tsx` | **`test_ArtifactsBaseResumeContent.test.tsx`** — **`AST-1577:`** |
+| Routed page (**§6c**) bodyShape + leaf Save (autosave since AST-2056) | `ArtifactsBaseResumeContent.tsx` | **`test_ArtifactsBaseResumeContent.test.tsx`** — **`AST-1577:`** |
 | Draft pattern (no write-operative link) | `canon/directives/draft/patt.artifact.ui-consistency.md` | same **`AST-1577: page and draft follow ui-consistency`** |
 
 **Broken / obsolete:** none — existing structure/print/accent cases still render via `bodyShape`.
@@ -2958,6 +3012,8 @@ cd src/ui/frontend && npm run test:component -- \
 
 ### AST-1749 · AST-1741
 
+**AST-1976:** the same page file adds the landed-job **Job State** cell and an in-page job report link. Coverage: § AST-1976 below.
+
 **Parent:** [AST-1741 — Add "Meteorites" to the Jobs navigation](https://linear.app/astralcareermatch/issue/AST-1741/add-meteorites-to-the-jobs-navigation). **Publish:** `origin/sub/AST-1741/AST-1749-jobs-meteorites-nav-list-page-detail-modal`.
 
 Jobs → Meteorites routed page (`JobsMeteorites.tsx`): candidate-scoped list from AST-1748 APIs, empty honesty, candidate switch refetch, row → detail modal. Nav/route/config: **`docs/test-bible/utils/config.md`** § AST-1749. Modal: **`docs/test-bible/frontend/components.md`** § AST-1749. §6c page render required.
@@ -3052,3 +3108,1027 @@ cd src/ui/frontend && npm run test:component -- \
 
 **Bible shasum (publish tip):**
 - `docs/test-bible/frontend/pages.md` — *(filled after publish)*
+
+---
+
+### AST-1818 · AST-1817 (Scheduled Actions Invalid label, zero-avail Run block, Avail All default, Task-only freeze)
+
+**Parent:** [AST-1817 — Invalid vs 0 Avail scheduled actions](https://linear.app/astralcareermatch/issue/AST-1817). **Publish:** `origin/sub/AST-1817/AST-1818-scheduled-actions-invalid-label-zero-avail-run-block`.
+
+Routed page **`AdminScheduledActions.tsx`** only: `empty_render` rows show a full-opacity disabled **`btn secondary in-row`** button named **Invalid** (wins over Run/Sweep); valid rows with `available_count` 0 get the muted (0.25) disabled Run; Avail filter initial state `""` (All) — `> 0` predicate unchanged; `FROZEN_DATA_COLUMNS` 3 → 1 (Task only; shared `list_table_frozen_data_columns` untouched). No API / config / `listTableLayout.ts` / `App.css` change.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| AC1–2 Invalid button (name, classes, disabled, no 0.25, no `/run` POST) | `AdminScheduledActions.tsx` | **`test_AdminScheduledActions.test.tsx`** — **`AST-1782 … > blocks AUTO toggle and shows disabled Invalid button when empty_render is true`** (revised) |
+| AC3 zero-avail Run muted/disabled, no POST | same | **`AST-1818 zero-avail Run block > valid row with available_count 0 …`** (new) |
+| AC4 avail > 0 Run POSTs | same | **`AST-1782 … > allows AUTO toggle and Run when empty_render is false`** (existing) |
+| AC5 running zero-avail row Stop POSTs | same | **`AST-1818 zero-avail Run block > running row with available_count 0 …`** (new) |
+| AC6–7 Avail default All; `> 0` still filters | same | **`AST-887 Avail > 0 filter`** (4, revised); **`AST-894 expand-all on landing (Avail default All per AST-1818)`** (revised); **`test_AdminScheduledActions_AST1104.test.tsx`** landing value (revised) |
+| AC8 only Task frozen, no sticky `left` on Entity/State | same | **`AST-647: phase table freezes only the Task column`** (renamed); **`AST-746`**, **`AST-760`** (revised) |
+
+**Broken / obsolete this pass (revised, not deleted):** AST-647 / AST-746 / AST-760 (three frozen columns + measured `left` on Entity/State); AST-887 ×4, AST-894 ×2, AST-1104 landing (default `gt0`); AST-1782 `blocks…` (button named Run). **Pre-existing drift fixed:** AST-751 + AST-768 default-sort cases read Candidate at `cells[11]` — Mode column (`fabcf747`) shifted it; now `cells[length - 3]`.
+
+**Integration:** none — no existing scenario exercises Scheduled Actions frontend; do not invent.
+
+## QA test manifest
+
+1. Full Scheduled Actions routed-page suite (§6c; AC 11): both `test_AdminScheduledActions*.test.tsx` files — 71 cases.
+2. AC 9 / AC 10 gates (product diff shape).
+3. `npm run build` + `npm run lint` (lint: no new problems vs `origin/dev`; engineer baseline 33).
+
+```bash
+cd src/ui/frontend && npx vitest run --config vite.config.ts test_AdminScheduledActions
+git diff origin/dev -- src/ui/frontend/src/App.css src/ui/frontend/src/lib/listTableLayout.ts src/ui/api src/utils/config.py
+git diff origin/dev -- src/ui/frontend/src/pages/AdminScheduledActions.tsx | rg -n '^\+.*(#[0-9a-fA-F]{3,6}|rgb\()'
+cd src/ui/frontend && npm run build && npm run lint
+```
+
+**Pass criterion:** 71/71 Vitest green; both diffs/greps empty; build green; lint count unchanged — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):** see issue doc `## QA test manifest`.
+
+---
+
+### AST-1819 · AST-1817 (qa-fix bug-repro — Invalid tooltip lists missing tokens)
+
+**Parent:** [AST-1817](https://linear.app/astralcareermatch/issue/AST-1817). **Publish:** `origin/sub/AST-1817/AST-1819-invalid-button-missing-token-tooltip`.
+
+Scheduled Actions: native `title` on the Run-cell wrapper `<div>` of an `empty_render` row — `empty_tokens.join(", ")`, or `Could not validate prompts` when the list is empty; no `title` while the row is running. The Invalid button itself is unchanged (AST-1818 AC 1–2 still hold).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Token-list title; button keeps name Invalid, disabled, no own title `[bug-repro]` | `AdminScheduledActions.tsx` | **`test_AdminScheduledActions.test.tsx`** — **`AST-1819 Invalid tooltip lists missing tokens > wrapper title is the comma-separated token list…`** |
+| Empty list fallback `[bug-repro]` | same | **`… > empty token list falls back to 'Could not validate prompts'`** |
+| No title while running (guard, green pre-fix) | same | **`… > no tooltip while the Invalid row is running…`** |
+
+```bash
+cd src/ui/frontend && npx vitest run --config vite.config.ts test_AdminScheduledActions
+```
+
+### AST-1830 · AST-1824 (Scheduled Actions sweep_hrs input + list column)
+
+**Parent:** [AST-1824](https://linear.app/astralcareermatch/issue/AST-1824). **Publish:** `origin/sub/AST-1824/AST-1830-sweep-interval-admin-api-ui`.
+
+`AdminScheduledActions.tsx`: a `Sweep (hrs)` numeric input in the Add and Edit modals (blank = off; prefilled from the row on Edit). Save sends `sweep_hrs` as a number, or `null` when blank. A sortable **Sweep** list column shows the value or `—`. Run/Sweep button logic (`sweepDisabled`) is unchanged.
+
+| Area | Component tests |
+| --- | --- |
+| List shows value or `—`; Sweep header sorts both directions | **`test_AdminScheduledActions.test.tsx`**: **`AST-1830 sweep_hrs modal input + list column > list shows sweep_hrs or — and the Sweep column sorts`** |
+| Edit prefills; PUT sends new value; clearing sends `null` | **`… > edit modal prefills sweep_hrs, PUT sends the new value, and clearing sends null`** |
+| Add starts blank; POST sends value; blank sends `null` | **`… > add modal starts blank and POST sends sweep_hrs (null when blank)`** |
+
+All three fail on the pre-AST-1830 page and pass with it (checked at QA). **Broken / obsolete:** none. The existing 74 tests across both Scheduled Actions files stay green.
+
+Primary numbered manifest: **`docs/test-bible/ui/api/api_admin.md`** § AST-1830.
+
+**AST-1874 (pointer):** `JobsRecommended` imports `formatPhaseScore` from `lib/recommendedJobReport` (list cells unchanged); row-click and `JobsJobDetail` deeplink tests now expect the report to open on **Analysis**. Manifest: **`docs/test-bible/frontend/components.md`** § AST-1874.
+
+### AST-1880 · AST-1851 (admin pickers + per-server keys)
+
+| Page | Tests |
+| --- | --- |
+| `AdminAgentPrompts.tsx`: Model select, then that model's own sizes (from `/agents/models` `order`). A model change keeps the size if offered, otherwise uses the first size plus its defaults. Model column label; POST/PUT carry `model_id` + `brain_setting` | `test_AdminAgentPrompts.test.tsx`: fixtures moved to the keyed catalog (`brain_settings` mocks removed); new **AST-1880: Add picks a model…**, **AST-1880: Edit shows the agent's model + size…** |
+| `AdminManageCandidates.tsx`: one key field per `api_keys` server (label, set/not set, Show, Clear only when set, per-server confirm). PUT sends only the changed servers (`""` = clear). The column lists the set labels | `test_AdminManageCandidates.test.tsx`: main CRUD test drives the DeepSeek type + Show and the Kimi Clear → `api_keys: {kimi: "", deepseek: "sk-ds-new"}`; new **AST-1880: no keys set…** (no Clear, Save omits `api_keys`); **AST-1880: API Key column lists the labels…** is **red: product bug** (renderer still tests `val === "Set"`) |
+| `AdminScheduledActions.tsx`: Invalid tooltip prefers `invalid_reason`, else tokens, else "Could not validate prompts" | `test_AdminScheduledActions.test.tsx` › AST-1819 describe: new **AST-1880: missing platform key reason wins…**, **AST-1880: empty invalid_reason falls back to tokens** |
+| `AdminSessionResumePaste.tsx`: Parse needs a selected candidate (disabled with a title otherwise); POST body `{resume_text, candidate_id}` | `test_AdminSessionResumePaste.test.tsx`: `mockApis` serves a candidate list; Parse-success test asserts the exact body; new **AST-1880: no selected candidate keeps Parse disabled…** |
+
+Manifest: **`docs/test-bible/ui/api/api_admin.md`** § AST-1880.
+
+### AST-1901 · AST-1851 (bug: Manage Candidates keys as an array)
+
+> Supersedes the AST-1880 `AdminManageCandidates` row above (no fixed per-server fields; the column red is closed).
+
+> **AST-1920:** the UI half below (stored-only fields, "Add API key for…" picker, `(new)` rows, Remove) is superseded. The Edit modal shows one key field per catalog server again; see § AST-1920. The array storage and PUT contract stay.
+
+`test_AdminManageCandidates.test.tsx`: the fixture `api_keys` is `[{server, label}]` (Kimi, OpenRouter). A file-local `installBaseApiMocks` wrapper serves `/api/admin/agents/models`; the catalog has two DeepSeek models, so the picker de-dupes by server.
+- **Main CRUD test:** fields appear only for stored entries (Clear on each). The picker lists servers without a row, in catalog order. Adding DeepSeek gives a "(new)" field (no Clear; Show; typed key). Kimi Clear goes through the confirm dialog. The PUT carries `api_keys: [{kimi, ""}, {deepseek, "sk-ds-new"}]`.
+- **AST-1901: API Key column joins the stored entries' labels.**
+- **AST-1901: no keys…:** Not set, no key fields, all four servers in the picker, and Save omits `api_keys`.
+- **AST-1901: Remove drops an unsaved row…:** the picker disappears once every server has a row. Remove returns that server to the picker, and a blank added row isn't sent.
+
+Manifest: **`docs/test-bible/data/database/candidates.md`** § QA test manifest (AST-1901).
+
+### AST-1909 · AST-1851 (bug: Manage Task modal model + brain size)
+
+**Retired by AST-1939.** The modal's Model / Brain size selects, the agent catalog/row fetches, and the post-save agent `PUT` were removed (Susan: the agent row is the only model source). The 7-test **AST-1909 task modal model + brain size** describe and its file-local catalog/agent mock wrapper are gone. Current coverage: § AST-1939 below.
+
+### AST-1939 · AST-1937 (remove the Manage Task model picker)
+
+`AdminTaskPrompts.tsx`: the modal drops the AST-1909 **Model** / **Brain size** selects, the "Applies to agent" hint, the `GET /api/admin/agents/models` and `GET /api/admin/agents/<id>` fetches, and the post-save `PUT /api/admin/agents/<id>`. The Agent select, the task `PUT` (which still carries `agent_id`), and the list's read-only **Model** column (`model_code`) are unchanged.
+
+| AC 9 bullet | Tests (`test_AdminTaskPrompts.test.tsx`, describe **AST-1939 no task-level model picker**) |
+| --- | --- |
+| No Model / Brain size select in the modal | **modal has no Model or Brain size select and fetches neither the catalog nor the agent row** |
+| Save issues only the task update, no `/api/admin/agents/<id>` request | **changing the Agent then saving issues only the task PUT — no agent request** |
+| List keeps the read-only Model column | **task list keeps the read-only Model column showing model_code** |
+| No `agents/models` / `editModelId` / `editBrainSetting` / `loadAgentModel` / `Brain size` in the page | grep in manifest below |
+
+The first two tests are red against the `origin/dev` page and green on the publish tip; the column test is a guard and stays green on both (checked at QA). **Broken / obsolete (revised):** the 7 AST-1909 modal tests (removed, replaced by the describe above) and the file-local `installBaseApiMocks` wrapper (removed; the file now uses `test-utils` `installBaseApiMocks` directly, which throws on any unhandled URL). The other 12 tests in the file are unchanged and green. **Integration:** no scenario covers the Manage Task modal, so nothing to revise.
+
+## QA test manifest (AST-1939)
+
+1. **Page Vitest (§6c routed page):** the whole file, 15 tests (12 existing + 3 AST-1939).
+2. **Manage Agents unchanged:** `test_AdminAgentPrompts.test.tsx` green (Boundaries).
+3. **AC 9 grep** on the publish tip — expect nothing.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminTaskPrompts.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminAgentPrompts.test.tsx
+cd ../../.. && rg -n "agents/models|editModelId|editBrainSetting|loadAgentModel|Brain size" src/ui/frontend/src/pages/AdminTaskPrompts.tsx
+```
+
+**Pass criterion:** both files green, grep empty.
+
+### AST-1908 · AST-1899 (Save to Candidate on Session Resume Paste)
+
+`AdminSessionResumePaste.tsx`: a fourth row button, **Save to Candidate** (after Open HTML), PUTs the last parse to the existing `PUT /api/candidates/<selectedId>/data` with `{artifacts: {resume_structure: {sections}, base_resume}}`. The body has no `accent_color` and no `artifact_id`, and `base_resume` is sent as parsed. A `saving` state labels the button **Saving…** and disables all four buttons. Save is also disabled with no candidate, with no `lastParse`, or while Parse / Open HTML is in flight. OK → success toast. Non-OK → the JSON `error` (else `HTTP <status>`) goes to both the error toast and the inline error line, and `lastParse` is kept. The intro copy drops "does not save to the database". No backend change: the route's ingest/filter/operative write is reused, and its coverage stays with `api_candidate`.
+
+| AC | Tests (`test_AdminSessionResumePaste.test.tsx`, AST-987 describe) |
+| --- | --- |
+| 1 Button present + gated | **AST-1908 AC1: Save to Candidate is the fourth button…** · **…no selected candidate keeps Save disabled…** · **…Save disabled while Parse is in flight** · **…Save disabled while Open HTML is in flight** |
+| 2 Correct request (+ Saving… lock, success toast) | **AST-1908 AC2/AC6: one PUT with the exact parse body…** |
+| 6 Error feedback | **AST-1908 AC6: 400 error shows server message in toast + inline…** |
+| 8 Copy | **AST-1908 AC8: intro copy names Save to Candidate…** |
+| 3 / 4 / 5 persistence, layout, experience | UAT (DB row `current=1`, Base Resume Content editor) — product reuses the existing route unchanged |
+| 7 No backend change | grep/diff in manifest below |
+
+All 7 new tests are red against the `origin/dev` page and green on the publish tip (checked at QA). **Broken / obsolete:** none. The AST-1035 button-order assertion only lists the three original buttons, and the 7 existing tests stay green. **Integration:** no scenario covers Session Resume Paste or the candidate data PUT from this page, so nothing to revise.
+
+## QA test manifest (AST-1908)
+
+1. **Page Vitest (§6c routed page):** the whole file, 14 tests (7 existing + 7 AST-1908).
+2. **AC7 / AC8 greps** on the publish tip.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminSessionResumePaste.test.tsx
+cd ../../.. && git diff origin/dev --stat -- src/ui/api src/core src/data src/utils   # expect empty
+grep -rn "session_resume/save" src/                                                    # expect nothing
+grep -n "does not save to the database" src/ui/frontend/src/pages/AdminSessionResumePaste.tsx   # expect nothing
+```
+
+**Pass criterion:** 14/14 green and all three commands print nothing.
+
+### AST-1917 · AST-1875 (Scheduled Actions header Max AUTO threads dropdown)
+
+**Parent:** [AST-1875](https://linear.app/astralcareermatch/issue/AST-1875). **Publish:** `origin/sub/AST-1875/AST-1917-header-dropdown`. `AdminScheduledActions.tsx` loads `GET /api/admin/scheduler/auto_thread_cap` once on mount (failure → dropdown hidden, no toast) and renders a "Max AUTO threads" `<select>` with options `min..max` from the payload. A pick POSTs `{"max_auto_threads": <number>}` optimistically; success shows the server-returned value, failure reverts and toasts. Backend contract: [`../ui/api/api_admin.md`](../ui/api/api_admin.md) § AST-1916.
+
+| AC | Source | Component tests (`tests/component/frontend/pages/test_AdminScheduledActions_AST1917.test.tsx`) |
+| --- | --- | --- |
+| 1 default pre-selected · 2 exactly 1..100 | page mount load + `<select>` | **`AC1/AC2: shows the live cap pre-selected with exactly 1..100 options`** |
+| 3 bounds from API, not literals | `<select>` options | **`AC3: option range follows the API bounds, not page literals`** (2..6 payload) + grep (manifest item 2) |
+| POST body is a JSON number; server value wins | `handleAutoThreadCapChange` | **`POSTs the pick as a JSON number and shows the server-returned value`** |
+| 400 → revert + API error toast · throw → revert + fallback toast | same | **`reverts to the prior cap and toasts the API error on a 400`**, **`reverts and shows the fallback toast when the POST throws`** |
+| load failure hides dropdown silently (non-ok / throw) | mount effect | **`hides the dropdown silently when the cap load fails`** (2 cases) |
+
+**Existing coverage (unchanged, must stay green):** `test_AdminScheduledActions.test.tsx` + `test_AdminScheduledActions_AST1104.test.tsx` — they don't mock the cap route; `installBaseApiMocks` throws `Unhandled api`, the page catches it, the dropdown stays hidden. **Broken / obsolete:** none. **Integration:** none.
+
+## QA test manifest (AST-1917)
+
+1. **Page Vitest (§6c routed page, required, green):** new file (7) + both existing Scheduled Actions files (79).
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminScheduledActions_AST1917.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminScheduledActions_AST1104.test.tsx
+```
+
+Expect **86 passed**.
+
+2. **AC3 grep + scope:**
+
+```bash
+grep -nE '\b100\b' src/ui/frontend/src/pages/AdminScheduledActions.tsx    # expect nothing
+git diff --stat origin/ftr/AST-1875-runtime-auto-thread-cap...HEAD -- src/   # expect only AdminScheduledActions.tsx
+```
+
+**Pass criterion:** 86/86 green and both commands as stated. `test_AdminSessionResumePaste.test.tsx` (AST-1908; product AST-1899 not on dev) is red on this tip pre-existing — out of scope.
+
+**Bible shasum (publish tip):** fill after `merge-tests` — `docs/test-bible/frontend/pages.md`
+
+### AST-1920 · AST-1851 (bug: Manage Candidate key fields for every server)
+
+`AdminManageCandidates.tsx` Edit shows one API key field per server in `/api/admin/agents/models`, deduped by server, in catalog order. A server with a stored `api_keys` entry shows `(set — leave blank to keep current)` with Show and Clear; a server without one shows `(not set)` with Show only. A stored entry whose server isn't in the catalog is appended after the catalog rows and stays clearable. There is no picker and no Remove. Save sends only changed rows as `[{server, key}]` in row order (`""` = clear a stored entry) and omits `api_keys` when nothing changed. The array storage, PUT contract and list column are unchanged from AST-1901.
+
+| Area | Tests (`test_AdminManageCandidates.test.tsx`) |
+| --- | --- |
+| Rewritten (AST-1901 picker assertions removed) | main CRUD test: the four catalog-order labels (Kimi and OpenRouter set), 2 Clear buttons, no picker or Remove. DeepSeek `(not set)` gets Show plus a typed key, Kimi gets Clear, and the PUT carries `[{kimi, ""}, {deepseek, "sk-ds-new"}]` |
+| Repro (bug-repro) | **AST-1920: no keys shows Not set and a (not set) field for every catalog server…** (4 fields, 4 Show, no Clear, Save omits `api_keys`) · **AST-1920: a stored key for a server not in the catalog stays visible and clearable…** (5th row `retired_srv`; a whitespace-only Anthropic input isn't sent; PUT `[{retired_srv, ""}]`) |
+| Retired | **AST-1901: no keys … full picker**, **AST-1901: Remove drops an unsaved row …** |
+
+## QA test manifest (AST-1920)
+
+**Bug-repro (qa-fix):** the main CRUD test and both AST-1920 tests are red on the pre-fix tree (`origin/sub/AST-1851/AST-1920-manage-candidate-key-fields` @ `098705380`): only stored entries render (2 fields, or 0 with no keys). test-fix must see all 3 flip green, with the rest of the file still green.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminManageCandidates.test.tsx
+```
+
+**Pass criterion:** the whole file green.
+
+### AST-1949 · AST-1946 (Manage Agents Mode select; temperature controls removed)
+
+`AdminAgentPrompts.tsx`: the add/edit form's Temperature input becomes a required **Mode** select. Its options are exactly `Deterministic` / `Creative` (the page-local `AGENT_MODES`, which mirrors `src/utils/config.py`). The selected value is sent as `mode` on both POST and PUT, and neither body has `temperature`. Add opens on `Deterministic`. Edit pre-selects the row's mode. A row with `mode: null` (not yet migrated by AST-1950) shows a `— choose mode —` placeholder until a mode is picked. Size and model changes pre-fill max tokens only and never touch the mode. The list swaps **Temp** for **Mode**, and a null mode shows `—`. The `Agent` / model types drop `temperature`, `model_code` and `default_temperature`. Backend contract: [`../ui/api/api_admin.md`](../ui/api/api_admin.md) § AST-1948.
+
+| AC | Tests (`test_AdminAgentPrompts.test.tsx`) |
+| --- | --- |
+| 8 Mode column, no Temp column | describe **AST-1949 Manage Agents mode** › **list has a Mode column showing each row's mode and no Temp column** |
+| 8 No temperature input for any model | › **no Temperature field renders in Add or Edit for any model or size** (every fixture model × size in Add, plus Edit) |
+| 8 Mode select with exactly two options; `mode` sent, no `temperature` | › **Edit switches mode and PUT sends the new mode without temperature** · revised **AST-1880: Add picks a model…** (options, Deterministic default, mode kept across size/model change, POST `mode: "Creative"` and no `temperature`) · revised **AST-1880: Edit shows the agent's model + size…** (pre-selected Deterministic, PUT carries `mode`, no `temperature`) |
+| Unmigrated row (plan discuss) | › **an unmigrated row (mode null) shows — in the list and a choose-mode placeholder in Edit** |
+| 7 (UI half) no `temperature` on the page | grep in manifest below |
+
+**Broken / obsolete (revised):** fixtures drop `default_temperature` / `model_code` / `temperature` and add `mode` (agent_a Deterministic, agent_b Creative). The two AST-1880 tests lose their `field("Temperature")` assertions and `temperature: 0.6` body. The other 8 tests are unchanged and green. **Repro:** with the `origin/ftr/AST-1946-big-brain-openrouter` page swapped in, all 6 revised or new tests are red and the other 8 green. On the publish tip all 14 are green. **Integration:** no scenario drives Manage Agents, so nothing to revise. AC 7's catalog / `src/` greps belong to AST-1947 / AST-1948 (composite on `ftr`, [`../core/agent.md`](../core/agent.md) § AST-1948).
+
+## QA test manifest (AST-1949)
+
+1. **Page Vitest (§6c routed page):** the whole file, 14 tests.
+2. **AC 7 grep (UI half)** on the publish tip. Expect nothing.
+3. **Scope:** only the page changed under `src/`.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminAgentPrompts.test.tsx
+cd ../../.. && rg -n "temperature" src/ui/frontend/src/pages/AdminAgentPrompts.tsx
+git diff --stat origin/ftr/AST-1946-big-brain-openrouter...HEAD -- src/   # expect only AdminAgentPrompts.tsx
+```
+
+**Pass criterion:** 14/14 green, the grep prints nothing, and the scope diff lists only the page.
+
+### AST-1957 · AST-1953 (Manage Agents edits the plain settings; brain size and mode removed)
+
+Supersedes § AST-1880's size UX and § AST-1949's Mode select. `AdminAgentPrompts.tsx`: the form has Model, Max Tokens and seven settings inputs: **Quantization**, **Temperature** (number), **Effort**, an **Allow provider fallbacks** checkbox, **Provider only**, **Provider ignore** (comma-separated) and **Provider sort**. Brain size, Mode, `AGENT_MODES` and the size pre-fill are gone. Max Tokens is never pre-filled; its placeholder shows `default <n>` from the model's `default_max_tokens`. Add opens on the first catalog model with every setting empty and fallbacks checked. Edit fills the inputs from the row, and a stored null fallbacks reads as checked. Save sends **every** settings key: strings trimmed with blank → `null`, temperature as a number or `null`, lists split on commas with blank → `null`, and fallbacks as the checkbox value. So clearing an input clears the setting. Neither body has `brain_setting` or `mode`. The list swaps **Brain setting** / **Mode** for **Quant · Temp · Effort · Fallbacks · Only · Ignore · Sort**: lists comma-joined, fallbacks `yes` / `no`, empty `—`. Backend: [`../ui/api/api_admin.md`](../ui/api/api_admin.md) § AST-1957.
+
+| AC | Tests (`test_AdminAgentPrompts.test.tsx`, describe **AST-1957 Manage Agents plain settings**) |
+| --- | --- |
+| 10 The edit form renders the seven settings inputs and saves them under the settings keys, with no `brain_setting` / `mode` in the body | › **AC 10: Edit renders the seven settings from the row and saves them under the settings keys** (exact PUT body: set, cleared → `null`, fallbacks toggled) · › **Add saves every setting under its key (trimmed, lists split) with no brain_setting or mode** (exact POST body) |
+| 10 No retired control remains | Brain size / Mode label absence in both Add and Edit tests · › **list shows the settings columns, not Brain setting / Mode** · grep in manifest below |
+| Scope: list shows the settings; model types drop sizes | › **list shows the settings columns…** (headers + per-row cells) · › **Add opens on the first model, empty settings with fallbacks on; Max Tokens placeholder follows the model** |
+| Plan decision: a stored null fallbacks reads as the default and is saved explicitly | › **a row with every setting empty shows — in the list, blanks in Edit with fallbacks checked, and saves fallbacks true** |
+
+**Broken / obsolete (revised):** fixtures move to the flat catalog (`claude-haiku-4-5` 8192, `kimi-k2.6` 16000) and settings rows. Agent_b's GET mock is added, and PUT mocks for agent_a / agent_b return a settings row. **Retired:** **AST-1880: Add picks a model, then only that model's sizes…**, **AST-1880: Edit shows the agent's model + size…**, and the whole **AST-1949 Manage Agents mode** describe (4). Their surviving intent (model select, catalog order, model label column, no stray keys) is carried by the five new tests. The other 8 tests are unchanged. **Repro:** with the pre-epic page (`origin/tests`) swapped in, all 5 new tests are red. On the publish tip all 13 are green. **Integration:** no scenario drives Manage Agents.
+
+## QA test manifest (AST-1957)
+
+1. **Page Vitest (§6c routed page):** the whole file, 13 tests, green on the publish tip.
+2. **AC 10 grep (UI)** and the Stage 1 grep (API). Both must print nothing.
+3. **Admin API:** `test_api_admin.py` errors at collection on this sub until **AST-1956** lands on `ftr` ([`../ui/api/api_admin.md`](../ui/api/api_admin.md) § AST-1957 **Sequencing**). Once AST-1956 is merged, run it on `ftr`: everything green except the 5 pre-existing reds listed there.
+4. **Scope:** only the two product files changed under `src/`.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminAgentPrompts.test.tsx
+cd ../../.. && rg -n "brain_setting|AGENT_MODES|Deterministic|Creative" src/ui/frontend/src/pages/AdminAgentPrompts.tsx
+rg -n 'brain_setting|brain_sizes|resolve_model_brain|AGENT_MODE|"mode"|\bmode\b *=' src/ui/api/api_admin.py
+git diff --stat origin/ftr/AST-1953-agent-settings...origin/sub/AST-1953/AST-1957-manage-agents-settings -- src/   # api_admin.py + AdminAgentPrompts.tsx
+# after AST-1956 is on ftr:
+./scripts/testing/run_component_tests.sh tests/component/ui/api/test_api_admin.py
+```
+
+**Pass criterion:** 13/13 green, both greps print nothing, and the scope diff lists only the two files. Step 3 is informational on this sub.
+
+**Bible shasums (after publish):** `for p in frontend/pages.md ui/api/api_admin.md; do git show origin/sub/AST-1953/AST-1957-manage-agents-settings:docs/test-bible/$p | shasum; done`
+
+### AST-1968 · AST-1967 (Recommended list triage upgrades)
+
+**Revised by AST-1975.** Sections are per view now (Review / Ready; no In Progress). AC2: the generated job leaves Review. AC7: bulk Generate posts the selected Review rows. Ready: no row Generate, bulk Generate disabled at (0). See § AST-1975.
+
+**Parent:** [AST-1967](https://linear.app/astralcareermatch/issue/AST-1967). **Publish:** `origin/sub/AST-1967/AST-1968-recommended-list-triage-upgrades`.
+
+`JobsRecommended.tsx`: a checkbox column plus a header bulk bar (`Skip (N)` / `Applied (N)` / `Generate Artifacts (n)`, where n counts the selected jobs whose manifest `primary_actions_by_state` includes `generate_artifacts`). A row **G** Generate icon shows only where the manifest allows it. A default-on **Analysis** toggle adds a `tr.recommended-analysis-row` under each job with JD/DO/GET/LIKE lines of letterless circles, built by `buildPhaseListGradeRow`, which shares `phaseGradeCells` with the modal row. A sortable **Total** column (sum of the four phase scores, `—` if any is missing) sorts through `sortRecommendedJobs`. `useCandidateJobActions` gains `generateJob` / `skipJobs` / `generateJobs` / `requestBulkAction` (one notes modal for many jobs); `postGenerateArtifacts` lives in `lib/candidateJobActions.ts`. The list API already flattens `*_grades` / `*_rubric` to top level (`_flatten_grades`), which is where `buildJobListRubricColumnsForGroup` reads columns.
+
+| AC | Source | Component tests |
+| --- | --- | --- |
+| 1, 15 row Generate only on RECOMMENDED; other callers omit it | `JobsRecommended.tsx`, `CandidateJobRowActions.tsx` | **`test_JobsRecommended.test.tsx`** › **`JobsRecommended — AST-1968 triage upgrades > AC1/AC15…`**; **`test_CandidateJobRowActions.test.tsx`** › **`CandidateJobRowActions — AST-1968 Generate`** |
+| 2 row Generate → POST, job moves to In Progress | page + hook + `candidateJobActions.ts` | **`… > AC2…`** |
+| 4 bulk bar counts | page | **`… > AC4…`** |
+| 5, 8 bulk Skip | page + hook | **`… > AC5/AC8…`** |
+| 6, 8 bulk Applied, one notes modal, same note | page + hook | **`… > AC6/AC8…`** |
+| 7, 8 bulk Generate sends eligible only | page + hook | **`… > AC7/AC8…`** |
+| 9 toggle default on, four lines, off removes rows | page | **`… > AC9…`** |
+| 10 letterless, no confidence (page) | page + `recommendedJobReport.tsx` | **`… > AC10…`** |
+| 10, 11 circles/colours/order/tooltips equal the modal row | `recommendedJobReport.tsx` | **`test_recommendedJobReport.test.tsx`** › **`recommendedJobReport — AST-1968 letterless list grade row`** (3 cases, incl. modal row unchanged after refactor) |
+| 13 Total value / `—` | page | **`… > AC13…`** |
+| 14 Total sort + null placement like LIKE | page | **`… > AC14…`** |
+| 3, 12, 14 (single call sites), 16 (build/lint) | source | greps + build/lint below |
+
+**Broken / obsolete (revised this pass):** `test_JobsRecommended.test.tsx` › **`sorts by company within a section`** read every `row`; with Analysis on by default each job row is followed by an expanded row. It now filters out `.recommended-analysis-row` (default-on stays exercised).
+
+**Baseline reds (also red on `origin/dev` with the AST-1968 product reverted, checked at QA; not this ticket):** `test_JobsApplied.test.tsx` › **`AST-1479 … Interview → notes modal → candidate_action interview`** (15 s timeout); `test_JobAnalysisReportModal.test.tsx` › **`AST-1546: Print Resume success…`** and **`AST-1350: Print Resume unsupported toast…`** (no Print Resume button).
+
+**Bible drift noted, not reconstructed:** the AST-1477 / AST-1478 rows (`components.md`, `pages.md`) cite `test_JobsRecommended.test.tsx` cases (`AST-1477 mark applied from Recommended`, `AST-1478 report Applied and Skip`) that are not in that file (`git log -S` finds none).
+
+## QA test manifest
+
+1. **AST-1968 + revised + touched-module suites (required, all green):**
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_JobsRecommended.test.tsx \
+  ../../../tests/component/frontend/lib/test_recommendedJobReport.test.tsx \
+  ../../../tests/component/frontend/components/test_CandidateJobRowActions.test.tsx
+```
+
+2. **AC 15 / hook regression (green except the baseline reds above):**
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_JobsSkipped.test.tsx \
+  ../../../tests/component/frontend/pages/test_JobsApplied.test.tsx \
+  ../../../tests/component/frontend/pages/test_JobsInReview.test.tsx \
+  ../../../tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx
+```
+
+3. **Greps (AC 3 / 12 / 14):**
+
+```bash
+rg -n "generate_artifacts" src/ui/frontend/src/lib/candidateJobActions.ts            # ≥1 hit
+rg -n "/generate_artifacts" src/ui/frontend/src/pages/JobsRecommended.tsx src/ui/frontend/src/components/CandidateJobRowActions.tsx  # nothing
+rg -n "sortRubricColumnsByImportanceAndGrade\(" src/ui/frontend/src/lib/recommendedJobReport.tsx  # exactly 1
+rg -n "sortRubricColumnsByImportanceAndGrade" src/ui/frontend/src/pages/JobsRecommended.tsx      # nothing
+rg -n "function sortRecommendedJobs" src/ui/frontend/src/pages/JobsRecommended.tsx             # exactly 1
+```
+
+4. **AC 16:** in `src/ui/frontend`, `npm run build` exits 0; `npx tsc -b --noEmit` exits 0; `npm run lint` problem list has nothing absent on `origin/dev`, and the `react-hooks/set-state-in-effect` hit in `JobsRecommended.tsx` is gone.
+
+**Pass criterion:** items 1, 3, 4 hold; item 2 green apart from the three named baseline reds. Narrowed runs, not the zero-arg harness.
+
+**Bible shasums (after publish):** `for p in frontend/pages.md frontend/components.md frontend/lib.md; do git show origin/sub/AST-1967/AST-1968-recommended-list-triage-upgrades:docs/test-bible/$p | shasum; done`
+
+**AST-1973 (pointer):** the analysis-row phase lines moved out of `JobsRecommended.tsx` into the shared `components/PhaseAnalysisLines.tsx`, which the Job Detail modal Info tab also renders. The page's AC9 / AC10 cases above are unedited and still own list parity. Manifest: **`docs/test-bible/frontend/components.md`** § AST-1973.
+
+### AST-1975 · AST-1970 (Ready / Review / Processing pages, landing, and Jobs routes)
+
+**Parent:** [AST-1970 — Jobs Navigation changes](https://linear.app/astralcareermatch/issue/AST-1970). **Publish:** `origin/sub/AST-1970/AST-1975-jobs-nav`. Backend views / nav counts: **`docs/test-bible/ui/api/api_jobs.md`** § AST-1974.
+
+`JobsHomeRedirect` chooses the landing page: the first Jobs nav item with `count > 0`, else the first Jobs item. It waits for candidate hydration and serves `/` and `*`. Every old Recommended target (AdminRoute, surfer-consent decline, job-detail close / blank id / error link) now goes to `/`. `JobsRecommended.tsx` takes `view` / `title` and serves `/jobs/review` (`view=review`, RECOMMENDED) and `/jobs/ready` (`view=ready`, CANDIDATE_REVIEW). It adds a sortable **Source** column and drops the Meteorites split. `JobsInReview.tsx` became `JobsProcessing.tsx` (`view=processing`, manifest `processing_sections`). Responded is deleted.
+
+| AC | Source | Component tests |
+| --- | --- | --- |
+| 11 landing = first non-zero Jobs item, else first; waits for hydration; failure state | `components/JobsHomeRedirect.tsx` | **`components/test_JobsHomeRedirect.test.tsx`** › **`JobsHomeRedirect — AST-1975 landing page`** (8 cases) |
+| 11 index / catch-all; old targets → `/` | `routes.tsx`, `AdminRoute.tsx`, `CandidateSurferConsent.tsx`, `JobsJobDetail.tsx` | **`test_routes.test.tsx`** (ready / review / processing present; recommended / in_review / responded absent); revised **`test_AdminRoute`**, **`test_CandidateSurferConsent`** (decline → `/`), **`test_JobsJobDetail`** (close / blank id → `/`, **Back to Jobs**) |
+| 12 Processing replaces In Review; Responded gone | `pages/JobsProcessing.tsx` | **`pages/test_JobsProcessing.test.tsx`** (git-mv of `test_JobsInReview`; new **`titled Processing; fetches view=processing; BUILD_ARTIFACTS…`**); `test_JobsResponded.test.tsx` deleted |
+| 13 title, per-view fetch, Source cell + sort, no Meteorites, Generate only on Review | `pages/JobsRecommended.tsx`, `StateUiContext.tsx` | **`pages/test_JobsRecommended.test.tsx`** — **`Review: titled Review…`**, **`Ready: titled Ready, fetches view=ready…`**, **`AST-1975: no Meteorites sub-section; Source cell shows job.source; Source sorts`**, **`AC1/AC15`** (both), **`AC9: Ready keeps the Analysis toggle and Total`**; **`contexts/test_StateUiContext.test.tsx`** (`processing_sections`) |
+
+**Fixture:** `stateUiManifestFixture.ts` renames `in_review_sections` to `processing_sections` and adds BUILD_ARTIFACTS. It adds ERROR_BUILD_ARTIFACTS / BUILD_FAILED to Skipped (order, labels, retry map), sets `recommended.sections` to RECOMMENDED "Review" + CANDIDATE_REVIEW "Ready", and drops `meteorite_section`. All of this mirrors AST-1974 config.
+
+**Broken / obsolete (revised this pass):** the whole of `test_JobsRecommended.test.tsx` is rebuilt on per-view data, because each backend view returns only its own state. The stateful AST-1968 handler is view-scoped and every action drops the row. The AST-1057 / AST-1708 Meteorites cases are retired (one AST-1975 case replaces them). The AdminRoute ×2, CandidateSurferConsent ×1, JobsJobDetail ×4, and test_routes ×1 cases are retargeted to `/`. Historical blocks above carry **AST-1975** pointers.
+
+**Not revised:** `lib/test_sessionAuthMark.test.ts` uses `/jobs/recommended?foo=1` only as a sample in-app path for the generic `isSafeAuthReturnPath` guard. It still passes, and a stale saved return path lands on the catch-all redirect. The plan doc's Notes for QA expected it to fail; it does not.
+
+**Baseline reds (also red with this ticket's product reverted to `origin/ftr/AST-1970-jobs-nav`; not this ticket):** 40 cases across Artifacts* / Companies* / CandidateContext / candidateLabel / sessionExtend / JobAnalysisReportModal (Print Resume) / JobDetailModal (listing_href) / ProfileTextPage / CandidateIntake / JobsApplied (AST-1479 timeout).
+
+## QA test manifest
+
+1. **AST-1975 + revised suites (required, all green):**
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_JobsHomeRedirect.test.tsx \
+  ../../../tests/component/frontend/pages/test_JobsRecommended.test.tsx \
+  ../../../tests/component/frontend/pages/test_JobsProcessing.test.tsx \
+  ../../../tests/component/frontend/test_routes.test.tsx \
+  ../../../tests/component/frontend/contexts/test_StateUiContext.test.tsx \
+  ../../../tests/component/frontend/components/test_AdminRoute.test.tsx \
+  ../../../tests/component/frontend/pages/test_CandidateSurferConsent.test.tsx \
+  ../../../tests/component/frontend/pages/test_JobsJobDetail.test.tsx
+```
+
+2. **Full frontend component suite:** `cd src/ui/frontend && npm run test:component`. It is green apart from the 40 baseline reds above (no new failures).
+
+3. **Greps (AC 12 / 13):**
+
+```bash
+rg -n "JobsInReview|JobsResponded|jobs/recommended|in_review_sections|\bmeteorite_section\b" src/ui/frontend/src -g '!lib/rubricDisplay.ts'   # nothing (rubricDisplay.ts:75 comment = plan's optional "discuss" finding, not AC)
+ls tests/component/frontend/pages/test_JobsInReview.test.tsx tests/component/frontend/pages/test_JobsResponded.test.tsx   # both absent
+```
+
+4. **AC 14:** in `src/ui/frontend`, `npm run build` exits 0 and `npm run lint` adds no problems absent on `origin/ftr/AST-1970-jobs-nav`.
+
+**Pass criterion:** items 1, 3, 4 hold; item 2 shows only the named baseline reds. Narrowed runs, not the zero-arg harness.
+
+**Bible shasums (after publish):** `for p in frontend/pages.md frontend/components.md; do git show origin/sub/AST-1970/AST-1975-jobs-nav:docs/test-bible/$p | shasum; done`
+
+### AST-1976 · AST-1970 (Meteorites landed-job state and job link)
+
+**Parent:** [AST-1970 — Jobs Navigation changes](https://linear.app/astralcareermatch/issue/AST-1970). **Publish:** `origin/sub/AST-1970/AST-1976-jobs-nav`. Backend `job_state` (live `LEFT JOIN job`, null when unlanded): **`docs/test-bible/ui/api/api_meteorite.md`** § AST-1974 and **`docs/test-bible/data/database/jobs.md`** § AST-1974.
+
+On `JobsMeteorites.tsx`, the **Job** cell is now a button that opens `JobAnalysisReportModal` in place (`stopPropagation`, so the row click doesn't also fire). The **Job State** cell shows raw `job_state` and falls back to `—`. The report's `onRefresh` reloads the list. The row click still opens `MeteoriteDetailModal`.
+
+| AC | Source | Component tests |
+| --- | --- | --- |
+| 14 Job State = job's state; `—` when unlanded (Job and Job State) | `pages/JobsMeteorites.tsx` | **`test_JobsMeteorites.test.tsx`** › **`JobsMeteorites — AST-1976 landed-job state and job link > Job State cell shows the landed job's state…`** |
+| 14 job link → report modal; URL stays `/jobs/meteorites`; no Meteorite modal | page + `JobAnalysisReportModal` | **`… > job link opens the Job Analysis Report in place…`** |
+| 14 elsewhere on the row → Meteorite modal, not the report | page | **`… > clicking elsewhere on a landed row opens the Meteorite modal…`** (regression guard; also green pre-ticket) |
+| 14 not stale: a report action reloads the list | page `onRefresh={load}` | **`… > Skip in the report reloads the list so Job State is not stale`** |
+| 15 build / lint / config import | source | commands below |
+
+The tests use the production `JOBS_METEORITES_LIST_COLUMNS` keys and labels (Job then Job State). On the pre-ticket page (`origin/ftr/AST-1970-jobs-nav`), the state-cell, job-link, and Skip-refresh cases are red, which proves they guard the change.
+
+**Broken / obsolete:** none. The four AST-1749 cases are unchanged and green, because their 3-column mock has no Job column.
+
+## QA test manifest
+
+1. **AST-1976 + AST-1749 page suite (required, all green):**
+
+```bash
+cd src/ui/frontend && npm run test:component -- ../../../tests/component/frontend/pages/test_JobsMeteorites.test.tsx
+```
+
+2. **AC 15:** `python -c "import src.utils.config"` exits 0. In `src/ui/frontend`, `npm run build` exits 0 and `npm run lint` adds no problems absent on `origin/dev`.
+
+**Pass criterion:** items 1 and 2 hold. Narrowed runs, not the zero-arg harness.
+
+**Bible shasums (after publish):** `git show origin/sub/AST-1970/AST-1976-jobs-nav:docs/test-bible/frontend/pages.md | shasum`
+
+### AST-1979 · AST-1971 (Created column on Jobs list tables)
+
+**Parent:** [AST-1971 — Add Created to the job list table](https://linear.app/astralcareermatch/issue/AST-1971). **Publish:** `origin/sub/AST-1971/AST-1979-created-col`. Meteorites Created (backend + config) is sibling AST-1971 #2, not covered here.
+
+Every job table on Ready / Review (`JobsRecommended.tsx`), Processing, Skipped (below-floor and regular), and Applied gets a sortable **Created** header just left of **Updated** / **Failed At**. Its cell is `<Time value={job.created_at} />`, and each page's existing sorter gains a `created_at` branch.
+
+**Shared helper:** `tests/component/frontend/pages/created-column.ts` holds `createdColumnJobs(base)` (3 rows whose created order — null, mid, late — differs from the default `state_changed_at`-desc order), `installTzCandidate` (candidate tz `Asia/Tokyo`, so a cell rendered in the wrong zone shows a different day), and `expectCreatedColumn(table, updatedLabel)`, which runs AC 1–4 on one table. Headers are read with `thead th`, not `getAllByRole`, because Skipped's below-floor spacer `<th aria-hidden>` still takes a cell slot.
+
+| AC | Source | Component tests |
+| --- | --- | --- |
+| 1 Created header immediately left of Updated / Failed At | all four pages | **`expectCreatedColumn`** via each page's **`… — AST-1979 Created column`** describe |
+| 2 cell = `fmtTime(created_at, candidate tz)`; Updated in the same tz; null → `—` | `<Time>` cell | same (`Asia/Tokyo` candidate; `12/15 23:30Z` → `12/16/25`) |
+| 3 first click ascending (null first, like null `state_changed_at`), second reverses, ▲/▼ on Created only | page sorters (`created_at` branch) | same |
+| 4 default load still `state_changed_at` desc; Created shows no indicator | unchanged sort defaults | same; Applied also asserts **`Updated▼`** at load |
+| 5 sorter count unchanged; `created_at` compare inside the existing sorter | source | grep below |
+| 6 build / lint | source | commands below |
+
+Cases: **`test_JobsRecommended`** › **`JobsRecommended — AST-1979 Created column`** (`review`, `ready`); **`test_JobsProcessing`** › **`JobsProcessing — AST-1979 Created column`**; **`test_JobsSkipped`** › **`JobsSkipped — AST-1979 Created column`** (`below-floor` → Updated, `regular` → Failed At); **`test_JobsApplied`** › **`JobsApplied — AST-1979 Created column`**. All six are red with the four pages reverted to `origin/dev`, so they guard the change.
+
+**AC 4 wording vs product:** AC 4 says the indicator is on Updated / Failed At at first load. On the section pages (Ready / Review, Processing, Skipped), `sortIndicator` only renders after a header click, so no header shows an indicator at load. That is true on `origin/dev` too. The plan makes no change to `sortIndicator`, and AC 4's Fail line only covers the default switching. The tests assert the default *order* plus no indicator on Created on every page, and **`Updated▼`** only on Applied, which seeds its sort state.
+
+**Broken / obsolete:** none. The existing header-index lookups find columns by label, `children[2]` (Job Title) sits left of the insert, and no test asserts `colSpan`. Lint cleanup: removed the unused `jsonResponse` import from `test_JobsSkipped.test.tsx`.
+
+**Baseline red (not this ticket):** `test_JobsApplied` › **`Interview → notes modal → candidate_action interview`** times out. It asserts the exact pre-AST-1498 POST body `{action, notes}`, but the product now adds `candidate_id` (see AST-1498 `[bug-repro]` beside it). It is already listed under § AST-1975's baseline reds.
+
+## QA test manifest
+
+1. **Four job page suites (required):**
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_JobsRecommended.test.tsx \
+  ../../../tests/component/frontend/pages/test_JobsProcessing.test.tsx \
+  ../../../tests/component/frontend/pages/test_JobsSkipped.test.tsx \
+  ../../../tests/component/frontend/pages/test_JobsApplied.test.tsx
+```
+
+Expect 54 passed and 1 failed (the baseline red above), with all six **`AST-1979`** cases green.
+
+2. **AC 5:** `rg -c "function sort" src/ui/frontend/src/pages/Jobs{Recommended,Processing,Skipped,Applied}.tsx` gives 2 per file (the same as `origin/dev`). `rg -n '"created_at"' src/ui/frontend/src/pages/Jobs{Recommended,Processing,Skipped,Applied}.tsx` shows each compare inside that file's existing sorter.
+
+3. **AC 6:** in `src/ui/frontend`, `npx tsc -b --noEmit` and `npm run build` exit 0, and `npm run lint` adds no problems absent on `origin/dev`.
+
+**Pass criterion:** items 1–3 hold. Narrowed runs, not the zero-arg harness.
+
+**Bible shasums (after publish):** `git show origin/sub/AST-1971/AST-1979-created-col:docs/test-bible/frontend/pages.md | shasum`
+
+**AST-1982 (pointer):** Job Title cell on `JobsRecommended` (Ready + Review), `JobsProcessing`, `JobsSkipped` (both table variants), `JobsApplied`, and the Meteorites `job_title` column now renders `JobTitleText` (cut at 50 + `…`, portaled full-title tooltip). Page tests are named **`AST-1982 …`** and use the shared helper `tests/component/frontend/pages/job-title-cell.ts`. Manifest: **`docs/test-bible/frontend/components.md`** § AST-1982.
+
+---
+
+### AST-2056 · AST-2041 (gap — Base Resume Content autosave; product AST-2051)
+
+**Publish:** `origin/sub/AST-2041/AST-2056-resume-autosave-tests`. Base Resume Content (`bodyShape="resume_content"`) section bodies **autosave after 2000ms**; no header Save/Cancel outside Generate review (AST-2051). Editor contract, new cases, red/green and manifest: **`docs/test-bible/frontend/components.md`** § AST-2056.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed page (**§6c**) bodyShape + leaf autosave PUT | `ArtifactsBaseResumeContent.tsx` → `ArtifactEditor.tsx` | **`test_ArtifactsBaseResumeContent.test.tsx`** — **`AST-1577 / AST-2051: wires bodyShape resume_content; autosave PUTs base_resume leaf (§6c)`** (retargeted from header Save; red pre-fix — Save still rendered) |
+
+**Pre-existing red, not this ticket:** **`AST-1577: page and draft follow ui-consistency`** — draft path moved to `canon/directives/active/`; name-skipped in the § AST-2056 manifest.
+
+---
+
+### AST-2047 · AST-2042 (theme registry, palettes, Theme Examples page)
+
+> **AST-2122:** Frozen record. The page, its route and Tools item, and the `light_parchment` / `light_slate` ids are retired; the registry is `dark` + `light`. The page case is deleted. The `App.css theme token blocks` cases moved to **`tests/component/frontend/test_AppCss.test.tsx`** ([`root.md`](root.md) § AST-2122), with "one block per registry id" relaxed to a superset check until AST-2123. `TestAst2047ThemeRegistry` now pins two ids and six Tools items. Live manifest: § AST-2122 below.
+
+**Publish:** `origin/sub/AST-2042/AST-2047-theme-registry-palettes`. `UI_CONFIG["themes"]` (four palette ids: `dark`, `light`, examples-only `light_parchment` / `light_slate`) + `default_theme` drive the profile **Theme** select (selectable entries only), a Tools nav item `/admin/theme_examples`, and one `[data-theme="<id>"]` block per id in `App.css` (Dark = `:root, [data-theme="dark"]`). New admin page `AdminThemeExamples.tsx` renders the same shared-class sample once per registry id.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed page (**§6c**) — one labeled panel per registry id, button / table row / select / grade dots A–X / toast in each; GET-only | `pages/AdminThemeExamples.tsx` | **`test_AdminThemeExamples.test.tsx`** — **`renders one labeled panel per registry id with the shared sample; read-only (§6c, AC6)`** |
+| `App.css` token blocks — one per registry id; Light name sets equal Dark's; Lights pairwise differ on `--bg-deep` / `--bg-card` / `--accent-contrast` (AC4; renamed from `--accent-gold` by AST-2076) | `App.css` § 1 | same file — **`App.css theme token blocks — AST-2047`** (3 cases) |
+| `App.css` rule bodies — no hex / non-black `rgba()` outside token blocks; every `var(--x)` in `App.css` defined in a token block (AC5, `App.css` half only — `.tsx` half is AST-2049) | `App.css` | same file — **`no hex or non-black rgba outside token blocks; …`** |
+| Registry ids / selectable / default; profile Theme options generated from the registry; Tools item admin-only; every id has an `App.css` block (AC1, AC2) | `src/utils/config.py` | **`tests/component/utils/test_config.py::TestAst2047ThemeRegistry`** (4) — see [`../utils/config.md`](../utils/config.md) § AST-2047 pointer |
+| `ui_config` serves `themes` + `default_theme` (AC1) | `src/ui/api/api_system.py` (unchanged; `{**UI_CONFIG}` spread) | **`tests/component/ui/api/test_api_system.py::TestSystemAuthRoutes::test_ui_config_serves_theme_registry`** |
+
+**Broken / obsolete:** none. Full Vitest (1021 cases) and `test_config.py` / `test_api_system.py` / `test_candidate.py` show the **same** failure set with and without the AST-2047 product merged onto `origin/tests` @ `032ecabed` (pre-existing reds only). No `tests/integration/` scenario reads `ui_config`, Tools items, profile fields, or `App.css`.
+
+**Not covered by component tests (jsdom has no cascade):** AC6 computed panel backgrounds pairwise different, non-admin redirect from `/admin/theme_examples` (generic `AdminRoute` behavior — `test_AdminRoute.test.tsx`), Tools item hidden for non-admins (generic `admin_only` — `test_api_system.py::TestSystemAuthRoutes::test_nav_config_omits_admin_group_for_non_admin`). AC3 (Dark token values unchanged) is a one-shot diff against `origin/dev`, not a durable pin — later palette tweaks are allowed.
+
+**Note — served key order:** Flask 3's JSON provider sorts keys, so `/api/system/ui_config` serves `themes` alphabetically, not in registry order (plan assumed order survives `jsonify`). Panels render alphabetically; today that equals registry order. Tests compare served keys as a set.
+
+#### QA test manifest (AST-2047)
+
+1. **New tests (required, all green):**
+
+```bash
+cd src/ui/frontend && npx vitest run --config vite.config.ts ../../../tests/component/frontend/pages/test_AdminThemeExamples.test.tsx
+cd ../../.. && ./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst2047ThemeRegistry \
+  tests/component/ui/api/test_api_system.py::TestSystemAuthRoutes::test_ui_config_serves_theme_registry
+```
+
+Expect 4 Vitest + 5 pytest passed.
+
+2. **Regression (required):** failure set unchanged vs `origin/dev` (pre-existing reds: 24 in `test_config.py`, 1 in `test_api_system.py` — e.g. `TestAst1386ThreeSegmentAdminNav`, `TestAst1375InflightHideStatesManifest`; none name themes):
+
+```bash
+./scripts/testing/run_component_tests.sh tests/component/utils/test_config.py tests/component/ui/api/test_api_system.py
+cd src/ui/frontend && npx vitest run --config vite.config.ts \
+  ../../../tests/component/frontend/test_routes.test.tsx \
+  ../../../tests/component/frontend/components/test_AdminRoute.test.tsx \
+  ../../../tests/component/frontend/components/test_JobTitleText.test.tsx \
+  ../../../tests/component/frontend/components/test_Modal.test.tsx \
+  ../../../tests/component/frontend/components/test_ListPage.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminManageEmail.test.tsx \
+  ../../../tests/component/frontend/pages/test_CandidateProfile.test.tsx
+```
+
+Vitest files above: all green.
+
+3. **AC2 / AC5 (`.ts`/`.tsx` hex half is AST-2049's):** `rg -n '"light"' src/ui/frontend/src --glob '*.{ts,tsx}'` returns nothing.
+
+4. **AC3 Dark unchanged (one-shot):** every declaration in the `origin/dev` `:root { … }` block appears with the same value in the publish tip's `:root, [data-theme="dark"] { … }` block (plan Stage 2 step 6 check 1, `App.before.css` = `git show origin/dev:src/ui/frontend/src/App.css`).
+
+5. **AC7:** in `src/ui/frontend`, `npx tsc -b --noEmit` and `npm run build` exit 0; `npm run lint` adds no problem absent on `origin/dev`.
+
+6. **AC6 manual (browser, optional for test-child — UAT):** as admin, Tools → Theme Examples shows four panels with visibly different backgrounds; as non-admin, no Tools group and the URL redirects.
+
+**Pass criterion:** items 1–5 hold. Narrowed runs, not the zero-arg harness.
+
+**Bible shasums (after publish):** `git show origin/sub/AST-2042/AST-2047-theme-registry-palettes:docs/test-bible/frontend/pages.md | shasum` (also `utils/config.md`, `ui/api/api_system.md`)
+
+---
+
+### AST-2048 · AST-2042 (save and apply the candidate's theme)
+
+**Publish:** `origin/sub/AST-2042/AST-2048-theme-save-apply`. `save_candidate_data` rejects any `theme` that is not a profile-selectable `UI_CONFIG["themes"]` id (`ValueError` → existing 400). `CandidateProfile.tsx` reads `default_theme` from its existing `/api/ui_config` fetch, **waits for it** before loading the candidate, and loads `theme` from `candidate_data.theme` (else the default). `CandidateContext.tsx` sets `<html data-theme>` from the selected candidate, removes it when none / no stored theme / unmount.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed page (**§6c**) — Theme select shows served default when none stored; choose Light → PUT body `theme: "light"`; reload from save response keeps Light (AC3) | `pages/CandidateProfile.tsx` | **`test_CandidateProfile.test.tsx`** — **`AST-2048: no stored theme loads the served default; …`**, **`AST-2048: stored theme loads selected`** |
+| Root `data-theme` from selected candidate; picker switch flips without reload; no theme / no candidates / unmount → no attribute (AC5/AC6 attribute half) | `contexts/CandidateContext.tsx` | **`test_CandidateContext.test.tsx`** — **`CandidateProvider — AST-2048 data-theme follows the selected candidate`** (2) |
+| Allowlist: `dark` / `light` saved; `neon`, `light_parchment`, `light_slate`, `""`, `null`, list → `ValueError`, nothing saved (AC3/AC4) | `src/core/candidate.py` (`LOCKED_AT_100` — new lines fully branch-covered) | **`tests/component/core/test_candidate.py::TestAst2048ThemeAllowlist`** (8) — pointer [`../core/candidate.md`](../core/candidate.md) |
+| `PUT /api/candidates/<id>/data` with `neon` / `light_parchment` → 400, no DB write (AC4) | `src/ui/api/api_candidate.py` (unchanged) | **`tests/component/ui/api/test_api_candidate.py::…::test_update_rejects_unselectable_theme`** — pointer [`../ui/api/api_candidate.md`](../ui/api/api_candidate.md) |
+
+**Broken / obsolete (revised this pass):** `test_CandidateProfile.test.tsx` — the shared `installProfileMocks` `/api/ui_config` response now carries `default_theme: "dark"` (the real served contract after AST-2047); without it the page waits forever and **17** cases stuck on "Loading...". Mocked profile shape gains the `theme` select (mirrors `DATA_SHAPES`). No other Vitest or pytest failure changed vs the same tree without AST-2048 (base = `origin/tests` + `origin/ftr/AST-2042-user-theme`). Pre-existing red unchanged: `CandidateProvider — AST-1311 … restores the persisted selection's Full Name after load`.
+
+**Not covered by component tests (jsdom has no cascade):** AC5/AC6 computed `body` background (`rgb(15, 11, 24)` on Dark, different on Light) — browser/UAT only. **Plan-documented tradeoff:** if `/api/ui_config` fails, Candidate Profile stays on "Loading..." (previously only the signature limits were lost) — no test pins this either way.
+
+**Finding (AST-2047, not this ticket):** `lib/uiConfig.ts` `loadUiConfig` fetches **`/api/system/ui_config`**; Flask only serves **`/api/ui_config`** (`system_bp` `url_prefix="/api"`), so at runtime `getUiConfig()?.themes` is undefined and **Theme Examples stays on "Loading..."**. § AST-2047's page test mocks `/api/system/ui_config` and cannot catch the mismatch. Flagged on the parent for Susan.
+
+#### QA test manifest (AST-2048)
+
+1. **New + revised tests (required, all green):**
+
+```bash
+cd src/ui/frontend && npx vitest run --config vite.config.ts \
+  ../../../tests/component/frontend/pages/test_CandidateProfile.test.tsx \
+  ../../../tests/component/frontend/contexts/test_CandidateContext.test.tsx
+cd ../../.. && ./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst2048ThemeAllowlist \
+  "tests/component/ui/api/test_api_candidate.py" -k "Ast2048 or unselectable_theme"
+```
+
+Expect `test_CandidateProfile` 19 passed / 1 skipped; `test_CandidateContext` all green except the pre-existing AST-1311 restore case; 9 pytest passed.
+
+2. **Regression (required):** `./scripts/testing/run_component_tests.sh tests/component/core/test_candidate.py tests/component/ui/api/test_api_candidate.py` — failure set unchanged vs `origin/ftr/AST-2042-user-theme` (pre-existing reds only; none name theme).
+
+3. **AC5 `.tsx` hex half for this file:** `rg -n "#[0-9a-fA-F]{3,8}\b" src/ui/frontend/src/pages/CandidateProfile.tsx` returns nothing.
+
+4. **AC7:** in `src/ui/frontend`, `npx tsc -b --noEmit` and `npm run build` exit 0; `npm run lint` adds no problem absent on `origin/dev`.
+
+5. **AC5/AC6 browser (UAT):** Light candidate → `<html data-theme="light">` and body background ≠ `rgb(15, 11, 24)`; switch to a no-theme candidate → no attribute, `rgb(15, 11, 24)`, no reload.
+
+**Pass criterion:** items 1–4 hold. Narrowed runs, not the zero-arg harness.
+
+**Bible shasums (after publish):** `git show origin/sub/AST-2042/AST-2048-theme-save-apply:docs/test-bible/frontend/pages.md | shasum` (also `frontend/contexts.md`, `core/candidate.md`, `ui/api/api_candidate.md`)
+
+---
+
+### AST-2049 · AST-2042 (component/page inline colors onto tokens)
+
+> **AST-2122:** the AC9 epic-wide guard is unchanged and now lives in **`tests/component/frontend/test_AppCss.test.tsx`** ([`root.md`](root.md) § AST-2122). Use that path wherever this block names `pages/test_AdminThemeExamples.test.tsx`.
+
+**Publish:** `origin/sub/AST-2042/AST-2049-inline-color-tokens`. 49 inline literal colors / `var(--x, #…)` fallbacks / undefined custom-property refs in 7 components + 12 pages moved onto `App.css` token-block names. No layout or logic change; does not touch `App.css` (AST-2047) or `CandidateProfile.tsx` (AST-2048).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| AC9 epic-wide guard — no hex (`["' ,(]#…`) in non-test `.ts`/`.tsx` under `src/ui/frontend/src`; every `var(--x)` in `.ts`/`.tsx`/`.css` names a property declared in an `App.css` theme block | whole SPA source tree | **`test_AdminThemeExamples.test.tsx`** — **`AST-2049: no hex in .ts/.tsx source and every var(--x) in source is defined in a token block (AC9, epic-wide)`** (in the § AST-2047 `App.css` describe; red on `ftr` before this child, green after) |
+| Touched components/pages render unchanged | 19 files in the ticket Scope | existing per-file Vitests (manifest item 2) — no color values asserted |
+
+**Broken / obsolete:** none. Full Vitest (1029 cases) shows the same failure set with and without AST-2049 on `origin/tests` + `origin/ftr/AST-2042-user-theme`; the only swaps were `AdminScheduledActions … save disabled on add when no candidate selected` and `AdminAnthropicAdHoc AST-1452 …`, both green twice in isolation on the ticket tree (load flakes). Engineer's "no test asserts old color values" confirmed.
+
+**Not covered by component tests (jsdom has no cascade):** whether each swapped token reads well on the Light palettes — UAT / Theme Examples.
+
+#### QA test manifest (AST-2049)
+
+1. **New guard (required, green):**
+
+```bash
+cd src/ui/frontend && npx vitest run --config vite.config.ts ../../../tests/component/frontend/pages/test_AdminThemeExamples.test.tsx
+```
+
+Expect 5 passed.
+
+2. **Regression (required):** same Vitest command over the touched files' tests — failure set unchanged vs `origin/ftr/AST-2042-user-theme`. Pre-existing reds (not this ticket): `test_ArtifactEditor` 13 (AST-2056 bug-repros), `test_ProfileTextPage` 6, `test_CompaniesWatchHistory` 6, `test_ArtifactsBaseResumeContent` 2.
+
+```bash
+cd src/ui/frontend && npx vitest run --config vite.config.ts \
+  ../../../tests/component/frontend/components/test_{ArtifactEditor,ContextTextPage,NavigationShell,ProfileTextPage,RepoJsonDivergenceBanner,StateTimeline,TabbedTextArea}.test.tsx \
+  ../../../tests/component/frontend/pages/test_{AdminCostReconciliation,AdminDataManagement,AdminManageCandidates,AdminScheduledActions,AdminScheduledActions_AST1104,AdminScheduledActions_AST1917,AdminScheduledQueries,AdminSessionCoverLetter,AdminSessionResumePaste,AdminTaskPrompts,ArtifactsBaseResumeContent,ArtifactsCompanySearchTerms,CompaniesNewList,CompaniesWatchHistory}.test.tsx
+```
+
+3. **AC9 grep (ticket form):** `rg -n "[\"' ,(]#[0-9a-fA-F]{3,8}\b" src/ui/frontend/src --glob '*.{ts,tsx}' --glob '!*.test.*'` returns nothing.
+
+4. **AC10:** in `src/ui/frontend`, `npx tsc -b --noEmit` and `npm run build` exit 0; `npm run lint` adds no problem absent on `origin/dev`.
+
+**Pass criterion:** items 1–4 hold. Narrowed runs, not the zero-arg harness.
+
+**Bible shasums (after publish):** `git show origin/sub/AST-2042/AST-2049-inline-color-tokens:docs/test-bible/frontend/pages.md | shasum` (also `frontend/components.md`)
+
+### AST-2065 · AST-2042 (UI config URL; UAT-batch bug)
+
+> **AST-2122:** `test_AdminThemeExamples` is deleted with its page; drop it from the manifest item 2 brace list when re-running.
+
+**Publish:** `origin/sub/AST-2042/AST-2065-ui-config-url`. **Scope from** `[board-betty] TESTS: REVISE`. Plan: `docs/features/interface/ast-2047-theme-registry-palettes-and-theme-examples-page-user-theme.md` § Bug: AST-2065.
+
+Contract: Flask serves `UI_CONFIG` only at **`GET /api/ui_config`** (`system_bp` url_prefix `/api`). `/api/system/ui_config` falls through to the SPA catch-all, so `loadUiConfig` (`lib/uiConfig.ts`), `ArtifactEditor.tsx` and `ArtifactsBaseResumeContent.tsx` silently ran on fallbacks. Fix = those three literals → `/api/ui_config`.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Loader requests the served route **[bug-repro]** | `lib/uiConfig.ts` | `tests/component/frontend/lib/test_uiConfig.test.ts` — **`uiConfig URL — AST-2065`** › **`[bug-repro] loadUiConfig fetches /api/ui_config`** (`vi.resetModules` + mocked `api`; module-level cache) |
+| No stale URL anywhere in the SPA **[bug-repro]** | all non-test `.ts`/`.tsx` under `src/ui/frontend/src` | same describe › **`[bug-repro] no frontend source references /api/system/ui_config`** |
+| Server route | `api_system.py` | existing **`test_api_system.py::TestSystemAuthRoutes::test_ui_config_*`** (already hit `/api/ui_config`) — unchanged |
+
+**Broken / obsolete (retargeted in place, `/api/system/ui_config` → `/api/ui_config`, 52 lines):** these mocks encoded the bug, so they would lose their config post-fix. Components: `test_ArtifactEditor`, `test_ContextTextPage`, `test_JobTitleText`, `test_ListPage`, `test_ListPage_listTableLayout`, `test_ListPage_ui_config_fail`. Pages: `page-mocks.ts` (shared — 21 page files consume it), `test_AdminThemeExamples`, `test_ArtifactsBaseResumeContent`, `test_CompaniesWatchHistory`, `test_CompaniesWatchList`, `test_JobsJobDetail`. **Left alone** (already match both URLs): `test-utils.tsx`, `test_CandidateProfile`, `test_AdminSessionCoverLetter`, `test_AdminAnthropicAdHoc`, `test_CandidateIntake`.
+
+**Red / green:** pre-fix sub tip `27ebac8c1` — both `[bug-repro]` cases red (loader called `/api/system/ui_config`; scan lists `components/ArtifactEditor.tsx`, `lib/uiConfig.ts`, `pages/ArtifactsBaseResumeContent.tsx`); the retargeted mocks are expected red until the fix lands. Same tree + the three-literal fix applied locally — guard green, manifest item 2 failure set equals the pre-existing set below (except `test_CandidateIntake`, a timing flake: 4–10 of 24 red on the pre-fix tree alone, file mocks both URLs).
+
+**Integration:** none — frontend-only; do not invent.
+
+#### QA test manifest (AST-2065)
+
+1. **[bug-repro] flip (test-fix):** red pre-fix, green post-fix — 3 passed.
+
+```bash
+cd src/ui/frontend && npx vitest run --config vite.config.ts ../../../tests/component/frontend/lib/test_uiConfig.test.ts
+```
+
+2. **Regression (required):** retargeted files + `page-mocks.ts` consumers — failure set must equal the pre-existing reds (not this ticket): `test_ArtifactEditor` 13 (AST-2056 bug-repros), `test_CompaniesWatchHistory` 6, `test_ArtifactsBaseResumeContent` 2; `test_CandidateIntake` timing flakes.
+
+```bash
+cd src/ui/frontend && npx vitest run --config vite.config.ts \
+  ../../../tests/component/frontend/components/test_{ArtifactEditor,ContextTextPage,JobTitleText,ListPage,ListPage_listTableLayout,ListPage_ui_config_fail}.test.tsx \
+  $(cd ../../.. && rg -l "page-mocks" tests/component/frontend/pages --glob '*.test.tsx' | sed 's#^#../../../#') \
+  ../../../tests/component/frontend/pages/test_{AdminThemeExamples,ArtifactsBaseResumeContent,CompaniesWatchHistory,CompaniesWatchList,JobsJobDetail}.test.tsx
+```
+
+3. **Grep:** `rg -n "/api/system/ui_config" src/ui/frontend/src` returns nothing.
+
+4. In `src/ui/frontend`, `npx tsc -b --noEmit` and `npm run build` exit 0; `npm run lint` adds no problem absent on `origin/dev`.
+
+**Pass criterion:** items 1–4 hold. Narrowed runs, not the zero-arg harness.
+
+---
+
+### AST-2064 · AST-2042 (bug — Light grade-color set + Theme Examples grade options)
+
+> **AST-2122:** Retired. `UI_CONFIG["theme_example_grade_sets"]`, the page's grade options block, its `[bug-repro]` page case and `TestAst2064ThemeExampleGradeSets` are all deleted. Nothing here is runnable; see § AST-2122.
+
+**Publish:** `origin/sub/AST-2042/AST-2064-light-grade-colors`. Fix (plan doc § Bug: AST-2064): shared "Deep" grade values in the three Light blocks; `UI_CONFIG["theme_example_grade_sets"]` (deep / soft / classic, examples-only) rendered as a **Grade color options** block in every Theme Examples panel, each row overriding the panel's `--grade-*` / `--text-on-grade*` via inline custom properties.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| **[bug-repro]** options block per panel; one labeled row per set; row inline style carries the set's tokens; each row A–X; panel's own `.theme-examples-grade` row still exactly one A–X | `pages/AdminThemeExamples.tsx` | **`test_AdminThemeExamples.test.tsx`** — **`AdminThemeExamples — AST-2064 grade color options > [bug-repro] each panel shows one labeled row per grade set …`** (fresh module graph — `uiConfig` caches) |
+| **[bug-repro]** sets are `deep` / `soft` / `classic` with labels; each set's `tokens` keys are exactly the 8 grade tokens declared in `App.css`'s Dark block, values `#rrggbb` | `src/utils/config.py` | **`tests/component/utils/test_config.py::TestAst2064ThemeExampleGradeSets`** (2) |
+
+**Red on pre-fix tree** (`origin/sub/…/AST-2064` @ `4b8964c3e`): page case — no `.theme-examples-grade-options`; config cases — `UI_CONFIG has no theme_example_grade_sets`. **Green** against the plan's Proposed change steps 2–4 applied locally (not committed). Light "Deep" values themselves are not pinned (palette choice → UAT). The repro mocks **both** `/api/ui_config` and `/api/system/ui_config`, so it is unaffected by the sibling **AST-2065** URL fix. **Known red on this sub, not AST-2064 scope:** `AdminThemeExamples — AST-2047 > renders one labeled panel per registry id …` — AST-2065 retargeted its mock to `/api/ui_config`, and this sub's `uiConfig.ts` still fetches `/api/system/ui_config`. It turns green when AST-2065's fix merges; do not change the loader URL here.
+
+#### QA test manifest (AST-2064)
+
+```bash
+cd src/ui/frontend && npx vitest run --config vite.config.ts ../../../tests/component/frontend/pages/test_AdminThemeExamples.test.tsx
+cd ../../.. && ./scripts/testing/run_component_tests.sh tests/component/utils/test_config.py -k "Ast2064 or Ast2047"
+```
+
+**Pass criterion (test-fix):** the three `[bug-repro]` nodes flip red → green; the 4 App.css Vitest cases + 4 `TestAst2047ThemeRegistry` cases stay green. The AST-2047 page case stays red until AST-2065 merges (see above).
+
+---
+
+### AST-2077 · AST-2042 (bug — compact letterless grade-dot sample beside each grade-color option)
+
+> **AST-2122:** Retired with the page. The `[bug-repro]` page case is deleted; nothing here is runnable. Letterless Recommended-list dots stay with `test_recommendedJobReport` (AST-1968).
+
+**Publish:** `origin/sub/AST-2042/AST-2077-compact-grade-dots`. **Scope from** `[board-betty] TESTS: REVISE`. Fix (plan doc § Bug: AST-2077): each Theme Examples grade-color option gets a sibling `.recommended-list-phase-grade-row` of letterless A–X dots in the Recommended Job List's markup (`buildPhaseListGradeRow`), carrying the same inline set tokens as its lettered row.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| **[bug-repro]** per panel: one compact row per grade set, in order; shares a parent with its lettered option row (beside, not nested); inline style carries the set's tokens; children are `span > span.grade-dot.dot-<g>.grade-dot-letterless` for A, B, C, D, F, X with no text | `pages/AdminThemeExamples.tsx` | **`test_AdminThemeExamples.test.tsx`** — **`AdminThemeExamples — AST-2077 compact grade-dot samples > [bug-repro] each grade-color option has a letterless Recommended-list grade row beside it …`** (fresh module graph — `uiConfig` caches) |
+| Lettered option rows + panel grade row unchanged | same | existing **AST-2064** `[bug-repro]` (unchanged — compact row is not a `.theme-examples-row`, wrapper is not `.theme-examples-grade`) |
+
+**Red on pre-fix tree** (`origin/sub/…/AST-2077` @ `e23ee4c5c`): `dark: expected [] to have a length of 2`. **Green** (7/7) with the plan's Proposed change step 1 applied locally (not committed); `tsc -b --noEmit` clean. The wrapper class name and the Recommended Job List's own rendering are not pinned here (the latter stays with `test_recommendedJobReport` AST-1968). Not tested: letterless dot size/colour (jsdom has no cascade → UAT).
+
+**Integration:** none — frontend-only; do not invent.
+
+#### QA test manifest (AST-2077)
+
+```bash
+cd src/ui/frontend && npx vitest run --config vite.config.ts ../../../tests/component/frontend/pages/test_AdminThemeExamples.test.tsx
+```
+
+**Pass criterion (test-fix):** the AST-2077 `[bug-repro]` flips red → green; the other 6 cases (AST-2047 page, AST-2064 options, 4 App.css) stay green.
+
+### AST-2068 · AST-2043 (routed pages — blur-save + version arrows)
+
+§6c routed-page coverage for the AST-2068 component change: **`ArtifactsBaseResumeContent`** (AC1/AC2 blur + AC4 arrows), **`ArtifactsDoJobCriteria`** (AC4 per criterion + AC2; stale `api` mock / manifest fixture repaired), **`CandidateBioSummary`** (AC4 + save-before-move). Full-paint mocks include the `/versions` and `/current` routes. Manifest: [`components.md`](components.md) § AST-2068.
+
+
+---
+
+### AST-2076 · AST-2042 (bug — Light accent → header purple; `--accent-gold*` renamed `--accent-contrast*`)
+
+> **AST-2122:** the `[bug-repro]` now checks `light` only (the parchment id is retired) and lives in **`tests/component/frontend/test_AppCss.test.tsx`** ([`root.md`](root.md) § AST-2122).
+
+**Publish:** `origin/sub/AST-2042/AST-2076-light-accent-contrast`. **Scope from** `[board-betty] TESTS: REVISE` (stale AC4 key + bible renames), plus the red-first repro qa-fix requires. Fix (plan doc § Bug: AST-2076): six-file `--accent-gold` → `--accent-contrast` rename; in `light` / `light_parchment`, accent family = header purple, `--heading` / `--nav-group-label` → `var(--accent-contrast)`.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| **[bug-repro]** in `light` and `light_parchment`, `--accent-contrast` and `--nav-group-label` resolve (following `var()` within the block) to the same value as `--heading` | `App.css` token blocks | **`test_AdminThemeExamples.test.tsx`** — **`App.css theme token blocks — AST-2047 > [bug-repro] AST-2076: in light and light_parchment, the accent and nav group label resolve to the header colour`** |
+| AC4 pairwise-differ key list retargeted `--accent-gold` → `--accent-contrast` | same | existing **`… > every Light block declares exactly the Dark token names, and the Lights pairwise differ (AC4)`** (still passes via `--bg-deep`) |
+| Rename complete (no `var()` left pointing at a removed name) | all `.ts`/`.tsx`/`.css` | existing AC5 + AST-2049 guards (unchanged) |
+
+**Red on pre-fix tree** (`origin/sub/…/AST-2076` @ `f3186d4c5`): `light --accent-contrast: expected undefined to be '#241b33'`. **Green** (8/8) with the plan's Proposed change steps 1–2 applied locally (not committed); `tsc -b --noEmit` clean. Purple hex values, hover/dim values, and Dark/Slate values are not pinned (palette choice → UAT; Dark-value equality is plan Verify step, not a test).
+
+**Integration:** none — frontend-only; do not invent.
+
+#### QA test manifest (AST-2076)
+
+```bash
+cd src/ui/frontend && npx vitest run --config vite.config.ts ../../../tests/component/frontend/pages/test_AdminThemeExamples.test.tsx
+```
+
+**Pass criterion (test-fix):** the AST-2076 `[bug-repro]` flips red → green; the other 7 cases stay green.
+
+### AST-2122 · AST-2100 (retire Theme Examples and the Light alternates)
+
+**Publish:** `origin/sub/AST-2100/AST-2122-retire-theme-examples`. Product (`code(AST-2122)`): `UI_CONFIG["themes"]` loses `light_parchment` / `light_slate` (now `dark` + `light`), `UI_CONFIG["theme_example_grade_sets"]` is deleted, the Theme Examples item leaves `NAV_CONFIG` Tools, and the `admin/theme_examples` route, `AdminThemeExamples.tsx` and the `GradeSetEntry` / grade-set `UiConfig` field are deleted. `App.css` is untouched; its alternate blocks and §16 rules go in sibling **AST-2123**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Registry is exactly `dark`, `light`; both selectable; default `dark` (AC9) | `src/utils/config.py` | **`test_config.py::TestAst2047ThemeRegistry::test_registry_ids_selectable_and_default`** (revised) |
+| Tools is admin-only with exactly Data Management, Agent Ad Hoc, Telescope, Cost Reconciliation, Resume Paste, Cover Letter Paste (AC8) | `src/utils/config.py` | **`…::TestAst2047ThemeRegistry::test_tools_nav_admin_only_six_items`** (replaces the Theme Examples item test); **`…::TestAst1386ThreeSegmentAdminNav`** (Tools paths, revised) |
+| No `*_grade_sets` key in `UI_CONFIG` (AC9) | `src/utils/config.py` | **`…::TestAst2047ThemeRegistry::test_no_grade_set_candidates_key`** (new; suffix match keeps the retired key name out of `tests/`) |
+| `/api/ui_config` serves exactly `dark` + `light`, no `*_grade_sets` key (AC9) | `src/ui/api/api_system.py` (unchanged) | **`test_api_system.py::TestSystemAuthRoutes::test_ui_config_serves_theme_registry`** (revised) |
+| Theme allowlist still rejects non-selectable values | `src/core/candidate.py`, `src/ui/api/api_candidate.py` (unchanged) | **`test_candidate.py::TestAst2048ThemeAllowlist`**, **`test_api_candidate.py::…::test_update_rejects_unselectable_theme`** (retired ids swapped for `"Light"`, a wrong-case near-miss) |
+| Light wordmark only for `theme === "light"` | `components/NavigationShell.tsx` (unchanged) | **`test_NavigationShell.test.tsx`** — **`uses the light wordmark only when the selected profile theme is light`** (second candidate now `dark`) |
+| `App.css` token-block contract + AST-2049 epic-wide guard | `App.css`, SPA source | moved to **`test_AppCss.test.tsx`** — [`root.md`](root.md) § AST-2122 |
+| `/admin/theme_examples` falls to the catch-all (AC8) | `routes.tsx` | not pinned by a test — browser/UAT; `test_routes.test.tsx` stays green |
+
+**Broken / obsolete (revised this pass):** `pages/test_AdminThemeExamples.test.tsx` deleted. Its 3 page cases (AST-2047 panel render, AST-2064 grade options, AST-2077 compact dots) go with the page. Its 5 `App.css` cases moved, not dropped (see [`root.md`](root.md) § AST-2122). `TestAst2064ThemeExampleGradeSets` deleted. The edits in `test_api_system.py`, `test_candidate.py`, `test_api_candidate.py` and `test_NavigationShell.test.tsx` drop the retired ids. `TestAst1386ThreeSegmentAdminNav._TOOLS_PATHS` gains the missing `/admin/telescope` (stale since Telescope joined Tools; red before this ticket). No `tests/integration/` scenario reads themes, Tools items or Theme Examples.
+
+#### QA test manifest (AST-2122)
+
+1. **Revised / new tests (required, all green):**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst2047ThemeRegistry \
+  tests/component/utils/test_config.py::TestAst1386ThreeSegmentAdminNav \
+  tests/component/ui/api/test_api_system.py::TestSystemAuthRoutes \
+  tests/component/core/test_candidate.py::TestAst2048ThemeAllowlist \
+  "tests/component/ui/api/test_api_candidate.py::TestCandidateRoutes::test_update_rejects_unselectable_theme"
+cd src/ui/frontend && npx vitest run --config vite.config.ts \
+  ../../../tests/component/frontend/components/test_NavigationShell.test.tsx \
+  ../../../tests/component/frontend/test_routes.test.tsx \
+  ../../../tests/component/frontend/test_AppCss.test.tsx
+```
+
+2. **Known red, not this ticket:** in `test_AppCss.test.tsx`, `no hex or non-black rgba outside token blocks…` and `AST-2049: no hex in .ts/.tsx source…` fail on `App.css: --tp-lvl`. Dev commit `5f4850a20` (Task Performance page) declares `--tp-lvl` in `.tp-*` rule bodies with `hsla()` values, outside the token blocks. `App.css` is byte-identical to `origin/dev` on this sub, and the same two cases were red in the old file. The other 3 `test_AppCss` cases must pass.
+
+3. **Regression:** `./scripts/testing/run_component_tests.sh tests/component/utils/test_config.py tests/component/ui/api/test_api_system.py tests/component/ui/api/test_api_candidate.py`. The failure set may only shrink vs the sub without this commit. Pre-existing reds: 22 in `test_config.py` (none name themes or nav), `TestAst1375InflightHideStatesManifest`, `TestCandidateRoutes::test_list_candidates_and_states`.
+
+4. **AC8 / AC9 greps:** `git grep -n -i -e theme_examples -e ThemeExamples -e theme-examples -e 'Theme Examples' -e theme_example_grade_sets -- src tests` and `git grep -n -e light_parchment -e light_slate -- src tests` hit only `src/ui/frontend/src/App.css` (AST-2123's carve-out).
+
+5. **AC10:** `cd src/ui/frontend && npx tsc -b --noEmit && npx tsc --noEmit` exit 0; `python -c "import src.utils.config"` exits 0.
+
+**Pass criterion:** items 1, 3, 4 and 5 hold, with only item 2's two known reds. Narrowed runs, not the zero-arg harness.
+
+### AST-2083 · AST-2046 (theme gate on resume editor CSS)
+
+> **AST-2122:** the token gates named below now live in **`tests/component/frontend/test_AppCss.test.tsx`** (5 cases); the page file is deleted.
+
+**Unchanged test, product red:** `test_AdminThemeExamples.test.tsx` (8). Its AST-2047/AST-2049 token gates catch `var(--accent-gold)` (retired on dev, now `--accent-contrast`) and a literal `#fff` in AST-2083's App.css §10e2. That's 2 red until the product fix lands. Manifest and detail: [`components.md`](components.md) § AST-2083.
+
+### AST-2084 · AST-2046 (Base Resume Content on the split pane)
+
+**Rewritten:** `test_ArtifactsBaseResumeContent.test.tsx` (8). The 15 old cases are retired with the page they tested (structure tabs, accent bar, structure authoring, the page's own Print and Generate). It covers:
+- **§6c page render** with full first-paint mocks: editor left (`Search sections`, sections, accent swatches) and base print preview right.
+- **Preview refresh:** the preview refetches once per editor save and never while typing (one `PUT …/data`).
+- **AC2/AC3:** no Generate/Regenerate/Save/Cancel.
+- **Candidate switch:** retargets both panes.
+- **No candidate:** shows the message, and no editor or print fetch happens.
+- **Source gates:** no `Save sections` and no `useCandidateResumeStructure|structureCatalog|onStructureSave` anywhere in `src/ui/frontend/src` (AC2/AC5). The page has no `craft_resume_base` and no `ArtifactEditor` (AC3). Both resume surfaces use `ResumeContentEditor`. The AST-1577 ui-consistency directive check is kept.
+
+Manifest: [`components.md`](components.md) § AST-2084.
+
+### AST-2106 · AST-2102 (grouped, collapsible Skipped page)
+
+**Publish:** `origin/sub/AST-2102/AST-2106-grouped-skipped-page`. Plan: `docs/features/interface/ast-2106-grouped-collapsible-skipped-page.md`. Rules come from manifest `jobs.skipped.groups` (AST-2105 — [`../utils/config.md`](../utils/config.md) § AST-2105).
+
+`JobsSkipped.tsx` buckets every built section (below-floor, normal, legacy) by manifest rules — member, then first matching prefix, then the catch-all — and renders one collapsible heading `<label> (<total jobs>)` per non-empty group, in manifest order. Group collapse is a second `useSectionExpandPolicy` (`expandAll`) holding *collapsed* group keys, so groups start open and section Expand One is untouched. `StateUiContext.tsx` types `groups`.
+
+| AC | Source | Component tests |
+| --- | --- | --- |
+| 4 Error / Bot block / Fail order + counts; each section inside its own group; no Other | `pages/JobsSkipped.tsx` | **`test_JobsSkipped.test.tsx`** › **`JobsSkipped — AST-2106 grouped, collapsible Skipped page`** › **`AC4: …`** |
+| 5 `INVALID_TITLE` → Other (1) last; legacy `ERROR_SOMETHING_OLD` → Error, `MYSTERY_STATE` → Other after Fail | same | **`AC5: INVALID_TITLE adds Other (1) last`** · **`AC5: unmapped legacy …`** |
+| 6 `virtual_skip` floor section under Fail, below Error | same | **`AC6: …`** |
+| 7 group heading hides / restores its sections; open section stays open, closed stays closed; other groups untouched | same | **`AC7: …`** |
+| 8 lone `FAILED_JD` → only Fail heading; empty → "No skipped jobs", no heading | same | **`AC8: …`** (×2) |
+| 9 mixed `ERROR_EVALUATE_JD` + `FAILED_DO` Retry → exactly one `bulk_state` POST per target (`JD_READY`, `PASSED_JD`) | same (`handleRetry` unchanged) | **`AC9: …`**; sort / Resurrect / hop-correct Retry stay pinned by the existing AST-893 / AST-1064 / AST-1156 / AST-1410 / AST-1979 / AST-1982 cases |
+| 10 no state / prefix literals in the page | source | grep below |
+| 11 build / lint | source | commands below |
+
+Group headings are located by exact text `▼<label> (<n>)`. Section membership is checked by DOM containment, and each group's button count equals 1 + its sections, which pins "nothing else in this group".
+
+**Broken / obsolete (revised this pass):** `tests/component/frontend/fixtures/stateUiManifestFixture.ts`: `skipped` gains `groups`, mirroring AST-2105's manifest exactly. Without it, all 16 existing `test_JobsSkipped` cases throw on `sk.groups.find` and time out. No existing case needed a selector change: groups start open, and no section label collides with a group heading.
+
+**Baseline red (not this ticket):** `test_JobDetailModal` › **`AST-1695 listing_href > read-only: null listing_href → no Link <a> …`** is red with and without this pass's test changes. It is already listed under § AST-1975's baseline reds.
+
+**Integration:** none — frontend-only; do not invent.
+
+## QA test manifest
+
+1. **Skipped page suite (required, all green):** expect 24 passed (16 existing + 8 AST-2106).
+
+```bash
+cd src/ui/frontend && npm run test:component -- ../../../tests/component/frontend/pages/test_JobsSkipped.test.tsx
+```
+
+2. **Fixture consumers (regression):** only the baseline red above.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/contexts/test_StateUiContext.test.tsx \
+  ../../../tests/component/frontend/components/test_NavigationShell.test.tsx \
+  ../../../tests/component/frontend/components/test_JobDetailModal.test.tsx
+```
+
+3. **AC 10:** `rg -n '"[A-Z]+(_[A-Z]+)*_"|"[A-Z]+(_[A-Z]+)+"' src/ui/frontend/src/pages/JobsSkipped.tsx` returns nothing.
+
+4. **AC 11:** in `src/ui/frontend`, `npx tsc -b --noEmit` and `npm run build` exit 0; `npm run lint` adds no problem absent on `origin/dev` (plan baseline `✖ 29 problems (25 errors, 4 warnings)`).
+
+**Pass criterion:** items 1–4 hold. Narrowed runs, not the zero-arg harness.
+
+**Bible shasums (after publish):** `git show origin/sub/AST-2102/AST-2106-grouped-skipped-page:docs/test-bible/frontend/pages.md | shasum`
+
+### AST-2170 · AST-2166 (Select All checkbox on Recommended list)
+
+**Publish:** `origin/sub/AST-2166/AST-2170-select-all`. Plan: `docs/features/interface/ast-2170-select-all-checkbox-on-recommended-list.md`.
+
+`JobsRecommended.tsx` (Jobs → Review and Jobs → Ready) puts a checkbox named **`All jobs in <section label>`** in each section's select `<th>`. Its checked state is derived from the page `selected` set (every row in the section selected). Clicking it when unchecked adds the section's ids; clicking it when checked removes only that section's ids (`setSectionSelected`). The bulk bar, `selectedIds` and `handleBulkDone` are unchanged.
+
+| AC | Source | Component tests |
+| --- | --- | --- |
+| 1 one checkbox in the select header · 7 `/^Select /` still counts rows only | `pages/JobsRecommended.tsx` | **`test_JobsRecommended.test.tsx`** › **`JobsRecommended — AST-1968 triage upgrades > AST-2170 Select All > AC1/AC7: …`** |
+| 2 Select All → all rows checked, `Skip (n)` / `Applied (n)` · 3 click again → none, no bulk buttons · 8 same on Ready | same | **`… > AC2/AC3/AC8 review: …`**, **`… > AC2/AC3/AC8 ready: …`** |
+| 4 one row ticked → header unchecked → click selects all · 5 header follows manual untick / re-tick | same | **`… > AC4/AC5: …`** |
+| 6 bulk Skip after Select All → header and rows unchecked | same (`handleBulkDone`) | **`… > AC6: …`** (static `jobsViewHandler`, so rows survive the refresh and the cleared state is visible) |
+| 9 build / lint | source | commands below |
+
+The block is nested in the AST-1968 describe to reuse its `renderPage` / `select` / `section` helpers. All 5 new cases are red with `JobsRecommended.tsx` reverted to `origin/dev` and green on the publish tip, so they guard the change.
+
+**Not pinned:** that unchecking clears only its own section's ids. Since AST-1975 each view renders one section, so no page state has two sections to tell the two behaviors apart.
+
+**Broken / obsolete:** none. All 28 existing cases pass on the tip unchanged: the header name does not match `/^Select /`, the `th` keeps `aria-label="Select"`, and column lookups go by header text or `children[2]`.
+
+**Integration:** none — frontend-only; do not invent.
+
+## QA test manifest
+
+1. **Recommended page suite (required, all green):** expect 33 passed (28 existing + 5 AST-2170).
+
+```bash
+cd src/ui/frontend && npm run test:component -- ../../../tests/component/frontend/pages/test_JobsRecommended.test.tsx
+```
+
+2. **AC 9:** in `src/ui/frontend`, `npx tsc -b --noEmit` and `npm run build` exit 0; `npm run lint` adds no problem absent on `origin/dev` (plan baseline 29 problems).
+
+**Pass criterion:** items 1–2 hold. Narrowed runs, not the zero-arg harness.
+
+**Bible shasums (after publish):** `git show origin/sub/AST-2166/AST-2170-select-all:docs/test-bible/frontend/pages.md | shasum`
+
+### AST-2174 · AST-2168 (sidebar search box + `/search` results page)
+
+**Parent:** [AST-2168](https://linear.app/astralcareermatch/issue/AST-2168) (Add Universal Entity Search). **Publish:** `origin/sub/AST-2168/AST-2174-search-results-page`. Plan: `docs/features/interface/ast-2174-sidebar-search-box-and-results-page.md`. Backend half (`GET /api/search`, matching / order / `modal_kind`): [`../core/search.md`](../core/search.md) § AST-2173.
+
+`SearchResults.tsx` reads `q` from the URL + `selectedId` from `CandidateContext`; no candidate or blank `q` → no request. Results are stamped with the `candidate\nq` key they answer, so a switch shows "Loading..." (never the old rows) until the new response lands. Sections only for non-empty types in Jobs → Companies → Meteorites order, titled `<Label> (<n>)`, rows in API order (own table markup with `list-page-*` classes — not `ListPage`, whose default sort would reorder). Row click opens `JobAnalysisReportModal` (`modal_kind: report`) / `JobDetailModal` (`detail`) / `CompanyDetailModal` (`shortName`) / `MeteoriteDetailModal` (`Number(id)`); close / save re-fetches in place. All-empty or failed request → "No results".
+
+| AC (child) | Source | Component tests |
+| --- | --- | --- |
+| 8 (UI half) job `report` → JobAnalysisReportModal, `detail` → JobDetailModal · 9 company → CompanyDetailModal(short_name), meteorite → MeteoriteDetailModal(numeric id), no navigation | `pages/SearchResults.tsx` | new **`test_SearchResults.test.tsx`** › **`clicking %s opens %s and stays on /search`** (4) — modals replaced by `vi.mock` stand-ins that print name / id / id type (each modal has its own suite) |
+| 10 (page half) URL `q` + selected candidate → one encoded request (reload = same request); blank / absent `q` → no request | same | **`requests /api/search with the URL's q …`**, **`blank q (%s) → no request …`** (3) |
+| 11 (UI half) Jobs (2) then Meteorites (1), no Companies heading, API row order kept (payload row stays after base); all empty → "No results", no headings; failed request → "No results" | same | **`renders Jobs (2) then Meteorites (1) …`**, **`all three lists empty …`**, **`failed request reads as 'No results'`** |
+| 12 switch A → B re-fetches, A's rows gone while B is in flight; no candidate → "Select a candidate", no request | same | **`candidate switch re-fetches …`** (deferred B response), **`no candidate selected …`** |
+| 13 modal close re-fetches; State cell updates without reload / "Loading..." flash | same | **`closing a modal re-fetches and updates the row's State`** |
+| 10 (box half) input first in `.sidebar-scroll`, before the Jobs `.nav-group`, not in `.sidebar-chrome` — wide + narrow; Enter `acme` → `/search?q=acme`; trims + encodes; blank / whitespace Enter and plain typing do nothing; narrow submit from `/search` closes the drawer | `components/NavigationShell.tsx` | **`test_NavigationShell.test.tsx`** › new **`AST-2174 sidebar search box`** (6) — [`components.md`](components.md) § AST-2174 |
+| `search` route registered before the catch-all | `routes.tsx` | **`test_routes.test.tsx`** › **`AST-2174: search is a shell child ahead of the catch-all`** — [`root.md`](root.md) § AST-2174 |
+| 14 build / lint | source | manifest item 3 |
+
+§6c routed page: satisfied — the page renders under `renderWithProviders` with every first-paint API mocked (`/api/me`, `/api/candidates`, `/api/state_ui_manifest`, `/api/ui_config`, `/api/search`). §6c filter / date UX: n/a (no filter or date inputs; the box is submit-only).
+
+**Not covered by Vitest (manual UAT):** AC 10 "scrolling the nav panel scrolls it under the candidate picker" is layout (jsdom has none) — the DOM placement case pins the structure that gives it; real modal content after a click (the stand-ins assert only which modal and which id).
+
+**Red check:** n/a for the page (new file — import fails on `origin/dev`). The 6 sidebar cases and the routes case fail on `origin/dev` (no `searchbox`, no `search` route).
+
+**Broken / obsolete:** none. All 16 existing `test_NavigationShell` cases pass unchanged (the search input's role is `searchbox`, so `getByRole("combobox")` still finds only the candidate picker); `test_routes` / `test_App` unchanged and green.
+
+**Pre-existing (not this ticket):** `test_AppCss.test.tsx` 2 failures — undefined `--tp-lvl` from the Task Performance page commit `5f4850a20` already on `origin/dev`. Every variable AST-2174 adds to `App.css` is defined in both token blocks.
+
+**Integration:** none — frontend-only; do not invent.
+
+## QA test manifest — AST-2174
+
+1. **New + touched suites (required, all green):** expect **39 passed** (14 page + 22 NavigationShell + 3 routes).
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_SearchResults.test.tsx \
+  ../../../tests/component/frontend/components/test_NavigationShell.test.tsx \
+  ../../../tests/component/frontend/test_routes.test.tsx
+```
+
+2. **Neighbours unchanged:** `npm run test:component -- ../../../tests/component/frontend/test_App.test.tsx` green; `test_AppCss.test.tsx` shows only the 2 pre-existing `--tp-lvl` failures above.
+3. **AC 14:** in `src/ui/frontend`, `npx tsc -b --noEmit` and `npm run build` exit 0; `npm run lint` adds no problem absent on `origin/dev` (plan baseline 29 problems). Python half: `PYTHONPATH=.:src $ASTRAL_PYTHON -c "import src.utils.config, src.core.search, ui.api.api_search"` exits 0.
+
+**Pass criterion:** items 1–3. Narrowed runs, not the zero-arg harness.
+
+**Bible shasum (after publish):** `git show origin/sub/AST-2168/AST-2174-search-results-page:docs/test-bible/frontend/pages.md | shasum`
+
+### AST-2181 · AST-2172 (Manage Agents — requires structured output)
+
+The `AdminAgentPrompts.tsx` editor gains a "Requires structured output" checkbox under Model, and the body always sends the flag. While it's ticked, the picker drops models whose `structured_output_capability` is null. The current model stays as one flagged option, `<label> — no structured output`. The fixture `models` now carry a capability: Kimi `advisory`, Haiku `null`.
+
+**New:** `describe("AST-2181 requires structured output")` (4):
+- Add: unchecked by default; ticking hides Haiku, leaving only the flagged current value; picking Kimi drops it; unticking restores.
+- Add saves the flag.
+- Edit: stored `true` shows checked, with only Kimi offered and saved.
+- Edit: the API's 400 gate text reaches the error toast and the editor stays open.
+
+**Revised:** the exact POST / PUT bodies in "Add saves every setting…" and "AC 10: Edit renders…" gain `requires_structured_output: false`. Manifest: [`../ui/api/api_admin.md`](../ui/api/api_admin.md) § AST-2181.
+
+### AST-2224 · AST-2216
+
+**Parent:** [AST-2216 — Make meteorite text editable (not versioned)](https://linear.app/astralcareermatch/issue/AST-2216). **Publish:** `origin/sub/AST-2216/AST-2224-meteorite-modal-edit-form`.
+
+`JobsMeteorites` passes list `load` as `MeteoriteDetailModal` `onSaved` so a successful candidate save refreshes the list (§6c page wiring). Modal behavior: **`docs/test-bible/frontend/components.md`** § AST-2224.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| §6c page render + Save → list reload | `JobsMeteorites.tsx` | **`test_JobsMeteorites.test.tsx`** › **`JobsMeteorites — AST-2224 onSaved list refresh`** |
+| Modal AC 1 / 12 | `MeteoriteDetailModal.tsx` | **`test_MeteoriteDetailModal.test.tsx`** › **`MeteoriteDetailModal — AST-2224 candidate edit form`** |
+
+**Broken / obsolete:** none — additive `onSaved={load}` prop.
+
+**Integration:** none — do not invent.
+
+## QA test manifest
+
+1. Modal: `tests/component/frontend/components/test_MeteoriteDetailModal.test.tsx` — **`MeteoriteDetailModal — AST-2224 candidate edit form`**
+2. Page (§6c): `tests/component/frontend/pages/test_JobsMeteorites.test.tsx` — **`JobsMeteorites — AST-2224 onSaved list refresh`**
+3. Regression: full `test_MeteoriteDetailModal.test.tsx` + `test_JobsMeteorites.test.tsx` (AST-1749 / AST-1983 / AST-1976 / AST-1980 / AST-1982 cases stay green)
+4. Docs-acceptance: `rg -n 'LANDED\|"CHECK_UNIQUE"\|"NEW"' src/ui/frontend/src/components/MeteoriteDetailModal.tsx` empty
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_MeteoriteDetailModal.test.tsx \
+  ../../../tests/component/frontend/pages/test_JobsMeteorites.test.tsx
+```
+
+**Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible path shasums (publish tip `2b5a8f786`):**
+- `docs/test-bible/frontend/components.md` — `02f1b04adf3b3953651804b5f19d8db18208b65b`
+- `docs/test-bible/frontend/pages.md` — `7dd54eed4d2ffc854170b508a0e283487e8e0b62`
+
+### AST-2234 · AST-2226 (§6c JobsRecommended totalScore import)
+
+**Parent:** AST-2226. **Publish:** `origin/sub/AST-2226/AST-2234-modal-panes-and-wiring`.
+
+`JobsRecommended.tsx` drops its local `totalScore` and imports the shared helper from `recommendedJobReport` (behavior unchanged). Existing page Vitest covers first paint / score column — no new page asserts.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| §6c routed page still renders | `JobsRecommended.tsx` | **`test_JobsRecommended.test.tsx`** (existing suite, regression) |
+
+Manifest: [`components.md`](components.md) § AST-2234.

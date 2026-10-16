@@ -69,6 +69,28 @@ class TestAst1069ExternalSlack:
 
 
 # Branches: users.info profile parse; gate; ok:false (AST-1068).
+# Branches: reply_broadcast with thread_ts -> body flag; without thread_ts -> dropped; default -> absent (AST-2072).
+class TestAst2072PostMessageReplyBroadcast:
+    @pytest.mark.parametrize(
+        ("kwargs", "expected_extra"),
+        [
+            ({"thread_ts": "1.0", "reply_broadcast": True}, {"thread_ts": "1.0", "reply_broadcast": True}),
+            ({"thread_ts": None, "reply_broadcast": True}, {}),
+            ({"thread_ts": "1.0"}, {"thread_ts": "1.0"}),
+        ],
+    )
+    def test_body(self, monkeypatch: pytest.MonkeyPatch, kwargs: dict, expected_extra: dict) -> None:
+        monkeypatch.setenv("ASTRAL_ALLOW_LIVE_EXTERNAL_IO", "1")
+        monkeypatch.setenv(CONTACT_CONFIG["bot_token_env"], "xoxb-test")
+        resp = MagicMock()
+        resp.json = MagicMock(return_value={"ok": True, "ts": "1.2"})
+        post = MagicMock(return_value=resp)
+        monkeypatch.setattr(slack_mod.requests, "post", post)
+        slack_mod.post_message(channel="C1", text="hi", **kwargs)
+        # Exact body: a top-level post never carries reply_broadcast (AC 11).
+        assert post.call_args.kwargs["json"] == {"channel": "C1", "text": "hi", **expected_extra}
+
+
 class TestAst1068FetchUserProfile:
     def test_fetch_profile_ok(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("ASTRAL_ALLOW_LIVE_EXTERNAL_IO", "1")
@@ -578,3 +600,178 @@ class TestAst1787ChannelListMembershipFullHistory:
         with pytest.raises(RuntimeError, match="conversations.history"):
             slack_mod.fetch_full_conversation_history(channel="C1")
 
+
+# Branches (AST-2211): include_thread_replies off → no conversations.replies call (snapshot
+# unchanged, AST-2206 AC 4); on → only reply_count>0 parents with a ts are pulled, echoed parent
+# dropped, replies merged into the one ascending sort with user/thread_ts kept; replies ok:false raises.
+_AST2211_REPLIES = {
+    # conversations.replies echoes the parent first.
+    "2.0": (
+        {"ts": "2.0", "text": "parent-a", "user": "U1", "reply_count": 2},
+        {"ts": "5.0", "thread_ts": "2.0", "text": "late-reply", "user": "U2"},
+        {"ts": "3.0", "thread_ts": "2.0", "text": "early-reply", "user": "U3"},
+    ),
+    "4.0": ({"ts": "4.0", "text": "parent-b", "user": "U1", "reply_count": 1},),
+}
+
+
+class TestAst2211FullHistoryThreadReplies:
+    HISTORY = (
+        {"ts": "4.0", "text": "parent-b", "user": "U1", "reply_count": 1},
+        {"ts": "2.0", "text": "parent-a", "user": "U1", "reply_count": 2},
+        {"ts": "1.0", "text": "plain", "user": "U2", "reply_count": 0},
+        {"text": "no-ts", "reply_count": 3},
+    )
+    REPLIES = _AST2211_REPLIES
+
+    def _fake(self, monkeypatch: pytest.MonkeyPatch, replies_ok: bool = True) -> list[str]:
+        monkeypatch.setenv("ASTRAL_ALLOW_LIVE_EXTERNAL_IO", "1")
+        monkeypatch.setenv(CONTACT_CONFIG["bot_token_env"], "xoxb-test")
+        reply_ts: list[str] = []
+
+        def fake_get(url: str, **kwargs):  # type: ignore[no-untyped-def]
+            method = _method_from_url(url)
+            params = kwargs.get("params") or {}
+            assert params.get("channel") == "C1"
+            if method == "conversations.history":
+                return _slack_get_resp({"ok": True, "messages": [dict(m) for m in self.HISTORY]})
+            assert method == "conversations.replies"
+            reply_ts.append(params["ts"])
+            if not replies_ok:
+                return _slack_get_resp({"ok": False, "error": "thread_not_found"})
+            return _slack_get_resp({"ok": True, "messages": [dict(m) for m in self.REPLIES[params["ts"]]]})
+
+        monkeypatch.setattr(slack_mod.requests, "get", fake_get)
+        return reply_ts
+
+    def test_default_off_never_pulls_replies(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        reply_ts = self._fake(monkeypatch)
+        out = slack_mod.fetch_full_conversation_history(channel="C1")
+        assert [m.get("ts") for m in out] == ["1.0", "2.0", "4.0", None]
+        assert reply_ts == []
+
+    def test_on_merges_replies_ascending_without_parent_echo(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        reply_ts = self._fake(monkeypatch)
+        out = slack_mod.fetch_full_conversation_history(channel=" C1 ", include_thread_replies=True)
+        # Only parents with reply_count > 0 and a ts; plain / no-ts rows never trigger a pull.
+        assert sorted(reply_ts) == ["2.0", "4.0"]
+        assert [m.get("ts") for m in out] == ["1.0", "2.0", "3.0", "4.0", "5.0", None]
+        early = out[2]
+        assert early["text"] == "early-reply" and early["user"] == "U3" and early["thread_ts"] == "2.0"
+
+    def test_on_replies_ok_false_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._fake(monkeypatch, replies_ok=False)
+        with pytest.raises(RuntimeError, match="conversations.replies"):
+            slack_mod.fetch_full_conversation_history(channel="C1", include_thread_replies=True)
+
+
+# Branches: conversations.list ok:false message carries Slack needed/provided when
+# present (list_bot_channels + _iter_conversations); plain text unchanged when absent (AST-1815).
+class TestAst1815SlackScopeErrorDetail:
+    _MISSING_SCOPE = {
+        "ok": False,
+        "error": "missing_scope",
+        "needed": "channels:read",
+        "provided": "groups:read,groups:history",
+    }
+
+    @staticmethod
+    def _stub(monkeypatch: pytest.MonkeyPatch, payload: dict) -> None:
+        monkeypatch.setenv("ASTRAL_ALLOW_LIVE_EXTERNAL_IO", "1")
+        monkeypatch.setenv(CONTACT_CONFIG["bot_token_env"], "xoxb-test")
+        monkeypatch.setattr(
+            slack_mod.requests, "get", MagicMock(return_value=_slack_get_resp(payload))
+        )
+
+    # [bug-repro] AC1 — plain `in` asserts so `:` / `,` in scope strings need no regex escaping.
+    def test_list_bot_channels_missing_scope_names_needed_and_provided(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        self._stub(monkeypatch, self._MISSING_SCOPE)
+        with pytest.raises(RuntimeError) as exc:
+            slack_mod.list_bot_channels()
+        msg = str(exc.value)
+        assert "conversations.list failed: missing_scope" in msg
+        assert "channels:read" in msg
+        assert "groups:read,groups:history" in msg
+
+    # [bug-repro] AC2 — private poster-pool loop has no gate of its own; env token is enough.
+    def test_iter_conversations_missing_scope_names_needed_and_provided(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        self._stub(monkeypatch, self._MISSING_SCOPE)
+        with pytest.raises(RuntimeError) as exc:
+            slack_mod._iter_conversations()
+        msg = str(exc.value)
+        assert "conversations.list failed: missing_scope" in msg
+        assert "channels:read" in msg
+        assert "groups:read,groups:history" in msg
+
+    # AC3 regression pin — exact equality, not match=, so any extra suffix fails.
+    def test_conversations_list_error_without_scope_fields_is_plain(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        self._stub(monkeypatch, {"ok": False, "error": "missing_scope"})
+        with pytest.raises(RuntimeError) as exc:
+            slack_mod.list_bot_channels()
+        assert str(exc.value) == "conversations.list failed: missing_scope"
+        with pytest.raises(RuntimeError) as exc:
+            slack_mod._iter_conversations()
+        assert str(exc.value) == "conversations.list failed: missing_scope"
+
+
+# Branches: gate; conversations.info flag map (im/mpim/group/channel, mpim before private);
+# ok:false raises with scope detail; blank id (AST-2061).
+class TestAst2061FetchChannelType:
+    @staticmethod
+    def _stub(monkeypatch: pytest.MonkeyPatch, payload: dict) -> MagicMock:
+        monkeypatch.setenv("ASTRAL_ALLOW_LIVE_EXTERNAL_IO", "1")
+        monkeypatch.setenv(CONTACT_CONFIG["bot_token_env"], "xoxb-test")
+        resp = MagicMock()
+        resp.raise_for_status = MagicMock()
+        resp.json = MagicMock(return_value=payload)
+        get = MagicMock(return_value=resp)
+        monkeypatch.setattr(slack_mod.requests, "get", get)
+        return get
+
+    def test_requires_gate(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # The gate only blocks under the integration harness; no live opt-in → no HTTP call.
+        get = self._stub(monkeypatch, {"ok": True, "channel": {}})
+        monkeypatch.setenv("ASTRAL_INTEGRATION_MODE", "1")
+        monkeypatch.delenv("ASTRAL_ALLOW_LIVE_EXTERNAL_IO", raising=False)
+        with pytest.raises(RuntimeError, match="live external I/O blocked"):
+            slack_mod.fetch_channel_type("C1")
+        get.assert_not_called()
+
+    @pytest.mark.parametrize(
+        ("channel", "expected"),
+        [
+            ({"is_im": True}, "im"),
+            ({"is_mpim": True, "is_private": True}, "mpim"),
+            ({"is_private": True}, "group"),
+            ({"is_group": True}, "group"),
+            ({"is_private": False}, "channel"),
+            ({}, "channel"),
+        ],
+    )
+    def test_maps_conversations_info_flags(self, monkeypatch: pytest.MonkeyPatch, channel, expected) -> None:
+        get = self._stub(monkeypatch, {"ok": True, "channel": channel})
+        assert slack_mod.fetch_channel_type("C1") == expected
+        assert get.call_args.args[0].endswith("/conversations.info")
+        assert get.call_args.kwargs["params"] == {"channel": "C1"}
+
+    def test_ok_false_raises_with_scope_detail(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._stub(
+            monkeypatch,
+            {"ok": False, "error": "missing_scope", "needed": "im:read", "provided": "groups:read"},
+        )
+        with pytest.raises(RuntimeError) as exc:
+            slack_mod.fetch_channel_type("C1")
+        assert "conversations.info failed: missing_scope" in str(exc.value)
+        assert "im:read" in str(exc.value)
+
+    def test_blank_channel_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Gate on so the blank-id check (not the I/O gate) is what raises.
+        monkeypatch.setenv("ASTRAL_ALLOW_LIVE_EXTERNAL_IO", "1")
+        with pytest.raises(ValueError, match="channel"):
+            slack_mod.fetch_channel_type("  ")

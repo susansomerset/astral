@@ -114,3 +114,33 @@ Roster handoff + parse dispatch: **`docs/test-bible/core/roster.md`** (**AST-827
 ```
 
 **Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate unless **`test-child`** widens.
+
+### AST-1840 · AST-1844 (`find_job_containers` linear rewrite equivalence)
+
+**Parent:** [AST-1838](https://linear.app/astralcareermatch/issue/AST-1838). Product **AST-1840** replaced per-descendant `get_text` with one ordered text walk + char spans + cached `_titles_in` (same signature, same containers — cost-only change). Pins equivalence on shapes where a parent's `get_text` excludes text a child sees (comments, `script` / `style` / `template` / `rt` / `rp`) plus an 8,000-row DOM. Green on both pre-fix `31846c28` and AST-1840 (`fb472a98`). Closes the rewrite's uncovered branches on this **LOCKED_AT_100** file: `345→350` (whitespace-only string), `356→353` (comment / non-main string), `375→377` (special-string-container fallback). Structural asserts only; no timing assertion, no size cap.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Comment/whitespace, script, style, ruby rt/rp → single deepest container | `src/utils/formatting.py` | **`TestAst1840FindJobContainersEquivalence::test_single_deepest_container`** (ids `comment_ws`, `script`, `style`, `ruby_rt`, `ruby_rp`) |
+| `template` → Phase 2 sibling union | same | **`TestAst1840FindJobContainersEquivalence::test_template_sibling_union`** |
+| Large DOM (8,000 rows) same containers | same | **`TestAst1840FindJobContainersEquivalence::test_large_dom_same_containers`** |
+
+**Broken / obsolete:** none — existing **`TestFindJobContainers`** unchanged.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_formatting.py::TestAst1840FindJobContainersEquivalence \
+  tests/component/utils/test_formatting.py::TestFindJobContainers \
+  -q
+```
+
+### AST-2029 · AST-2028 (entity-id labels — hydrate + split)
+
+**Parent:** [AST-2028](https://linear.app/astralcareermatch/issue/AST-2028). **Publish:** `origin/sub/AST-2028/AST-2029-store-agent-data-with-entity-ids`. `hydrate_entity_labels(text, entity_ids)` rewrites positional batch labels (`NNN:`, `[index=NNN]:`, `NNN|`) to `[entity_id=<id>]` at a line start, after `"`, or after a literal `\n` escape (plan D1/D2); out-of-range positions stay (D5). `split_entity_segments(text)` returns `{id: segment}` from decoded JSON (`companies` before `jobs`) or from `[entity_id=…]` tags; `{}` = legacy / show whole (D7). Storage wiring: **`core/agent.md`** § AST-2029.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Hydrate forms, boundaries, D5, untouched digits | `src/utils/formatting.py` | **`TestAst2029HydrateEntityLabels`** |
+| Split JSON / tags / preamble / repeats / escapes / legacy | same | **`TestAst2029SplitEntitySegments`** |
+
+**Broken / obsolete:** none — additive helpers. **Integration:** none.

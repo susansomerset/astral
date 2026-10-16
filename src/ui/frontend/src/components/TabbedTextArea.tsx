@@ -39,6 +39,8 @@ export interface TextTab {
   disabled?: boolean
   placeholder?: string
   help?: string
+  /** Token ids valid in this tab's field (enables the `{$` lookup list). */
+  tokens?: string[]
 }
 
 interface TabbedTextAreaProps {
@@ -61,7 +63,7 @@ export default function TabbedTextArea({ tabs, values, onChange, customPanels }:
     <div>
       <TabBar tabs={barTabs} active={String(active)} onChange={k => setActive(Number(k))} />
       {help ? (
-        <p style={{ color: "#8b949e", marginBottom: 8, fontSize: 13, lineHeight: 1.5 }}>
+        <p style={{ color: "var(--text-secondary)", marginBottom: 8, fontSize: 13, lineHeight: 1.5 }}>
           {help}
         </p>
       ) : null}
@@ -72,6 +74,7 @@ export default function TabbedTextArea({ tabs, values, onChange, customPanels }:
           onChange={v => onChange(tab.key, v)}
           disabled={tab.disabled}
           placeholder={tab.placeholder}
+          tokens={tab.tokens}
           className="dep-input dep-textarea tabbed-ta-textarea"
         />
       )}

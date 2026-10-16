@@ -88,3 +88,66 @@ Gazer batch + roster scrape manifests: **`docs/test-bible/core/gazer.md`** · **
   tests/component/external/test_telescope.py::TestAst1750PostTelescopeDebugDump -q
 ```
 
+---
+
+### AST-1840 · AST-1844 (qa-fix bug-repro — linear `_cull_html`, attribute snip, off-loop cull)
+
+**Board REVISE:** nothing exercised the 2h event-loop freeze (`_in_preserved_svg` hashing bs4 Tags → quadratic `Tag.decode`; sync cull inside async `extract_page_dom`) or the new `html_cull` attribute snip (`max_html_tag_length` / `max_length_placeholder`). Product: **AST-1840**; tests on gap sibling **AST-1844**. `[bug-repro]` nodes red on pre-fix `31846c28`, green on AST-1840 (`fb472a98`). No wall-clock asserts, no size caps.
+
+| Area | Component tests |
+| --- | --- |
+| Full `<body>` page cull never hashes a Tag (linear-time guard) | `test_telescope.py::TestAst1840CullHtmlLinearAndSnip::test_cull_html_full_page_never_hashes_tag` (**bug-repro**) |
+| Snip: 500 kept, 501 → `(snipped)`, list `class` by joined length | `test_telescope.py::TestAst1840CullHtmlLinearAndSnip::test_cull_html_snips_attr_over_max_length` |
+| Missing snip key → `ValueError` (both keys) | `test_telescope.py::TestAst1840CullHtmlLinearAndSnip::test_cull_html_missing_snip_key_raises` |
+| `extract_page_dom` runs `_cull_html` off the loop thread | `test_telescope.py::TestAst1840CullHtmlLinearAndSnip::test_extract_page_dom_culls_off_event_loop` (**bug-repro**) |
+
+**Broken / obsolete:** none — `TestCullHtmlDefault` and AST-1745 stay unchanged (monkeypatched `_cull_html` resolves at call time inside `to_thread`).
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/external/test_telescope.py::TestAst1840CullHtmlLinearAndSnip \
+  tests/component/external/test_telescope.py::TestCullHtmlDefault \
+  tests/component/external/test_telescope.py::TestAst1745CullPreservesRootSvgLogo -q
+```
+
+---
+
+### AST-1849 · AST-1850 (qa-fix bug-repro — one-shot loop teardown)
+
+**Board REVISE:** no test referenced `close_loop_resources` / `aclose_current_loop` / `_LoopState` / `_pool._states`; one-shot `asyncio.run` callers leaked the per-loop asyncpg pool, LISTEN connection and `telescope-result-poller`. Product: **AST-1849** (`run_one_shot`); tests on gap sibling **AST-1850**. `[bug-repro]` node red on pre-fix `83a0c352` (`AttributeError`: no `run_one_shot`), green on ftr `0877d286` (AST-1849 `bf470756` merged). Control node green on both.
+
+| Area | Component tests |
+| --- | --- |
+| `run_one_shot` releases loop state (pool + listener closed once, poller done, `_states` empty) | `test_telescope.py::TestAst1849OneShotLoopTeardown::test_run_one_shot_releases_loop_state` (**bug-repro**) |
+| Exception re-raised unchanged, cleanup still done | `test_telescope.py::TestAst1849OneShotLoopTeardown::test_run_one_shot_reraises_and_still_releases` |
+| No Telescope touch → value returned, no pool, `_states` unchanged | `test_telescope.py::TestAst1849OneShotLoopTeardown::test_run_one_shot_passthrough_without_telescope` |
+| Control: bare `asyncio.run` leaves loop state open | `test_telescope.py::TestAst1849OneShotLoopTeardown::test_bare_asyncio_run_leaves_loop_state_control` |
+
+**Broken / obsolete:** none. Call-site swaps (`api_admin`, `api_meteorite`, `api_inbox`, `gazer`, `contact`) need no new nodes; no test patches `asyncio.run` on those modules. Known residual: a single call site reverting to bare `asyncio.run` is not caught by these nodes.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/external/test_telescope.py::TestAst1849OneShotLoopTeardown -q
+```
+
+---
+
+### AST-2023 · AST-2022 (Telescope click-then-capture — platform client)
+
+**Scope:** `_post_telescope(click_href=…)` adds `body["click_href"]` only when set; `_TelescopeQueue.submit` maps queue `error_class="click_target_missing"` → `PlaywrightInfraError(TELESCOPE_CLICK_TARGET_MISSING)` (deliberately outside `PLAYWRIGHT_INFRA_FAILURE_CLASSES`); new public `click_through_visible_text(list_url, href) -> (final_url, text)` — one job, no client retry. Service half + full manifest: [`service/telescope.md`](../service/telescope.md) § AST-2023.
+
+| Area | Component tests |
+| --- | --- |
+| Omitted option → pre-AST-2023 body key set exactly | `test_telescope.py::TestAst2023ClickThrough::test_post_telescope_without_click_href_body_unchanged` |
+| `click_href` forwarded | `…::test_post_telescope_forwards_click_href` |
+| Real `submit` maps `click_target_missing`; not an infra class | `…::test_submit_maps_click_target_missing` |
+| Control: `scrape_failed` still `telescope_job_failed` | `…::test_submit_scrape_failed_still_job_failed_control` |
+| `(final_url, text)` + body (`url`, `fields=["text"]`, `click_href`) | `…::test_click_through_returns_final_url_and_text` |
+| List text joined `\n\n`; missing keys → `("", "")` | `…::test_click_through_joins_list_text_and_defaults_empty` |
+| Missing target raises; exactly one `submit` (no retry) | `…::test_click_through_raises_on_missing_target_without_retry` |
+
+`submit` tests drive the real method with a fake asyncpg pool (`_get_db` / `_state` / `_maybe_wake` patched; waiter future resolved with a canned failed row).
+
+**Broken / obsolete:** none caused by this diff. **Pre-existing red on `origin/dev` (not AST-2023):** `TestTelescopePoolHttp` (×3) and `TestAst1750PostTelescopeDebugDump` patch the retired HTTP pool (`_pool.request` / `_TelescopePool`); the module is now a Postgres queue client. Not revised here — retire/retarget needs Susan's scope call.
+
+**`LOCKED_AT_100`:** `test_telescope.py` alone reaches 39% branch on `src/external/telescope.py` before AST-2023 and 45% with the AST-2023 nodes (the queue / fetch paths have no live tests since the HTTP→queue move); the full-tree lock gate could not be measured here because five unrelated modules fail collection on `origin/dev`. AST-2023's new branches are covered by these nodes.

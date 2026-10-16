@@ -1,3 +1,102 @@
+<!-- linear-archive: AST-1691 archived 2026-10-02 -->
+
+## Linear archive (AST-1691)
+
+**Archived:** 2026-10-02  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1691/meteorite-lookup-report-configapi-view-related-meteorite-record-data  
+**Status at archive:** Archive  
+**Project:** Astral Interface  
+**Assignee:** hedy  
+**Priority / estimate:** None / 3  
+**Parent:** AST-1685 — View related meteorite record data on recommended job modal  
+**Blocked by / blocks / related:** parent: AST-1685; blocks: AST-1692
+
+### Description
+
+## What this implements
+
+Add `astral_job_id` → meteorite read helper, register Meteorite on recommended top tabs + section manifest, attach `related_meteorite` on job GET. Does not own retention (#1) or React pane (#3).
+
+## Citations
+
+`stat.logging.info.api`, `stat.logging.debug`, `stat.logging.error`.
+
+## Scope
+
+`src/data/database.py` (read helper + header inventory); `src/utils/config.py` (Meteorite top tab + section defs); `src/ui/api/api_system.py` (manifest sections); `src/ui/api/api_jobs.py` (`related_meteorite` on detail).
+
+## Acceptance criteria
+
+- [X] `GET /api/jobs/<id>` JSON includes `related_meteorite` with at least `id`, `created_at`, `updated_at`, `state_changed_at`, `link`, `classify_outcome`, `content`, `state`, `source_kind`, `source_id` when the reverse link hits; otherwise `null`. Fail: field absent, or object present when no row matches.
+- [X] `grep` / manifest: Meteorite is on `JOBS_RECOMMENDED_REPORT_TOP_TABS` and section list comes from config/manifest, not a TSX-only tab array. Fail: label/order invented only in React.
+
+## Boundaries
+
+Does not own retention (#1) or React pane (#3). — confirmed held (no [meteorite.py](<http://meteorite.py>) / frontend edits).
+
+## Notes for planning
+
+Citations: `stat.logging.info.api`, `stat.logging.debug`, `stat.logging.error`.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/<parent-segment>`, child `sub/<parent-id>/<child-segment>`. Created at dispatch-parent.
+
+## QA test manifest
+
+1. `tests/component/data/database/test_meteorites.py::TestAst1691GetMeteoriteByAstralJobId`
+2. `tests/component/utils/test_config.py::TestAst1691MeteoriteReportConfig`
+3. `tests/component/utils/test_config.py::TestBuildStateUiManifest::test_ast565_recommended_report_manifest_tabs`
+4. `tests/component/utils/test_config.py::TestAst1550DiscussionHopKeys::test_top_tabs_discussion_after_artifacts`
+5. `tests/component/ui/api/test_api_system.py::TestAst1691ReportMeteoriteSections`
+6. `tests/component/ui/api/test_api_system.py::TestAst1550ReportDiscussionSections`
+7. `tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_detail_related_meteorite_object`
+8. `tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_detail_related_meteorite_soft_fail`
+9. revised detail null: `test_detail_returns_agent_story`, `test_detail_soft_fails_agent_story`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/data/database/test_meteorites.py::TestAst1691GetMeteoriteByAstralJobId \
+  tests/component/utils/test_config.py::TestAst1691MeteoriteReportConfig \
+  tests/component/utils/test_config.py::TestBuildStateUiManifest::test_ast565_recommended_report_manifest_tabs \
+  tests/component/utils/test_config.py::TestAst1550DiscussionHopKeys::test_top_tabs_discussion_after_artifacts \
+  tests/component/ui/api/test_api_system.py::TestAst1691ReportMeteoriteSections \
+  tests/component/ui/api/test_api_system.py::TestAst1550ReportDiscussionSections \
+  tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_detail_returns_agent_story \
+  tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_detail_soft_fails_agent_story \
+  tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_detail_related_meteorite_object \
+  tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_detail_related_meteorite_soft_fail \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+
+* `docs/test-bible/data/database/meteorites.md` — `643230eb37d95107878906688e545a0c11cdc11a`
+* `docs/test-bible/utils/config.md` — `c816cb71d4fc49c77b4ffa0c32d681c2bef32ff7`
+* `docs/test-bible/ui/api/api_system.md` — `c8ce77411332c5d4aee2047721a4bd27f05751d3`
+* `docs/test-bible/ui/api/api_jobs.md` — `3c0370b12ffc85692cd2fcec3257bfb6dc904186`
+
+### Comments
+
+#### chuckles — 2026-09-16T23:14:28.711Z
+[merge-child] blocked: sub not stacked on ftr — republish from ftr first. @Hedy Lamarr run sync-child.sh sub/AST-1685/AST-1691-meteorite-lookup-report-config-api --ftr AST-1685 --worktree /home/susan/astral-AST-1685/ then push origin/<publish-ref>.
+
+#### radia — 2026-09-16T23:13:30.154Z
+[code-rubric] PROCEED (Commit: 9b9af825) meteorite lookup API clean
+
+#### betty — 2026-09-16T23:09:36.409Z
+origin/sub/AST-1685/AST-1691-meteorite-lookup-report-config-api @ 9b9af825 · tests published
+
+#### joan — 2026-09-16T22:41:58.682Z
+[plan-rubric] PROCEED (Commit: f8b6f15e) logging plan sound
+
+#### hedy — 2026-09-16T22:39:18.114Z
+`origin/sub/AST-1685/AST-1691-meteorite-lookup-report-config-api` @ `f8b6f15e` · plan ready
+
+---
+
 # AST-1691 — Meteorite lookup + report config/API
 
 **Linear:** [AST-1691](https://linear.app/astralcareermatch/issue/AST-1691/meteorite-lookup-report-config-api-view-related-meteorite-record-data)

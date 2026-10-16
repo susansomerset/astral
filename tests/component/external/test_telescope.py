@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
 from types import SimpleNamespace
+from typing import Any, Dict
 from unittest.mock import AsyncMock, MagicMock
 
 import httpx
@@ -346,6 +348,75 @@ class TestAst1745CullPreservesRootSvgLogo:
         )
 
 
+class TestAst1840CullHtmlLinearAndSnip:
+    """AST-1840 bug-repro — _cull_html never hashes Tags (quadratic freeze); attr snip; off-loop cull."""
+
+    _ROW = (
+        '<li class="job-row" data-automation-id="job"><div class="c1">'
+        '<h3><a href="/job/E_%d">Engineer %d</a></h3></div>'
+        '<button><i>x</i></button><span class="loc">Pittsburgh</span>'
+        '<svg viewBox="0 0 10 10"><g><path d="M0 0L10 10"></path></g></svg></li>'
+    )
+
+    def test_cull_html_full_page_never_hashes_tag(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # bs4 Tag.__hash__ serializes the subtree; any hash on a <body> page is O(document) work
+        # per element — the 2h freeze. Must include <body>: root-svg fragments legitimately hash.
+        import bs4.element
+
+        def boom(self: Any) -> int:
+            raise AssertionError("Tag.__hash__ called during _cull_html")
+
+        html = (
+            '<html><body><div id="app"><ul>'
+            + "".join(self._ROW % (i, i) for i in range(40))
+            + "</ul></div></body></html>"
+        )
+        monkeypatch.setattr(bs4.element.Tag, "__hash__", boom)
+        out = pw_mod._cull_html(html)
+        assert "Engineer 39" in out
+        assert "<svg" not in out
+
+    def test_cull_html_snips_attr_over_max_length(self) -> None:
+        # 500 kept, 501 snipped (strict >); list-valued class measured by joined length (560).
+        html = '<div data-a="%s" data-b="%s" class="%s">Job</div>' % (
+            "x" * 500, "y" * 501, " ".join(["c" * 50] * 11),
+        )
+        out = pw_mod._cull_html(html)
+        assert 'data-a="' + "x" * 500 + '"' in out
+        assert 'data-b="(snipped)"' in out
+        assert 'class="(snipped)"' in out
+        assert "y" * 501 not in out
+
+    @pytest.mark.parametrize("key", ["max_html_tag_length", "max_length_placeholder"])
+    def test_cull_html_missing_snip_key_raises(
+        self, monkeypatch: pytest.MonkeyPatch, key: str,
+    ) -> None:
+        monkeypatch.delitem(pw_mod.ASTRAL_CONFIG["html_cull"], key)
+        with pytest.raises(ValueError, match=key):
+            pw_mod._cull_html("<div>x</div>")
+
+    @pytest.mark.asyncio
+    async def test_extract_page_dom_culls_off_event_loop(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        # Thread identity proves the cull left the loop thread — no timers.
+        import threading
+
+        monkeypatch.setitem(pw_mod.TELESCOPE_CONFIG, "cull_html_default", True)
+        page = pw_mod.PageHandle(url="https://example.com")
+        monkeypatch.setattr(pw_mod, "_ensure_html", AsyncMock(return_value="<body>hi</body>"))
+        seen: Dict[str, int] = {}
+
+        def fake_cull(raw: str) -> str:
+            seen["tid"] = threading.get_ident()
+            return "<p>hi</p>"
+
+        monkeypatch.setattr(pw_mod, "_cull_html", fake_cull)
+        out = await pw_mod.extract_page_dom(page)
+        assert out == "<p>hi</p>"
+        assert seen["tid"] != threading.get_ident()
+
+
 class TestAst1750PostTelescopeDebugDump:
     """AST-1750 bug-repro — _post_telescope debug dumps full request body + response."""
 
@@ -402,6 +473,194 @@ class TestAst1750PostTelescopeDebugDump:
             "Response" in r.getMessage() or "final_url" in r.getMessage()
             for r in caplog.records
         ), "AST-1750: missing ungated logger.debug callee-out with full JSON"
+
+
+# Branches: run_one_shot releases per-loop Telescope state (AST-1849 / AST-1850).
+class TestAst1849OneShotLoopTeardown:
+    # Plain def nodes: asyncio.run cannot start inside a running loop.
+
+    @pytest.fixture
+    def fresh_queue(self, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setenv(pw_mod.TELESCOPE_CONFIG["database_url_env"], "postgresql://fake/db")
+        q = pw_mod._TelescopeQueue()
+        # close_loop_resources reads module-global _pool at call time.
+        monkeypatch.setattr(pw_mod, "_pool", q)
+        fake_db = MagicMock()
+        fake_db.close = AsyncMock()
+        fake_db.fetch = AsyncMock(return_value=[])
+        create_pool = AsyncMock(return_value=fake_db)
+        monkeypatch.setattr(pw_mod.asyncpg, "create_pool", create_pool)
+        return q, fake_db, create_pool
+
+    @staticmethod
+    def _touch(q: Any, seen: Dict[str, Any]):
+        async def _run() -> str:
+            # First Telescope touch: creates the loop's pool and starts the real poller.
+            await q._get_db()
+            loop = asyncio.get_running_loop()
+            st = q._states[loop]
+            st.listener = MagicMock(is_closed=MagicMock(return_value=False), close=AsyncMock())
+            seen.update(loop=loop, st=st, listener=st.listener)
+            return "ok"
+
+        return _run
+
+    @staticmethod
+    def _assert_released(q: Any, fake_db: Any, seen: Dict[str, Any]) -> None:
+        # State really existed, so the release asserts aren't vacuous.
+        assert seen["st"].db is fake_db
+        assert seen["loop"] not in q._states
+        assert q._states == {}
+        assert fake_db.close.await_count == 1
+        assert seen["listener"].close.await_count == 1
+        assert seen["st"].poller.done()
+        assert seen["loop"].is_closed()
+
+    def test_run_one_shot_releases_loop_state(self, fresh_queue) -> None:
+        """[bug-repro] AST-1849 Repro 2: pool + listener closed once, poller done, _states empty."""
+        q, fake_db, _ = fresh_queue
+        seen: Dict[str, Any] = {}
+        assert pw_mod.run_one_shot(self._touch(q, seen)()) == "ok"
+        self._assert_released(q, fake_db, seen)
+
+    def test_run_one_shot_reraises_and_still_releases(self, fresh_queue) -> None:
+        """AST-1849 Repro 3: caller's exception re-raised unchanged; cleanup still done."""
+        q, fake_db, _ = fresh_queue
+        seen: Dict[str, Any] = {}
+        touch = self._touch(q, seen)
+
+        async def _boom() -> None:
+            await touch()
+            raise ValueError("boom")
+
+        with pytest.raises(ValueError, match="boom"):
+            pw_mod.run_one_shot(_boom())
+        self._assert_released(q, fake_db, seen)
+
+    def test_run_one_shot_passthrough_without_telescope(self, fresh_queue) -> None:
+        """AST-1849 Repro 4: no Telescope touch → value returned, no pool, _states unchanged."""
+        q, _, create_pool = fresh_queue
+
+        async def _plain() -> int:
+            return 42
+
+        assert pw_mod.run_one_shot(_plain()) == 42
+        assert q._states == {}
+        create_pool.assert_not_awaited()
+
+    def test_bare_asyncio_run_leaves_loop_state_control(self, fresh_queue) -> None:
+        """Control: bare asyncio.run leaves per-loop Telescope state open (AST-1849 as-is); proves the fixture is not vacuous."""
+        q, fake_db, _ = fresh_queue
+        seen: Dict[str, Any] = {}
+        asyncio.run(self._touch(q, seen)())
+        assert seen["loop"] in q._states
+        assert fake_db.close.await_count == 0
+
+
+class _ResolvingWaiters(dict):
+    """submit() registers its future here; resolve it at once with a canned job row."""
+
+    def __init__(self, row: dict[str, Any]) -> None:
+        super().__init__()
+        self._row = row
+
+    def __setitem__(self, key: str, fut: asyncio.Future) -> None:
+        super().__setitem__(key, fut)
+        fut.set_result(self._row)
+
+
+# Branches: _post_telescope body without / with click_href; submit maps
+# click_target_missing → TELESCOPE_CLICK_TARGET_MISSING (not infra), other classes unchanged;
+# click_through_visible_text str / list / missing text, single job, error propagates.
+class TestAst2023ClickThrough:
+    LIST = "https://co.example/jobs"
+    DEST = "https://ats.example/job/1"
+
+    @staticmethod
+    def _stub_pool(monkeypatch: pytest.MonkeyPatch, **submit_kw: Any) -> AsyncMock:
+        submit = AsyncMock(**submit_kw)
+        monkeypatch.setattr(pw_mod, "_pool", SimpleNamespace(submit=submit))
+        return submit
+
+    @pytest.mark.asyncio
+    async def test_post_telescope_without_click_href_body_unchanged(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        submit = self._stub_pool(monkeypatch, return_value={"final_url": self.LIST})
+        await pw_mod._post_telescope(self.LIST, fields=["text"])
+        body = submit.await_args.args[0]
+        # Pre-AST-2023 key set exactly — no click_href key when the option is omitted.
+        assert set(body) == {"url", "fields", "expand", "wait_ready", "debug"}
+
+    @pytest.mark.asyncio
+    async def test_post_telescope_forwards_click_href(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        submit = self._stub_pool(monkeypatch, return_value={"final_url": self.DEST})
+        await pw_mod._post_telescope(self.LIST, fields=["text"], click_href="/jobs/1")
+        assert submit.await_args.args[0]["click_href"] == "/jobs/1"
+
+    @staticmethod
+    async def _submit_failing(monkeypatch: pytest.MonkeyPatch, error_class: str) -> pw_mod.PlaywrightInfraError:
+        """Drive the real _TelescopeQueue.submit to a failed row with this error_class."""
+        monkeypatch.setattr(pw_mod, "require_controlled_external_io", lambda *_a, **_k: None)
+        conn = MagicMock()
+        conn.execute = AsyncMock()
+        conn.transaction = MagicMock(return_value=AsyncMock())
+        db = MagicMock()
+        db.acquire = MagicMock(return_value=AsyncMock(__aenter__=AsyncMock(return_value=conn)))
+        q = pw_mod._TelescopeQueue()
+        row = {"status": "failed", "error_class": error_class, "error": "detail"}
+        monkeypatch.setattr(q, "_get_db", AsyncMock(return_value=db))
+        monkeypatch.setattr(q, "_state", lambda: SimpleNamespace(waiters=_ResolvingWaiters(row)))
+        monkeypatch.setattr(q, "_maybe_wake", AsyncMock())
+        with pytest.raises(pw_mod.PlaywrightInfraError) as ei:
+            await q.submit({"url": "https://co.example/jobs", "click_href": "/x"})
+        return ei.value
+
+    @pytest.mark.asyncio
+    async def test_submit_maps_click_target_missing(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        err = await self._submit_failing(monkeypatch, "click_target_missing")
+        assert err.failure_class == pw_mod.TELESCOPE_CLICK_TARGET_MISSING == "telescope_click_target_missing"
+        # Site outcome, not infra: must stay out of the infra class set.
+        assert pw_mod.TELESCOPE_CLICK_TARGET_MISSING not in pw_mod.PLAYWRIGHT_INFRA_FAILURE_CLASSES
+
+    @pytest.mark.asyncio
+    async def test_submit_scrape_failed_still_job_failed_control(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        err = await self._submit_failing(monkeypatch, "scrape_failed")
+        assert err.failure_class == "telescope_job_failed"
+
+    @pytest.mark.asyncio
+    async def test_click_through_returns_final_url_and_text(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        submit = self._stub_pool(monkeypatch, return_value={"final_url": self.DEST, "text": "JD body"})
+        assert await pw_mod.click_through_visible_text(self.LIST, "/jobs/1") == (self.DEST, "JD body")
+        body = submit.await_args.args[0]
+        assert body["url"] == self.LIST
+        assert body["fields"] == ["text"]
+        assert body["click_href"] == "/jobs/1"
+
+    @pytest.mark.asyncio
+    async def test_click_through_joins_list_text_and_defaults_empty(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        self._stub_pool(monkeypatch, return_value={"final_url": self.DEST, "text": ["a", "", "b"]})
+        assert await pw_mod.click_through_visible_text(self.LIST, "/j") == (self.DEST, "a\n\nb")
+        self._stub_pool(monkeypatch, return_value={})
+        assert await pw_mod.click_through_visible_text(self.LIST, "/j") == ("", "")
+
+    @pytest.mark.asyncio
+    async def test_click_through_raises_on_missing_target_without_retry(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        submit = self._stub_pool(
+            monkeypatch,
+            side_effect=pw_mod.PlaywrightInfraError(pw_mod.TELESCOPE_CLICK_TARGET_MISSING, "no anchor"),
+        )
+        with pytest.raises(pw_mod.PlaywrightInfraError) as ei:
+            await pw_mod.click_through_visible_text(self.LIST, "/gone")
+        assert ei.value.failure_class == pw_mod.TELESCOPE_CLICK_TARGET_MISSING
+        # One Telescope job — no client-side retry loop.
+        assert submit.await_count == 1
 
 
 # Branches: no platform playwright module (AST-1726 AC6).

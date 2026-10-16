@@ -1,140 +1,143 @@
+import JobTitleText from "./JobTitleText"
+
 interface Props {
   jobTitle: string
-  /** AST-1694 listing_href (http(s) or null) — not raw job_link. */
+  /** AST-1694 listing_href — hyperlink target for the job-link line; only http(s) values are linked. */
   jobLink: string | null
+  /** Job-link line display text (AST-1873); falls back to jobLink when absent. */
+  jobLinkText?: string | null
   companyName: string
   companyWebsite: string | null
-  applicationEmail: string | null
-  linkedInUrl: string | null
-  copyFeedback?: string | null
-  onCopyApplicationEmail?: () => void
-  onCopyLinkedIn?: () => void
-  onCopyDetailLink?: () => void
-  detailLinkCopied?: boolean
-  onCopySnapshot?: () => void
-  snapshotCopied?: boolean
-  snapshotCopying?: boolean
-  showPrintResume: boolean
-  showPrintCover: boolean
-  onPrintResume?: () => void
-  onPrintCover?: () => void
+  /** Job created_at / date discovered (ISO). Also used for the company-line m/d/yy. */
+  discoveredAt?: string | null
+  recommendedAt?: string | null
+  appliedAt?: string | null
+  onSkip?: () => void
+  skipBusy?: boolean
+  onApplied?: () => void
+  appliedBusy?: boolean
+  onGenerateArtifacts?: () => void
+  generateBusy?: boolean
 }
 
-/** Sticky Recommended Job Report header — deeplinks, copy, print (AST-948). */
+function formatReportDate(value: string | null | undefined): string | null {
+  const raw = value?.trim()
+  if (!raw) return null
+  const d = new Date(raw)
+  if (Number.isNaN(d.getTime())) return null
+  return new Intl.DateTimeFormat("en-US", {
+    year: "2-digit",
+    month: "numeric",
+    day: "numeric",
+  }).format(d)
+}
+
+/** Sticky Recommended Job Report header — triage actions, company/dates, no Copy/Print (AST-2233). */
 export default function RecommendedJobReportHeader({
   jobTitle,
   jobLink,
+  jobLinkText,
   companyName,
   companyWebsite,
-  applicationEmail,
-  linkedInUrl,
-  copyFeedback,
-  onCopyApplicationEmail,
-  onCopyLinkedIn,
-  onCopyDetailLink,
-  detailLinkCopied,
-  onCopySnapshot,
-  snapshotCopied,
-  snapshotCopying,
-  showPrintResume,
-  showPrintCover,
-  onPrintResume,
-  onPrintCover,
+  discoveredAt,
+  recommendedAt,
+  appliedAt,
+  onSkip,
+  skipBusy,
+  onApplied,
+  appliedBusy,
+  onGenerateArtifacts,
+  generateBusy,
 }: Props) {
-  const link = jobLink?.trim() || null
-  const httpLink = (() => {
-    const t = (link ?? "").toLowerCase()
-    return t.startsWith("http://") || t.startsWith("https://") ? link : null
-  })()
+  // Display text prefers the caller's jobLinkText; the href is jobLink only when http(s).
+  const link = jobLinkText?.trim() || jobLink?.trim() || null
+  const rawHref = jobLink?.trim() ?? ""
+  const href = /^https?:\/\//i.test(rawHref) ? rawHref : null
+  const website = companyWebsite?.trim() || null
+  const discoveredLabel = formatReportDate(discoveredAt)
+  const recommendedLabel = formatReportDate(recommendedAt)
+  const appliedLabel = formatReportDate(appliedAt)
 
   return (
     <div className="recommended-report-header">
       <div className="recommended-report-header-row">
-        {httpLink ? (
-          <a
-            href={httpLink}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="recommended-report-title-link"
-          >
-            {jobTitle}
-          </a>
-        ) : (
-          <span className="recommended-report-title">{jobTitle}</span>
-        )}
-        {companyWebsite ? (
-          <a
-            href={companyWebsite}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="recommended-report-company-link"
-          >
-            {companyName}
-          </a>
-        ) : (
-          <span className="recommended-report-company">{companyName}</span>
-        )}
+        <div className="recommended-report-title-block">
+          <span className="recommended-report-title"><JobTitleText title={jobTitle} fallback={jobTitle} /></span>
+          {link && (
+            <div className="recommended-report-job-link-text">
+              {href ? (
+                <a href={href} target="_blank" rel="noopener noreferrer">
+                  {link}
+                </a>
+              ) : (
+                link
+              )}
+            </div>
+          )}
+          {website && (
+            <div className="recommended-report-website-line">
+              <a
+                href={website}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="recommended-report-website-link"
+              >
+                {website}
+              </a>
+            </div>
+          )}
+          <div className="recommended-report-company-line">
+            <span className="recommended-report-company">{companyName}</span>
+            {discoveredLabel && (
+              <span className="recommended-report-company-date"> · {discoveredLabel}</span>
+            )}
+          </div>
+        </div>
       </div>
-      {link && !httpLink && (
-        <div className="recommended-report-job-link-text">{link}</div>
-      )}
-      {(onCopyDetailLink || onCopySnapshot || applicationEmail || linkedInUrl) && (
-        <div className="recommended-report-links">
-          {onCopyDetailLink && (
+      {(onSkip || onApplied || onGenerateArtifacts) && (
+        <div className="recommended-report-header-actions">
+          {onSkip && (
             <button
               type="button"
               className="btn secondary"
-              onClick={() => onCopyDetailLink()}
+              onClick={() => onSkip()}
+              disabled={skipBusy}
             >
-              {detailLinkCopied ? "Copied" : "Copy Link"}
+              Skip This Job
             </button>
           )}
-          {onCopySnapshot && (
+          {onApplied && (
             <button
               type="button"
               className="btn secondary"
-              onClick={() => onCopySnapshot()}
-              disabled={snapshotCopying}
+              onClick={() => onApplied()}
+              disabled={appliedBusy}
             >
-              {snapshotCopied ? "Copied" : "Copy"}
+              Applied to this Job
             </button>
           )}
-          {applicationEmail && (
+          {onGenerateArtifacts && (
             <button
               type="button"
               className="btn secondary"
-              title="Copy Application Email"
-              onClick={() => onCopyApplicationEmail?.()}
+              onClick={() => onGenerateArtifacts()}
+              disabled={generateBusy}
             >
-              Copy Application Email
+              Generate Artifacts
             </button>
-          )}
-          {linkedInUrl && (
-            <button
-              type="button"
-              className="btn secondary"
-              title="Copy LinkedIn Profile"
-              onClick={() => onCopyLinkedIn?.()}
-            >
-              Copy LinkedIn Profile
-            </button>
-          )}
-          {copyFeedback && (
-            <span className="recommended-report-copy-feedback">{copyFeedback}</span>
           )}
         </div>
       )}
-      {(showPrintResume || showPrintCover) && (
-        <div className="recommended-report-header-actions">
-          {showPrintResume && (
-            <button type="button" className="btn secondary" onClick={() => onPrintResume?.()}>
-              Print Resume
-            </button>
+      {(discoveredLabel || recommendedLabel || appliedLabel) && (
+        <div className="recommended-report-date-strip">
+          {discoveredLabel && (
+            <span className="recommended-report-date-strip-item">Date discovered {discoveredLabel}</span>
           )}
-          {showPrintCover && (
-            <button type="button" className="btn secondary" onClick={() => onPrintCover?.()}>
-              Print Cover Letter
-            </button>
+          {recommendedLabel && (
+            <span className="recommended-report-date-strip-item">Date recommended {recommendedLabel}</span>
+          )}
+          {appliedLabel && (
+            <span className="recommended-report-date-strip-item">Date applied {appliedLabel}</span>
           )}
         </div>
       )}

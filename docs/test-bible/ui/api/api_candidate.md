@@ -441,3 +441,71 @@ See **`docs/test-bible/core/candidate.md`** § AST-1679 (shared numbered list).
 
 **Bible shasum (publish tip):**
 - `docs/test-bible/ui/api/api_candidate.md` — *(filled after publish)*
+
+### AST-1768 · AST-1687 (bug)
+
+`GET /api/candidates/by_email?email=` (`@require_auth`, registered before `/<candidate_id>`) → `{"candidate_id": <id|null>}` via `get_candidate_id_for_query`; missing / no-`@` email → 400. Tests: **`test_api_candidate.py::TestAst1768CandidateByEmailApi`**. Full manifest: [`../../frontend/lib.md`](../../frontend/lib.md) § AST-1768.
+
+### AST-1880 · AST-1851 (per-server platform keys)
+
+`_sanitize_candidate` pops `candidate_api_keys` + `candidate_api_key` and adds `api_keys: {server_id: {label, set}}` for every catalog server (list rows load the map via `get_candidate`); `has_api_key` is gone. `PUT …/data` `api_keys: {sid: key|""}` sets (stripped) / clears per server; non-dict, unknown server or non-string key → 400 before any write; non-admin → 403. Tests: **`test_api_candidate.py::TestSanitizeCandidate`** (3 new), **`TestCandidateRoutes`** (`test_list_rows_carry_per_server_key_flags_only`, `test_get_returns_sanitized_candidate`, `test_update_sets_and_clears_api_keys_per_server`, `test_update_rejects_malformed_api_keys` ×5, `test_non_admin_cannot_create_delete_or_override_state`, AC 4 end-to-end `test_put_two_server_keys_stores_ciphertext_and_get_shows_flags_only` — two `candidate_key` ciphertext rows, GET flags only, clear one). Retired `test_strips_api_key_and_sets_flag`; `test_update_merges_data_state_and_api_key` → `test_update_merges_data_and_state` (key half moved; still red pre-existing on the `joblist_rubric` 400). Full manifest: [`api_admin.md`](api_admin.md) § AST-1880.
+
+### AST-1901 · AST-1851 (bug: api_keys array)
+
+> Supersedes the AST-1880 `api_keys` shapes above (`_api_keys_flags` helper removed).
+
+`_sanitize_candidate` sets `api_keys: [{server, label}]`, one entry per stored key in array order (label from `LLM_SERVER_CONFIG`, or the id itself when the id isn't in the catalog). It never looks candidates up per row, because list rows arrive hydrated. `PUT …/data` takes `api_keys: [{server, key}]` and makes one `update_candidate_api_keys` call with the stripped edits (`""` = remove). A non-array body gets 400 "api_keys must be an array of {server, key}"; a bad entry gets "Invalid api_keys entry for server …"; a duplicate server gets "Duplicate api_keys entry for server …". Error bodies never echo a key. Tests: **`TestSanitizeCandidate`** (3, rewritten) and **`TestCandidateRoutes`**:
+- `test_list_rows_carry_stored_key_servers_only`
+- `test_get_returns_sanitized_candidate`
+- `test_update_sends_api_keys_array_edits`
+- `test_update_rejects_malformed_api_keys` ×7, with exact error text
+- `test_update_rejects_duplicate_server_without_echoing_keys`
+- the end-to-end `test_put_two_server_keys_stores_ciphertext_array_and_get_lists_servers_only`: two ciphertext entries in `candidate.api_keys`, then GET, then remove one
+- the non-admin 403, now with an array body
+
+Full manifest: [`../../data/database/candidates.md`](../../data/database/candidates.md) § QA test manifest (AST-1901).
+
+**AST-2048 (pointer):** `test_update_rejects_unselectable_theme` — `PUT /api/candidates/<id>/data` with an unknown or examples-only theme → 400 via the real core allowlist, no DB write. Manifest: [`../../frontend/pages.md`](../../frontend/pages.md) § AST-2048.
+
+### AST-2067 · AST-2043 (version list / set-current routes)
+
+**Publish:** `origin/sub/AST-2043/AST-2067-version-api`. Four authenticated routes: `GET|PUT /api/candidates/<cid>/artifacts/<catalog_key>/{versions,current}` and `GET|PUT /api/candidates/<cid>/rubric/<rubric_key>/<code>/{versions,current}`. Version map = AST-2066's uuid-keyed map. The JSON keys come back **alphabetical** (Flask `sort_keys`), so tests order versions by `position`, never by key order.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| 200 list + PUT (completion info line), real SQLite | `src/ui/api/api_candidate.py` | **`TestAst2067CandidateVersionRoutes::test_artifact_list_and_set_current_200`**, **`…::test_rubric_list_and_set_current_200`** |
+| AC7 cross-key guard (other key / other candidate / other code → 400, current unchanged) | same | **`…::test_artifact_cross_key_uuid_400_current_unchanged`**, **`…::test_rubric_cross_code_uuid_400_current_unchanged`** |
+| 404 missing candidate; PUT body 400; bad key 400; unexpected error → one ERROR log + 500 payload | same | **`…::test_missing_candidate_404`** (4), **`…::test_put_bad_body_400`** (10), **`…::test_bad_key_400`** (4), **`…::test_unexpected_error_logged_once_500`** (4) |
+
+New route lines are fully branch-covered for `LOCKED_AT_100`. **Fixture fix:** `tests/component/ui/conftest.py` `_DB_SCHEMA_FLAGS` gains `_rubric_vector_schema_ensured`; without it, the second real-SQLite rubric test in a run hits `no such table: rubric_vector`.
+
+**Broken / obsolete:** none. `tests/component/ui` shows the same 22 failures with and without AST-2067's two route files (they predate this ticket). No integration scenario hits these paths.
+
+**Manifest (test-child) — narrowed:**
+
+1. Candidate + rubric routes: `tests/component/ui/api/test_api_candidate.py::TestAst2067CandidateVersionRoutes`
+2. Job routes: `tests/component/ui/api/test_api_jobs.py::TestAst2067JobVersionRoutes` ([`api_jobs.md`](api_jobs.md) § AST-2067)
+3. Regression (AST-2066 core the routes call): [`../../core/candidate.md`](../../core/candidate.md) § AST-2066 manifest
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_candidate.py::TestAst2067CandidateVersionRoutes \
+  tests/component/ui/api/test_api_jobs.py::TestAst2067JobVersionRoutes \
+  tests/component/data/database/test_artifacts.py::TestAst2066SetCurrentArtifact \
+  tests/component/data/database/test_rubric_vectors.py::TestAst2066RubricCriterionVersions \
+  tests/component/core/test_candidate.py::TestAst2066CandidateVersions \
+  tests/component/core/test_tracker.py::TestAst2066JobVersions \
+  -q
+```
+
+**Pass criterion:** 69 passed (40 AST-2067 + 29 AST-2066). Narrowed run, not the zero-arg harness / branch-lock gate.
+
+### AST-2081 · AST-2046 (candidate resume_structure GET → shared payload)
+
+`get_candidate_resume_structure` now returns `resume_structure_editor_payload(resolved)` ([`../../core/candidate.md`](../../core/candidate.md) § AST-2081), and the ten `RESUME_STRUCTURE_*` imports are gone from the route module. The response is a superset of the old one: `catalog` gains `body_format_details` and `hidden_flow_label`.
+
+**New:** **`TestAst1306ResumeStructureAuthorApi::test_get_delegates_to_shared_editor_payload`** (the route body equals the helper's output). The existing AST-1306 GET/PUT tests stay green without edits. Manifest: [`../../core/tracker.md`](../../core/tracker.md) § AST-2081.
+
+### AST-2127 · AST-2112 (AST-2067 fixture codes — AST-2126)
+
+`TestAst2067CandidateVersionRoutes::_seed_rubric` seeded `V01`/`V02` through `sync_rubric_vectors_from_criteria`, which now rejects codes that aren't `[A-Z]{2}`. Renamed to `VA`/`VB` across the class (`_RUB` route path `/rubric/do_rubric/VA`, `code=` history filter, current-map assertions, 404 / bad-key route params). Unblocks **`…::test_rubric_list_and_set_current_200`** and **`…::test_rubric_cross_code_uuid_400_current_unchanged`**; § AST-2067 manifest and pass count unchanged. Primary manifest: [`../../core/consult.md`](../../core/consult.md) § AST-2127.

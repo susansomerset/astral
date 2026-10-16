@@ -1,6 +1,6 @@
 # Astral Telescope service image.
 # Memory limit and /dev/shm sizing are deploy concerns (AST-1727 / Railway).
-# Local run: docker run --init --shm-size=1g -e TELESCOPE_BEARER_TOKEN=... -p 8080:8080 <image>
+# Local run: docker run --init --shm-size=1g -e ASTRAL_DATABASE_URL=postgres://... -p 8080:8080 <image>
 # syntax=docker/dockerfile:1
 FROM mcr.microsoft.com/playwright/python:v1.49.1-jammy
 
@@ -19,5 +19,6 @@ USER pwuser
 
 EXPOSE 8080
 
-# --init is expected via docker run / Railway (reap zombies). Single uvicorn worker = one pool.
+# --init is expected via docker run / Railway (reap zombies). Single uvicorn worker = one pool
+# + one queue consumer; scale out with replicas, not workers.
 CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8080", "--workers", "1"]

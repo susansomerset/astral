@@ -1,8 +1,10 @@
-// SYNC: Every route here must have a matching nav item in src/utils/config.py NAV_CONFIG.
-//       Deeplink-only routes (e.g. jobs/detail/:jobId) use JOBS_DETAIL_ROUTE_PREFIX — not NAV_CONFIG.
-//       If you add/remove/rename a route, update NAV_CONFIG to match.
-import { Navigate, Outlet, type RouteObject } from "react-router-dom"
+// SYNC: Every sidebar path in src/utils/config.py NAV_CONFIG must have a matching route here.
+//       Deeplink-only (no NAV_CONFIG item): jobs/detail/:jobId, search (AST-2174), and paths
+//       dropped from the sidebar by AST-2230 (Intake, Surfer, Processing, New List, …) — routes stay.
+//       If you add/remove/rename a sidebar nav item, update NAV_CONFIG to match.
+import { Outlet, type RouteObject } from "react-router-dom"
 import AdminRoute from "./components/AdminRoute"
+import JobsHomeRedirect from "./components/JobsHomeRedirect"
 import NavigationShell from "./components/NavigationShell"
 import RequireAuth from "./components/RequireAuth"
 import { CandidateProvider } from "./contexts/CandidateContext"
@@ -11,11 +13,10 @@ import Authenticate from "./pages/Authenticate"
 
 // --- Jobs ---
 import Recommended from "./pages/JobsRecommended"
-import InReview from "./pages/JobsInReview"
+import Processing from "./pages/JobsProcessing"
 import Skipped from "./pages/JobsSkipped"
 import Applied from "./pages/JobsApplied"
 import JobsMeteorites from "./pages/JobsMeteorites"
-import Responded from "./pages/JobsResponded"
 import JobsJobDetail from "./pages/JobsJobDetail"
 
 // --- Companies ---
@@ -54,6 +55,7 @@ import CandidateSurfer from "./pages/CandidateSurfer"
 import ScheduledActions from "./pages/AdminScheduledActions"
 import PerformanceMonitor from "./pages/AdminPerformanceMonitor"
 import AgentTimesheets from "./pages/AdminAgentTimesheets"
+import TaskPerformance from "./pages/AdminTaskPerformance"
 import VectorFeedback from "./pages/AdminVectorFeedback"
 import CostReconciliation from "./pages/AdminCostReconciliation"
 import ManageCandidates from "./pages/AdminManageCandidates"
@@ -68,6 +70,8 @@ import SessionCoverLetter from "./pages/AdminSessionCoverLetter"
 import AdminManageEmail from "./pages/AdminManageEmail"
 import AdminManageSlack from "./pages/AdminManageSlack"
 
+// --- Search ---
+import SearchResults from "./pages/SearchResults"
 const routes: RouteObject[] = [
   { path: "authenticate", element: <Authenticate /> },
   {
@@ -84,26 +88,26 @@ const routes: RouteObject[] = [
       {
         element: <NavigationShell />,
         children: [
-          { index: true, element: <Navigate to="/jobs/recommended" replace /> },
+          { index: true, element: <JobsHomeRedirect /> },
 
-          // Jobs
-          { path: "jobs/in_review", element: <InReview /> },
-          { path: "jobs/skipped", element: <Skipped /> },
-          { path: "jobs/recommended", element: <Recommended /> },
+          // Job Opportunities (sidebar) + deeplink-only Processing
+          { path: "jobs/ready", element: <Recommended key="ready" view="ready" title="Ready to Apply" /> },
+          { path: "jobs/review", element: <Recommended key="review" view="review" title="Recommendations" /> },
           { path: "jobs/applied", element: <Applied /> },
+          { path: "jobs/processing", element: <Processing /> }, // deeplink-only — not in NAV_CONFIG
+          { path: "jobs/skipped", element: <Skipped /> },
           { path: "jobs/meteorites", element: <JobsMeteorites /> },
-          { path: "jobs/responded", element: <Responded /> },
           { path: "jobs/detail/:jobId", element: <JobsJobDetail /> },
 
-          // Companies
+          // Company (sidebar) + deeplink-only New/Inactive/Meteorite/Watch History lists
           { path: "companies/watch_list", element: <WatchList /> },
-          { path: "companies/new_list", element: <NewList /> },
-          { path: "companies/inactive_list", element: <InactiveList /> },
+          { path: "companies/new_list", element: <NewList /> }, // deeplink-only
+          { path: "companies/inactive_list", element: <InactiveList /> }, // deeplink-only
           { path: "companies/ignored", element: <Ignored /> },
-          { path: "companies/meteorite_list", element: <Meteorite /> },
-          { path: "companies/watch_history", element: <WatchHistory /> },
+          { path: "companies/meteorite_list", element: <Meteorite /> }, // deeplink-only
+          { path: "companies/watch_history", element: <WatchHistory /> }, // deeplink-only
 
-          // Artifacts
+          // Criteria / Company / Candidate artifact paths (sidebar labels live in NAV_CONFIG)
           { path: "artifacts/base_resume_content", element: <BaseResumeContent /> },
           { path: "artifacts/company_watch_criteria", element: <CompanyWatchCriteria /> },
           { path: "artifacts/company_search_terms", element: <CompanySearchTerms /> },
@@ -114,10 +118,10 @@ const routes: RouteObject[] = [
           { path: "artifacts/do_job_criteria", element: <DoJobCriteria /> },
           { path: "artifacts/like_job_criteria", element: <LikeJobCriteria /> },
 
-          // Candidate
+          // Candidate (sidebar) + deeplink-only Intake / Surfer / Surfer Consent
           { path: "candidate/profile", element: <Profile /> },
-          { path: "candidate/surfer", element: <CandidateSurfer /> },
-          { path: "candidate/intake", element: <CandidateIntake /> },
+          { path: "candidate/surfer", element: <CandidateSurfer /> }, // deeplink-only
+          { path: "candidate/intake", element: <CandidateIntake /> }, // deeplink-only
           { path: "candidate/strengths", element: <Strengths /> },
           { path: "candidate/bio_summary", element: <BioSummary /> },
           { path: "candidate/priorities", element: <Priorities /> },
@@ -125,12 +129,13 @@ const routes: RouteObject[] = [
           { path: "candidate/backstory", element: <Backstory /> },
           { path: "candidate/ideal_day", element: <IdealDay /> },
           { path: "candidate/writing_preferences", element: <WritingPreferences /> },
-          { path: "candidate/surfer_consent", element: <CandidateSurferConsent /> },
+          { path: "candidate/surfer_consent", element: <CandidateSurferConsent /> }, // deeplink-only
 
           // Admin
           { path: "admin/scheduled_actions", element: <AdminRoute><ScheduledActions /></AdminRoute> },
           { path: "admin/performance_monitor", element: <AdminRoute><PerformanceMonitor /></AdminRoute> },
           { path: "admin/agent_timesheets", element: <AdminRoute><AgentTimesheets /></AdminRoute> },
+          { path: "admin/task_performance", element: <AdminRoute><TaskPerformance /></AdminRoute> },
           { path: "admin/vector_feedback", element: <AdminRoute><VectorFeedback /></AdminRoute> },
           { path: "admin/cost_reconciliation", element: <AdminRoute><CostReconciliation /></AdminRoute> },
           { path: "admin/manage_candidates", element: <AdminRoute><ManageCandidates /></AdminRoute> },
@@ -144,9 +149,11 @@ const routes: RouteObject[] = [
           { path: "admin/session_cover_letter", element: <AdminRoute><SessionCoverLetter /></AdminRoute> },
           { path: "admin/manage_email", element: <AdminRoute><AdminManageEmail /></AdminRoute> },
           { path: "admin/manage_slack", element: <AdminRoute><AdminManageSlack /></AdminRoute> },
+          // Search (deeplink-only — no NAV_CONFIG item)
+          { path: "search", element: <SearchResults /> },
 
           // Catch-all
-          { path: "*", element: <Navigate to="/jobs/recommended" replace /> },
+          { path: "*", element: <JobsHomeRedirect /> },
         ],
       },
     ],

@@ -33,13 +33,65 @@ class TestExtractApiResponseText:
         with pytest.raises(ValueError, match="missing text"):
             llm_ext_mod.extract_api_response_text(api_response)
 
+    def test_tool_only_reply_falls_back_to_last_tool_input_json(self) -> None:
+        # AST-2179: a forced-tool reply has no text block — audit/debug text is the last tool input as JSON.
+        api_response = SimpleNamespace(content=[
+            SimpleNamespace(thinking="plan"),
+            SimpleNamespace(type="tool_use", name="a", input={"n": 1}),
+            SimpleNamespace(type="tool_use", name="b", input={"n": 2}),
+        ])
+        assert llm_ext_mod.extract_api_response_text(api_response) == '{"n": 2}'
+
+    def test_text_block_wins_over_tool_input(self) -> None:
+        api_response = SimpleNamespace(content=[
+            SimpleNamespace(type="text", text="answer"),
+            SimpleNamespace(type="tool_use", name="a", input={"n": 1}),
+        ])
+        assert llm_ext_mod.extract_api_response_text(api_response) == "answer"
+
+    def test_server_tool_use_is_not_a_fallback(self) -> None:
+        api_response = SimpleNamespace(content=[SimpleNamespace(type="server_tool_use", name="web_search", input={"q": "x"})])
+        with pytest.raises(ValueError, match="missing text"):
+            llm_ext_mod.extract_api_response_text(api_response)
+
+
+# AST-2179 — branches: named tool_use found (dict / non-dict input); other tools and non-tool blocks skipped; none / no content.
+class TestExtractToolInput:
+    def test_returns_named_tool_input_skipping_other_blocks(self) -> None:
+        api_response = SimpleNamespace(content=[
+            SimpleNamespace(type="text", text="preamble"),
+            SimpleNamespace(type="tool_use", name="other", input={"n": 0}),
+            SimpleNamespace(type="tool_use", name="submit_grades", input={"n": 1}),
+        ])
+        assert llm_ext_mod.extract_tool_input(api_response, "submit_grades") == {"n": 1}
+
+    def test_non_object_input_raises(self) -> None:
+        api_response = SimpleNamespace(content=[SimpleNamespace(type="tool_use", name="submit_grades", input="000|DTA5")])
+        with pytest.raises(ValueError, match="'submit_grades' input is not an object"):
+            llm_ext_mod.extract_tool_input(api_response, "submit_grades")
+
+    @pytest.mark.parametrize(
+        "api_response",
+        [
+            SimpleNamespace(content=[SimpleNamespace(type="tool_use", name="other", input={})]),
+            SimpleNamespace(content=[SimpleNamespace(type="text", text='{"n": 1}')]),
+            SimpleNamespace(content=[]),
+            SimpleNamespace(content=None),
+            SimpleNamespace(),
+        ],
+        ids=["other_tool", "text_only", "empty", "none", "no_content_attr"],
+    )
+    def test_no_named_tool_call_raises(self, api_response) -> None:
+        with pytest.raises(ValueError, match="has no 'submit_grades' tool call"):
+            llm_ext_mod.extract_tool_input(api_response, "submit_grades")
+
 
 class TestEmitLlmCallDebug:
     def test_uses_logger_name_parameter(self) -> None:
         with patch.object(llm_ext_mod, "get_logger", return_value=MagicMock()) as mock_get:
             llm_ext_mod.emit_llm_call_debug(
-                logger_name="src.external.deepseek",
-                func_name="send_to_deepseek",
+                logger_name="src.external.llm_compat",
+                func_name="send_to_llm_compat",
                 prompt_label="t",
                 model="deepseek-v4-flash",
                 duration=1.0,
@@ -49,7 +101,7 @@ class TestEmitLlmCallDebug:
                 cache_creation_tokens=0,
                 output_total=1,
             )
-            mock_get.assert_called_once_with("src.external.deepseek", debug_flag=True)
+            mock_get.assert_called_once_with("src.external.llm_compat", debug_flag=True)
 
 
 class TestAst897ProviderBalanceRefusal:
@@ -88,6 +140,47 @@ class TestAst897ProviderBalanceRefusal:
         assert llm_ext_mod.is_provider_balance_refusal({"success": False}) is False
         assert llm_ext_mod.is_provider_balance_refusal(None) is False
         assert llm_ext_mod.is_provider_balance_refusal("nope") is False  # type: ignore[arg-type]
+
+
+class TestAst2010ProviderRateLimit:
+    """AST-2010: classify an exhausted 429 (exception or probe string); predicate on result dicts."""
+
+    FC = "provider_rate_limit"
+    # AST-2009 log body — what str(anthropic.RateLimitError) / the host-probe error carries
+    BODY = "Error code: 429 - {'type': 'error', 'error': {'type': 'rate_limit_error', 'message': 'Rate limit exceeded'}}"
+
+    def test_classify_by_status_code_attr(self) -> None:
+        exc = type("E", (Exception,), {"status_code": 429})("slow down")
+        assert llm_ext_mod.classify_provider_rate_limit(exc) == self.FC
+
+    def test_classify_by_response_status_code(self) -> None:
+        exc = type("E", (Exception,), {})("nope")
+        exc.response = SimpleNamespace(status_code=429)
+        assert llm_ext_mod.classify_provider_rate_limit(exc) == self.FC
+
+    @pytest.mark.parametrize(
+        "msg",
+        [
+            BODY,
+            f"Host probe failed: {BODY}",  # probe path hands the classifier a string
+            "upstream said rate_limit_error",
+        ],
+    )
+    def test_classify_by_message_substring(self, msg: str) -> None:
+        assert llm_ext_mod.classify_provider_rate_limit(RuntimeError(msg)) == self.FC
+        assert llm_ext_mod.classify_provider_rate_limit(msg) == self.FC
+
+    def test_classify_ignores_unrelated_errors(self) -> None:
+        assert llm_ext_mod.classify_provider_rate_limit(RuntimeError("timeout")) is None
+        assert llm_ext_mod.classify_provider_rate_limit("Error code: 402 - Insufficient Balance") is None
+        assert llm_ext_mod.classify_provider_rate_limit(type("E", (Exception,), {"status_code": 500})("x")) is None
+
+    def test_is_provider_rate_limit_predicate(self) -> None:
+        assert llm_ext_mod.is_provider_rate_limit({"failure_class": self.FC}) is True
+        assert llm_ext_mod.is_provider_rate_limit({"failure_class": "provider_balance_refusal"}) is False
+        assert llm_ext_mod.is_provider_rate_limit({"success": False}) is False
+        assert llm_ext_mod.is_provider_rate_limit(None) is False
+        assert llm_ext_mod.is_provider_rate_limit("nope") is False  # type: ignore[arg-type]
 
 
 class TestAst1190EmptyResponseHelpers:

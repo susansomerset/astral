@@ -5,7 +5,6 @@ from __future__ import annotations
 import os
 from pathlib import Path
 from typing import Any, Dict, List
-from unittest.mock import AsyncMock
 
 import pytest
 
@@ -38,6 +37,7 @@ _SCHEMA_FLAGS = (
     "_vector_feedback_schema_ensured",
     "_artifact_schema_ensured",  # AST-1352 / AST-1364 / singular+cid AST-1597
     "_meteorite_schema_ensured",  # AST-1557 staging table
+    "_web_data_schema_ensured",  # AST-2131 / AST-2132 gazer keeps
     "_ast723_rubric_token_migration_applied",
 )
 
@@ -88,22 +88,6 @@ def _operative_current_read_stub(monkeypatch: pytest.MonkeyPatch) -> None:
     )
     yield
     clear_operative_bases()
-
-
-@pytest.fixture(autouse=True)
-def _core_default_anthropic_llm_provider(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Legacy core mocks patch send_to_anthropic; product default active_provider is deepseek."""
-    from src.utils import config as cfg_mod
-
-    monkeypatch.setattr(cfg_mod, "get_active_llm_provider", lambda: "anthropic")
-    import importlib
-
-    for mod_name in ("src.core.agent", "src.core.consult"):
-        mod = importlib.import_module(mod_name)
-        if hasattr(mod, "get_active_llm_provider"):
-            monkeypatch.setattr(mod, "get_active_llm_provider", lambda: "anthropic")
-        if hasattr(mod, "send_to_deepseek"):
-            monkeypatch.setattr(mod, "send_to_deepseek", AsyncMock())
 
 
 @pytest.fixture

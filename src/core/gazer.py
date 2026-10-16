@@ -1,10 +1,11 @@
 """
 Core gazer business logic.
 
-In-scope: scrape_one, process_gazer_batch, fetch_jd_batch, fetch_culture_pages_batch,
+In-scope: scrape_one, process_gazer_batch, fetch_jd_batch, fetch_relative_jd_batch, fetch_culture_pages_batch, fetch_company_culture_pages_batch,
 fetch_website_batch, fetch_job_pages_batch, validate_title_batch,
 contact_task_gazer_scrape (AST-1516 contact-task scrape),
 ingest_meteorite_jobs_from_email_html (AST-1061 gazer-reads-email).
+web_data owner (AST-2132): keep_web_data, keep_page_scrape, scrape_visible_text_and_keep, scrape_page_links_and_keep, resolve_telescope_value — the only core caller of the web_data data functions.
 Re-exports get_new_company_batch and clear_company_batch from roster for callers
 that want a single import from core.
 Orchestration for job list scraping and scan lifecycle (scrape -> tracker ingest -> record);
@@ -24,10 +25,7 @@ from src.core.roster import (
     save_company_data,
     scrape_company_homepage_content,
     transition_company_state,
-    _assemble_pjl_content,
-    _merge_pjl_nav_links,
     _merge_pjl_scrape_record,
-    _pjl_scrape_ledger_keys,
     _scrape_pjl_page,
 )
 from src.utils.config import (
@@ -35,15 +33,18 @@ from src.utils.config import (
     METEORITE_EMAIL_INGEST_CONFIG,
     ROSTER_CONFIG,
     SOURCE_ENTITY_TYPE_METEORITE,
+    WEB_DATA_CONFIG,
     TRACKER_CONFIG,
 )
-from src.core.tracker import ingest_jobs, save_job_data, transition_job_state
+from src.core.tracker import ingest_jobs, persist_http_job_link, save_job_data, transition_job_state
 from src.core.meteorite import create_meteorite_job
 from src.data.database import (
     get_company,
+    get_web_data_for_ids,
     job_link_exists_for_candidate,
     record_to_company_job_scan,
     raw_job_listing_is_duplicate,
+    save_web_data,
     text_matches_known_company_job_id_for_candidate,
     update_company_last_scan_at,
 )
@@ -55,18 +56,28 @@ from src.external.telescope import (
     load_all_jobs,
     extract_page_dom,
     extract_page_scrape_contract,
+    extract_site_page_list,
     get_visible_text,
     check_connectivity,
     extract_raw_job_listings,
+    run_one_shot,
+    click_through_visible_text,
+    PlaywrightInfraError,
+    TELESCOPE_CLICK_TARGET_MISSING,
 )
 from src.utils.formatting import (
     collapse_consecutive_blank_lines,
-    normalize_link,
+    enumerate_array,
     normalize_pasted_list_email_html,
 )
 from src.utils.logging import get_logger, truncate_debug_content
 
 _log = get_logger(__name__)
+
+# AST-2132: gazer owns web_data. Row ids are uuid4 strings (database.save_web_data).
+_TELESCOPE_ID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
+_VISIBLE_TEXT = WEB_DATA_CONFIG["data_types"]["VISIBLE_TEXT"]
+_PAGE_LINKS = WEB_DATA_CONFIG["data_types"]["PAGE_LINKS"]
 
 
 def _is_fetch_website_infra_error(error: str) -> bool:
@@ -75,8 +86,15 @@ def _is_fetch_website_infra_error(error: str) -> bool:
     return msg.startswith("[playwright:")
 
 
-def _fetch_website_fail_destination(company_state: str, error: str, cfg: Dict[str, Any]) -> str:
-    """Route infra → retry once; site failure or retry re-fail → CANNOT_READ_WEBSITE."""
+def _fetch_website_fail_destination(
+    company_state: str, error: str, cfg: Dict[str, Any], visible_text: str = "",
+) -> Optional[str]:
+    """Route infra → retry once; bot wall → BOT_BLOCKED_<task>; site failure or retry re-fail → fail_state.
+    None when the scrape neither errored nor hit a bot wall (success path)."""
+    if is_bot_wall(visible_text):
+        return cfg["bot_blocked_state"]
+    if not error:
+        return None
     retry_state = cfg["retry_state"]
     fail_state = cfg["fail_state"]
     if _is_fetch_website_infra_error(error):
@@ -95,14 +113,6 @@ def _gazer_company_identifier(row: Dict[str, Any]) -> str:
     """Primary debug identifier for a company row in gaze batches."""
     return str(row.get("short_name") or "?")
 
-
-# Maps _classify_jd() return value → scrape-fail / bot state name
-_JD_ERROR_STATES = {
-    "cookie":  "JD_SCRAPE_FAIL_COOKIE",
-    "bot":     "BOT_BLOCKED",  # AST-1195: universal bot/challenge state
-    "missing": "JD_SCRAPE_FAIL_MISSING",
-    "closed":  "JD_SCRAPE_FAIL_CLOSED",
-}
 
 # Maps _classify_jd() → Estelle/contact page_status (parent AC2: blocked/ok/closed/missing)
 _CONTACT_PAGE_STATUS = {
@@ -133,6 +143,110 @@ def _prune_jd(text: str, job_title: str = "") -> str:
     return text.strip()
 
 
+def is_bot_wall(text: str) -> bool:
+    """True when page text trips the shared bot/challenge detector in TRACKER_CONFIG['jd_classifier'].
+    Single source for JD classification and roster select_job_page (AST-2004) — do not copy the loop."""
+    cfg = TRACKER_CONFIG.get("jd_classifier", {})
+    text_lower = (text or "").lower()
+    hits = sum(1 for s in cfg.get("bot_signals", []) if s.lower() in text_lower)
+    return hits >= cfg.get("bot_threshold", 2)
+
+
+# ---- web_data (AST-2132) ----
+
+def is_telescope_id(value: Any) -> bool:
+    """True when value is a web_data row id (uuid-shaped str), not legacy scraped text."""
+    return isinstance(value, str) and bool(_TELESCOPE_ID_RE.match(value))
+
+
+def keep_web_data(
+    candidate_id: str | None, url: str, data_type: str, content: str,
+) -> str | None:
+    """Store one scrape result in web_data and return its row id; None when content is blank.
+
+    data_type is passed through unchecked (free text by design). Links are stored as the
+    enumerated string readers use today, so resolving an id never needs the type.
+    DB errors propagate to the caller's existing failure path."""
+    if not (content or "").strip():
+        return None
+    _log.debug(
+        "Calling save_web_data: [candidate_id=%s url=%s data_type=%s content=%s]",
+        candidate_id, url, data_type, content,
+    )
+    row_id = save_web_data(candidate_id, url, data_type, content)
+    _log.debug("Response from save_web_data: %s", row_id)
+    return row_id
+
+
+def keep_page_scrape(
+    candidate_id: str | None, url: str, scrape: dict[str, Any],
+) -> tuple[str | None, str | None]:
+    """Keep a page-contract scrape (roster scrape_company_homepage_content / _scrape_pjl_page result):
+    visible_text as VISIBLE_TEXT, enumerated_nav_links as PAGE_LINKS. Returns (text_id, links_id)."""
+    return (
+        keep_web_data(candidate_id, url, _VISIBLE_TEXT, scrape.get("visible_text") or ""),
+        keep_web_data(candidate_id, url, _PAGE_LINKS, scrape.get("enumerated_nav_links") or ""),
+    )
+
+
+async def scrape_visible_text_and_keep(
+    candidate_id: str | None, url: str, *, context: Any = None,
+) -> tuple[str, str, str | None]:
+    """Telescope visible text for url, kept in web_data. Returns (text, final_url, row_id).
+    Scrape errors propagate — callers already route them."""
+    _log.debug("Calling get_visible_text: [url=%s]", url)
+    text, final_url = await get_visible_text(url=url, context=context, return_final_url=True)
+    _log.debug("Response from get_visible_text: final_url=%s text=%s", final_url, text)
+    text = text or ""
+    return text, final_url or url, keep_web_data(candidate_id, url, _VISIBLE_TEXT, text)
+
+
+async def scrape_page_links_and_keep(
+    candidate_id: str | None, url: str, *, context: Any = None,
+) -> tuple[list[str], str | None]:
+    """Telescope link list for url (depth 1, unverified — roster's nav_links fetch shape), kept in
+    web_data as the enumerated list. Returns (urls, row_id). Scrape errors propagate."""
+    _log.debug("Calling extract_site_page_list: [url=%s]", url)
+    urls = await extract_site_page_list(url, max_depth=1, verify=False, context=context) or []
+    _log.debug("Response from extract_site_page_list: %s", urls)
+    enumerated = enumerate_array("", urls) if urls else ""
+    return urls, keep_web_data(candidate_id, url, _PAGE_LINKS, enumerated)
+
+
+def resolve_telescope_value(value: Any) -> Any:
+    """Stored blob value -> content in today's shape; legacy text tolerant.
+
+    Row id -> that row's content (text, or enumerated links), None when the row is gone.
+    List -> each {url, id, ...} entry becomes {url, content, ...} (other keys kept); entries
+    without a row id (legacy {url, content}) pass through; entries whose row is gone drop;
+    an empty result is None so fetch-on-missing callers re-scrape.
+    Anything else (legacy text, None, dict) is returned unchanged."""
+    if is_telescope_id(value):
+        ids = [value]
+    elif isinstance(value, list):
+        ids = [e["id"] for e in value if isinstance(e, dict) and is_telescope_id(e.get("id"))]
+    else:
+        return value
+    _log.debug("Calling get_web_data_for_ids: %s", ids)
+    rows = get_web_data_for_ids(ids)
+    _log.debug("Response from get_web_data_for_ids: %s", rows)
+    missing = [i for i in ids if i not in rows]
+    if missing:
+        _log.warning(
+            "web_data %s missing — resolving without them; fetch-on-missing callers re-scrape",
+            missing,
+        )
+    if isinstance(value, str):
+        return rows.get(value)
+    out = []
+    for e in value:
+        if not (isinstance(e, dict) and is_telescope_id(e.get("id"))):
+            out.append(e)
+        elif e["id"] in rows:
+            out.append({**{k: v for k, v in e.items() if k != "id"}, "content": rows[e["id"]]})
+    return out or None
+
+
 def _classify_jd(text: str) -> str:
     """Classify scraped page content. Returns 'ok', 'cookie', 'bot', 'missing', or 'closed'.
     Check order matters: closed → bot → cookie → missing → ok.
@@ -147,8 +261,7 @@ def _classify_jd(text: str) -> str:
             return "closed"
 
     # --- Bot Blocked --- (checked before cookie; LinkedIn auth pages mention "Cookie Policy")
-    bot_hits = sum(1 for s in cfg.get("bot_signals", []) if s.lower() in text_lower)
-    if bot_hits >= cfg.get("bot_threshold", 2):
+    if is_bot_wall(text):
         return "bot"
 
     # --- Cookie Block ---
@@ -172,22 +285,73 @@ def _classify_jd(text: str) -> str:
     return "ok"
 
 
+def _apply_jd_gates(
+    job: dict[str, Any], text: str, *, short_state: str, pass_state: str, classified_states: Dict[str, str],
+    web_data_id: str | None, transition: bool = True,
+) -> bool:
+    """Shared JD gates for fetch_jd_batch and fetch_relative_jd_batch (AST-2025).
+
+    collapse blank lines -> empty check -> prune -> min_chars -> classify. Stores the scraped-JD
+    reference (web_data row id of the raw capture) — never JD text; job_description stays
+    the preamble (AST-2130) — and transitions the job. Empty / too-short -> short_state; classified -> the calling task's
+    GAZER_CONFIG classified_states (cookie / bot / missing / closed); ok -> pass_state.
+    transition=False (coat-check, AST-2145): same gates, state never moves, classified capture not referenced.
+    Returns True only when the gates passed (job reached pass_state when transition=True).
+    """
+    ref_key = TRACKER_CONFIG["job_data_keys"]["jd_web_data_id"]
+    min_chars = TRACKER_CONFIG.get("jd_min_chars", 200)
+    aid = job.get("astral_job_id", "")
+    # Log label: coat-check mode must never claim a move it didn't make
+    short_dest = short_state if transition else "state kept"
+    text = collapse_consecutive_blank_lines(text)
+    if not text or not text.strip():
+        _log.warning("%s -> %s [empty visible text]", aid, short_dest)
+        if transition:
+            transition_job_state([aid], short_state)
+        return False
+    text = _prune_jd(text, job.get("job_title", ""))
+    if len(text) < min_chars:
+        _log.warning("%s -> %s [JD too short: %d < %d chars]", aid, short_dest, len(text), min_chars)
+        if transition:
+            transition_job_state([aid], short_state)
+        return False
+    classification = _classify_jd(text)
+    if classification != "ok":
+        error_state = classified_states[classification]
+        _log.warning("%s -> %s [JD classified %r]", aid, error_state if transition else "state kept", classification)
+        # Coat-check: a bad page must not become the composed JD of a job that stays put
+        if not transition:
+            return False
+        # Reference the kept capture so the bad page stays inspectable; job_description (preamble) is untouched
+        save_job_data(aid, {ref_key: web_data_id})
+        transition_job_state([aid], error_state)
+        return False
+    save_job_data(aid, {ref_key: web_data_id})
+    # Write back into in-memory dict so coat-check is a true no-op if called after this
+    if not isinstance(job.get("job_data"), dict):
+        job["job_data"] = {}
+    job["job_data"][ref_key] = web_data_id
+    if transition:
+        transition_job_state([aid], pass_state)
+    return True
+
+
 async def fetch_jd_batch(
     batch_id: str,
     jobs: List[Dict[str, Any]],
     debug: bool = False,
+    *,
+    transition: bool = True,
     ) -> Dict[str, int]:
     """Scrape, prune, and gate JDs for a batch of jobs (ast-326).
-    Transitions each job to JD_READY (pass) or JD_SCRAPE_FAIL (fail/short).
+    Transitions each job to JD_READY (pass) or ERROR_FETCH_JD_UNREADABLE (fail/short).
+    transition=False: coat-check mode — scrape, gate and keep the capture, never move state (AST-2145).
     Returns {"passed": N, "failed": N, "total": N}."""
     if not await check_connectivity():
         raise ConnectionError(f"fetch_jd_batch: no internet connectivity, aborting batch {batch_id} ({len(jobs)} jobs)")
     if debug:
         _log.set_debug_flag(True)
-    cfg = TRACKER_CONFIG
-    jd_key = cfg.get("job_data_keys", {}).get("job_description", "job_description")
-    min_chars = cfg.get("jd_min_chars", 200)
-    # Success / generic scrape-fail transitions (classified JD errors route via _JD_ERROR_STATES)
+    # Success / generic scrape-fail transitions (classified JD errors route via classified_states)
     pass_state = GAZER_CONFIG["fetch_jd"]["pass_state"]
     fail_state = GAZER_CONFIG["fetch_jd"]["fail_state"]
     job_total = len(jobs)
@@ -206,7 +370,6 @@ async def fetch_jd_batch(
         nonlocal passed, failed
         aid = job.get("astral_job_id", "")
         job_link = (job.get("job_link") or "").strip()
-        title = job.get("job_title", aid)
         if not job_link:
             if debug:
                 _log.debug_index(
@@ -217,11 +380,12 @@ async def fetch_jd_batch(
                     outcome=f"failed — no job_link -> {fail_state}",
                 )
             _log.warning("[%s] no job_link, cannot scrape JD", aid)
-            transition_job_state([aid], fail_state)
+            if transition:
+                transition_job_state([aid], fail_state)
             failed += 1
             return
         try:
-            text = await get_visible_text(url=job_link)
+            text, _, row_id = await scrape_visible_text_and_keep(job.get("candidate_id"), job_link)
         except Exception as e:
             if debug:
                 _log.debug_index(
@@ -233,75 +397,25 @@ async def fetch_jd_batch(
                 )
                 _log.debug_detail(f"job_link={job_link!r}")
             _log.warning("[%s] get_visible_text failed: %s", aid, e)
-            transition_job_state([aid], fail_state)
+            if transition:
+                transition_job_state([aid], fail_state)
             failed += 1
             return
-        text = collapse_consecutive_blank_lines(text)
-        if not text or not text.strip():
-            if debug:
-                _log.debug_index(
-                    func="gazer.fetch_jd_batch",
-                    index=job_index,
-                    total=job_total,
-                    identifier=_gazer_job_identifier(job),
-                    outcome=f"failed — empty visible text -> {fail_state}",
-                )
-                _log.debug_detail(f"job_link={job_link!r}")
-            _log.warning("[%s] empty visible text from %s", aid, job_link)
-            transition_job_state([aid], fail_state)
+        _log.debug(
+            "Calling JD gates: [astral_job_id=%s short_state=%s pass_state=%s text=%s]",
+            aid, fail_state, pass_state, text,
+        )
+        gated = _apply_jd_gates(
+            job, text, short_state=fail_state, pass_state=pass_state,
+            classified_states=GAZER_CONFIG["fetch_jd"]["classified_states"],
+            web_data_id=row_id, transition=transition,
+        )
+        _log.debug("Response from JD gates: %s", gated)
+        if gated:
+            _log.info("%s | job %s: %s (batch: %s)", aid, "JD kept", pass_state if transition else "state kept", batch_id)
+            passed += 1
+        else:
             failed += 1
-            return
-        text = _prune_jd(text, job.get("job_title", ""))
-        if len(text) < min_chars:
-            if debug:
-                _log.debug_index(
-                    func="gazer.fetch_jd_batch",
-                    index=job_index,
-                    total=job_total,
-                    identifier=_gazer_job_identifier(job),
-                    outcome=f"failed — JD too short ({len(text)} < {min_chars}) -> {fail_state}",
-                )
-                _log.debug_detail(f"pruned_chars={len(text)} job_link={job_link!r}")
-            _log.warning("[%s] JD too short (%d chars < %d), -> %s", aid, len(text), min_chars, fail_state)
-            transition_job_state([aid], fail_state)
-            failed += 1
-            return
-        classification = _classify_jd(text)
-        if classification != "ok":
-            error_state = _JD_ERROR_STATES[classification]
-            if debug:
-                _log.debug_index(
-                    func="gazer.fetch_jd_batch",
-                    index=job_index,
-                    total=job_total,
-                    identifier=_gazer_job_identifier(job),
-                    outcome=f"failed — classified {classification!r} -> {error_state}",
-                )
-                _log.debug_detail(f"job_link={job_link!r} pruned_chars={len(text)}")
-            # Save the text so the bad capture is inspectable in the DB
-            save_job_data(aid, {jd_key: text})
-            _log.warning("[%s] JD classified as %r -> %s", aid, classification, error_state)
-            transition_job_state([aid], error_state)
-            failed += 1
-            return
-        save_job_data(aid, {jd_key: text})
-        # Write back into in-memory dict so coat-check is a true no-op if called after this
-        if not isinstance(job.get("job_data"), dict):
-            job["job_data"] = {}
-        job["job_data"][jd_key] = text
-        transition_job_state([aid], pass_state)
-        if debug:
-            _log.debug_index(
-                func="gazer.fetch_jd_batch",
-                index=job_index,
-                total=job_total,
-                identifier=_gazer_job_identifier(job),
-                outcome=f"passed -> {pass_state} ({len(text)} chars)",
-            )
-            _log.debug_detail(
-                f"job_link={job_link!r} title={title!r} pruned_chars={len(text)}"
-            )
-        passed += 1
 
     await asyncio.gather(
         *[_scrape_one(j, ji) for ji, j in enumerate(jobs, start=1)],
@@ -315,6 +429,78 @@ async def fetch_jd_batch(
     return {"passed": passed, "failed": failed, "total": len(jobs)}
 
 
+async def fetch_relative_jd_batch(batch_id: str, jobs: list[dict[str, Any]]) -> dict[str, int]:
+    """Click-through JD fetch for RELATIVE_JOB_LINK jobs (AST-2025).
+
+    Per claimed job: Telescope opens company job_site, clicks the <a> whose href equals the
+    stored relative job_link, returns (final_url, text). The resolved absolute URL replaces
+    job_link, then the same JD gates as fetch_jd_batch decide the state. Click / Telescope
+    failure -> fail_state with job_link left relative. Processes only `jobs` (dispatcher
+    claimed and releases them). Returns {"passed": N, "failed": N, "total": N}.
+    """
+    if not await check_connectivity():
+        raise ConnectionError(
+            f"fetch_relative_jd_batch: no internet connectivity, aborting batch {batch_id} ({len(jobs)} jobs)"
+        )
+    cfg = GAZER_CONFIG["fetch_relative_jd"]
+    pass_state = cfg["pass_state"]
+    fail_state = cfg["fail_state"]
+    # Empty / too-short text after a successful click: this task's own unreadable terminal.
+    short_state = cfg["unreadable_state"]
+    passed = failed = 0
+
+    async def _fetch_one(job: dict[str, Any]) -> None:
+        nonlocal passed, failed
+        aid = job.get("astral_job_id", "")
+        job_site = (job.get("job_site") or "").strip()
+        href = (job.get("job_link") or "").strip()
+        if not job_site or not href:
+            _log.warning("%s -> %s [missing job_site %r or job_link %r]", aid, fail_state, job_site, href)
+            transition_job_state([aid], fail_state)
+            failed += 1
+            return
+        try:
+            final_url, text = await click_through_visible_text(job_site, href)
+        except Exception as e:  # noqa: BLE001 — every Telescope/client failure routes to fail_state (AST-2022 §5)
+            if isinstance(e, PlaywrightInfraError) and e.failure_class == TELESCOPE_CLICK_TARGET_MISSING:
+                _log.warning("%s -> %s [click target missing: href=%r list_url=%s]", aid, fail_state, href, job_site)
+            else:
+                _log.exception(
+                    "%s -> %s [click-through failed: href=%r list_url=%s]\n  %s: %s\n  Continuing to the next job",
+                    aid, fail_state, href, job_site, type(e).__name__, e,
+                )
+            transition_job_state([aid], fail_state)
+            failed += 1
+            return
+        row_id = keep_web_data(job.get("candidate_id"), final_url, _VISIBLE_TEXT, text)
+        if not final_url.startswith(("http://", "https://")):
+            _log.warning("%s -> %s [click-through returned non-http final_url %r]", aid, fail_state, final_url)
+            transition_job_state([aid], fail_state)
+            failed += 1
+            return
+        _log.debug("Calling persist_http_job_link: [astral_job_id=%s job_link=%s]", aid, final_url)
+        persist_http_job_link(aid, final_url)
+        _log.debug(
+            "Calling JD gates: [astral_job_id=%s short_state=%s pass_state=%s text=%s]",
+            aid, short_state, pass_state, text,
+        )
+        gated = _apply_jd_gates(
+            job, text, short_state=short_state, pass_state=pass_state, classified_states=cfg["classified_states"],
+            web_data_id=row_id,
+        )
+        _log.debug("Response from JD gates: %s", gated)
+        if gated:
+            _log.info("%s | job %s: %s (batch: %s)", aid, "relative link fetched", pass_state, batch_id)
+            passed += 1
+        else:
+            failed += 1
+
+    _log.debug("Beginning fetch_relative_jd loop on %s items", len(jobs))
+    await asyncio.gather(*[_fetch_one(j) for j in jobs], return_exceptions=False)
+    _log.debug("End fetch_relative_jd loop after %s items", passed + failed)
+    return {"passed": passed, "failed": failed, "total": len(jobs)}
+
+
 def _website_content_is_recorded(website_content: Any) -> bool:
     """True when company_data already has usable culture page bodies (AST-874 cache path)."""
     if isinstance(website_content, list):
@@ -325,6 +511,15 @@ def _website_content_is_recorded(website_content: Any) -> bool:
     if isinstance(website_content, str):
         return bool(website_content.strip())
     return False
+
+
+def _website_content_bot_walled(content: Any) -> bool:
+    """True when every fetched page in website_content is a bot wall (nothing usable to grade)."""
+    if isinstance(content, list):
+        pages = [p.get("content") or "" for p in content if isinstance(p, dict)]
+    else:
+        pages = [content] if isinstance(content, str) and content else []
+    return bool(pages) and all(is_bot_wall(t) for t in pages)
 
 
 def _website_content_debug_summary(website_content: Any) -> str:
@@ -348,8 +543,10 @@ async def fetch_culture_pages_batch(
 ) -> Dict[str, int]:
     """Ensure culture page content via roster coat-check; gate jobs to CULTURE_READY (AST-874).
 
-    Transitions each job to CULTURE_READY (pass), NEED_CULTURE_CONTENT (coat-check fail),
-    or NO_CULTURE_LINKS (no culture_links_to_explore). Returns {"passed", "failed", "total"}.
+    Transitions each job to CULTURE_READY (pass), ERROR_FETCH_CULTURE_PAGES_UNREADABLE (coat-check
+    fail), BOT_BLOCKED_FETCH_CULTURE_PAGES (every page a bot wall, cached or fresh), or
+    ERROR_FETCH_CULTURE_PAGES_NO_CULTURE_LINKS (no culture_links_to_explore).
+    Returns {"passed", "failed", "total"}.
     """
     if not await check_connectivity():
         raise ConnectionError(
@@ -361,6 +558,7 @@ async def fetch_culture_pages_batch(
     cfg = GAZER_CONFIG["fetch_culture_pages"]
     pass_state = cfg["pass_state"]
     fail_state = cfg["fail_state"]
+    bot_state = cfg["bot_blocked_state"]
     no_links_state = cfg["no_links_state"]
     job_total = len(jobs)
     passed = failed = 0
@@ -409,8 +607,20 @@ async def fetch_culture_pages_batch(
             cd = {}
             company["company_data"] = cd
 
-        recorded = cd.get("website_content")
+        recorded = resolve_telescope_value(cd.get("website_content"))
         if _website_content_is_recorded(recorded):
+            if _website_content_bot_walled(recorded):
+                transition_job_state([aid], bot_state)
+                if debug:
+                    _log.debug_index(
+                        func="gazer.fetch_culture_pages_batch",
+                        index=job_index,
+                        total=job_total,
+                        identifier=_gazer_job_identifier(job),
+                        outcome=f"failed — bot wall -> {bot_state} (cached)",
+                    )
+                failed += 1
+                continue
             transition_job_state([aid], pass_state)
             if debug:
                 _log.debug_index(
@@ -447,6 +657,18 @@ async def fetch_culture_pages_batch(
         content = await get_company_data(company, "website_content")
         if content:
             company.setdefault("company_data", {})["website_content"] = content
+            if _website_content_bot_walled(resolve_telescope_value(content)):
+                transition_job_state([aid], bot_state)
+                if debug:
+                    _log.debug_index(
+                        func="gazer.fetch_culture_pages_batch",
+                        index=job_index,
+                        total=job_total,
+                        identifier=_gazer_job_identifier(job),
+                        outcome=f"failed — bot wall -> {bot_state}",
+                    )
+                failed += 1
+                continue
             transition_job_state([aid], pass_state)
             if debug:
                 _log.debug_index(
@@ -481,9 +703,69 @@ async def fetch_culture_pages_batch(
         _log.debug_detail(
             f"summary passed={passed} failed={failed} total={job_total} "
             f"pass_state={pass_state!r} fail_state={fail_state!r} "
-            f"no_links_state={no_links_state!r}"
+            f"bot_state={bot_state!r} no_links_state={no_links_state!r}"
         )
     return {"passed": passed, "failed": failed, "total": len(jobs)}
+
+
+async def fetch_company_culture_pages_batch(
+    batch_id: str,
+    companies: List[Dict[str, Any]],
+    debug: bool = False,
+) -> Dict[str, int]:
+    """Scrape culture pages into company_data.website_content for GET_UPSHOT companies (AST-2070).
+
+    Every company transitions to UPSHOT_READY whether its content was cached, scraped, or not
+    found; this hop never fails a company out. Lost connectivity raises ConnectionError before any transition.
+    Returns {"passed", "failed", "total"}.
+    """
+    if not await check_connectivity():
+        raise ConnectionError(
+            f"fetch_company_culture_pages_batch: no internet connectivity, aborting batch {batch_id} "
+            f"({len(companies)} companies)"
+        )
+    if debug:
+        _log.set_debug_flag(True)
+    pass_state = GAZER_CONFIG["fetch_company_culture_pages"]["pass_state"]
+    company_total = len(companies)
+    passed = 0
+
+    # Sequential like fetch_culture_pages_batch: each coat-check scrape opens its own browser context.
+    for company_index, company in enumerate(companies, start=1):
+        short_name = company.get("short_name") or ""
+        cd = company.get("company_data") if isinstance(company.get("company_data"), dict) else {}
+        found = resolve_telescope_value(cd.get("website_content"))
+        if _website_content_is_recorded(found):
+            outcome = "cached"
+        else:
+            try:
+                # Coat-check scrapes culture_links_to_explore and saves website_content itself.
+                found = resolve_telescope_value(await get_company_data(company, "website_content"))
+            except ValueError as e:
+                # Only a missing short_name/company_website escapes the coat-check; the hop still advances.
+                _log.exception(
+                    "%s | company culture page fetch\n  %s: %s\n  Moving on to %s without culture pages",
+                    short_name,
+                    type(e).__name__,
+                    e,
+                    pass_state,
+                )
+                found = None
+            outcome = "scraped" if found else "none found"
+        transition_company_state(short_name, pass_state)
+        passed += 1
+        if debug:
+            _log.debug_index(
+                func="gazer.fetch_company_culture_pages_batch",
+                index=company_index,
+                total=company_total,
+                identifier=_gazer_company_identifier(company),
+                outcome=f"passed -> {pass_state} ({outcome})",
+            )
+            _log.debug_detail(f"{_website_content_debug_summary(found)} company={short_name!r}")
+
+    return {"passed": passed, "failed": 0, "total": company_total}
+
 
 
 async def fetch_website_batch(
@@ -493,9 +775,8 @@ async def fetch_website_batch(
 ) -> Dict[str, int]:
     """Scrape homepage + nav_links for WEBSITE_FOUND companies (AST-701).
     Transitions each company to HOMEPAGE_READY (pass), WEBSITE_FOUND_RETRY (infra retry),
-    or CANNOT_READ_WEBSITE (fail). Returns {"passed", "failed", "errors", "skipped", "total"}
-    where total is work attempted (excludes intentional second-strike skips); claim-time
-    exclusion (AST-892) is the primary ownership fix for those skips."""
+    BOT_BLOCKED_FETCH_WEBSITE (bot wall) or ERROR_FETCH_WEBSITE_UNREADABLE (fail). Returns {"passed", "failed", "errors", "skipped", "total"};
+    every claimed row is scraped, so skipped stays 0 (AST-1810 removed the AST-892 split)."""
     if not await check_connectivity():
         raise ConnectionError(
             f"fetch_website_batch: no internet connectivity, aborting batch {batch_id} "
@@ -522,25 +803,9 @@ async def fetch_website_batch(
     async with create_batch_browser_session() as batch_session:
 
         async def _fetch_one_inner(company: Dict[str, Any], company_index: int) -> None:
-            nonlocal passed, failed, skipped
+            nonlocal passed, failed
             short_name = company.get("short_name") or ""
             company_state = (company.get("state") or "").strip()
-            # Prefilter second-strike pool: already scraped homepage — leave for prefilter.
-            cd = company.get("company_data") or {}
-            if (
-                company_state == cfg["retry_state"]
-                and len((cd.get("homepage_text") or "").strip()) > 0
-            ):
-                skipped += 1
-                if debug:
-                    _log.debug_index(
-                        func="gazer.fetch_website_batch",
-                        index=company_index,
-                        total=company_total,
-                        identifier=_gazer_company_identifier(company),
-                        outcome="skip — homepage_text present; leave for prefilter second strike",
-                    )
-                return
             original_website = (company.get("company_website") or "").strip()
             if not original_website:
                 if debug:
@@ -558,19 +823,24 @@ async def fetch_website_batch(
             scrape = await scrape_company_homepage_content(
                 short_name, original_website, batch_session=batch_session
             )
-            if scrape.get("error"):
-                dest = _fetch_website_fail_destination(company_state, scrape["error"], cfg)
+            # Keep every capture — bot walls included — before routing (AST-2132).
+            text_id, links_id = keep_page_scrape(company.get("candidate_id"), scrape["company_website"], scrape)
+            dest = _fetch_website_fail_destination(
+                company_state, scrape.get("error") or "", cfg, scrape.get("visible_text") or "",
+            )
+            if dest:
+                reason = scrape.get("error") or "bot wall"
                 if debug:
                     _log.debug_index(
                         func="gazer.fetch_website_batch",
                         index=company_index,
                         total=company_total,
                         identifier=_gazer_company_identifier(company),
-                        outcome=f"failed — {scrape['error']!s} -> {dest}",
+                        outcome=f"failed — {reason!s} -> {dest}",
                     )
                     _log.debug_detail(f"company_website={original_website!r}")
                 transition_company_state(short_name, dest)
-                save_company_data(short_name, {notes_key: scrape["error"]})
+                save_company_data(short_name, {notes_key: reason})
                 failed += 1
                 return
             canonical = scrape["company_website"]
@@ -578,11 +848,12 @@ async def fetch_website_batch(
             nav_links = scrape.get("enumerated_nav_links") or ""
             nav_count = len([ln for ln in nav_links.splitlines() if ln.strip()]) if nav_links else 0
             redirect = "yes" if canonical != original_website else "no"
-            data_to_save: Dict[str, Any] = {"homepage_text": visible_text}
-            if nav_links:
-                data_to_save["nav_links"] = nav_links
+            data_to_save: Dict[str, Any] = {"homepage_text": text_id}
+            if links_id:
+                data_to_save["nav_links"] = links_id
             save_company_data(short_name, data_to_save)
             transition_company_state(short_name, pass_state)
+            _log.info("%s | company %s: %s (batch: %s)", short_name, "homepage kept", pass_state, batch_id)
             passed += 1
             if debug:
                 _log.debug_index(
@@ -634,8 +905,9 @@ async def fetch_job_pages_batch(
     companies: List[Dict[str, Any]],
     debug: bool = False,
 ) -> Dict[str, int]:
-    """Scrape possible_joblist_links additively for PREFILTER_PASSED companies (AST-719).
-    Transitions each company to PJL_READY (pass) or JOBSITE_SCRAPE_ISSUE (fail).
+    """Scrape possible_joblist_links (refresh: upsert per URL, AST-1995) for PREFILTER_PASSED companies (AST-719).
+    Transitions each company to PJL_READY (pass), BOT_BLOCKED_FETCH_JOB_PAGES (bot wall on every
+    PJL, no prior capture) or ERROR_FETCH_JOB_PAGES_UNREADABLE (fail).
     Returns {"passed": N, "failed": N, "total": N}."""
     if not await check_connectivity():
         raise ConnectionError(
@@ -647,6 +919,7 @@ async def fetch_job_pages_batch(
     cfg = GAZER_CONFIG["fetch_job_pages"]
     pass_state = cfg["pass_state"]
     fail_state = cfg["fail_state"]
+    bot_state = cfg["bot_blocked_state"]
     notes_key = ROSTER_CONFIG["company_data_keys"]["prefilter_company_notes"]
     company_total = len(companies)
     passed = failed = 0
@@ -666,6 +939,7 @@ async def fetch_job_pages_batch(
             nonlocal passed, failed
             short_name = company.get("short_name") or ""
             cd = company.get("company_data") or {}
+            candidate_id = company.get("candidate_id")
             candidate_urls = cd.get("possible_joblist_links") or []
             if not candidate_urls:
                 _log.warning("[%s] fetch_job_pages: no possible_joblist_links", short_name)
@@ -682,23 +956,18 @@ async def fetch_job_pages_batch(
                 return
 
             pjl_pages = list(cd.get("pjl_scrape_pages") or [])
-            ledger = _pjl_scrape_ledger_keys(pjl_pages)
-            pending = [u for u in candidate_urls if normalize_link(u) not in ledger]
-            new_nav_urls: List[str] = []
 
-            if debug:
-                skipped = [u for u in candidate_urls if normalize_link(u) in ledger]
-                for skip_idx, url in enumerate(skipped, start=1):
-                    _log.debug_index(
-                        func="gazer.fetch_job_pages_batch",
-                        index=skip_idx,
-                        total=len(skipped) or 1,
-                        identifier=short_name,
-                        outcome=f"pjl url {url!r} skipped-already-scraped",
-                    )
-
-            for url_idx, url in enumerate(pending, start=1):
+            walled = False
+            # AST-1995: every candidate is re-scraped each run — no already-scraped skip.
+            for url_idx, url in enumerate(candidate_urls, start=1):
                 record = await _scrape_pjl_page(url, browser_context, debug=debug)
+                text_id, links_id = keep_page_scrape(candidate_id, record["url"], record)
+                # Row ids ride on the record for the PJL merge (AST-2134 reshapes pjl_scrape_pages to {url, id}).
+                record = {**record, "visible_text_id": text_id, "page_links_id": links_id}
+                # A bot wall is not page content: drop it like a failed scrape so the prior capture survives.
+                if not record.get("error") and is_bot_wall(record.get("visible_text") or ""):
+                    record = {**record, "error": "bot wall"}
+                    walled = True
                 if debug:
                     err = record.get("error")
                     chars = len(record.get("visible_text") or "")
@@ -710,7 +979,7 @@ async def fetch_job_pages_batch(
                     _log.debug_index(
                         func="gazer.fetch_job_pages_batch",
                         index=url_idx,
-                        total=len(pending) or 1,
+                        total=len(candidate_urls) or 1,
                         identifier=short_name,
                         outcome=f"pjl url {url!r} {outcome}",
                     )
@@ -720,21 +989,24 @@ async def fetch_job_pages_batch(
                             f"enumerated_nav_chars={len(enum_nav)} collapsed_visible_chars={chars}"
                         )
                 pjl_pages = _merge_pjl_scrape_record(pjl_pages, record)
-                new_nav_urls.extend(record.get("page_links") or [])
 
-            assembled = _assemble_pjl_content(pjl_pages)
-            merged_nav = _merge_pjl_nav_links(cd.get("pjl_nav_links") or "", new_nav_urls)
-            data_to_save: Dict[str, Any] = {
-                "pjl_scrape_pages": pjl_pages,
-                "pjl_assembled_content": assembled,
-            }
-            if merged_nav:
-                data_to_save["pjl_nav_links"] = merged_nav
-            save_company_data(short_name, data_to_save)
+            save_company_data(
+                short_name,
+                {
+                    "pjl_scrape_pages": pjl_pages,
+                    # Derived on read from pjl_scrape_pages (AST-2134); None clears copies written before AST-2130.
+                    "pjl_assembled_content": None,
+                    "pjl_nav_links": None,
+                },
+            )
 
             if pjl_pages:
                 transition_company_state(short_name, pass_state)
                 passed += 1
+                _log.info(
+                    "%s | company %s: %s (batch: %s)",
+                    short_name, "job pages kept", f"{len(pjl_pages)} page(s) -> {pass_state}", batch_id,
+                )
                 if debug:
                     _log.debug_index(
                         func="gazer.fetch_job_pages_batch",
@@ -743,14 +1015,16 @@ async def fetch_job_pages_batch(
                         identifier=_gazer_company_identifier(company),
                         outcome=(
                             f"passed -> {pass_state} ({len(pjl_pages)} pages "
-                            f"pending_scraped={len(pending)})"
+                            f"scraped={len(candidate_urls)})"
                         ),
                     )
             else:
-                transition_company_state(short_name, fail_state)
+                dest = bot_state if walled else fail_state
+                transition_company_state(short_name, dest)
                 save_company_data(
                     short_name,
-                    {notes_key: "fetch_job_pages: all PJL scrapes failed"},
+                    {notes_key: "fetch_job_pages: bot wall on every PJL" if walled
+                     else "fetch_job_pages: all PJL scrapes failed"},
                 )
                 failed += 1
                 if debug:
@@ -759,7 +1033,7 @@ async def fetch_job_pages_batch(
                         index=company_index,
                         total=company_total,
                         identifier=_gazer_company_identifier(company),
-                        outcome=f"failed — no storable PJL content -> {fail_state}",
+                        outcome=f"failed — no storable PJL content -> {dest}",
                     )
 
         await asyncio.gather(
@@ -1045,8 +1319,13 @@ async def process_gazer_batch(
                 )
                 _log.debug_detail(f"job_site={js!r}")
     results_by_short_name: Dict[str, Tuple[str, str, str]] = {}
+    # Real scrape failure reason per company, kept regardless of debug (AST-1997).
+    scrape_errors: Dict[str, str] = {}
     for i, r in enumerate(results):
         if isinstance(r, Exception):
+            sn, _ = to_scrape[i]
+            # Bare exceptions (e.g. asyncio.TimeoutError()) have empty str(); drop the trailing ": ".
+            scrape_errors[sn] = f"Scrape failed: {type(r).__name__}: {r}" if str(r) else f"Scrape failed: {type(r).__name__}"
             continue
         short_name, job_site, page_html = r
         results_by_short_name[short_name] = (short_name, job_site, page_html)
@@ -1069,12 +1348,14 @@ async def process_gazer_batch(
                     outcome="failure — scrape failed",
                 )
                 _log.debug_detail(f"job_site={(c.get('job_site') or '').strip()!r}")
+            # Only blank-job_site companies reach here without a scrape error (never added to to_scrape).
+            failure_message = scrape_errors.get(short_name, "No job_site to scrape")
             record_to_company_job_scan(
                 batch_id, short_name, scan_completed_at,
                 total_found=None, new=None, duplicates=None,
-                status="failure", failure_message="Scrape failed",
+                status="failure", failure_message=failure_message,
             )
-            outcomes.append({"short_name": short_name, "status": "failure", "message": "Scrape failed", "new": None, "duplicates": None})
+            outcomes.append({"short_name": short_name, "status": "failure", "message": failure_message, "new": None, "duplicates": None})
             continue
 
         _, job_site, page_html = results_by_short_name[short_name]
@@ -1273,149 +1554,147 @@ async def ingest_meteorite_jobs_from_email_html(
     if links:
         mode = "links"
         n = len(links)
-        sem = asyncio.Semaphore(int(cfg["playwright_concurrency"]))
 
         async def _one(i: int, url: str) -> None:
-            async with sem:
-                try:
-                    text, final_url = await _meteorite_fetch_link_visible_text(url, debug=debug)
-                except Exception as e:
-                    log.warning("[gazer] meteorite email Playwright failed url=%s: %s", url[:120], e)
-                    skipped.append({
-                        "reason": "playwright_error",
-                        "url": url,
-                        "matched_company_job_id": None,
-                    })
-                    if debug:
-                        log.debug_index(
-                            func="gazer.meteorite_email_ingest",
-                            index=i,
-                            total=n,
-                            identifier=url[:80],
-                            outcome="skipped-error",
-                        )
-                        log.debug_detail(f"reason=playwright_error error={e!s}")
-                    return
+            try:
+                text, final_url = await _meteorite_fetch_link_visible_text(url, debug=debug)
+            except Exception as e:
+                log.warning("[gazer] meteorite email Playwright failed url=%s: %s", url[:120], e)
+                skipped.append({
+                    "reason": "playwright_error",
+                    "url": url,
+                    "matched_company_job_id": None,
+                })
+                if debug:
+                    log.debug_index(
+                        func="gazer.meteorite_email_ingest",
+                        index=i,
+                        total=n,
+                        identifier=url[:80],
+                        outcome="skipped-error",
+                    )
+                    log.debug_detail(f"reason=playwright_error error={e!s}")
+                return
 
-                link = (final_url or url).strip() or url
-                # AST-1132 Gate A: final URL may redirect onto excluded hosts/paths.
-                low_link = link.casefold()
-                excludes = tuple(s.casefold() for s in cfg["link_exclude_substrings"])
-                if any(frag in low_link for frag in excludes):
-                    skipped.append({
-                        "reason": "excluded_link",
-                        "url": link,
-                        "matched_company_job_id": None,
-                    })
-                    if debug:
-                        log.debug_index(
-                            func="gazer.meteorite_email_ingest",
-                            index=i,
-                            total=n,
-                            identifier=link[:80],
-                            outcome="skipped-excluded",
-                        )
-                        log.debug_detail("reason=excluded_link")
-                    return
-
-                # AST-1132 Gate B: long-enough SVG/spec pages still skip create.
-                markers = tuple(s.casefold() for s in cfg["non_job_visible_substrings"])
-                hay_vis = (text or "").casefold()
-                if markers and any(m in hay_vis for m in markers):
-                    skipped.append({
-                        "reason": "non_job_page",
-                        "url": link,
-                        "matched_company_job_id": None,
-                    })
-                    if debug:
-                        log.debug_index(
-                            func="gazer.meteorite_email_ingest",
-                            index=i,
-                            total=n,
-                            identifier=link[:80],
-                            outcome="skipped-non-job",
-                        )
-                        log.debug_detail("reason=non_job_page")
-                    return
-
-                haystack = f"{link}\n{text}"
-                if job_link_exists_for_candidate(candidate_id, link):
-                    skipped.append({
-                        "reason": "known_job_link",
-                        "url": link,
-                        "matched_company_job_id": None,
-                    })
-                    if debug:
-                        log.debug_index(
-                            func="gazer.meteorite_email_ingest",
-                            index=i,
-                            total=n,
-                            identifier=link[:80],
-                            outcome="skipped-duplicate",
-                        )
-                        log.debug_detail("reason=known_job_link")
-                    return
-
-                matched = text_matches_known_company_job_id_for_candidate(
-                    candidate_id, haystack
-                )
-                if matched:
-                    skipped.append({
-                        "reason": "known_company_job_id",
-                        "url": link,
-                        "matched_company_job_id": matched,
-                    })
-                    if debug:
-                        log.debug_index(
-                            func="gazer.meteorite_email_ingest",
-                            index=i,
-                            total=n,
-                            identifier=link[:80],
-                            outcome="skipped-duplicate",
-                        )
-                        log.debug_detail(f"reason=known_company_job_id matched={matched}")
-                    return
-
-                if len((text or "").strip()) < min_chars:
-                    skipped.append({
-                        "reason": "jd_too_short",
-                        "url": link,
-                        "matched_company_job_id": None,
-                    })
-                    if debug:
-                        log.debug_index(
-                            func="gazer.meteorite_email_ingest",
-                            index=i,
-                            total=n,
-                            identifier=link[:80],
-                            outcome="skipped-short",
-                        )
-                        log.debug_detail(f"reason=jd_too_short len={len((text or '').strip())}")
-                    return
-
+            link = (final_url or url).strip() or url
+            # AST-1132 Gate A: final URL may redirect onto excluded hosts/paths.
+            low_link = link.casefold()
+            excludes = tuple(s.casefold() for s in cfg["link_exclude_substrings"])
+            if any(frag in low_link for frag in excludes):
+                skipped.append({
+                    "reason": "excluded_link",
+                    "url": link,
+                    "matched_company_job_id": None,
+                })
                 if debug:
                     log.debug_index(
                         func="gazer.meteorite_email_ingest",
                         index=i,
                         total=n,
                         identifier=link[:80],
-                        outcome="found",
+                        outcome="skipped-excluded",
                     )
-                    log.debug_detail(f"visible_text_len={len(text or '')}")
+                    log.debug_detail("reason=excluded_link")
+                return
 
-                result = create_meteorite_job(
-                    candidate_id, text, job_link=link, debug=debug
-                )
-                created.append(result)
+            # AST-1132 Gate B: long-enough SVG/spec pages still skip create.
+            markers = tuple(s.casefold() for s in cfg["non_job_visible_substrings"])
+            hay_vis = (text or "").casefold()
+            if markers and any(m in hay_vis for m in markers):
+                skipped.append({
+                    "reason": "non_job_page",
+                    "url": link,
+                    "matched_company_job_id": None,
+                })
                 if debug:
                     log.debug_index(
                         func="gazer.meteorite_email_ingest",
                         index=i,
                         total=n,
                         identifier=link[:80],
-                        outcome="recorded",
+                        outcome="skipped-non-job",
                     )
-                    log.debug_detail(f"astral_job_id={result.get('astral_job_id')}")
+                    log.debug_detail("reason=non_job_page")
+                return
+
+            haystack = f"{link}\n{text}"
+            if job_link_exists_for_candidate(candidate_id, link):
+                skipped.append({
+                    "reason": "known_job_link",
+                    "url": link,
+                    "matched_company_job_id": None,
+                })
+                if debug:
+                    log.debug_index(
+                        func="gazer.meteorite_email_ingest",
+                        index=i,
+                        total=n,
+                        identifier=link[:80],
+                        outcome="skipped-duplicate",
+                    )
+                    log.debug_detail("reason=known_job_link")
+                return
+
+            matched = text_matches_known_company_job_id_for_candidate(
+                candidate_id, haystack
+            )
+            if matched:
+                skipped.append({
+                    "reason": "known_company_job_id",
+                    "url": link,
+                    "matched_company_job_id": matched,
+                })
+                if debug:
+                    log.debug_index(
+                        func="gazer.meteorite_email_ingest",
+                        index=i,
+                        total=n,
+                        identifier=link[:80],
+                        outcome="skipped-duplicate",
+                    )
+                    log.debug_detail(f"reason=known_company_job_id matched={matched}")
+                return
+
+            if len((text or "").strip()) < min_chars:
+                skipped.append({
+                    "reason": "jd_too_short",
+                    "url": link,
+                    "matched_company_job_id": None,
+                })
+                if debug:
+                    log.debug_index(
+                        func="gazer.meteorite_email_ingest",
+                        index=i,
+                        total=n,
+                        identifier=link[:80],
+                        outcome="skipped-short",
+                    )
+                    log.debug_detail(f"reason=jd_too_short len={len((text or '').strip())}")
+                return
+
+            if debug:
+                log.debug_index(
+                    func="gazer.meteorite_email_ingest",
+                    index=i,
+                    total=n,
+                    identifier=link[:80],
+                    outcome="found",
+                )
+                log.debug_detail(f"visible_text_len={len(text or '')}")
+
+            result = create_meteorite_job(
+                candidate_id, text, job_link=link, debug=debug
+            )
+            created.append(result)
+            if debug:
+                log.debug_index(
+                    func="gazer.meteorite_email_ingest",
+                    index=i,
+                    total=n,
+                    identifier=link[:80],
+                    outcome="recorded",
+                )
+                log.debug_detail(f"astral_job_id={result.get('astral_job_id')}")
 
         await asyncio.gather(*[_one(i, url) for i, url in enumerate(links, start=1)])
     else:
@@ -1497,7 +1776,7 @@ def ingest_meteorite_jobs_from_email_html_sync(
     *,
     debug: bool = False,
 ) -> dict[str, Any]:
-    """Sync wrapper for Flask/inbox callers (asyncio.run)."""
-    return asyncio.run(
+    """Sync wrapper for Flask/inbox callers (run_one_shot)."""
+    return run_one_shot(
         ingest_meteorite_jobs_from_email_html(candidate_id, html, debug=debug)
     )

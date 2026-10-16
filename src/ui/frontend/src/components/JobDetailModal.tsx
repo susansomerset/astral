@@ -1,11 +1,15 @@
 import { useCallback, useEffect, useState } from "react"
 import Modal from "./Modal"
 import SideTabPanel, { type SideTab } from "./SideTabPanel"
-import StateTimeline from "./StateTimeline"
+import StateTimeline, { type StateEntry } from "./StateTimeline"
 import AgentStoryTab, { type AgentStoryEntry } from "./AgentStoryTab"
+import PhaseAnalysisLines from "./PhaseAnalysisLines"
+import BatchExecutionModal from "./BatchExecutionModal"
 import Time from "./Time"
+import JobTitleText from "./JobTitleText"
 import api from "../lib/api"
 import { copyJobSnapshotToClipboard } from "../lib/copyJobSnapshot"
+import { useAuth } from "../contexts/AuthContext"
 import { useStateUi } from "../contexts/StateUiContext"
 
 /** Navigable listing URL only — mirrors AST-1694 http(s) rule; non-http → null. */
@@ -25,17 +29,17 @@ interface JobDetail {
   state: string
   state_changed_at: string | null
   created_at: string | null
-  state_history?: Array<{ to_state?: string; timestamp?: string }>
+  state_history?: StateEntry[]
   job_data?: Record<string, unknown>
   agent_story?: AgentStoryEntry[]
   fields_editable?: boolean
   legal_next_states?: string[]
+  [key: string]: unknown
 }
 
 type FieldDraft = {
   job_title: string
   job_link: string
-  job_description: string
   state: string
 }
 
@@ -43,9 +47,6 @@ function draftFromJob(j: JobDetail): FieldDraft {
   return {
     job_title: j.job_title ?? "",
     job_link: j.job_link ?? "",
-    job_description: String(
-      ((j.job_data as Record<string, unknown> | undefined)?.job_description) ?? ""
-    ),
     state: j.state,
   }
 }
@@ -66,6 +67,8 @@ export default function JobDetailModal({ jobId, onClose, onRefresh }: Props) {
   const [baseline, setBaseline] = useState<FieldDraft | null>(null)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
+  const { isAdmin } = useAuth()
+  const [selectedRunId, setSelectedRunId] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     if (!jobId) return
@@ -86,7 +89,7 @@ export default function JobDetailModal({ jobId, onClose, onRefresh }: Props) {
   }, [jobId])
 
   useEffect(() => { load() }, [load])
-  useEffect(() => { setSnapshotCopied(false) }, [jobId])
+  useEffect(() => { setSnapshotCopied(false); setSelectedRunId(null) }, [jobId])
 
   const fieldsEditable = Boolean(job?.fields_editable)
   const isDraftDirty = Boolean(
@@ -96,7 +99,6 @@ export default function JobDetailModal({ jobId, onClose, onRefresh }: Props) {
     && (
       draft.job_title !== baseline.job_title
       || draft.job_link !== baseline.job_link
-      || draft.job_description !== baseline.job_description
       || draft.state !== baseline.state
     )
   )
@@ -109,7 +111,6 @@ export default function JobDetailModal({ jobId, onClose, onRefresh }: Props) {
       const payload: Record<string, string> = {
         job_title: draft.job_title,
         job_link: draft.job_link,
-        job_description: draft.job_description,
       }
       if (draft.state !== (job?.state ?? "")) {
         payload.state = draft.state
@@ -170,7 +171,7 @@ export default function JobDetailModal({ jobId, onClose, onRefresh }: Props) {
 
   const agentStory = job?.agent_story ?? []
   const hasJD = Boolean((job?.job_data as Record<string, unknown>)?.job_description)
-  const showJdTab = fieldsEditable || hasJD
+  const showJdTab = hasJD
   const sideTabs: SideTab[] = [
     { id: "__info__", label: "Info", content: "" },
     ...(showJdTab ? [{ id: "__jd__", label: "Job Description", content: "" }] : []),
@@ -198,25 +199,12 @@ export default function JobDetailModal({ jobId, onClose, onRefresh }: Props) {
           onCopy={handleCopySnapshot}
           copied={snapshotCopied}
           copying={snapshotCopying}
+          onSelectRun={isAdmin ? setSelectedRunId : undefined}
         />
       )
     }
     if (tabId === "__jd__") {
-      if (fieldsEditable && draft) {
-        return (
-          <textarea
-            className="dep-input dep-textarea"
-            value={draft.job_description}
-            onChange={(e) =>
-              setDraft((prev) =>
-                prev ? { ...prev, job_description: e.target.value } : prev
-              )
-            }
-            rows={16}
-            style={{ width: "100%", minHeight: 240 }}
-          />
-        )
-      }
+      // Read-only: composed JD (preamble + scraped text) from the API — not editable (AST-2133)
       const jd = ((job?.job_data as Record<string, unknown>)?.job_description as string) ?? ""
       // Collapse runs of 3+ newlines to 2, trim leading/trailing whitespace
       const normalized = jd.trim().replace(/\n{3,}/g, "\n\n")
@@ -230,23 +218,27 @@ export default function JobDetailModal({ jobId, onClose, onRefresh }: Props) {
   }
 
   return (
-    <Modal
-      open={!!jobId}
-      onClose={onClose}
-      title={job?.job_title || job?.company || "Job Detail"}
-      size="wide"
-      dirty={isDraftDirty}
-      onSave={fieldsEditable ? () => { void handleSave() } : undefined}
-    >
-      {loading && <p className="entity-loading">Loading…</p>}
-      {job && (
-        <SideTabPanel
-          tabs={sideTabs}
-          renderContent={renderSideContent}
-        />
-      )}
-      {!loading && !job && jobId && <p className="entity-error">Job not found.</p>}
-    </Modal>
+    <>
+      <Modal
+        open={!!jobId}
+        onClose={onClose}
+        title={<JobTitleText title={job?.job_title} fallback={job?.company || "Job Detail"} />}
+        size="wide"
+        dirty={isDraftDirty}
+        onSave={fieldsEditable ? () => { void handleSave() } : undefined}
+      >
+        {loading && <p className="entity-loading">Loading…</p>}
+        {job && (
+          <SideTabPanel
+            tabs={sideTabs}
+            renderContent={renderSideContent}
+          />
+        )}
+        {!loading && !job && jobId && <p className="entity-error">Job not found.</p>}
+      </Modal>
+      {/* Sibling, not child: portal events bubble along the React tree into the job Modal's dirty detector */}
+      <BatchExecutionModal runId={selectedRunId} entityId={job?.astral_job_id} onClose={() => setSelectedRunId(null)} />
+    </>
   )
 }
 
@@ -263,6 +255,7 @@ function InfoTab({
   onCopy,
   copied,
   copying,
+  onSelectRun,
 }: {
   job: JobDetail | null
   fieldsEditable: boolean
@@ -275,6 +268,7 @@ function InfoTab({
   onCopy: () => void
   copied: boolean
   copying: boolean
+  onSelectRun?: (runId: string) => void
 }) {
   const { manifest, loadState } = useStateUi()
   if (!job) return null
@@ -392,10 +386,14 @@ function InfoTab({
             </button>
           </div>
         </div>
-        {/* Right column: state history */}
+        {/* Right column: analysis + state history */}
         <div className="entity-summary-col">
+          <p className="entity-section-label">Analysis</p>
+          <div style={{ marginBottom: 16 }}>
+            <PhaseAnalysisLines job={job} />
+          </div>
           <p className="entity-section-label">State History</p>
-          <StateTimeline history={job.state_history || []} />
+          <StateTimeline history={job.state_history || []} onSelectRun={onSelectRun} />
         </div>
       </div>
     </div>

@@ -45,23 +45,25 @@ export function isSafeAuthReturnPath(path: string): boolean {
   return true
 }
 
+// Return path lives in localStorage (not sessionStorage): magic-link sign-in completes in a
+// new tab, which cannot see the capturing tab's sessionStorage (AST-1768).
 export function captureAuthReturnPath(pathname: string, search: string): void {
   const path = `${pathname}${search}`
   if (!isSafeAuthReturnPath(path)) return
-  try { sessionStorage.setItem(AUTH_RETURN_PATH_KEY, path) } catch { /* private mode */ }
+  try { localStorage.setItem(AUTH_RETURN_PATH_KEY, path) } catch { /* private mode */ }
 }
 
 export function peekAuthReturnPath(): string | null {
   try {
-    const v = sessionStorage.getItem(AUTH_RETURN_PATH_KEY)
+    const v = localStorage.getItem(AUTH_RETURN_PATH_KEY)
     return v && isSafeAuthReturnPath(v) ? v : null
   } catch { return null }
 }
 
 export function consumeAuthReturnPath(): string | null {
   try {
-    const v = sessionStorage.getItem(AUTH_RETURN_PATH_KEY)
-    sessionStorage.removeItem(AUTH_RETURN_PATH_KEY)
+    const v = localStorage.getItem(AUTH_RETURN_PATH_KEY)
+    localStorage.removeItem(AUTH_RETURN_PATH_KEY)
     return v && isSafeAuthReturnPath(v) ? v : null
   } catch { return null }
 }

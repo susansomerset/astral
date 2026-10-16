@@ -8,13 +8,13 @@ No bind enrichment; no create-job.
 
 from __future__ import annotations
 
-import asyncio
 from email.utils import parseaddr
 
 from flask import Blueprint, jsonify, request
 
 from ui.auth import require_admin
 from src.core.candidate import get_candidate
+from src.external.telescope import run_one_shot
 from src.core.inbox import (
     fetch_candidate_email,
     get_message_with_assembled_html,
@@ -219,7 +219,7 @@ def inbox_land_meteorite():
         }
 
     try:
-        result = asyncio.run(_land_all())
+        result = run_one_shot(_land_all())
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
     except Exception as e:

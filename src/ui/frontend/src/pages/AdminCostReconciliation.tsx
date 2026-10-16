@@ -254,7 +254,7 @@ export default function CostReconciliation() {
           <span>Our Estimated: <strong>{fmtCost(totals.estimated)}</strong></span>
           <span>
             Variance:{" "}
-            <strong style={{ color: totals.variance > 0 ? "#ff6b6b" : "#4caf50" }}>
+            <strong style={{ color: totals.variance > 0 ? "var(--error)" : "var(--success)" }}>
               {totals.variance >= 0 ? "+" : ""}{fmtCost(totals.variance)}
             </strong>
           </span>

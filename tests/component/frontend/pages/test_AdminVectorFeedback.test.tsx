@@ -15,6 +15,10 @@ vi.mock("../../../../src/ui/frontend/src/assets/astral_logo.png", () => ({
   default: "logo.png",
 }))
 
+vi.mock("../../../../src/ui/frontend/src/assets/astral_logo_light.png", () => ({
+  default: "logo-light.png",
+}))
+
 const mockedApi = vi.mocked(api)
 
 const detailRow = {

@@ -51,7 +51,7 @@ describe("StateUiProvider", () => {
     const { result } = renderHook(() => useStateUi(), { wrapper })
 
     await waitFor(() => expect(result.current.loadState).toBe("ready"))
-    expect(result.current.manifest?.jobs.in_review_sections[0].label).toBe("New")
+    expect(result.current.manifest?.jobs.processing_sections[0].label).toBe("New")
   })
 
   it("leaves manifest null when the request fails", async () => {

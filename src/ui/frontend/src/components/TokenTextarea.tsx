@@ -12,6 +12,9 @@ interface TokenTextareaProps {
   style?: CSSProperties
   placeholder?: string
   className?: string
+  disabled?: boolean
+  /** Extra styles for the relative-positioned wrapper (e.g. flex sizing inside a panel). */
+  wrapperStyle?: CSSProperties
 }
 
 type MenuAnchor = { top: number; left: number; width: number; placement: "below" | "above" }
@@ -43,7 +46,7 @@ function menuAnchor(ta: HTMLTextAreaElement, triggerCharIndex: number): MenuAnch
 }
 
 export default function TokenTextarea({
-  value, onChange, tokens, rows = 14, style, placeholder, className,
+  value, onChange, tokens, rows = 14, style, placeholder, className, disabled, wrapperStyle,
 }: TokenTextareaProps) {
   const ref = useRef<HTMLTextAreaElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
@@ -149,10 +152,11 @@ export default function TokenTextarea({
   }, [show, dismiss])
 
   return (
-    <div style={{ position: "relative" }}>
+    <div style={{ position: "relative", ...wrapperStyle }}>
       <textarea
         ref={ref}
         className={className}
+        disabled={disabled}
         value={value}
         onChange={e => { onChange(e.target.value); setTimeout(checkTrigger, 0) }}
         onKeyUp={checkTrigger}
@@ -187,7 +191,7 @@ export default function TokenTextarea({
                 padding: "5px 10px", cursor: "pointer",
                 fontFamily: "monospace", fontSize: 12,
                 background: i === sel ? "var(--bg-card)" : "transparent",
-                color: i === sel ? "var(--accent-gold)" : "var(--text-secondary)",
+                color: i === sel ? "var(--accent-contrast)" : "var(--text-secondary)",
               }}
             >
               {"{$"}{token}{"}"}

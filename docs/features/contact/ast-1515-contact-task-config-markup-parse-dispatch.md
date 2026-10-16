@@ -1,3 +1,75 @@
+<!-- linear-archive: AST-1515 archived 2026-10-02 -->
+
+## Linear archive (AST-1515)
+
+**Archived:** 2026-10-02  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1515/contact-task-config-markup-parse-and-dispatch-estelle-needs-to-be-able  
+**Status at archive:** Archive  
+**Project:** Astral Contact  
+**Assignee:** ada  
+**Priority / estimate:** None / 5  
+**Parent:** AST-1414 — Estelle needs to be able to use our endpoints.  
+**Blocked by / blocks / related:** parent: AST-1414; blocks: AST-1518; blocks: AST-1516
+
+### Description
+
+## What this implements
+
+New `CONTACT_TASK_CONFIG` block (all task keys pre-registered with handler refs), markup parser, dispatch router, same-event follow-up Estelle turn, and `contact_estelle_turn` prompt markup contract. Does not implement gazer scrape, meteorite create, or read handlers — those are siblings #2–#4. Does not extend Contact skills ACL.
+
+## Citations
+
+`pattern.core.contact-task-markup` (proposed), `pattern.config.config-block`, `astral.agent.do-task-delegation`, `astral.config.config-source-of-truth`
+
+## Scope
+
+`src/utils/config.py` (modified — `CONTACT_TASK_CONFIG` block with all task keys + handler metadata); `src/core/contact.py` (modified — markup parser, dispatch router, follow-up turn, markup strip before Slack post); `data/admin/agent_task.json` (modified — `contact_estelle_turn` markup prompts). Technical: config block + asserts; contact markup parse/dispatch/follow-up + Style D; agent_task prompt contract.
+
+## Acceptance criteria
+
+1. Estelle can emit `~~/<contact_task_key> [parameters]~~` in a turn. Contact executes only keys listed in the contact-task config. Unknown keys are not executed. Markup does not appear in the Slack-visible reply.
+2. User-visible Slack replies stay conversational (envelope reply). Task payloads are not pasted raw into Slack.
+3. With Contact debug on, each contact-task run emits Style D found/recorded lines on dispatch paths.
+
+## Boundaries
+
+Does not implement gazer scrape, meteorite create, or read handlers (siblings). Does not extend Contact skills ACL.
+
+## Notes for planning
+
+Child #1 introduces `pattern.core.contact-task-markup`. Downstream siblings register handlers against this dispatch framework.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/AST-1414-estelle-endpoints`, child `sub/AST-1414/AST-NNN-contact-task-config-markup-parse-dispatch`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-08-27T00:42:43.514Z
+[code-rubric] REVIEW (Commit: 0f18b068) Pattern catalog pending; code PROCEED
+
+#### betty — 2026-08-27T00:39:48.079Z
+`origin/sub/AST-1414/AST-1515-contact-task-config-markup-parse-dispatch` @ `0f18b068` · markup dispatch manifest
+
+#### joan — 2026-08-27T00:34:43.082Z
+[plan-rubric] PROCEED (Commit: 79aebd46) dispatch framework ready
+
+#### ada — 2026-08-27T00:33:40.609Z
+[plan-discuss] round=1 reply
+
+Stage 1 step 3: dropped "exactly one `.`" assert (would fail import for `src.core.gazer.contact_task_gazer_scrape`). Assert now matches Stage 2 — handler str splits on last `.` into non-empty module_path + attr_name; module_path must start with `src.core.`.
+
+#### ada — 2026-08-27T00:33:38.312Z
+origin/sub/AST-1414/AST-1515-contact-task-config-markup-parse-dispatch @ `79aebd46` · handler assert fixed
+
+#### joan — 2026-08-27T00:33:09.245Z
+[plan-rubric] REVIEW (Commit: ab96557a) handler assert typo
+
+#### ada — 2026-08-27T00:30:19.447Z
+origin/sub/AST-1414/AST-1515-contact-task-config-markup-parse-dispatch @ `ab96557a` · four-stage dispatch framework
+
+---
+
 # AST-1515 — Contact-task config, markup parse, and dispatch
 
 **Linear:** [AST-1515](https://linear.app/astralcareermatch/issue/AST-1515/contact-task-config-markup-parse-and-dispatch-estelle-needs-to-be)  

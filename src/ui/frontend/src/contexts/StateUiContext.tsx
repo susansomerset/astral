@@ -5,7 +5,7 @@ import { useAuth } from "./AuthContext"
 /** Mirrors `build_state_ui_manifest()` in `src/utils/config.py`. */
 export interface StateUiManifest {
   jobs: {
-    in_review_sections: Array<{ state: string; label: string }>
+    processing_sections: Array<{ state: string; label: string }>
     grade_field_by_job_state: Record<string, string>
     grade_rubric_by_field: Record<string, string>
     skipped: {
@@ -14,6 +14,9 @@ export interface StateUiManifest {
       section_order: string[]
       section_labels: Record<string, string>
       bulk_retry_to_state_by_from_state: Record<string, string>
+      /** Ordered group rules, catch-all last: a state joins the first group listing it in `members`,
+       *  else the first group with a matching prefix, else the last group. */
+      groups: Array<{ key: string; label: string; prefixes: string[]; members: string[] }>
     }
     detail: { already_skipped_state: string }
     recommended: {
@@ -51,12 +54,6 @@ export interface StateUiManifest {
         nav_label: string
         default_expanded: boolean
       }>
-      // AST-1057: partition by METEORITE_CONFIG company prefix (manifest-driven).
-      meteorite_section?: {
-        section_id: string
-        label: string
-        company_prefix: string
-      }
     }
   }
   candidate: {

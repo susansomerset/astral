@@ -354,6 +354,92 @@ class TestAst508PrefilterPassedEligible:
         assert db.count_eligible_for_dispatch_task(task) == 2
 
 
+class TestAst1821CompanyAvailWindow:
+    """AST-1821: company Avail honors last_scan_at window with score_floor, via base-state batch_criteria; equals claim."""
+
+    CID = "c1821"
+    STATES = ["NO_OPENINGS", "NO_OPENINGS_RETRY"]
+
+    @staticmethod
+    def _ago(hours: float) -> str:
+        # SQLite text format (space, no T/offset) — must sort against datetime('now', '-N hours').
+        return (datetime.now(timezone.utc) - timedelta(hours=hours)).strftime("%Y-%m-%d %H:%M:%S")
+
+    def _save(self, db, short_name: str, state: str, last_scan_at) -> None:
+        db.save_company(
+            short_name,
+            state=state,
+            candidate_id=self.CID,
+            company_name=short_name,
+            company_data={"prefilter_score": 5.0, "no_jobs_message": "none"},
+            last_scan_at=last_scan_at,
+        )
+
+    def _seed(self, db) -> None:
+        self._save(db, "never", "NO_OPENINGS", None)
+        self._save(db, "stale", "NO_OPENINGS", self._ago(48))
+        self._save(db, "fresh", "NO_OPENINGS", self._ago(1))
+
+    def _task(self, freq_hrs: float) -> dict:
+        return {
+            "entity_type": "company",
+            "trigger_state": "NO_OPENINGS",
+            "task_key": "recheck_no_openings",
+            "candidate_id": self.CID,
+            "score_floor": 0.0,
+            "freq_hrs": freq_hrs,
+        }
+
+    def test_score_floor_default_window_excludes_recent(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        self._seed(db)
+        # freq_hrs=0 → NO_OPENINGS 24h default: never + stale.
+        assert db.count_eligible_for_dispatch_task(self._task(0)) == 2
+
+    def test_score_floor_window_follows_freq_hrs(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        self._seed(db)
+        assert db.count_eligible_for_dispatch_task(self._task(72)) == 1
+        assert db.count_eligible_for_dispatch_task(self._task(0.5)) == 3
+
+    def test_score_floor_count_equals_claim(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        self._seed(db)
+        n_avail = db.count_eligible_for_dispatch_task(self._task(0))
+        n_claimed = db.claim_company_batch(
+            "b1821",
+            "NO_OPENINGS",
+            10,
+            candidate_id=self.CID,
+            scan_interval_hours=24,
+            score_floor=0.0,
+            states=self.STATES,
+        )
+        assert n_avail == n_claimed == 2
+        assert {r["short_name"] for r in db.get_company_batch("b1821")} == {"never", "stale"}
+
+    def test_retry_trigger_uses_base_batch_criteria(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        self._save(db, "r_fresh", "NO_OPENINGS_RETRY", self._ago(1))
+        self._save(db, "r_stale", "NO_OPENINGS_RETRY", self._ago(48))
+        task = {
+            "entity_type": "company",
+            "trigger_state": "NO_OPENINGS_RETRY",
+            "task_key": "recheck_no_openings",
+            "candidate_id": self.CID,
+            "freq_hrs": 0,
+        }
+        # Base NO_OPENINGS 24h window applies to the implicit _RETRY trigger.
+        assert db.count_eligible_for_dispatch_task(task) == 1
+
+    def test_score_floor_helper_scan_interval_kwarg(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        self._seed(db)
+        count = db.count_companies_in_state_with_score_floor
+        assert count(self.CID, "NO_OPENINGS", 0.0, states=self.STATES) == 3
+        assert count(self.CID, "NO_OPENINGS", 0.0, states=self.STATES, scan_interval_hours=24) == 2
+        assert count(self.CID, "NO_OPENINGS", 0.0, states=self.STATES, scan_interval_hours=72) == 1
+
 class TestAst535DispatchTaskTripleUnique:
     """AST-535: UNIQUE(candidate_id, task_key, trigger_state); TO_WATCH trio rows."""
 
@@ -1194,9 +1280,12 @@ class TestAst882HomepageReadyClaimsWfr:
         assert {r["short_name"] for r in rows} == {"hr", "wfr"}
 
 class TestAst892FetchWebsiteExcludesSecondStrike:
-    """AST-892: fetch_website claim/count exclude WFR + homepage_text; prefilter still claims them."""
+    """AST-892 split removed (AST-1810): fetch_website counts + claims every WEBSITE_FOUND_RETRY row,
+    whatever homepage_text holds; count and claim stay in step."""
 
-    def test_count_excludes_second_strike_includes_scrape_retry(self, sqlite_in_memory) -> None:
+    def test_count_includes_every_wfr_row(self, sqlite_in_memory) -> None:
+        # [bug-repro] AST-1810: pre-fix the fetch_website count was 3 (the "second" row with
+        # homepage_text was excluded); to-be all 4 rows count.
         db = sqlite_in_memory
         cid = "c892"
         db.save_company(
@@ -1232,16 +1321,18 @@ class TestAst892FetchWebsiteExcludesSecondStrike:
             "task_key": "fetch_website",
             "candidate_id": cid,
         }
-        assert db.count_eligible_for_dispatch_task(fetch_task) == 3
+        assert db.count_eligible_for_dispatch_task(fetch_task) == 4
         prefilter_task = {
             "entity_type": "company",
             "trigger_state": "HOMEPAGE_READY",
             "task_key": "prefilter_company",
             "candidate_id": cid,
         }
-        assert db.count_eligible_for_dispatch_task(prefilter_task) == 3
+        # AST-1798 suffix-always: prefilter's HOMEPAGE_READY row claims HOMEPAGE_READY(_RETRY),
+        # never WEBSITE_FOUND_RETRY — fetch_website is the single owner.
+        assert db.count_eligible_for_dispatch_task(prefilter_task) == 0
 
-    def test_claim_skips_second_strike_keeps_bare_wfr(self, sqlite_in_memory) -> None:
+    def test_claim_takes_second_strike_and_bare_wfr(self, sqlite_in_memory) -> None:
         db = sqlite_in_memory
         cid = "c892b"
         db.save_company(
@@ -1270,11 +1361,10 @@ class TestAst892FetchWebsiteExcludesSecondStrike:
             10,
             candidate_id=cid,
             states=["WEBSITE_FOUND", "WEBSITE_FOUND_RETRY"],
-            exclude_prefilter_second_strike=True,
         )
-        assert n == 2
+        assert n == 3
         names = {r["short_name"] for r in db.get_company_batch("batch-892")}
-        assert names == {"retry", "fresh"}
+        assert names == {"second", "retry", "fresh"}
 
     def test_prefilter_claim_still_takes_second_strike(self, sqlite_in_memory) -> None:
         db = sqlite_in_memory
@@ -1292,7 +1382,6 @@ class TestAst892FetchWebsiteExcludesSecondStrike:
             10,
             candidate_id=cid,
             states=["HOMEPAGE_READY", "WEBSITE_FOUND_RETRY"],
-            exclude_prefilter_second_strike=False,
         )
         assert n == 1
         rows = db.get_company_batch("batch-892-pre")
@@ -1899,3 +1988,120 @@ class TestAst1781RevalidateDispatchEmptyRender:
         )
         assert db.get_dispatch_task(tid_self)["auto_mode"] in (0, False)
         assert db.get_dispatch_task(tid_other)["auto_mode"] in (1, True)
+
+
+# Branches: sweep_hrs column fresh + migrated (NULL, no backfill); save/update/template copy persist;
+# dispatch_task_sweep_due off (NULL/0) / missing last_run_at / inside / past interval;
+# get_due_tasks sweep branch (0 < Avail < min_count + due → marked) vs full batch (unmarked) vs not due.
+@pytest.mark.skipif(
+    not hasattr(__import__("src.data.database", fromlist=["x"]), "dispatch_task_sweep_due"),
+    reason="AST-1829 sweep_hrs not on this publish tip",
+)
+class TestAst1829SweepInterval:
+    """AST-1829: dispatch_task.sweep_hrs data + claim-queue scheduled-sweep due."""
+
+    _CID = "c1829"
+    _TK = "evaluate_jd"
+
+    @staticmethod
+    def _ago(hours: float) -> str:
+        return (datetime.now(timezone.utc) - timedelta(hours=hours)).strftime("%Y-%m-%d %H:%M:%S")
+
+    def _sweep_col(self, conn):
+        cols = {r[1]: r for r in conn.execute("PRAGMA table_info(dispatch_task)").fetchall()}
+        return cols.get("sweep_hrs")
+
+    # AC 1 (fresh): REAL, nullable, no default
+    def test_fresh_schema_has_nullable_real_column(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        conn = db._get_connection()
+        try:
+            db._ensure_dispatch_task_schema(conn)
+            col = self._sweep_col(conn)
+            assert col is not None
+            assert col[2].upper() == "REAL"
+            assert col[3] == 0  # notnull=0
+            assert col[4] is None  # dflt_value
+        finally:
+            conn.close()
+
+    # AC 1 (existing DB): missing column is added by the migration map; pre-existing rows stay NULL
+    def test_existing_db_migrates_column_without_backfill(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        tid = db.save_dispatch_task(self._CID, self._TK, min_count=1)
+        conn = db._get_connection()
+        try:
+            conn.execute("ALTER TABLE dispatch_task DROP COLUMN sweep_hrs")
+            conn.commit()
+            assert self._sweep_col(conn) is None
+            db._dispatch_task_schema_ensured = False
+            db._ensure_dispatch_task_schema(conn)
+            assert self._sweep_col(conn) is not None
+        finally:
+            conn.close()
+        assert db.get_dispatch_task(tid)["sweep_hrs"] is None
+
+    def test_save_and_update_persist_sweep_hrs(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        plain = db.save_dispatch_task(self._CID, self._TK, min_count=1)
+        assert db.get_dispatch_task(plain)["sweep_hrs"] is None
+        tid = db.save_dispatch_task(self._CID, "fetch_jd", min_count=1, sweep_hrs=2.5)
+        assert db.get_dispatch_task(tid)["sweep_hrs"] == 2.5
+        db.update_dispatch_task(tid, sweep_hrs=4)
+        assert float(db.get_dispatch_task(tid)["sweep_hrs"]) == 4.0
+
+    # AC 11: AST-875 template copy carries sweep_hrs (6 → 6; NULL stays NULL)
+    def test_template_copy_carries_sweep_hrs(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        db.save_dispatch_task("tmpl", self._TK, min_count=1, sweep_hrs=6)
+        db.save_dispatch_task("tmpl", "fetch_jd", min_count=1)
+        db.save_dispatch_task("tgt", self._TK, min_count=1, sweep_hrs=1)  # updated in place
+        db.set_dispatch_tasks_from_template_rows("tgt", db.list_dispatch_tasks_for_candidate("tmpl"))
+        by_key = {r["task_key"]: r for r in db.list_dispatch_tasks_for_candidate("tgt")}
+        assert by_key[self._TK]["sweep_hrs"] == 6.0
+        assert by_key["fetch_jd"]["sweep_hrs"] is None
+
+    @pytest.mark.parametrize(
+        "sweep_hrs,age_hours,expected",
+        [
+            (None, 2, False),
+            (0, 2, False),
+            (1, None, True),  # never run → due
+            (1, 10 / 60, False),
+            (1, 2, True),
+        ],
+        ids=["null_off", "zero_off", "missing_last_run", "inside_interval", "past_interval"],
+    )
+    def test_sweep_due_helper(self, sqlite_in_memory, sweep_hrs, age_hours, expected) -> None:
+        db = sqlite_in_memory
+        last = None if age_hours is None else self._ago(age_hours)
+        assert db.dispatch_task_sweep_due({"sweep_hrs": sweep_hrs, "last_run_at": last}) is expected
+
+    # AC 2–7 on the claim-queue path; Avail is stubbed so only the due rule is under test.
+    @pytest.mark.parametrize(
+        "avail,sweep_hrs,age_hours,auto,due,marked",
+        [
+            (3, 1, 2, True, True, True),          # AC 2 sweep due fires
+            (3, 1, 10 / 60, True, False, False),  # AC 3 inside interval
+            (3, None, 2, True, False, False),     # AC 4 NULL interval
+            (3, 0, 2, True, False, False),        # AC 4 zero interval
+            (0, 1, 2, True, False, False),        # AC 5 zero Avail
+            (3, 1, 2, False, False, False),       # AC 6 AUTO off
+            (10, 1, 2, True, True, False),        # AC 7 full batch unmarked
+        ],
+        ids=["ac2_due", "ac3_inside", "ac4_null", "ac4_zero", "ac5_zero_avail", "ac6_auto_off", "ac7_full"],
+    )
+    def test_get_due_tasks_sweep_rule(
+        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch, avail, sweep_hrs, age_hours, auto, due, marked
+    ) -> None:
+        db = sqlite_in_memory
+        tid = db.save_dispatch_task(
+            self._CID, self._TK, min_count=10, auto_mode=auto, sweep_hrs=sweep_hrs,
+        )
+        db.update_dispatch_task(tid, last_run_at=self._ago(age_hours))
+        monkeypatch.setattr(db, "count_eligible_for_dispatch_task", lambda task: avail)
+        rows = [t for t in db.get_due_tasks() if t["id"] == tid]
+        assert bool(rows) is due
+        if rows:
+            assert rows[0]["available_count"] == avail
+            assert bool(rows[0].get("_scheduled_sweep")) is marked

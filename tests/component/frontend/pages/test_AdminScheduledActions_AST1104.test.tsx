@@ -144,7 +144,8 @@ describe("AST-1104 Candidate All + Avail All blank-page survival", () => {
     mockApi()
     renderWithProviders(<ScheduledActions />)
     await waitFor(() => expect(screen.getByText("Scheduled Actions")).toBeInTheDocument())
-    expect(within(await filtersRoot()).getByLabelText("Avail")).toHaveValue("gt0")
+    // AST-1818: landing default is Avail All (AST-894 had gt0); selectAvailAll below is a no-op.
+    expect(within(await filtersRoot()).getByLabelText("Avail")).toHaveValue("")
 
     await selectAllCandidatesFilter()
     await selectAvailAll()

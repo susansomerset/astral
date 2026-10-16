@@ -383,3 +383,162 @@ class TestAst1778RailwayConsoleTransport:
         finally:
             monkeypatch.delenv("RAILWAY_ENVIRONMENT", raising=False)
             logging_mod._apply_console_formatter()
+
+
+# AST-1988: Railway JSON carries batch_id / candidate_id only when their contextvars are truthy.
+# Branches: both set → both keys; batch only → candidate omitted; both None / both "" → exact pre-fix string.
+class TestAst1988RailwayJsonIds:
+    """Railway JSON id keys (AST-1988 AC 1–2); #1 is the bug-repro."""
+
+    BARE = '{"level": "info", "message": "src.core.agent: hello"}'
+
+    @staticmethod
+    def _format(batch, cand) -> str:
+        # Tokens + finally so the ids never leak into later tests on this thread.
+        tb = logging_mod.log_batch_id.set(batch)
+        tc = logging_mod.log_candidate_id.set(cand)
+        try:
+            record = logging.LogRecord("src.core.agent", logging.INFO, __file__, 0, "hello", (), None)
+            return logging_mod._RailwayJsonFormatter().format(record)
+        finally:
+            logging_mod.log_candidate_id.reset(tc)
+            logging_mod.log_batch_id.reset(tb)
+
+    def test_formatter_adds_batch_and_candidate_when_set(self) -> None:
+        # bug-repro: pre-fix formatter never reads either contextvar.
+        assert json.loads(self._format("b-1988", "cand-1988")) == {
+            "level": "info",
+            "message": "src.core.agent: hello",
+            "batch_id": "b-1988",
+            "candidate_id": "cand-1988",
+        }
+
+    def test_formatter_batch_only_omits_candidate(self) -> None:
+        payload = json.loads(self._format("b-1988", None))
+        assert payload == {"level": "info", "message": "src.core.agent: hello", "batch_id": "b-1988"}
+        assert "candidate_id" not in payload
+
+    def test_formatter_unset_is_byte_identical(self) -> None:
+        # Exact string, not parsed: omit, never null (AC 2).
+        assert self._format(None, None) == self.BARE
+
+    def test_formatter_blank_ids_omitted(self) -> None:
+        assert self._format("", "") == self.BARE
+
+    def test_on_railway_emit_carries_ids(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Same root-handler swap as test_on_railway_emit_is_json_with_level.
+        monkeypatch.setenv("RAILWAY_ENVIRONMENT", "1")
+        root = logging.getLogger()
+        root.setLevel(logging.INFO)
+        captured = io.StringIO()
+
+        class _StdoutCapture(logging.StreamHandler):
+            def __init__(self) -> None:
+                logging.Handler.__init__(self)
+                self.stream = sys.stdout
+
+            def emit(self, record: logging.LogRecord) -> None:
+                try:
+                    captured.write(self.format(record) + self.terminator)
+                except Exception:
+                    self.handleError(record)
+
+        for h in list(root.handlers):
+            if isinstance(h, logging_mod._DatabaseLogHandler):
+                continue
+            if isinstance(h, logging.StreamHandler) and getattr(h, "stream", None) in (
+                sys.stdout,
+                sys.stderr,
+            ):
+                root.removeHandler(h)
+        capture_h = _StdoutCapture()
+        root.addHandler(capture_h)
+        tb = logging_mod.log_batch_id.set("b-1988")
+        tc = logging_mod.log_candidate_id.set("cand-1988")
+        try:
+            get_logger("test.ast1988.railway").warning("soft fail")
+            assert json.loads(captured.getvalue().strip()) == {
+                "level": "warn",
+                "message": "test.ast1988.railway: soft fail",
+                "batch_id": "b-1988",
+                "candidate_id": "cand-1988",
+            }
+        finally:
+            logging_mod.log_candidate_id.reset(tc)
+            logging_mod.log_batch_id.reset(tb)
+            root.removeHandler(capture_h)
+            monkeypatch.delenv("RAILWAY_ENVIRONMENT", raising=False)
+            logging_mod._apply_console_formatter()
+
+
+def _access_record(path: str, name: str = "gunicorn.access") -> logging.LogRecord:
+    # Plain dict stands in for gunicorn's SafeAtoms (no gunicorn import — hermetic);
+    # LogRecord unwraps a single-Mapping args tuple, so record.args is the dict.
+    return logging.LogRecord(
+        name, logging.INFO, __file__, 0, '%(h)s "%(r)s"',
+        ({"h": "127.0.0.1", "r": f"GET {path} HTTP/1.1", "U": path},), None,
+    )
+
+
+# AST-2078 (gap sibling AST-2079): logger-level filter on gunicorn.access drops
+# RAILWAY_CONFIG["access_log_quiet_paths"] polls; root / product loggers untouched.
+# Never reset _quiet_access_filter_attached — the logger is process-global and a
+# reset would stack a second filter. Logger.filter returns the record (3.12+) or
+# False, so results are checked by truthiness.
+class TestAst2078GunicornAccessQuietFilter:
+    """gunicorn.access quiet filter (AST-2078); #1 is the bug-repro."""
+
+    @pytest.fixture(autouse=True)
+    def _attach(self) -> None:
+        get_logger(__name__)  # guarantees the attach-once block has run
+
+    def test_deploy_status_access_record_dropped(self) -> None:
+        # bug-repro: pre-fix there is no filter, so the poll record passes.
+        assert not logging.getLogger("gunicorn.access").filter(_access_record("/api/deploy_status"))
+
+    def test_other_access_record_kept(self) -> None:
+        assert logging.getLogger("gunicorn.access").filter(_access_record("/api/other"))
+
+    def test_quiet_paths_read_from_railway_config(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Config is the source of truth (no hardcoded set): swap the list, verdicts swap.
+        from src.utils import config as config_mod
+
+        monkeypatch.setitem(config_mod.RAILWAY_CONFIG, "access_log_quiet_paths", ("/api/other",))
+        access = logging.getLogger("gunicorn.access")
+        assert not access.filter(_access_record("/api/other"))
+        assert access.filter(_access_record("/api/deploy_status"))
+
+    def test_non_mapping_args_kept(self) -> None:
+        rec = logging.LogRecord("gunicorn.access", logging.INFO, __file__, 0, "%s", ("x",), None)
+        assert logging.getLogger("gunicorn.access").filter(rec)
+
+    def test_filter_attached_once(self) -> None:
+        get_logger("test.ast2079.a")
+        get_logger("test.ast2079.b")
+        quiet = [
+            f for f in logging.getLogger("gunicorn.access").filters
+            if isinstance(f, logging_mod._QuietAccessFilter)
+        ]
+        assert len(quiet) == 1
+
+    def test_product_info_and_root_unaffected(self, caplog: pytest.LogCaptureFixture) -> None:
+        caplog.set_level(logging.INFO)
+        root = logging.getLogger()
+        level_before = root.level
+        # (a) product INFO still emitted at INFO.
+        get_logger("src.test_ast2079").info("ping")
+        assert any(
+            r.name == "src.test_ast2079" and r.levelno == logging.INFO and r.getMessage() == "ping"
+            for r in caplog.records
+        )
+        # (b) same atoms on a non-access logger pass — the filter lives only on gunicorn.access.
+        assert logging.getLogger("src.test_ast2079").filter(
+            _access_record("/api/deploy_status", name="src.test_ast2079")
+        )
+        # (c) nothing attached to root or its handlers.
+        assert not any(isinstance(f, logging_mod._QuietAccessFilter) for f in root.filters)
+        assert not any(
+            isinstance(f, logging_mod._QuietAccessFilter) for h in root.handlers for f in h.filters
+        )
+        # (d) get_logger leaves root level alone.
+        assert root.level == level_before

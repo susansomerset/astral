@@ -2,41 +2,58 @@ import { render } from "@testing-library/react"
 import { describe, expect, it, vi } from "vitest"
 import {
   artifactHasContent,
+  buildPhaseListGradeRow,
   buildPhaseSectionGradeConfidenceRow,
+  extractAgentPayloadText,
+  formatPhaseScore,
   formatPhaseSectionScoreTitle,
   gradesForHeader,
+  jobGradablePercent,
   jobScoreBreakdownForGradesField,
-  materialsPreviewVisible,
+  phaseThermometerModel,
   primaryActionsForState,
   anyReportArtifactContent,
   artifactsTabPrimaryActions,
   isArtifactsBuildInProgress,
   printCoverVisible,
   printResumeVisible,
+  totalScore,
 } from "../../../../src/ui/frontend/src/lib/recommendedJobReport"
 import { STATE_UI_MANIFEST_FIXTURE } from "../fixtures/stateUiManifestFixture"
 
-describe("recommendedJobReport — AST-581 materialsPreviewVisible", () => {
-  it("returns true on CANDIDATE_REVIEW even when artifacts empty", () => {
-    expect(materialsPreviewVisible("CANDIDATE_REVIEW", {})).toBe(true)
+describe("recommendedJobReport — AST-2234 helpers", () => {
+  it("totalScore sums phase scores; null if any phase missing", () => {
+    expect(totalScore({ jd_score: 1, do_score: 2, get_score: 3, like_score: 4 }, [
+      "jd_score", "do_score", "get_score", "like_score",
+    ])).toBe(10)
+    expect(totalScore({ jd_score: 1, do_score: 2 }, ["jd_score", "do_score", "get_score"])).toBeNull()
   })
 
-  it("returns false on RECOMMENDED without artifact content", () => {
-    expect(materialsPreviewVisible("RECOMMENDED", {})).toBe(false)
+  it("phaseThermometerModel fill = score/max; tooltip has score + gradable %", () => {
+    const m = phaseThermometerModel(42, { earned: 40, possible: 50, max: 100 })
+    expect(m).toEqual({
+      fillRatio: 0.42,
+      tooltip: "Score 42.0, 50% gradable",
+    })
+    expect(phaseThermometerModel(42, null)).toBeNull()
+    expect(phaseThermometerModel(42, { earned: 1, possible: 1, max: 0 })).toBeNull()
   })
 
-  it("returns true on BUILD_ARTIFACTS when hydrated job_resume has text", () => {
-    expect(
-      materialsPreviewVisible("BUILD_ARTIFACTS", {
-        job_resume: { professional_summary: "draft" },
-      }),
-    ).toBe(true)
-    // AST-1593: resume_content alone is not job-resume SoT
-    expect(
-      materialsPreviewVisible("BUILD_ARTIFACTS", {
-        resume_content: { professional_summary: "legacy" },
-      }),
-    ).toBe(false)
+  it("jobGradablePercent over four phase grade vectors (X = ungraded)", () => {
+    expect(jobGradablePercent({
+      jd_grades: [{ grade: "A" }, { grade: "X" }],
+      do_grades: [{ grade: "B" }],
+      get_grades: [{ grade: "X" }],
+      like_grades: [{ grade: "C" }],
+    })).toBe(60) // (5-2)/5
+    expect(jobGradablePercent({})).toBeNull()
+  })
+
+  it("extractAgentPayloadText unescapes string agent_payload; empty without it", () => {
+    expect(extractAgentPayloadText(JSON.stringify({ agent_payload: "a\nb" }))).toBe("a\nb")
+    expect(extractAgentPayloadText(JSON.stringify({ agent_payload: { nested: 1 } }))).toContain("nested")
+    expect(extractAgentPayloadText(JSON.stringify({ ok: true }))).toBe("")
+    expect(extractAgentPayloadText("not-json")).toBe("")
   })
 })
 
@@ -66,12 +83,6 @@ describe("recommendedJobReport — AST-1100 pin-slot visibility", () => {
     expect(printResumeVisible({ job_resume: "pin-id" })).toBe(true)
     expect(printResumeVisible({ resume_content: { professional_summary: "x" } })).toBe(false)
     expect(printResumeVisible({})).toBe(false)
-  })
-
-  it("materialsPreviewVisible uses remapped resume/cover checks", () => {
-    expect(materialsPreviewVisible("RECOMMENDED", { job_resume: "pin-id" })).toBe(true)
-    expect(materialsPreviewVisible("RECOMMENDED", { cover_letter: "pin-cover" })).toBe(true)
-    expect(materialsPreviewVisible("RECOMMENDED", {})).toBe(false)
   })
 })
 
@@ -176,7 +187,7 @@ describe("recommendedJobReport — AST-951 Artifacts helpers", () => {
   it("isArtifactsBuildInProgress covers base and hop, not ERROR", () => {
     expect(isArtifactsBuildInProgress("BUILD_ARTIFACTS")).toBe(true)
     expect(isArtifactsBuildInProgress("BUILD_ARTIFACTS.draft_job_resume")).toBe(true)
-    expect(isArtifactsBuildInProgress("ERROR_BUILD_ARTIFACTS")).toBe(false)
+    expect(isArtifactsBuildInProgress("ERROR_ANTICIPATE_SCAN")).toBe(false)
     expect(isArtifactsBuildInProgress("RECOMMENDED")).toBe(false)
   })
 
@@ -240,5 +251,94 @@ describe("recommendedJobReport — AST-1348 phase score header helpers", () => {
   })
 })
 
+describe("recommendedJobReport — AST-1874 list score in phase header", () => {
+  const tpl =
+    STATE_UI_MANIFEST_FIXTURE.jobs.recommended.phase_score_header_title_template!
+  const trio = { earned: 42, possible: 50, max: 60 }
 
+  it("formatPhaseScore: finite number → one decimal; anything else → em dash", () => {
+    expect(formatPhaseScore(3.66)).toBe("3.7")
+    expect(formatPhaseScore(0)).toBe("0.0")
+    for (const v of [null, undefined, "3.7", Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(formatPhaseScore(v)).toBe("\u2014")
+    }
+  })
 
+  it("fills {score} with the one-decimal list score (AC3)", () => {
+    expect(tpl).toContain(" - {score}")
+    expect(formatPhaseSectionScoreTitle("JD Analysis", trio, tpl, 3.66)).toBe(
+      "JD Analysis - 3.7 - score: 42 out of 50 possible (60 max total)",
+    )
+  })
+
+  it("absent / non-finite score drops the whole ' - {score}' segment — no em dash, no empty dash", () => {
+    for (const s of [undefined, null, "3.7", Number.NaN]) {
+      const out = formatPhaseSectionScoreTitle("JD Analysis", trio, tpl, s)
+      expect(out).toBe("JD Analysis - score: 42 out of 50 possible (60 max total)")
+      expect(out).not.toContain("\u2014")
+    }
+  })
+
+  it("no-template fallback carries the same score segment rule", () => {
+    expect(formatPhaseSectionScoreTitle("DO Analysis", trio, "", 8.5)).toBe(
+      "DO Analysis - 8.5 - score: 42 out of 50 possible (60 max total)",
+    )
+    expect(formatPhaseSectionScoreTitle("DO Analysis", trio, "  ")).toBe(
+      "DO Analysis - score: 42 out of 50 possible (60 max total)",
+    )
+  })
+})
+
+describe("recommendedJobReport — AST-1968 letterless list grade row", () => {
+  // AST-1771 fixture: importance-then-grade order puts QC/B before EFW/A.
+  const grades = [
+    { vector: "Embedded/Firmware/Hardware Domain", grade: "A", confidence: 5, reason: "fit" },
+    { vector: "Quality Check", grade: "B", confidence: 4, reason: "ok" },
+  ]
+  const job = {
+    jd_grades: grades,
+    jd_rubric: [
+      { code: "EFW", label: "Embedded/Firmware/Hardware Domain", importance: 1, grade_descriptions: [] },
+      { code: "QC", label: "Quality Check", importance: 5, grade_descriptions: [] },
+    ],
+  }
+  const dotSig = (root: ParentNode) =>
+    [...root.querySelectorAll(".grade-dot")].map(d => ({
+      colour: [...d.classList].find(c => c.startsWith("dot-")),
+      title: d.getAttribute("title"),
+    }))
+
+  it("AC10/AC11: same circles, colours, order and tooltips as the modal row; no letters, no confidence", () => {
+    const list = render(<>{buildPhaseListGradeRow(job, "jd_grades")}</>).container
+    const modal = render(<>{buildPhaseSectionGradeConfidenceRow(grades, job, "jd_grades")}</>).container
+    expect(list.querySelector(".recommended-list-phase-grade-row")).toBeTruthy()
+    expect(dotSig(list)).toEqual(dotSig(modal))
+    expect(dotSig(list).map(d => d.colour)).toEqual(["dot-b", "dot-a"])
+    for (const dot of list.querySelectorAll(".grade-dot")) {
+      expect(dot).toHaveClass("grade-dot-letterless")
+      expect(dot.textContent).toBe("")
+    }
+    expect(list.querySelector(".confidence-bullets")).toBeNull()
+  })
+
+  it("modal row keeps letters and confidence after the shared-helper refactor", () => {
+    const modal = render(<>{buildPhaseSectionGradeConfidenceRow(grades, job, "jd_grades")}</>).container
+    const dots = [...modal.querySelectorAll(".grade-dot")]
+    expect(dots.map(d => d.textContent)).toEqual(["B", "A"])
+    expect(modal.querySelector(".grade-dot-letterless")).toBeNull()
+    expect(modal.querySelectorAll(".confidence-bullets")).toHaveLength(2)
+  })
+
+  // Columns come from top-level fields (list API flattens); grade values follow jobGradesForField
+  // (job_data first) — same source as the modal's renderAnalysisMetadata.
+  it("grade values prefer job_data via jobGradesForField; null with no grades", () => {
+    const both = {
+      jd_grades: [{ vector: "X", grade: "A", confidence: 1 }],
+      job_data: { jd_grades: [{ vector: "X", grade: "C", confidence: 1 }] },
+    }
+    const { container } = render(<>{buildPhaseListGradeRow(both, "jd_grades")}</>)
+    expect(container.querySelector(".grade-dot.dot-c")).toBeTruthy()
+    expect(container.querySelector(".grade-dot.dot-a")).toBeNull()
+    expect(buildPhaseListGradeRow({}, "jd_grades")).toBeNull()
+  })
+})

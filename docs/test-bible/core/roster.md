@@ -10,13 +10,17 @@
 
 ---
 
+### AST-2086 · AST-2073 (pointer)
+
+Company terminals renamed by writing task (select / parse / prefilter / resolve / upshot): `ERROR_SELECT_JOB_PAGE_*`, `BOT_BLOCKED_SELECT_JOB_PAGE`, `ERROR_PARSE_JOB_LIST_UNPARSEABLE`, `ERROR_PREFILTER_COMPANY_*`, `ERROR_INFLOW_RESOLVE_WEBSITE_NOT_FOUND` / `ERROR_RESOLVE_WEBSITE_NOT_FOUND`, `ERROR_COMPANY_UPSHOT`. Parse empty-token (dispatch and select-only chain) → bare `ERROR_PARSE_JOB_LIST`; JOBS_FOUND scrape error → required `locate_job_page.error_state` (`ERROR_SELECT_JOB_PAGE`, no fallback): **`TestAst2006EmptyTokenCompanyTerminals`**, **`TestJobsFoundProcessJobSite469::test_scrape_error_transitions_to_select_error`**. Agent `response_type` literals (`NO_JOBLIST`, `JOBSITE_SCRAPE_ISSUE`, …) are unchanged. Primary manifest: **`docs/test-bible/utils/config.md`** § AST-2086.
+
 ### AST-463 · AST-460
 
-**`recheck_no_openings`** dispatch batch: Playwright **`get_visible_text`** on stored **`job_site`** only; substring match on **`company_data.no_jobs_message`** keeps **NO_OPENINGS** + **`last_scan_at`**; absence transitions to **JOBS_FOUND**. **TO_WATCH** **`find_job_page`** path unchanged. Admin adhoc live preview echoes **`job_site`** for **`recheck_no_openings`**.
+**`recheck_no_openings`** dispatch batch: Playwright **`get_visible_text`** on stored **`job_site`** only; substring match on **`company_data.no_jobs_message`** keeps **NO_OPENINGS** + **`last_scan_at`**; absence transitions to **JOBS_FOUND**. **TO_WATCH** **`find_job_page`** path unchanged. Admin adhoc live preview echoes **`job_site`** for **`recheck_no_openings`**. **AST-1821:** failed attempts (missing **`job_site`**, missing **`no_jobs_message`**, Playwright exception) also stamp **`last_scan_at`**; missing **`short_name`** does not.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| **`process_recheck_no_openings`** + **`run_company_task`** **NO_OPENINGS** branch | `src/core/roster.py` | `tests/component/core/test_roster.py` (**`TestProcessRecheckNoOpenings`**, **`TestRunCompanyTask::test_no_openings_routes_to_recheck_not_find_job_page`**, **`TestRunCompanyTask::test_locate_job_page_paths`**) |
+| **`process_recheck_no_openings`** + **`run_company_task`** **NO_OPENINGS** branch | `src/core/roster.py` | `tests/component/core/test_roster.py` (**`TestProcessRecheckNoOpenings`**, **`TestRunCompanyTask::test_no_openings_routes_to_recheck_not_find_job_page`**, **`TestRunCompanyTask::test_locate_job_page_paths`**) (**AST-1821** stamp asserts in **`test_guards_missing_fields`**, **`test_playwright_failure_no_state_change`**) |
 | Admin adhoc content for **locate_job_page** (nav_links) + **`recheck_no_openings`** (**`job_site`**) | `src/ui/api/api_admin.py` | `tests/component/ui/api/test_api_admin.py` (**`test_build_adhoc_live_content_remaining_company_and_job_edges`** in **`TestApiAdminBranchGaps`**) |
 | Dispatch seed **`recheck_no_openings`** + migration off **`find_job_page`** | `src/data/database.py` | Exercised via full component run / DB harness; roster tests mock I/O |
 
@@ -310,7 +314,7 @@ Gazer batch debug + assembled persist: **`docs/test-bible/core/gazer.md`** (**AS
 
 ### AST-720 · AST-716
 
-**`select_job_page`** decomposed dispatch from **`PJL_READY`** — load **`pjl_assembled_content`** / **`pjl_scrape_pages`** (AST-719); **`JOBLIST_TITLES` → `JOBLIST_IDENTIFIED`** without parse or **`job_site`** column write; **`TRY_LINKS`** → **`PREFILTER_PASSED_RETRY`** + ledger append or **`NO_PJL_SELECTED`**; **`JOBSITE_SCRAPE_ISSUE`** / **`JOBLIST_NO_JOBS`** with **`suppress_job_site`**. Default admin trigger **`select_job_page` → `PJL_READY`**.
+**`select_job_page`** decomposed dispatch from **`PJL_READY`** — load **`pjl_assembled_content`** / **`pjl_scrape_pages`** (AST-719); **`JOBLIST_TITLES` → `JOBLIST_IDENTIFIED`** without parse or **`job_site`** column write; **`TRY_LINKS`** → **`PREFILTER_PASSED_RETRY`** + ledger append or **`NO_PJL_SELECTED`**; **`JOBSITE_SCRAPE_ISSUE`** with **`suppress_job_site`**; **`JOBLIST_NO_JOBS` → `NO_OPENINGS`** persists the selected page URL as **`job_site`** (**`NO_OPENINGS` ∈ `_PERSIST_PAGE_OPTION_URL_STATES`**, AST-1892) — suppression (AST-673) stays on **`JOBLIST_IDENTIFIED`** and **`TRY_LINKS`**-exhausted exits only. Default admin trigger **`select_job_page` → `PJL_READY`**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
@@ -367,13 +371,28 @@ Gazer batch debug + assembled persist: **`docs/test-bible/core/gazer.md`** (**AS
 
 ### AST-719 · AST-716
 
-**PJL ledger helpers** — **`_scrape_pjl_page`**, **`_merge_pjl_scrape_record`**, **`_assemble_pjl_content`**, **`_merge_pjl_nav_links`**; gazer **`fetch_job_pages_batch`** imports these for additive scrape. Does not write **`job_site`**.
+**PJL ledger helpers** — **`_scrape_pjl_page`**, **`_merge_pjl_scrape_record`**, **`_assemble_pjl_content`**, **`_merge_pjl_nav_links`**; gazer **`fetch_job_pages_batch`** imports these for ~~additive~~ scrape (**AST-1995**: `_merge_pjl_scrape_record` is an upsert by `normalize_link`; `_pjl_scrape_ledger_keys` deleted — § AST-1999). Does not write **`job_site`**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Additive merge + assembled content + nav append | `src/core/roster.py` | `tests/component/core/test_roster.py::TestAst719PjlRosterHelpers` |
+| ~~Additive~~ Upsert merge + assembled content + nav append | `src/core/roster.py` | `tests/component/core/test_roster.py::TestAst719PjlRosterHelpers` |
 
 Gazer batch + consult routing: **`docs/test-bible/core/gazer.md`** · **`docs/test-bible/core/consult.md`** (**AST-719**).
+
+---
+
+### AST-1999 · AST-1994 (gap — PJL upsert; product AST-1995)
+
+**Publish:** `origin/sub/AST-1994/AST-1999-fetch-refresh-tests`. Product: **AST-1995**. `_merge_pjl_scrape_record`: error or empty text → existing unchanged (error-with-text too); otherwise build the row as before and replace the first `normalize_link`-matching row in place (whole row — missing `enumerated_nav_links` drops the key), else append; caller's list not mutated.
+
+| Area | Source | Component tests (`TestAst719PjlRosterHelpers::`) |
+| --- | --- | --- |
+| Duplicate URL replaces (was skip); empty skipped; new appends | `src/core/roster.py` | `test_merge_pjl_scrape_record_replaces_duplicate_and_skips_empty` (rename of `…_skips_duplicate_and_empty`, first assert flipped) |
+| Replace in place by `normalize_link` (scheme/case/slash), order stable, no mutation | same | `test_ast1995_upsert_replaces_matching_row_in_place` |
+| `error` record discarded even with text (new + existing URL) | same | `test_ast1995_error_record_discarded_even_with_text` |
+| Whole-row replace drops `enumerated_nav_links` | same | `test_ast1995_whole_row_replace_drops_enumerated_nav_links` |
+
+`_merge_pjl_nav_links` unchanged — `test_merge_pjl_nav_links_appends_deduped` still holds. Gazer nodes, `[bug-repro]` list, and manifest: **`docs/test-bible/core/gazer.md`** § AST-1999.
 
 ---
 
@@ -671,12 +690,14 @@ Migration CLI: **`docs/test-bible/dev/backfill_latest_only_rubric_entity_data.md
 
 ### AST-882 · AST-881
 
-**AST-882:** Prefilter one automatic retry then terminal **`ERROR_PREFILTER`**. **`_prefilter_fail`** / batch fail dest use current state (`HOMEPAGE_READY` → `WEBSITE_FOUND_RETRY`, `WEBSITE_FOUND_RETRY` → `ERROR_PREFILTER`). Not-ready **`WEBSITE_FOUND_RETRY`** rows are left alone for fetch_website (no **`CANNOT_READ_WEBSITE`**). Claim companion: **`docs/test-bible/utils/config.md`** · **`docs/test-bible/data/database/dispatch_tasks.md`**. Gazer homepage-ready WFR skip: **`docs/test-bible/core/gazer.md`**.
+**AST-882:** Prefilter one automatic retry then terminal **`ERROR_PREFILTER`**. **`_prefilter_fail`** / batch fail dest use current state (`HOMEPAGE_READY` → `WEBSITE_FOUND_RETRY`, `WEBSITE_FOUND_RETRY` → `ERROR_PREFILTER`). **Superseded by AST-1839 (tests: AST-1846):** parsing first strike is **`HOMEPAGE_READY_RETRY`**; envelope (`agent_failure`) first strike is **`WEBSITE_FOUND_RETRY`** once (history-gated); anything out of a holding → **`ERROR_PREFILTER`**. The rows below were flipped in place — see § AST-1846. Not-ready **`WEBSITE_FOUND_RETRY`** rows are left alone for fetch_website (no **`CANNOT_READ_WEBSITE`**). Claim companion: **`docs/test-bible/utils/config.md`** · **`docs/test-bible/data/database/dispatch_tasks.md`**. Gazer homepage-ready WFR skip: **`docs/test-bible/core/gazer.md`**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
 | `_prefilter_fail` first/second strike | `src/core/roster.py` | `tests/component/core/test_roster.py::TestAst882PrefilterOneRetryThenError::{test_prefilter_fail_first_strike_retries,test_prefilter_fail_second_strike_errors}` |
-| Batch do_task fail from WFR → error | `src/core/roster.py` | `::TestAst882PrefilterOneRetryThenError::test_batch_do_task_failure_second_strike_to_error` |
+| Batch do_task fail from HR_RETRY → error (was WFR pre-AST-1839) | `src/core/roster.py` | `::TestAst882PrefilterOneRetryThenError::test_batch_do_task_failure_second_strike_to_error` |
+
+**AST-1810:** `get_new_company_batch` no longer takes/passes `exclude_prefilter_second_strike` — `TestBatchApi::test_get_new_company_batch_claims_and_returns_rows` drops the kwarg from its `claim_company_batch` call assert. Prefilter second-strike routing rows above are unchanged. Primary manifest: **`docs/test-bible/data/database/dispatch_tasks.md`** (**AST-1810**).
 | Not-ready WFR leave-alone | `src/core/roster.py` | `::TestAst882PrefilterOneRetryThenError::test_not_ready_wfr_left_alone_for_fetch_website` |
 | Monolithic fail uses current state | `src/core/roster.py` | `::TestPrefilterCompany::test_api_failure_and_missing_parsed_response` (revised) |
 
@@ -711,6 +732,8 @@ Migration CLI: **`docs/test-bible/dev/backfill_latest_only_rubric_entity_data.md
 | Existing happy / empty-DOM retry-terminal | `src/core/roster.py` | `::TestAst721ParseJobListDispatch` |
 
 Consult / dispatcher / config: **`docs/test-bible/core/consult.md`** · **`docs/test-bible/core/dispatcher.md`** · **`docs/test-bible/utils/config.md`** (**AST-891**).
+
+Timeout partial counts: § AST-1847 · AST-1848.
 
 **AST-891** narrowed run:
 
@@ -808,3 +831,543 @@ Discovery lands **`DISCOVERED`**; CSE-only **`resolve_company_website`** (persis
 | Readiness ready / empty | `TestAst689ScrapeReadiness` |
 
 Canonical external map: [`external/telescope.md`](../external/telescope.md).
+
+---
+
+### AST-1802 · AST-1801 (claim union — registry-absent companion)
+
+**Product (AST-1801):** when `states=` is provided, `get_new_company_batch` / `get_new_job_batch` / `get_new_candidate_batch` do **not** require every list member ∈ the entity-state registry; single-`state` callers (`states` omitted) still reject unknown primaries. Live repro: `HOMEPAGE_READY` + `HOMEPAGE_READY_RETRY` (companion ∉ `COMPANY_STATES`).
+
+| Area | Behavior | Manifest tests |
+| --- | --- | --- |
+| Roster multi-state | `states=["HOMEPAGE_READY","HOMEPAGE_READY_RETRY"]` — no registry `ValueError`; `states=` forwarded to claim | `tests/component/core/test_roster.py::TestBatchApi::test_get_new_company_batch_states_allows_registry_absent_companion` |
+| Roster single-state | unknown primary still raises | `TestBatchApi::test_get_new_company_batch_rejects_unknown_state` |
+| Job mirror | `INVALID_TITLE` + absent `INVALID_TITLE_RETRY` | `tests/component/core/test_tracker.py::TestBatchApi::test_states_list_allows_registry_absent_companion` |
+| Candidate mirror | `ACTIVE_SEARCH` + absent `ACTIVE_SEARCH_RETRY` | `tests/component/core/test_candidate.py::TestAst1259CandidateBatchApi::test_states_list_allows_registry_absent_companion` |
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_roster.py::TestBatchApi::test_get_new_company_batch_states_allows_registry_absent_companion \
+  tests/component/core/test_roster.py::TestBatchApi::test_get_new_company_batch_rejects_unknown_state \
+  tests/component/core/test_tracker.py::TestBatchApi::test_states_list_allows_registry_absent_companion \
+  tests/component/core/test_candidate.py::TestAst1259CandidateBatchApi::test_states_list_allows_registry_absent_companion \
+  -q
+```
+
+
+### AST-1807 · AST-1805 (implicit _RETRY substate)
+
+**Parent:** [AST-1804](https://linear.app/astralcareermatch/issue/AST-1804). **Publish:** `origin/sub/AST-1804/AST-1807-implicit-retry-tests`. Product: **AST-1805** (`{base}_RETRY` validates through its registered base; retry priors derived by `state_prior_states`). Probe retries are never registry keys, so these stay green through **AST-1806**'s purge. Unregistered base (`NOPE_RETRY`) is still rejected everywhere.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| `PREFILTER_FAILED_RETRY` accepted via base | `src/core/roster.py` `transition_company_state` | **`TestTransitionCompanyState::test_ast1807_accepts_implicit_retry_of_registered_base`** |
+| `NOPE_RETRY` rejected | same | **`…::test_ast1807_rejects_unregistered_base_retry`** |
+
+**Broken / obsolete:** none.
+
+**Integration:** none — do not invent.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_roster.py::TestTransitionCompanyState::test_ast1807_accepts_implicit_retry_of_registered_base \
+  tests/component/core/test_roster.py::TestTransitionCompanyState::test_ast1807_rejects_unregistered_base_retry \
+  -q
+```
+
+
+### AST-1808 · AST-1806 (explicit _RETRY registry purge)
+
+**Parent:** [AST-1804](https://linear.app/astralcareermatch/issue/AST-1804). **Publish:** `origin/sub/AST-1804/AST-1808-purge-retry-tests`. Product: **AST-1806** (18 `*_RETRY` registry keys + declared retry priors deleted; retries are implicit substates, priors derived by `state_prior_states`). Green only once AST-1806 is on the tree (ftr `2a419fbf`+); pre-purge `65e3ca6f` is red.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Single-state `WEBSITE_FOUND_RETRY` claim: gate + `batch_criteria` resolve via base; `NOPE_RETRY` still raises | `src/core/roster.py` `get_new_company_batch` | **`TestBatchApi::test_ast1808_single_state_retry_claims_with_base_criteria`** |
+
+**Broken / obsolete:** none.
+
+**Integration:** none — do not invent.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_roster.py::TestBatchApi::test_ast1808_single_state_retry_claims_with_base_criteria \
+  -q
+```
+
+### AST-1842 · AST-1825 (select_job_page provider_call_timeout hold)
+
+**Parent:** [AST-1825](https://linear.app/astralcareermatch/issue/AST-1825) (orphaned-bug mini-parent). Product: **AST-1842**; test/bible delivery on gap sibling **AST-1843** (`origin/sub/AST-1825/AST-1843-repro-coverage`). A `do_task` failure with `failure_class == PROVIDER_CALL_BUDGET["failure_class"]` (AST-1189 timeout) joins the AST-897 balance-refusal hold in `_find_job_page_from_assembled`: current state (`PJL_READY`) held, `state_held=True`, no `_save_company(state="NO_JOBLIST")`. Every other failure still saves `NO_JOBLIST` / `SELECT_FAILED`. `[bug-repro]`: red on pre-fix `origin/dev` (`NO_JOBLIST` saved), green once AST-1842 is on the tree.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Timeout hold (select-only decomposed entry) | `src/core/roster.py` (`_find_job_page_from_assembled`) | **`tests/component/core/test_roster.py::TestAst1842SelectJobPageTimeoutHold::test_find_job_page_provider_call_timeout_holds_pjl_ready`** |
+| Balance-refusal hold regression | same | **`TestAst897HoldStateOnBalanceRefusal::test_find_job_page_holds_state`** |
+| Non-hold failure still `NO_JOBLIST` | same | existing **`test_find_assembled_do_task_failure`** |
+
+**Broken / obsolete:** none.
+
+**Integration:** none — do not invent.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_roster.py::TestAst1842SelectJobPageTimeoutHold \
+  tests/component/core/test_roster.py::TestAst897HoldStateOnBalanceRefusal \
+  tests/component/core/test_roster.py::test_find_assembled_do_task_failure \
+  -q
+```
+
+### AST-1892 · AST-1887 (decomposed JOBLIST_NO_JOBS persists job_site)
+
+**Parent:** [AST-1887](https://linear.app/astralcareermatch/issue/AST-1887) (orphaned-bug mini-parent). Product: **AST-1892**; test/bible delivery on gap sibling **AST-1894** (`origin/sub/AST-1887/AST-1894-no-openings-job-site-tests`). Decomposed (`PJL_READY`) `JOBLIST_NO_JOBS` → `NO_OPENINGS` no longer passes `suppress_job_site`; `_save_company` → `_job_site_for_persist` writes the selected page URL so `recheck_no_openings` has a `job_site`. `[bug-repro]`: red on pre-fix `origin/dev` (`job_site=""`), green once AST-1892 is on the tree.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Decomposed no-jobs persists `job_site` | `src/core/roster.py` (`_check_parse_results`) | **`tests/component/core/test_roster.py::TestAst720PjlReadySelectDispatch::test_joblist_no_jobs_persists_selected_job_site`** |
+| `JOBLIST_IDENTIFIED` still suppresses | same | existing **`::test_joblist_titles_identified_without_job_site_column`** |
+| `JOBSITE_SCRAPE_ISSUE` still suppresses (out of scope) | same | existing **`::test_jobsite_scrape_issue_suppresses_job_site`** |
+
+**Broken / obsolete:** none.
+
+**Integration:** none — do not invent.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_roster.py::TestAst720PjlReadySelectDispatch \
+  -q
+```
+
+### AST-1840 · AST-1844 (qa-fix bug-repro — `_culled_dom_for_parse` off the event loop)
+
+**Parent:** [AST-1838](https://linear.app/astralcareermatch/issue/AST-1838) (orphaned-bug mini-parent). Product: **AST-1840**; test/bible delivery on gap sibling **AST-1844** (`origin/sub/AST-1838/AST-1844-parse-job-list-event-loop-block-tests`). The three async cull sites now `await asyncio.to_thread(_culled_dom_for_parse, …)`; proven by thread identity (no timers). `[bug-repro]`: red on pre-fix `31846c28`, green on AST-1840 (`fb472a98`). `make_locate_parse_resolver` stays sync (not asserted).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Parse dispatch cull off loop (real cull, reaches `WATCH`) | `src/core/roster.py` (`run_parse_job_list_dispatch`) | **`tests/component/core/test_roster.py::TestAst1840CullOffEventLoop::test_parse_dispatch_culls_off_event_loop`** (**bug-repro**) |
+| JOBS_FOUND chain finalize cull off loop | `_finalize_joblist_titles_after_chain` | **`TestAst1840CullOffEventLoop::test_finalize_after_chain_culls_off_event_loop`** (**bug-repro**) |
+| Select-only finalize cull off loop | `_finalize_joblist_titles_select_only` | **`TestAst1840CullOffEventLoop::test_finalize_select_only_culls_off_event_loop`** (**bug-repro**) |
+| AST-827 handoff regression | same | existing **`TestAst827TitleHandoffDomCull`** |
+
+**Broken / obsolete:** none.
+
+**Integration:** none — do not invent.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_roster.py::TestAst1840CullOffEventLoop \
+  tests/component/core/test_roster.py::TestAst827TitleHandoffDomCull \
+  -q
+```
+
+### AST-1846 · AST-1828 (qa-fix bug-repro — AUTO retry WARNING, error only out of the holding)
+
+**Parent:** [AST-1828](https://linear.app/astralcareermatch/issue/AST-1828) (orphaned-bug mini-parent). Product: **AST-1839** (`36f385a2`, merged on `origin/ftr/AST-1828-auto-retry-warn-then-error` @ `2eac54b5`); test/bible delivery on gap sibling **AST-1846** (`origin/sub/AST-1828/AST-1846-auto-retry-warn-then-error-gap`). Contract: a failure routed to a retry holding (`retry_base(dest)` not `None`) logs **WARNING** `who -> dest [why]` and is excluded from `total_errors` via a per-function **`retried`** count; a failure out of the holding (error/terminal state or no dest) logs **ERROR** and counts. Prefilter parsing first strike → **`HOMEPAGE_READY_RETRY`**; envelope (`agent_failure`) first strike → **`WEBSITE_FOUND_RETRY`** once (history-gated); anything from a holding → **`ERROR_PREFILTER`**.
+
+**Sequencing deviation (gap child, AST-1820/AST-1822 precedent):** product landed first. `[bug-repro]` proven both ways — new nodes **RED at ftr base `31846c28`** on assertions (wrong state / count / level / missing `retried` / missing `agent_failure`) and **GREEN at `2eac54b5`**. The 19 flipped nodes run the opposite way (green at base, green at tip after this edit).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| HR hydrate fail → `HOMEPAGE_READY_RETRY`, WARNING, `total_errors == 0` | `src/core/roster.py` (`_run_batch_company_prefilter`) + `src/core/consult.py` (`run_consult_task`) | **`tests/component/core/test_roster.py::TestAst1846PrefilterRetryWarnThenError::test_hydrate_fail_from_homepage_ready_warns_into_hr_retry`** (**bug-repro**) |
+| HR_RETRY hydrate fail → `ERROR_PREFILTER`, ERROR line, counted | same | **`…::test_hydrate_fail_from_hr_retry_errors_into_error_prefilter`** (**bug-repro**) |
+| Envelope fail, empty history → WFR, WARNING, uncounted | `_prefilter_batch_fail_dest` | **`…::test_envelope_fail_first_strike_warns_into_wfr`** (**bug-repro**) |
+| Envelope fail after HR → WFR history → `ERROR_PREFILTER` (loop bound) | same | **`…::test_envelope_fail_after_rescrape_errors_loop_bound`** (**bug-repro**) |
+| Mixed batch: decode fail (retried) + omitted HR_RETRY (terminal) + pass | `_run_batch_company_prefilter` | **`…::test_mixed_batch_counts_retried_and_errors`** (**bug-repro**) |
+| `parse_job_list_batch` retry vs terminal counts + levels | `parse_job_list_batch` / `_save_parse_dispatch_failure` | **`…::test_parse_job_list_batch_retry_vs_terminal`** (**bug-repro**) |
+| `parse_job_list_batch` `result["error"]` → errors; generic scrape exception → holding at WARNING | same + `run_parse_job_list_dispatch` | **`…::test_parse_job_list_batch_error_result_and_generic_exception`** (branch lock) |
+| fetch_website homepage scrape exception → WARNING, no ERROR | `scrape_company_homepage_content` | **`…::test_fetch_website_scrape_failure_logs_warning`** (**bug-repro**) |
+| Flipped (first strike HR_RETRY, `retried` key, parse retry/terminal split) | `src/core/roster.py` | `TestAst702PrefilterBatchHelpers::test_prefilter_batch_fail_dest_from_homepage_ready` · `TestAst882PrefilterOneRetryThenError::{test_prefilter_fail_first_strike_retries,test_batch_do_task_failure_second_strike_to_error,test_not_ready_wfr_left_alone_for_fetch_website}` · `TestAst702PrefilterCompanyBatch::{test_do_task_failure_transitions_batch,test_skips_not_ready_without_do_task}` · `TestAst1155PrefilterIncompleteRetry::test_prefilter_company_incomplete_routes_to_homepage_ready_retry` (renamed from `…_to_website_found_retry`) · `TestAst897HoldStateOnBalanceRefusal::test_prefilter_fail_ordinary_api_still_retries` · `TestAst891ParseJobListBatch::test_passes_batch_session_and_counts_definite_outcomes` |
+
+Sibling pages: **`core/consult.md`**, **`core/agent.md`**, **`core/candidate.md`**, **`utils/config.md`**, **`utils/logging_batch.md`** (§ AST-1846 each).
+
+**Branch lock (AST-1839 lines only):** full component run with `--cov-branch` at `2eac54b5` — **0 missing lines / 0 missing branches** on every line `36f385a2` added in `roster.py`, `consult.py`, `agent.py`, `candidate.py`, `config.py` (and `logging.py`). Whole-file `LOCKED_AT_100` % on this host stays below 100 (roster 78.3, consult 80.4, agent 86.3, candidate 82.4, config 92.6) solely from pre-existing env/dev drift (Python 3.14 host venv: 322 failing + 5 uncollectable modules, identical at base and tip) — not AST-1839 lines.
+
+**Broken / obsolete (pre-existing, not AST-1839, left as-is):** `TestAst891ParseJobListBatch::test_scrape_timeout_labeled_infra_and_counts_passed` (timeout premise stale — no timeout fires, dispatch returns `WATCH`; fails at base too); `tests/component/data/database/test_dispatch_tasks.py::TestAst882HomepageReadyClaimsWfr::test_count_eligible_homepage_ready_unions_wfr` (asserts HR claims WFR — stale since AST-1810; fails at base too); `TestAst507EncodedPrefilter::{test_inflow_dealbreaker_f2_prefilter_failed,test_inflow_f1_no_dealbreaker_prefilter_passed}` (fail at base too).
+
+**Integration:** none — do not invent.
+
+## QA test manifest
+
+1. **19 flipped nodes** (green at tip):
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_roster.py::TestAst702PrefilterBatchHelpers::test_prefilter_batch_fail_dest_from_homepage_ready \
+  tests/component/core/test_roster.py::TestAst882PrefilterOneRetryThenError::test_prefilter_fail_first_strike_retries \
+  tests/component/core/test_roster.py::TestAst882PrefilterOneRetryThenError::test_batch_do_task_failure_second_strike_to_error \
+  tests/component/core/test_roster.py::TestAst882PrefilterOneRetryThenError::test_not_ready_wfr_left_alone_for_fetch_website \
+  tests/component/core/test_roster.py::TestAst702PrefilterCompanyBatch::test_do_task_failure_transitions_batch \
+  tests/component/core/test_roster.py::TestAst702PrefilterCompanyBatch::test_skips_not_ready_without_do_task \
+  tests/component/core/test_roster.py::TestAst1155PrefilterIncompleteRetry::test_prefilter_company_incomplete_routes_to_homepage_ready_retry \
+  tests/component/core/test_roster.py::TestAst897HoldStateOnBalanceRefusal::test_prefilter_fail_ordinary_api_still_retries \
+  tests/component/core/test_roster.py::TestAst891ParseJobListBatch::test_passes_batch_session_and_counts_definite_outcomes \
+  tests/component/core/test_consult.py::TestAnalysisUpshotPrepAndBatch480::test_batch_company_missing_moves_to_retry \
+  tests/component/core/test_consult.py::TestAnalysisUpshotPrepAndBatch480ExtraBranches::test_batch_do_task_failure_transitions_error \
+  tests/component/core/test_consult.py::TestAnalysisUpshotPrepAndBatch480ExtraBranches::test_batch_missing_company_transitions_and_counts_error \
+  tests/component/core/test_consult.py::TestAst642PerEntityBatchRetry::test_analysis_upshot_primary_failure_to_retry_holding \
+  tests/component/core/test_candidate.py::TestAst972RequestedStageDispatch::test_artifacts_dispatch_retry_failure_errors \
+  tests/component/utils/test_config.py::TestAst702PrefilterBatchConfig::test_prefilter_input_state_and_retry_on_homepage_ready \
+  tests/component/utils/test_config.py::TestAst507EncodedPrefilterConfig::test_company_states_and_transitions \
+  tests/component/utils/test_config.py::TestAst1807ImplicitRetryHelpers::test_state_prior_states_cross_base_feeders \
+  tests/component/utils/test_config.py::TestAst1808RetryRegistryPurge::test_prior_snapshot_pinned \
+  tests/component/utils/test_logging_batch.py::TestLogLlmBatchSummary::test_empty_error_string_uses_error_path_not_healthy_summary \
+  -q
+```
+
+2. **New repro + branch-lock nodes** (**[bug-repro]** — red at `31846c28`, green at `2eac54b5`; `test_non_rubric_task_does_not_set_agent_failure` is a guard, green both):
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_roster.py::TestAst1846PrefilterRetryWarnThenError \
+  tests/component/core/test_consult.py::TestAst1846ConsultRetryWarnThenError \
+  tests/component/core/test_agent.py::TestAst1846DoTaskAgentFailureFlag \
+  tests/component/core/test_candidate.py::TestAst1846RequestedArtifactsWarnThenError \
+  tests/component/utils/test_logging_batch.py::TestAst1846ProviderErrorLevel \
+  -q
+```
+
+**Pass criterion:** pytest green on items 1–2 (50 node runs incl. params) — not the zero-arg harness / whole-file branch-lock gate (host drift; AST-1839 lines are fully covered, see Branch lock above).
+
+**Bible shasum (record after publish):** `git show origin/sub/AST-1828/AST-1846-auto-retry-warn-then-error-gap:docs/test-bible/core/roster.md | shasum`
+
+### AST-1847 · AST-1848 (qa-fix bug-repro — parse_job_list timeout partial counts in ledger)
+
+**Parent:** [AST-1845](https://linear.app/astralcareermatch/issue/AST-1845) (orphaned-bug mini-parent). Product: **AST-1847** (`ba60f8e4`, not yet on ftr); test/bible delivery on gap sibling **AST-1848**. `parse_job_list_batch` tallies each finished company into `ctx["dispatch_partial"]` in place (`_tally(key)` alongside every local counter, same AST-1839 buckets; retry → processed only); `_counted` tallies an escaping `Exception` as an error and re-raises; a `CancelledError` company is never tallied. `ctx=None` or a ctx without the key → no-op; return dict unchanged. Dispatcher half (set / pop / timeout fold-in, real-chain repro): **`docs/test-bible/core/dispatcher.md`** § AST-1847 · AST-1848.
+
+**Red / green:** red at ftr base `8e7b77a5` (partial stays zeros), green with `ba60f8e4`'s `roster.py` + `dispatcher.py` overlaid (scratch worktree, not committed). Node `test_ctx_without_dispatch_partial_is_noop` is a guard — green both.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| All four `_one` outcomes tally in place (`_tally(key)` + `_tally(None)`); return shape unchanged | `parse_job_list_batch` | **`tests/component/core/test_roster.py::TestAst1847ParseJobListBatchPartialTally::test_tallies_every_outcome_into_ctx_dispatch_partial`** (**bug-repro**) |
+| `_counted` except path: tallied once, post-gather count not doubled | same | **`…::test_counted_tallies_escaping_exception_once`** (branch lock) |
+| Cancelled company not tallied (`except Exception` excludes `CancelledError`) | same | **`…::test_cancelled_company_is_not_tallied`** (branch lock) |
+| Real ctx without the key → `partial is None` no-op, no key invented | same | **`…::test_ctx_without_dispatch_partial_is_noop`** (guard) |
+
+**Branch lock:** see dispatcher.md § AST-1847 · AST-1848 — 0 missing lines / branches on the 23 lines `ba60f8e4` added to `roster.py`; whole-file 78.2% (base 78.1%) from pre-existing host drift.
+
+**Broken / obsolete (pre-existing, not AST-1847, left as-is):** `TestAst891ParseJobListBatch::test_scrape_timeout_labeled_infra_and_counts_passed` (see § AST-1846) and `TestAst891ParseJobListBatch::test_debug_emits_per_company_index` (`debug_index` never captured — `assert []`; fails identically at `8e7b77a5` and with the overlay). Both excluded from the manifest below.
+
+**Integration:** none — do not invent.
+
+## QA test manifest
+
+1. **Tally nodes + AST-891 regression** (**[bug-repro]** red at `8e7b77a5`, green with AST-1847; AST-891 lines green both):
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_roster.py::TestAst1847ParseJobListBatchPartialTally \
+  tests/component/core/test_roster.py::TestAst891ParseJobListBatch::test_passes_batch_session_and_counts_definite_outcomes \
+  tests/component/core/test_roster.py::TestAst891ParseJobListBatch::test_unhandled_gather_exception_increments_errors_and_continues \
+  -q
+```
+
+2. **Dispatcher half + branch lock:** **`docs/test-bible/core/dispatcher.md`** § AST-1847 · AST-1848 manifest items 1–2.
+
+**Bible shasum (record after publish):** `git show origin/sub/AST-1845/AST-1848-parse-job-list-timeout-partial-counts-tests:docs/test-bible/core/roster.md | shasum`
+
+### AST-1867 · AST-1870 (qa-fix bug-repro — provider balance refusal counted held, not error)
+
+**Parent:** [AST-1860](https://linear.app/astralcareermatch/issue/AST-1860) (orphaned-bug mini-parent). Product: **AST-1867** (`144b8850`, not yet on ftr); test/bible delivery on gap sibling **AST-1870**. `run_company_task` select_job_page and JOBS_FOUND branches return `{**zero, "total_held": 1, "failure_class", "error"}` (`total_errors: 0`, no `_warn_company`) when `is_provider_balance_refusal(result)`; AST-897 per-entity state hold unchanged. AST-1189 call-budget `state_held` (no balance `failure_class`) keeps `total_errors: 1` (AST-1867 D1). Dispatcher half (ctx marker, skip, loop stop, INTERRUPTED + outage alert, real-chain repro): **`docs/test-bible/core/dispatcher.md`** § AST-1867 · AST-1870.
+
+**Red / green:** red at ftr base `fbe9486e`, green with `144b8850`'s `roster.py` + `dispatcher.py` + `monitor.py` overlaid (scratch worktree, not committed). R4 is a guard — green both.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| select_job_page balance hold → `total_held: 1`, errors 0, `failure_class` + `error` carried, no `_warn_company` | `run_company_task` PJL_READY branch | **`tests/component/core/test_roster.py::TestAst1867BalanceHeldCounting::test_select_job_page_balance_hold_counts_held_not_error`** |
+| AST-1189 call-budget hold still `total_errors: 1`, no `total_held`, JOBS_FOUND transition still blocked (select_job_page + jobs_found) | `run_company_task` | **`…::test_call_budget_hold_still_counts_error[select_job_page]`** / **`[jobs_found]`** (guard) |
+
+**Flipped (AST-897 → held contract):** `TestAst897HoldStateOnBalanceRefusal::test_run_company_task_jobs_found_balance_hold_skips_error_state` and `::test_run_company_task_jobs_found_balance_failure_class_skips_error_state` — was `total_errors == 1`; now `total_errors == 0`, `total_held == 1`, `failure_class == provider_balance_refusal`; `transition.assert_not_called()` kept. Class-level reference in **`docs/test-bible/utils/llm_external.md`** § AST-897 stays valid (no edit).
+
+**Broken / obsolete:** none beyond the two flips above.
+
+**Integration:** none — do not invent.
+
+## QA test manifest
+
+1. See **`docs/test-bible/core/dispatcher.md`** § AST-1867 · AST-1870 manifest (includes `TestAst1867BalanceHeldCounting` + `TestAst897HoldStateOnBalanceRefusal`).
+
+**Bible shasum (record after publish):** `git show origin/sub/AST-1860/AST-1870-provider-balance-outage-tests:docs/test-bible/core/roster.md | shasum`
+
+### AST-2004 · AST-1998 (bot-walled select fall-through → BOT_BLOCKED + job_site)
+
+**Parent:** [AST-1998](https://linear.app/astralcareermatch/issue/AST-1998). **Publish:** `origin/sub/AST-1998/AST-2004-route-bot-walled-job-pages`. Decomposed `PJL_READY` select (`decomposed=True` only): at the final `_check_parse_results` `NO_JOBLIST` fall-through, `_first_bot_walled_page` scans shown pages in `pjl_scrape_pages` order via `gazer.is_bot_wall`; first hit → `BOT_BLOCKED` with that URL as `page_option_url` (`BOT_BLOCKED` ∈ `_PERSIST_PAGE_OPTION_URL_STATES` → `job_site` written). `run_company_task` counts `BOT_BLOCKED` as `total_failed` (guard comment only). Legacy `decomposed=False` locate path unchanged. Shared detector: **`docs/test-bible/core/gazer.md`** § AST-2004. Config rename + transition: **`docs/test-bible/utils/config.md`** § AST-2004.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| AC2 bot wall → `BOT_BLOCKED`, `job_site` = walled URL | `_check_parse_results` / `_first_bot_walled_page` | **`TestAst2004BotWalledSelect::test_bot_wall_routes_bot_blocked_with_job_site`** |
+| AC3 no wall → `NO_JOBLIST`, pre-run `job_site` kept | same | **`…::test_no_bot_wall_stays_no_joblist_job_site_unchanged`** |
+| AC4 `JOBLIST_TITLES` wins | `_find_job_page_from_assembled` | **`…::test_found_job_list_wins_over_bot_wall`** |
+| AC5 first walled page wins | `_first_bot_walled_page` | **`…::test_first_walled_page_wins`** |
+| AC6 rollup fail 1 / pass 0 / error 0 | `run_company_task` PJL_READY | **`…::test_rollup_counts_bot_blocked_as_fail`** |
+| Legacy `decomposed=False` not rerouted (plan decision) | `_check_parse_results` | **`…::test_legacy_locate_path_not_rerouted`** |
+
+**Broken / obsolete:** `tests/component/utils/test_config.py::TestAst1808RetryRegistryPurge::test_prior_snapshot_pinned` (company key rename vs pinned snapshot) — revised; see config bible.
+
+**Pre-existing failures (not AST-2004):** 74 cases across `test_roster.py` / `test_config.py` red identically with and without this pass (stale `roster.get_page`, `_is_verified_job_site_distinct`, `CANNOT_READ_WEBSITE` vs `PREFILTER_PASSED`, retention/admin-nav literals). Out of scope — not touched.
+
+**Integration:** none — no `tests/integration/` scenario exercises select_job_page / `_classify_jd`.
+
+## QA test manifest
+
+1. **New + revised pytest (required):**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_roster.py::TestAst2004BotWalledSelect \
+  tests/component/core/test_roster.py::TestAst720PjlReadySelectDispatch \
+  tests/component/core/test_roster.py::TestCheckParseResults \
+  tests/component/core/test_roster.py::TestCheckParseResultsBranches \
+  tests/component/core/test_roster.py::TestAst692JobsiteScrapeIssue \
+  tests/component/core/test_gazer.py::TestAst2004IsBotWall \
+  tests/component/core/test_gazer.py::TestAst1197ChallengeBotSignals \
+  tests/component/core/test_gazer.py::TestAst1195BotBlockedErrorState \
+  tests/component/utils/test_config.py::TestAst2004CompanyBotBlocked \
+  tests/component/utils/test_config.py::TestAst1808RetryRegistryPurge \
+  -q
+```
+
+2. **Grep acceptance (AC1 / AC7 / AC8):**
+
+```bash
+rg -n '"BOT_BLOCK"' src/                 # expect no output
+rg -n "bot_signals" src/core/            # expect exactly 1 hit (gazer.is_bot_wall)
+rg -in "linkedin" src/core/roster.py     # expect no output
+```
+
+3. **Branch lock:** `src/core/roster.py`, `src/core/gazer.py`, `src/utils/config.py` are `LOCKED_AT_100`; new branches (`_first_bot_walled_page` hit/miss, `walled_url` true/false) are covered by item 1. Zero-arg harness lock gate is subject to the pre-existing reds above.
+
+**Bible shasums (record after publish):** `git show origin/sub/AST-1998/AST-2004-route-bot-walled-job-pages:docs/test-bible/core/roster.md | shasum` (likewise `core/gazer.md`, `utils/config.md`).
+
+### AST-2006 · AST-2000 (bug — runtime empty-token guard)
+
+**Parent:** [AST-1986](https://linear.app/astralcareermatch/issue/AST-1986) (orphaned mini-parent). **Product:** [AST-2000](https://linear.app/astralcareermatch/issue/AST-2000); canon carve-out [AST-2005](https://linear.app/astralcareermatch/issue/AST-2005) (`patt.task.dispatch-retry`). **Publish:** `origin/sub/AST-1986/AST-2006-empty-token-guard-tests`. Company flows send an `empty_tokens` failure to the flow's terminal error state with no save / no retry; the dispatcher counts it as an error via the returned `"error"`.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Prefilter batch → every company `ERROR_PREFILTER`; summary `retried == 0` | `_run_batch_company_prefilter` | **`TestAst2006EmptyTokenCompanyTerminals::test_prefilter_batch_goes_to_error_prefilter`** |
+| select_job_page → `ERROR_LOCATE_JOB_PAGE`, `"error"`, no `state_held`, no `NO_JOBLIST` save | `_find_job_page_from_assembled` / `_locate_empty_token_error` | **`…::test_select_job_page_goes_to_error_locate_without_no_joblist`** |
+| parse hop returns `{empty_tokens, error}`, no notes save | `_fetch_parse_job_list` | **`…::test_fetch_parse_job_list_surfaces_empty_tokens_without_notes`** |
+| select-only parse → `ERROR_PARSE_JOB_LIST` (**AST-2086**: the parse hop owns it; was `ERROR_LOCATE_JOB_PAGE`), no parse notes | `_finalize_joblist_titles_select_only` | **`…::test_select_only_parse_goes_to_parse_error`** |
+| Parse dispatch from `JOBLIST_IDENTIFIED` and `_RETRY` → `COULD_NOT_PARSE_JOBLIST`, `"error"`, no save | `run_parse_job_list_dispatch` | **`…::test_parse_dispatch_goes_to_terminal_from_either_trigger`** (2 params) |
+
+**Broken / obsolete:** none.
+
+Manifest: **`docs/test-bible/core/agent.md`** § AST-2006.
+
+### AST-2010 · AST-2009 (exhausted-429 `failure_class` forwarded)
+
+**New:** `TestAst2010RateLimitForwarding`. `provider_rate_limit` rides `_find_job_page_from_assembled`'s generic select failure (still NO_JOBLIST + saved), `run_company_task` select_job_page (still counted passed via NO_JOBLIST) and JOBS_FOUND (still `error_state` + `total_errors`), and the `prefilter_company_batch` generic failure (still retried). There is no `total_held` and no `state_held`. An untagged failure stays untagged. Primary manifest: **`docs/test-bible/external/llm_compat.md`** § AST-2010.
+
+**AST-2140 · AST-2141 (outage tag carries the provider `error`; Option B select path):** `_outage_tag` forwards `error`. Probe-hold dicts on prefilter and upshot carry `error`. `_find_job_page_from_assembled`'s select failure carries the text as `outage_error`, never `error`, because `run_company_task` routes on `error`; `_outage_tag` lifts `outage_error` back to `error` on the summary. Routing and counts are unchanged. Parent [AST-2137](https://linear.app/astralcareermatch/issue/AST-2137) (orphaned-bug mini-parent). Product **AST-2140** (`9c28e9bdc`); tests on gap sibling **AST-2141**. Plan: `docs/features/agent/ast-1877-model-server-catalog-compat-client.md` § Bug: AST-2141.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| **[bug-repro]** AST-2137 log path: exhausted prefilter 429 → `prefilter_company_batch` `error` → consult summary `error` (counts `(1, 0)`: the company is retried, same as pre-fix) → `_note_provider_rate_limit_outage` WARNING `still 429 after retries (<provider text>)`, never `()` | roster + consult `_outage_tag`, dispatcher | `TestAst2010RateLimitForwarding::test_prefilter_429_error_reaches_dispatcher_warning` |
+| New — select failure entity result: no `error`, `outage_error` = provider text, class kept, still NO_JOBLIST / `SELECT_FAILED` | `_find_job_page_from_assembled` | `…::test_find_job_page_select_failure_carries_outage_error` |
+| New — select_job_page summary lifts `outage_error` → `error`; `(1, 1, 0)` unchanged, no `_warn_company` | `run_company_task` + roster `_outage_tag` | `…::test_run_company_task_select_job_page_forwards_error` |
+
+**Red/green (AST-2141):** red on pre-fix `a1af5cf6a`: 7 nodes across both pages fail by assertion only, while the consult untagged guard passes. Green on the sub synced from ftr `f0c1f167c` (AST-2140 merged).
+
+**Manifest (test-fix, `../astral/.venv`):**
+
+1. `pytest -q tests/component/core/test_roster.py::TestAst2010RateLimitForwarding::test_prefilter_429_error_reaches_dispatcher_warning` (**[bug-repro]** alone first)
+2. `pytest -q tests/component/core/test_consult.py::TestAst2010RateLimitForwarding tests/component/core/test_consult.py::TestAst2098ProbeFailureHold tests/component/core/test_roster.py::TestAst2010RateLimitForwarding tests/component/core/test_roster.py::TestAst2098ProbeFailureHold tests/component/core/test_roster.py::TestAst1867BalanceHeldCounting`. Expect **33 passed**.
+
+**Pre-existing drift (not AST-2141):** both full files carry 72 baseline failures on this tip (e.g. `TestJobSiteDistinct674`). This pass adds zero and fixes one (C1).
+
+### AST-2098 · AST-2099 (failed host probe holds company state, counted held)
+
+**Primary manifest:** [`dispatcher.md`](dispatcher.md) § AST-2098. Contract: every roster hold branch widened from `is_provider_balance_refusal` to `is_provider_state_hold`, so a `provider_probe_failure` result keeps the company's current state (no transition, no save) and is counted `total_held`; the batch functions add `total_held` (probe only) and `run_consult_task` subtracts it from errors.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| New — select_job_page probe hold → `(1, 0, 0, 0)`, `held 1`, class, no `_warn_company` | `run_company_task` | `TestAst2098ProbeFailureHold::test_select_job_page_probe_hold_counts_held` |
+| New — JOBS_FOUND probe failure → `held 1`, `errors 0`, no `error_state` transition | `run_company_task` | `…::test_jobs_found_probe_hold_skips_error_state` |
+| New — `prefilter_company_batch` 2 ready companies → held, `total_held 2`, no transition; via `run_consult_task` `prefilter_company` → `errors 0`, `held 2`, class | `_run_batch_company_prefilter` + consult normalizer | `…::test_prefilter_batch_probe_hold_counts_held` |
+| New — `company_upshot_batch` 2 rows → held, `total_held 2`, no transition; via `run_consult_task` `company_upshot` → `errors 0`, `held 2`, class | `company_upshot_batch` + consult normalizer | `…::test_company_upshot_probe_hold_counts_held` |
+| New — `_find_job_page_from_assembled` probe failure → `state_held`, current state, class, no `_save_company` | `_find_job_page_from_assembled` | `…::test_find_job_page_probe_hold_keeps_state` |
+| New (board E6) — single-company `prefilter_company` → `_prefilter_fail` HOLD, current state, `state_held`, class, no transition | `prefilter_company` / `_prefilter_fail` | `…::test_prefilter_company_probe_hold_keeps_state` |
+| New (AST-2141) — `prefilter_company_batch` probe hold carries `error`; via `run_consult_task` `prefilter_company` → summary `error`, `held 2` | `_run_batch_company_prefilter` hold + consult `_outage_tag` | `…::test_prefilter_batch_probe_hold_forwards_error` |
+| New (AST-2141) — `company_upshot_batch` probe hold carries `error`; via `run_consult_task` `company_upshot` → summary `error`, `held 2` | `company_upshot_batch` hold + consult `_outage_tag` | `…::test_company_upshot_probe_hold_forwards_error` |
+
+**Kept:** `TestAst1867BalanceHeldCounting`, `TestAst897HoldStateOnBalanceRefusal`, `TestAst2010RateLimitForwarding` (unchanged, green).
+
+### AST-2069 · AST-2054 (locate/parse pass state → GET_UPSHOT)
+
+**Parent:** [AST-2054](https://linear.app/astralcareermatch/issue/AST-2054). **Publish:** `origin/sub/AST-2054/AST-2069-upshot-states-registration`. Config-only child; primary block + manifest: [`../utils/config.md`](../utils/config.md) § AST-2069.
+
+`ROSTER_CONFIG["locate_job_page"]["pass_states"]` and `["parse_job_list"]["pass_state"]` are now `GET_UPSHOT`. Batch counting compares the producer's returned `state` with that config, so tests that mock `run_parse_job_list_dispatch` / `jobs_found_process_job_site` returning `{"state": "WATCH"}` counted the pass as an error. Revised mocks to return `GET_UPSHOT` (producer is mocked — these test counting, not the producer's write).
+
+| Revised (mocked pass state `WATCH` → `GET_UPSHOT`) |
+| --- |
+| `TestAst1847ParseJobListBatchPartialTally` — `test_cancelled_company_is_not_tallied`, `test_counted_tallies_escaping_exception_once`, `test_ctx_without_dispatch_partial_is_noop`, `test_tallies_every_outcome_into_ctx_dispatch_partial` |
+| `TestAst721ParseDispatchRouting::test_parse_job_list_dispatch_key`; `TestAst721ParseJobListDispatch::test_run_company_task_routes_identified_and_retry` |
+| `TestAst891ParseJobListBatch` — `test_passes_batch_session_and_counts_definite_outcomes`, `test_unhandled_gather_exception_increments_errors_and_continues` |
+| `TestRunCompanyTask::test_jobs_found_dispatch_pass_fail_ast469`; `test_run_company_task_jobs_found_watch_counts_passed` |
+
+**Left for AST-2070:** the real `state="WATCH"` writes in `_finalize_parse_dispatch_success` and the two legacy locate-success paths (plan-accepted interim mismatch). AST-2070's manifest owns asserting those producers now write `GET_UPSHOT`.
+
+### AST-2070 · AST-2054 (GET_UPSHOT fetch + UPSHOT_READY Estelle hops)
+
+**Parent:** [AST-2054](https://linear.app/astralcareermatch/issue/AST-2054). **Publish:** `origin/sub/AST-2054/AST-2070-upshot-hops`. Plan: `docs/features/roster/ast-2070-get-upshot-fetch-and-upshot-ready-estelle-hops.md`. Gazer half: [`gazer.md`](gazer.md) § AST-2070; consult routing: [`consult.md`](consult.md) § AST-2070.
+
+`_finalize_parse_dispatch_success` writes `ROSTER_CONFIG["parse_job_list"]["pass_state"]`; both legacy locate finalizers write `locate_job_page.pass_states[0]` (both `GET_UPSHOT`); `_PERSIST_PAGE_OPTION_URL_STATES` is built from those config values (WATCH no longer in it — WATCH is reached by transition only, so `job_site` persisted at `GET_UPSHOT` stays). New `company_upshot_batch`: one `do_task(company_upshot)` per batch, `[company_id=…]` blocks (homepage, culture pages from list or legacy string, prefilter grades), decode by `company_id`, save `company_data.company_upshot` (stripped), transition WATCH; missing / empty-upshot / save-`ValueError` → `UPSHOT_READY_RETRY`, same from the retry → `ERROR_UPSHOT`; fabricated + duplicate ids ignored; balance refusal holds state; empty tokens → `ERROR_UPSHOT` directly; rate-limit `failure_class` carried.
+
+| AC | Component tests (`test_roster.py`) |
+| --- | --- |
+| 3 parse success → `GET_UPSHOT` + `parse_instructions` | revised **`TestAst721ParseJobListDispatch::test_success_watch_and_parse_instructions`** (return + `_save_company` state) |
+| 5 upshot saved then WATCH; 6 one call; 7 retry then error | new **`TestAst2070CompanyUpshotBatch`** (7 incl. parametrize) |
+| 2 no hard-coded WATCH writes | `rg` gate in manifest |
+| 8 grades unchanged | `git diff` gate in manifest |
+
+**Broken / obsolete (revised in place — asserted `WATCH` from real locate/parse producers):** `TestAst721ParseJobListDispatch::test_success_watch_and_parse_instructions`, `TestAst827TitleHandoffDomCull::test_parse_dispatch_passes_multi_title_culled_dom`, `TestAst1840CullOffEventLoop::test_parse_dispatch_culls_off_event_loop`, `TestCheckParseResults::test_joblist_titles_paths`, `TestFinalize469BranchCoverage` (`test_after_chain_persists_job_list_visible_strip`, `test_after_chain_value_error_vis_empty_still_watch`, `test_select_only_persist_visible_on_int_coercion_success`, `test_select_only_string_page_int_error_yields_watch`), `TestJobSiteForPersist673::test_watch_writes_page_option_url` (terminal state now `GET_UPSHOT`). Names kept so older bible references resolve. Untouched: `find_job_page` pass-through mocks (lines asserting a mocked `"WATCH"` back) and the skipped AST-721 monolith case.
+
+**Branch locks:** new/changed lines in `roster.py`, `gazer.py`, `consult.py` fully covered (term-missing shows none in AST-2070 ranges). Isolated A/B on roster/gazer/consult/dispatcher/config/dispatch_tasks: failures identical to the `ftr` baseline (130 pre-existing in this 3.14 env) — none new.
+
+**Integration:** none — no `tests/integration/` scenario walks locate/parse/upshot; do not invent.
+
+## QA test manifest — AST-2070
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_roster.py::TestAst2070CompanyUpshotBatch \
+  tests/component/core/test_gazer.py::TestAst2070FetchCompanyCulturePagesBatch \
+  tests/component/core/test_consult.py::TestAst2070UpshotConsultRoutes \
+  tests/component/core/test_roster.py::TestAst721ParseJobListDispatch::test_success_watch_and_parse_instructions \
+  tests/component/core/test_roster.py::TestAst827TitleHandoffDomCull::test_parse_dispatch_passes_multi_title_culled_dom \
+  tests/component/core/test_roster.py::TestAst1840CullOffEventLoop::test_parse_dispatch_culls_off_event_loop \
+  tests/component/core/test_roster.py::TestCheckParseResults::test_joblist_titles_paths \
+  tests/component/core/test_roster.py::TestFinalize469BranchCoverage::test_after_chain_persists_job_list_visible_strip \
+  tests/component/core/test_roster.py::TestFinalize469BranchCoverage::test_after_chain_value_error_vis_empty_still_watch \
+  tests/component/core/test_roster.py::TestFinalize469BranchCoverage::test_select_only_persist_visible_on_int_coercion_success \
+  tests/component/core/test_roster.py::TestFinalize469BranchCoverage::test_select_only_string_page_int_error_yields_watch \
+  tests/component/core/test_roster.py::TestJobSiteForPersist673::test_watch_writes_page_option_url \
+  -q
+# AC2 — expect no output
+grep -n 'state="WATCH"' src/core/roster.py
+# AC8 — expect no hunk inside either function
+git diff origin/dev -- src/core/roster.py | grep -n '_apply_prefilter_decoded_company_outcome\|_run_batch_company_prefilter'
+```
+
+**Pass criterion:** 21 passed; both greps empty. Not the zero-arg harness (this host's 3.14 env carries unrelated baseline reds).
+
+**Bible shasum (after publish):** `git show origin/sub/AST-2054/AST-2070-upshot-hops:docs/test-bible/core/roster.md | shasum`; same for `core/gazer.md`, `core/consult.md`.
+
+### AST-2088 · AST-2054 (bug: upshot sets a readable company_name)
+
+**Parent:** [AST-2054](https://linear.app/astralcareermatch/issue/AST-2054). **Publish:** `origin/sub/AST-2054/AST-2088-upshot-readable-company-name`. Plan-fix: `docs/features/roster/ast-2070-get-upshot-fetch-and-upshot-ready-estelle-hops.md` § Bug: AST-2088. Fix lane F4 (`qa-fix`, `[bug-repro]`).
+
+| Behavior | Source | Component tests |
+| --- | --- | --- |
+| Response `company_name` (stripped) → `update_company(cid, company_name=…)`; blank/missing skipped, still `WATCH`; `## Name On File` in the Estelle block | `company_upshot_batch` | new **`TestAst2088UpshotReadableCompanyName`** (1) — **repro** |
+| `company_upshot` items_schema gains optional `company_name`; prompt output shape names it | `src/utils/config.py`, `data/admin/agent_task.json` | **`TestAst2069UpshotRegistration::test_upshot_contract_carries_optional_company_name`** (see [`../utils/config.md`](../utils/config.md) § AST-2069) — **repro** |
+
+**Red on pre-fix tree (verified):** roster repro → `update_company` called 0 times; config repro → `KeyError: 'company_name'` in items_schema. Both are the plan's root cause (contract has no name field; batch never writes it). Scratch-applied plan change (not committed) → all 13 tests below green.
+
+**Unaffected:** `TestAst2070CompanyUpshotBatch` — responses carry no `company_name`, `live_content` asserts are substring/count only.
+
+## QA test manifest — AST-2088
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_roster.py::TestAst2088UpshotReadableCompanyName \
+  tests/component/utils/test_config.py::TestAst2069UpshotRegistration \
+  tests/component/core/test_roster.py::TestAst2070CompanyUpshotBatch \
+  -q
+```
+
+**Pass criterion:** 13 passed. **Red→green (test-fix verifies the flip):** `TestAst2088UpshotReadableCompanyName::test_readable_name_saved_and_blank_or_missing_skipped` and `TestAst2069UpshotRegistration::test_upshot_contract_carries_optional_company_name`.
+
+### AST-2125 · AST-2116 (missing rubric grade description → that company alone to PREFILTER_FAILED)
+
+**AST-2124** (`0d01e20d2`): `_apply_prefilter_decoded_company_outcome` catches `MissingRubricDescriptionError` from hydrate. It logs one WARNING `<short_name> -> PREFILTER_FAILED [hydrate: …]`, transitions to `cfg["fail_state"]`, and returns it, with no grade save and no retry. The batch path (`_run_batch_company_prefilter`) gets this through the same helper; structural hydrate errors keep the AST-1846 batch route. Consult side: **`core/consult.md`** (AST-2125).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Single company: `fit` B (no B row) → `PREFILTER_FAILED`, one WARNING, no `save_company_data` | `src/core/roster.py` (`_apply_prefilter_decoded_company_outcome`) | **`TestAst2125PrefilterMissingDescription::test_apply_outcome_miss_to_prefilter_failed`** |
+| Batch: miss → `PREFILTER_FAILED` unsaved; sibling F5 applies its own verdict (saved with reason); retried 0, no ERROR | `_run_batch_company_prefilter` | **`…::test_batch_miss_fails_only_that_company`** |
+
+**Integration:** none.
+
+### AST-2134 · AST-2130 (roster company scrapes + admin preview on web_data)
+
+**Parent:** [AST-2130](https://linear.app/astralcareermatch/issue/AST-2130). **Publish:** `origin/sub/AST-2130/AST-2134-roster-telescope-data`. Plan: `docs/features/foundation/ast-2134-roster-company-scrapes-and-admin-preview-on-telescope-data.md`. Gazer API: [`gazer.md`](gazer.md) § AST-2132. Admin preview: [`../ui/api/api_admin.md`](../ui/api/api_admin.md) § AST-2134.
+
+Writers keep via gazer and store row ids: `_fetch_nav_links` / `_fetch_prefilter_notes` / `prefilter_company` → `nav_links` id; `_fetch_website_content` → `website_content` `[{url, id}]` (caller still gets stripped `[{url, content}]`); `_merge_pjl_scrape_record` → ledger rows `{url, id, links_id?}`; `_keep_job_list_visible` → `job_list_visible` id. Readers resolve via gazer: `_resolve_company_value` (id → content; legacy text passthrough; `website_content` stripped; gone → `None`), `_resolved_pjl_pages` (→ `{url, visible_text, enumerated_nav_links?}`; legacy rows pass; gone rows drop; all gone → `None`), `_resolved_company_data` (copy; rebuilds `pjl_nav_links` in candidate order when not stored), `_company_homepage_ready`, `get_company_data` (id keys resolve; gone capture → fetch-on-missing).
+
+| AC | Component tests |
+| --- | --- |
+| AC5 roster-written keys hold ids (nav_links, website_content `{url, id}` + candidate_id on the row, PJL `{url, id, links_id}`, job_list_visible) | new **`TestAst2134RosterTelescope`** (`test_ac5_ac7_…`, `test_prefilter_company_saves_nav_links_row_id`, `test_fetch_prefilter_notes_saves_nav_links_row_id`, `test_keep_job_list_visible_…`); revised **`TestCoatCheckHandlers::{test_nav_links_saves_enumerated_links, test_website_content_scrapes_selected_pages}`**, **`TestAst719PjlRosterHelpers`** ×4; `test_gazer.py` **`TestFetchJobPagesBatch`** via `_pjl_ledger` |
+| AC6 readers unchanged (resolve shapes, PJL rebuild, homepage presence, admin preview text vs ids byte-identical) | `TestAst2134RosterTelescope::{test_resolve_company_value_shapes, test_resolved_pjl_pages_row_shapes, test_resolved_company_data_rebuilds_pjl_nav_links_in_candidate_order, test_company_homepage_ready_resolves_id, test_get_company_data_resolves_id_without_fetch}`; `test_api_admin.py` **`TestAst2134AdhocPreviewTelescope`** |
+| AC7 deleting the `website_content` row leaves the blob byte-identical; next `get_company_data` re-runs the coat-check handler | `TestAst2134RosterTelescope::test_ac5_ac7_website_content_ids_then_deleted_row_refetches` (real company row, tmp DB) |
+
+**Broken / obsolete (revised, names kept):** `TestAst719PjlRosterHelpers::{test_merge_pjl_scrape_record_replaces_duplicate_and_skips_empty, test_ast1995_upsert_replaces_matching_row_in_place, test_ast1995_whole_row_replace_drops_enumerated_nav_links, test_merge_pjl_scrape_record_persists_enumerated_nav_links}` (ledger rows → ids); `TestCoatCheckHandlers::{test_nav_links_saves_enumerated_links, test_website_content_scrapes_selected_pages}` (blob ids; real keep). **Stale since the gazer swap** (patched `roster_mod.get_visible_text` / `extract_site_page_list`, which the coat-check handlers no longer call — reached the real telescope client): retargeted to `gazer_mod` in `test_nav_links_returns_none_on_empty_or_failure`, `test_handles_missing_culture_links_and_scrape_failures`, `test_returns_none_without_reasons_or_nav_links`, `test_prefilter_notes_returns_none_without_reasons`, and the pre-existing reds `test_prefilter_notes_paths`, `test_persists_optional_fields_and_handles_failures`, `test_prefilter_notes_returns_saved_notes_with_nav_links`. `test_gazer.py` PJL ledger asserts (8) now go through **`_pjl_ledger`** (asserts `{url, id, links_id?}` uuid shape, returns roster's resolved view — expected rows unchanged).
+
+**Isolation (required):** `test_roster.py` gains an autouse **`_telescope_tmp_db`** (core `sqlite_in_memory`). Without it a default run kept 10 rows in `ASTRAL_DB_DIR=data/` — the live DB symlink in epic worktrees.
+
+**Coverage:** every added `roster.py` / `api_admin.py` line and branch is covered (`test_roster.py` + `test_api_admin.py`).
+
+**Pre-existing (not this ticket; equal on `origin/ftr/AST-2130-telescope-data`):** `test_roster.py` 50 (incl. `TestPrefilterCompany*` — `_patch_prefilter_scrape_with_nav` patches `get_visible_text` but `scrape_company_homepage_content` uses `scrape_page`; and the three `_fetch_prefilter_notes` reds above); `test_api_admin.py` 5; `test_gazer.py` 3 (§ AST-2132); `test_consult.py` 27; `test_dispatcher.py` 13; `test_api_system.py` 1.
+
+**Integration:** none.
+
+## QA test manifest — AST-2134
+
+1. `./scripts/testing/run_component_tests.sh tests/component/core/test_roster.py tests/component/core/test_gazer.py tests/component/ui/api/test_api_admin.py -q -k "Ast2134 or TestAst719 or nav_links_saves or website_content_scrapes or TestFetchJobPagesBatch"` — 36 passed.
+2. No-regression: the same three files plus `tests/component/core/{test_gazer_scrape_failure,test_bootstrap,test_consult,test_dispatcher}.py`, `tests/component/utils/test_debug_logging.py`, `tests/component/ui/api/test_api_system.py` — failure set equals the ftr baseline (98 nodes, counts above).
+3. AC8 (AST-2133, closed here): `git grep -n -E "\.get\((jd_key|[\"']job_description[\"'])" -- src/core src/ui/api ':!src/core/tracker.py'` → empty.
+4. Live DB untouched: run with `ASTRAL_DB_DIR=<empty tmp dir>`; `web_data` row count in `~/astral/data/astral.db` is the same before and after items 1–2, and the tmp dir gains no `web_data` table from item 2's roster run.
+
+**Pass criterion:** items 1–4 — narrowed run, not the zero-arg harness / branch-lock gate (pre-existing reds on the ftr tip).
+
+**Bible shasum (after publish):** `git show origin/sub/AST-2130/AST-2134-roster-telescope-data:docs/test-bible/core/roster.md | shasum`
+
+### AST-2180 · AST-2172 (light-check reasons on roster graders)
+
+**New:** **`TestAst2180LightCheckReasons`** (5), all red before the build:
+- The vet single blurb is renumbered to row `000`, and a `decode_failures` reason becomes the warning and the error.
+- Vet batch warns the failed hit with its own reason, not `missing results row hit_index=N`.
+- A prefilter single with a light-check failure takes the retry route with `decode: <reason>`.
+- In a prefilter batch, the decode-failed company retries with `decode: <reason>`, not `missing id`, while its sibling applies its verdict.
+- `_fetch_prefilter_notes` sends the candidate's real rubric codes.
+
+The existing `prefilter_company` tests that go through `keep_page_scrape` are pre-existing reds (`ASTRAL_DATABASE_URL not set`), so the new single test stubs `scrape_company_homepage_content` and `gazer.keep_page_scrape`. Manifest: [`agent.md`](agent.md) § AST-2180.
+
+### AST-2219 · AST-2215 (DISPATCH_SEARCH at CSE call sites; return-shape mock fix)
+
+Child AC **10**. Both roster CSE sites record via `record_search_timesheet_entry` (discovery always; resolve only when `log_batch_id` set). Mocks must return `GoogleCseSearchResult`. Pace debug now asserts `_pace_debug` → `logger.debug` (retired `debug_index` streaming).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| New — AC10 discovery 7 hits → one DISPATCH_SEARCH | `run_inflow_discovery_batch` | `TestAst2219SearchTimesheetRecording::test_ac10_discovery_seven_hits_records_dispatch_search` |
+| New — resolve records when batch context set | `resolve_company_website` | `…::test_resolve_records_when_log_batch_id_set` |
+| New — resolve skips record without batch | `resolve_company_website` | `…::test_resolve_skips_record_without_batch` |
+| Revised — CSE mocks → `_cse_result(...)`; happy path land_state DISCOVERED | discovery / resolve suites | `TestAst505*` / `TestAst506*` / `TestAst837*` / `TestAst839*` / `TestAst877*` |
+
+## QA test manifest (AST-2219)
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/external/test_google_cse.py \
+  tests/component/core/test_timesheets.py::TestRecordSearchTimesheetEntry \
+  tests/component/core/test_timesheets.py::TestAst2219GoogleCseReceiptRoute \
+  tests/component/core/test_roster.py::TestAst2219SearchTimesheetRecording \
+  tests/component/core/test_roster.py::TestAst505InflowDiscovery::test_run_batch_happy_path \
+  tests/component/core/test_roster.py::TestAst505InflowDiscovery::test_run_batch_cse_failure_continues \
+  tests/component/core/test_roster.py::TestAst505InflowDiscovery::test_run_batch_searches_only_stale_terms \
+  tests/component/core/test_roster.py::TestAst505InflowDiscovery::test_run_batch_freq_hrs_zero_searches_fresh_terms \
+  tests/component/core/test_roster.py::TestAst837CsePaceDebug \
+  tests/component/core/test_roster.py::TestAst839CseDebugStreaming \
+  tests/component/core/test_roster.py::TestAst506InflowResolve \
+  tests/component/core/test_roster.py::TestAst775InflowDiscoveryRecordNew::test_run_batch_no_deduped_hits_is_success \
+  tests/component/core/test_roster.py::TestAst877OriginatingSearchTerm::test_run_batch_stamps_term_from_cse_loop \
+  tests/component/core/test_roster.py::TestAst877OriginatingSearchTerm::test_run_batch_debug_emits_originating_search_term
+```
+
+**Pass criterion:** pytest green on the nodes above. Not the zero-arg harness.
+
+**Bible shasums (publish tip after this docs commit):**
+
+```text
+docs/test-bible/external/google_cse.md 86a58edf4b2f75c1c4ce8dc511237fbb88c6c2c3
+docs/test-bible/core/timesheets.md     0d673050c050303311b3d5dbf5b51506f424f9af
+# roster.md: git show origin/sub/AST-2215/AST-2219-google-search-receipt-stub:docs/test-bible/core/roster.md | shasum
+```

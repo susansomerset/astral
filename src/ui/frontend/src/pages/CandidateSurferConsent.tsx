@@ -113,7 +113,7 @@ export default function CandidateSurferConsent() {
 
   // Decline: navigate away with no PUT (AST-1237 — dismissing is not consent).
   function onDecline() {
-    navigate("/jobs/recommended")
+    navigate("/")
   }
 
   return (

@@ -4,11 +4,21 @@
 import base64
 import json
 import re
-from typing import Any, Dict, List, Optional
+from bisect import bisect_left
+from typing import Dict, List, Optional
 from urllib.parse import unquote, urlparse
 
-# Compact grades_encoded row: 000|DTA5|GCA4|…
-_ENCODED_GRADE_LINE = re.compile(r"^\d{3}\|")
+from src.utils.logging import get_logger
+
+logger = get_logger(__name__)
+
+# Positional batch label at a line start, after a quote, or after a literal "\n" escape
+# (JSON-enveloped agent_payload). Group 1 = [index=NNN] form, group 2 = bare NNN before ':' or '|'.
+_POSITIONAL_LABEL = re.compile(
+    r'(?:^|(?<=")|(?<=\\n))(?:\[index=(\d{3})\](?=:)|(\d{3})(?=[:|]))', re.MULTILINE
+)
+# Hydrated label written by hydrate_entity_labels; same boundaries as _POSITIONAL_LABEL.
+_ENTITY_LABEL = re.compile(r'(?:^|(?<=")|(?<=\\n))\[entity_id=([^\]\s]+)\](?=[:|])', re.MULTILINE)
 
 
 def enumerate_array(
@@ -43,48 +53,6 @@ def enumerate_array(
     return body
 
 
-def clean_encoded_agent_payload(payload: str) -> str:
-    """Drop batch tag lines from agent_payload; keep grade rows for _decode_payload."""
-    lines: List[str] = []
-    for ln in (payload or "").splitlines():
-        s = ln.strip()
-        if not s:
-            continue
-        if s.startswith("[") and "batch" in s.lower():
-            continue
-        lines.append(s)
-    return "\n".join(lines)
-
-
-def looks_like_encoded_grades_text(text: str) -> bool:
-    """True when text contains at least one compact grades_encoded row."""
-    for ln in (text or "").splitlines():
-        if _ENCODED_GRADE_LINE.match(ln.strip()):
-            return True
-    if (text or "").strip() and _ENCODED_GRADE_LINE.match((text or "").strip()):
-        return True
-    return False
-
-
-def coerce_grades_encoded_json_parse(parsed: Any, fallback_text: str = "") -> Any:
-    """Wrap bare encoded string (or top-level JSON string) in agent envelope for do_task."""
-    if isinstance(parsed, str) and looks_like_encoded_grades_text(parsed):
-        return {"agent_payload": clean_encoded_agent_payload(parsed)}
-    if isinstance(parsed, dict):
-        ap = parsed.get("agent_payload")
-        if isinstance(ap, str):
-            out = dict(parsed)
-            out["agent_payload"] = clean_encoded_agent_payload(ap)
-            return out
-        if isinstance(ap, list):
-            out = dict(parsed)
-            out["agent_payload"] = clean_encoded_agent_payload("\n".join(str(x) for x in ap))
-            return out
-    if parsed is None and fallback_text and looks_like_encoded_grades_text(fallback_text):
-        return {"agent_payload": clean_encoded_agent_payload(fallback_text)}
-    return parsed
-
-
 def parse_enumerate_array(text: str) -> Dict[int, str]:
     """Inverse of enumerate_array: parse numbered enumeration back to {id: value} map.
     Input: "1: https://acme.com/about\\n2: https://acme.com/products"
@@ -104,6 +72,53 @@ def parse_enumerate_array(text: str) -> Dict[int, str]:
         except ValueError:
             continue
     return result
+
+
+def hydrate_entity_labels(text: str, entity_ids: Optional[List[str]]) -> str:
+    """Replace positional batch labels (NNN:, [index=NNN]:, NNN|) with [entity_id=<id>] (AST-2029).
+    Position N maps to entity_ids[N]; out-of-range positions and unlabeled text stay unchanged.
+    Storage-only — wire text must never be passed through this."""
+    if not text or not entity_ids:
+        return text
+
+    def _sub(m: "re.Match[str]") -> str:
+        pos = int(m.group(1) or m.group(2))
+        return f"[entity_id={entity_ids[pos]}]" if pos < len(entity_ids) else m.group(0)
+
+    out = _POSITIONAL_LABEL.sub(_sub, text)
+    logger.debug("Response from hydrate_entity_labels: %s", out)
+    return out
+
+
+def split_entity_segments(text: str) -> Dict[str, str]:
+    """Per-entity segments of a stored block keyed by entity id; {} = no id-keyed segments
+    (legacy or single-entity — caller shows the whole block) (AST-2029)."""
+    if not text:
+        return {}
+    try:
+        data = json.loads(text)
+    except (json.JSONDecodeError, TypeError):
+        data = None
+    if isinstance(data, dict):
+        # Success RESPONSE rows are decoded JSON keyed by real ids already
+        for arr_key, id_key in (("companies", "company_id"), ("jobs", "astral_job_id")):
+            rows = data.get(arr_key)
+            if isinstance(rows, list):
+                return {
+                    str(it[id_key]): json.dumps(it, indent=2)
+                    for it in rows if isinstance(it, dict) and it.get(id_key)
+                }
+    matches = list(_ENTITY_LABEL.finditer(text))
+    logger.debug("Beginning split_entity_segments loop on %s items", len(matches))
+    out: Dict[str, str] = {}
+    for i, m in enumerate(matches):
+        # Segment runs from its own tag to the next tag; preamble before the first tag is unowned.
+        end = matches[i + 1].start() if i + 1 < len(matches) else len(text)
+        seg = re.sub(r"(?:\\n)+$", "", text[m.start():end].rstrip())
+        eid = m.group(1)
+        out[eid] = f"{out[eid]}\n{seg}" if eid in out else seg
+    logger.debug("End split_entity_segments loop after %s items", len(out))
+    return out
 
 
 def normalize_link(url: str) -> str:
@@ -313,7 +328,7 @@ def find_job_containers(dom_html: str, job_titles: List[str]) -> List[str]:
     cannot be located.
     """
     # B1 lazy import: BeautifulSoup/Tag only for DOM-heavy job container discovery.
-    from bs4 import BeautifulSoup, Tag
+    from bs4 import BeautifulSoup, CData, NavigableString, Tag
 
     if not job_titles:
         return [dom_html]
@@ -326,29 +341,87 @@ def find_job_containers(dom_html: str, job_titles: List[str]) -> List[str]:
 
     titles_set = set(titles_lower)
 
+    # AST-1840: one ordered walk — every stripped main-content string, lowercased, " "-joined into `text`.
+    # Each Tag gets a [start, end) char span so text[start:end] == el.get_text(" ", strip=True).lower().
+    # Tags whose own get_text reads a special string type (script/style/template/rt/rp) fall back below.
+    special = set(getattr(soup.builder, "string_containers", {}) or {})
+    pieces: List[str] = []
+    offset = 0
+    span: dict = {}
+    stack: list = [("enter", soup)]
+    while stack:
+        op, node = stack.pop()
+        if op == "exit":
+            span[id(node)] = (span[id(node)], offset)
+            continue
+        if op == "str":
+            txt = node.strip().lower()
+            if txt:
+                if pieces:
+                    offset += 1  # the joining " "
+                pieces.append(txt)
+                offset += len(txt)
+            continue
+        span[id(node)] = offset + (1 if pieces else 0)  # where this tag's first piece would start
+        stack.append(("exit", node))
+        for child in reversed(node.contents):
+            if isinstance(child, Tag):
+                stack.append(("enter", child))
+            elif type(child) in (NavigableString, CData):  # exact types: get_text's default filter
+                stack.append(("str", child))
+    text = " ".join(pieces)
+
+    # Every (overlapping) occurrence start of each title in `text`, ascending.
+    occ = {}
+    for t in titles_set:
+        hits, p = [], text.find(t)
+        while p != -1:
+            hits.append(p)
+            p = text.find(t, p + 1)
+        occ[t] = hits
+
+    cache: dict = {}
+
     def _titles_in(el: Tag) -> set:
-        text = el.get_text(" ", strip=True).lower()
-        return {t for t in titles_set if t in text}
+        key = id(el)
+        if key in cache:
+            return cache[key]
+        if el.name in special:
+            el_text = el.get_text(" ", strip=True).lower()
+            found = {t for t in titles_set if t in el_text}
+        else:
+            s, e = span[key]
+            found = set()
+            for t, hits in occ.items():
+                i = bisect_left(hits, s)
+                if i < len(hits) and hits[i] + len(t) <= e:
+                    found.add(t)
+        cache[key] = found
+        return found
+
+    tags = [el for el in soup.descendants if isinstance(el, Tag)]
+
+    # Reverse pre-order visits every descendant before its ancestor → O(n) "any match below" flags.
+    all_below: dict = {}
+    any_below: dict = {}
+    for el in reversed(tags):
+        kids = [ch for ch in el.children if isinstance(ch, Tag)]
+        all_below[id(el)] = any(_titles_in(ch) == titles_set or all_below[id(ch)] for ch in kids)
+        any_below[id(el)] = any(bool(_titles_in(ch)) or any_below[id(ch)] for ch in kids)
 
     # Phase 1: single element containing ALL titles → filter to deepest
-    all_match = [el for el in soup.descendants if isinstance(el, Tag) and _titles_in(el) == titles_set]
+    all_match = [el for el in tags if _titles_in(el) == titles_set]
     if all_match:
-        match_ids = set(id(c) for c in all_match)
-        deepest = [c for c in all_match if not any(
-            isinstance(d, Tag) and id(d) in match_ids for d in c.descendants if d is not c
-        )]
+        deepest = [c for c in all_match if not all_below[id(c)]]
         if deepest:  # pragma: no branch
             return [str(el) for el in deepest]
 
     # Phase 2: accumulate across siblings (AST-390: pragma — DOM/BS4 sibling union is brittle in tests).
-    partial = [(el, _titles_in(el)) for el in soup.descendants if isinstance(el, Tag) and _titles_in(el)]  # pragma: no cover
+    partial = [(el, _titles_in(el)) for el in tags if _titles_in(el)]  # pragma: no cover
     if not partial:  # pragma: no cover
         return [dom_html]  # pragma: no cover
 
-    partial_ids = set(id(p[0]) for p in partial)  # pragma: no cover
-    leaves = [(el, titles) for el, titles in partial if not any(  # pragma: no cover
-        isinstance(d, Tag) and id(d) in partial_ids for d in el.descendants if d is not el  # pragma: no cover
-    )]  # pragma: no cover
+    leaves = [(el, ts) for el, ts in partial if not any_below[id(el)]]  # pragma: no cover
 
     checked: set = set()  # pragma: no cover
     for leaf, _ in leaves:  # pragma: no cover

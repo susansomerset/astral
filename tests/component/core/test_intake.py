@@ -697,3 +697,33 @@ class TestAst1075TopicMenuConfirmGenerate:
         assert any(
             c.kwargs.get("func") == "generate_topic_menu_from_preamble" for c in dbg.call_args_list
         )
+
+
+class TestAst2006IntakeEmptyTokenLedger:
+    """AST-2006 / AST-2000: an empty-token do_task failure writes total_errors=1 (not total_failed); status stays FAILED."""
+
+    _EMPTY = {"success": False, "error": "Empty tokens: X (task=t)", "empty_tokens": ["X"], "empty_token_task": "t"}
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("branch", ["preamble", "intake_task"])
+    @pytest.mark.parametrize(
+        ("result", "col"),
+        [(_EMPTY, "total_errors"), ({"success": False, "error": "boom"}, "total_failed")],
+        ids=["empty_tokens", "generic_control"],
+    )
+    async def test_failure_ledger_column(
+        self, monkeypatch: pytest.MonkeyPatch, branch: str, result: Dict[str, Any], col: str,
+    ) -> None:
+        update = MagicMock()
+        monkeypatch.setattr(intake_mod, "get_candidate", lambda cid: {"astral_candidate_id": cid})
+        monkeypatch.setattr(intake_mod.database, "save_dispatch_ledger", MagicMock())
+        monkeypatch.setattr(intake_mod.database, "update_dispatch_ledger", update)
+        monkeypatch.setattr(intake_mod, "compute_batch_cost", lambda batch_id: 0.0)
+        monkeypatch.setattr(intake_mod, "do_task", AsyncMock(return_value=dict(result)))
+        if branch == "preamble":
+            await intake_mod.validate_preamble_answer("cand-1", "Q?", "A")
+        else:
+            await intake_mod._run_intake_task("cand-1", "intake_initiate_candidate", "live", prompt_snapshot=None)
+        kw = update.call_args.kwargs
+        other = "total_failed" if col == "total_errors" else "total_errors"
+        assert kw["status"] == "FAILED" and kw[col] == 1 and other not in kw

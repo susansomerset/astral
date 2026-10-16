@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react"
 import { useCandidate } from "../contexts/CandidateContext"
+import { sortCandidatesForSelect } from "../lib/candidateLabel"
 import AdminCandidateFilterControl from "../components/AdminCandidateFilterControl"
-import { useAdminCandidateFilter } from "../hooks/useAdminCandidateFilter"
 import { useSectionExpandPolicy } from "../hooks/useSectionExpandPolicy"
 import { useInPlaceLiveRefresh } from "../hooks/useInPlaceLiveRefresh"
 import api from "../lib/api"
@@ -24,6 +24,7 @@ type TaskKeyMeta = {
   task_seq: number | null
   task_name: string
   is_scored?: boolean
+  batch_call_mode?: number
 }
 
 type DispatchFormState = {
@@ -31,6 +32,7 @@ type DispatchFormState = {
   task_key: string
   trigger_state: string
   freq_hrs: string
+  sweep_hrs: string
   min_count: string
   batch_size: string
   max_runs: string
@@ -40,6 +42,7 @@ type DispatchFormState = {
   skip_daisy_chain: boolean
   entity_type: string
   is_scored: boolean
+  batch_call_mode: boolean
 }
 
 function taskKeyChangePatch(form: DispatchFormState, key: string, cfg: TaskKeyMeta | undefined): DispatchFormState {
@@ -48,7 +51,12 @@ function taskKeyChangePatch(form: DispatchFormState, key: string, cfg: TaskKeyMe
     task_key: key,
     entity_type: cfg?.entity_type || "",
     is_scored: !!cfg?.is_scored,
+    batch_call_mode: !!cfg?.batch_call_mode,
   }
+}
+
+function formatBatchCallMode(mode: number | null | undefined): string {
+  return mode ? "Full" : "Each"
 }
 
 function inputStatesForEntity(
@@ -68,8 +76,10 @@ interface DispatchTask {
   entity_type: string | null
   trigger_state?: string | null
   freq_hrs: number
+  sweep_hrs?: number | null
   min_count: number
   batch_size: number | null
+  batch_call_mode?: number
   score_floor: number | null
   is_scored?: boolean
   auto_mode: number
@@ -82,6 +92,9 @@ interface DispatchTask {
   available_count: number
   always_visible_under_avail_gt0?: boolean
   empty_render?: boolean
+  empty_tokens?: string[]
+  /** AST-1880: missing platform key reason ("" when the key is present). */
+  invalid_reason?: string
 }
 
 interface ThreadEntry {
@@ -92,14 +105,20 @@ interface ThreadEntry {
   is_auto: boolean
 }
 
+// AST-1917: payload of GET/POST /api/admin/scheduler/auto_thread_cap (AST-1916). min/max come from
+// ASTRAL_CONFIG via the API so the dropdown range is never hardcoded in this page.
+type AutoThreadCap = { max_auto_threads: number; default: number; min: number; max: number }
+
+const AUTO_THREAD_CAP_PATH = "/api/admin/scheduler/auto_thread_cap"
+
 type SortDir = "asc" | "desc"
 
-const FROZEN_DATA_COLUMNS = 3
+const FROZEN_DATA_COLUMNS = 1 // AST-1818: only Task pinned; Entity/State scroll with the rest
 
 const DATA_COL_KEYS = [
   "task_key", "entity_type", "trigger_state", "score_floor",
-  "auto_mode", "run", "debug", "freq_hrs", "min_count",
-  "batch_size", "max_runs", "candidate_id", "available_count", "last_run_at",
+  "auto_mode", "run", "debug", "freq_hrs", "sweep_hrs", "min_count",
+  "batch_size", "batch_call_mode", "max_runs", "candidate_id", "available_count", "last_run_at",
 ] as const
 
 const DATA_COL_KEYS_ARR = [...DATA_COL_KEYS]
@@ -171,8 +190,17 @@ function ScheduledPhaseTable({
             <th style={{ textAlign: "center" }}>Run</th>
             <th className="sortable" style={{ textAlign: "center" }} onClick={() => toggleSort("debug")}>Dbg{sortIcon("debug")}</th>
             <th className="sortable" style={{ textAlign: "right" }} onClick={() => toggleSort("freq_hrs")}>Freq{sortIcon("freq_hrs")}</th>
+            <th className="sortable" style={{ textAlign: "right" }} title="Scheduled sweep interval (hrs): AUTO row with 0 < Avail < Min runs one batch this often since Last Run" onClick={() => toggleSort("sweep_hrs")}>Sweep{sortIcon("sweep_hrs")}</th>
             <th className="sortable" style={{ textAlign: "right" }} onClick={() => toggleSort("min_count")}>Min{sortIcon("min_count")}</th>
             <th className="sortable" style={{ textAlign: "right" }} onClick={() => toggleSort("batch_size")}>Batch{sortIcon("batch_size")}</th>
+            <th
+              className="sortable"
+              style={{ textAlign: "center" }}
+              title="Full = one batch call for all claimed entities; Each = per-entity warm-then-gather"
+              onClick={() => toggleSort("batch_call_mode")}
+            >
+              Mode{sortIcon("batch_call_mode")}
+            </th>
             <th className="sortable" style={{ textAlign: "right" }} onClick={() => toggleSort("max_runs")}>Runs{sortIcon("max_runs")}</th>
             <th className="sortable" onClick={() => toggleSort("candidate_id")}>Candidate{sortIcon("candidate_id")}</th>
             <th className="sortable" style={{ textAlign: "right" }} onClick={() => toggleSort("available_count")}>Avail{sortIcon("available_count")}</th>
@@ -188,7 +216,15 @@ function ScheduledPhaseTable({
             const isSweep = !!row.auto_mode && avail > 0
             const sweepDisabled = !!row.auto_mode && avail >= (row.min_count || 1)
             const emptyRender = !!row.empty_render
-            const runBlocked = isRunning || sweepDisabled || emptyRender
+            // AST-1818: a valid task with nothing to claim gets the same muted, unclickable Run treatment.
+            const zeroAvail = !emptyRender && avail === 0
+            const runBlocked = isRunning || sweepDisabled || emptyRender || zeroAvail
+            // AST-1819 / AST-1880: Invalid tooltip — missing platform key, missing tokens, or a fallback
+            // when prompts could not be validated.
+            const invalidTitle = emptyRender && !isRunning
+              ? (row.invalid_reason
+                || (row.empty_tokens?.length ? row.empty_tokens.join(", ") : "Could not validate prompts"))
+              : undefined
             return (
               <tr
                 key={row.id}
@@ -224,14 +260,17 @@ function ScheduledPhaseTable({
                   </button>
                 </td>
                 <td style={{ textAlign: "center" }}>
-                  <div style={{ position: "relative", display: "inline-block" }}>
+                  <div title={invalidTitle} style={{ position: "relative", display: "inline-block" }}>
                     <button
-                      className="btn primary in-row"
-                      style={{ whiteSpace: "nowrap", opacity: isRunning ? 0 : (runBlocked ? 0.25 : 1), pointerEvents: runBlocked ? "none" : "auto" }}
+                      // AST-1818: Invalid reuses the shared secondary role (no new class / colour literal).
+                      className={emptyRender ? "btn secondary in-row" : "btn primary in-row"}
+                      // Invalid stays full opacity so the secondary styling is readable; other blocked rows fade to 0.25.
+                      // isRunning still hides it (0) so the Stop/Draining overlay shows through.
+                      style={{ whiteSpace: "nowrap", opacity: isRunning ? 0 : (runBlocked && !emptyRender ? 0.25 : 1), pointerEvents: runBlocked ? "none" : "auto" }}
                       disabled={runBlocked}
                       onClick={e => handleRun(e, row)}
                     >
-                      {isSweep ? "Sweep" : "Run"}
+                      {emptyRender ? "Invalid" : (isSweep ? "Sweep" : "Run")}
                     </button>
                     {isRunning && (
                       <button
@@ -258,10 +297,18 @@ function ScheduledPhaseTable({
                   <ListTableTruncatedCell text={row.freq_hrs ? String(row.freq_hrs) : "—"} maxChars={truncateChars} />
                 </td>
                 <td style={{ textAlign: "right" }}>
+                  <ListTableTruncatedCell text={row.sweep_hrs ? String(row.sweep_hrs) : "—"} maxChars={truncateChars} />
+                </td>
+                <td style={{ textAlign: "right" }}>
                   <ListTableTruncatedCell text={String(row.min_count)} maxChars={truncateChars} />
                 </td>
                 <td style={{ textAlign: "right" }}>
                   <ListTableTruncatedCell text={row.batch_size != null ? String(row.batch_size) : "—"} maxChars={truncateChars} />
+                </td>
+                <td style={{ textAlign: "center" }}>
+                  <span title={row.batch_call_mode ? "Full batch — all claimed entities in one runner call" : "Per entity — warm first row, then gather singles"}>
+                    {formatBatchCallMode(row.batch_call_mode)}
+                  </span>
                 </td>
                 <td style={{ textAlign: "right" }}>
                   <span title={row.max_runs === 0 ? "Loop until drained" : undefined}>
@@ -285,8 +332,11 @@ function ScheduledPhaseTable({
 }
 
 export default function ScheduledActions() {
-  const { selectedId } = useCandidate()
-  const { candidateFilter, setCandidateFilter, candidates } = useAdminCandidateFilter()
+  const { selectedId, candidates: navCandidates } = useCandidate()
+  // AST-2150: filter is page-local and starts at All — never seeded from or synced to the left nav.
+  const [candidateFilter, setCandidateFilter] = useState("")
+  // Same ordering AdminCandidateFilterControl gets from the shared hook on other admin screens.
+  const candidates = useMemo(() => sortCandidatesForSelect(navCandidates), [navCandidates])
   const [data, setData] = useState<DispatchTask[]>([])
   const [sortCol, setSortCol] = useState<string>("_default")
   const [sortDir, setSortDir] = useState<SortDir>("asc")
@@ -302,7 +352,7 @@ export default function ScheduledActions() {
   // Modal state (add/edit)
   const [showModal, setShowModal] = useState(false)
   const [editRow, setEditRow] = useState<DispatchTask | null>(null)
-  const [form, setForm] = useState({ candidate_id: "", task_key: "", trigger_state: "", freq_hrs: "0", min_count: "1", batch_size: "", max_runs: "1", score_floor: "1.00", auto_mode: false, debug: false, skip_daisy_chain: false, entity_type: "", is_scored: false })
+  const [form, setForm] = useState({ candidate_id: "", task_key: "", trigger_state: "", freq_hrs: "0", sweep_hrs: "", min_count: "1", batch_size: "", max_runs: "1", score_floor: "1.00", auto_mode: false, debug: false, skip_daisy_chain: false, entity_type: "", is_scored: false, batch_call_mode: false })
   const [saving, setSaving] = useState(false)
 
   // Thread status (polled every 5s)
@@ -313,6 +363,9 @@ export default function ScheduledActions() {
   // Stop All confirmation modal
   const [showStopAll, setShowStopAll] = useState(false)
   const [stoppingAll, setStoppingAll] = useState(false)
+
+  // AST-1917: live AUTO-thread cap for the header dropdown (null until loaded → dropdown hidden)
+  const [autoThreadCap, setAutoThreadCap] = useState<AutoThreadCap | null>(null)
   const [, forceUiConfig] = useState(0)
 
   useEffect(() => { loadUiConfig(() => forceUiConfig(n => n + 1)) }, [])
@@ -327,9 +380,24 @@ export default function ScheduledActions() {
 
   useEffect(() => {
     loadThreadStatus()
-    pollRef.current = setInterval(() => { void loadThreadStatus(true) }, 5_000)
+    // Skip polls while the tab is hidden; each poll ties up a server worker.
+    pollRef.current = setInterval(() => {
+      if (!document.hidden) void loadThreadStatus(true)
+    }, 5_000)
     return () => { if (pollRef.current) clearInterval(pollRef.current) }
   }, [loadThreadStatus])
+
+  useEffect(() => {
+    // One-shot load on mount. Silent on failure, like loadThreadStatus: no dropdown rather than a wrong one.
+    void (async () => {
+      try {
+        const res = await api(AUTO_THREAD_CAP_PATH)
+        if (res.ok) setAutoThreadCap(await res.json())
+      } catch {
+        // network/parse failure → leave the dropdown hidden
+      }
+    })()
+  }, [])
 
   const [taskKeyFilter, setTaskKeyFilter] = useState("")
   const [sectionGroupFilter, setSectionGroupFilter] = useState("")
@@ -337,7 +405,7 @@ export default function ScheduledActions() {
   const [floorMax, setFloorMax] = useState("")
   const [autoFilter, setAutoFilter] = useState("")
   const [debugFilter, setDebugFilter] = useState("")
-  const [availGtZeroFilter, setAvailGtZeroFilter] = useState("gt0") // "" | "gt0"
+  const [availGtZeroFilter, setAvailGtZeroFilter] = useState("") // "" (All, AST-1818 default) | "gt0"
   const [freqFilter, setFreqFilter] = useState("")
   const [minCountFilter, setMinCountFilter] = useState("")
   const [batchSizeFilter, setBatchSizeFilter] = useState("")
@@ -583,14 +651,9 @@ export default function ScheduledActions() {
         },
       }))
     }
-    const watch = async () => {
-      const res = await api("/api/admin/scheduler/thread_status", { silent: true })
-      if (!res.ok) return
-      const next = await res.json() as Record<number, ThreadEntry>
-      setThreadStatus(next)
-      if (next[row.id]?.running) setTimeout(watch, 500)
-    }
-    setTimeout(watch, 500)
+    // One quick confirm; the 5s poll tracks the run from here (a 500ms loop flooded the
+    // single-process server with ~1 req/s for the whole run).
+    setTimeout(() => { void loadThreadStatus(true) }, 1_500)
   }
 
   const handleStop = async (e: React.MouseEvent, row: DispatchTask) => {
@@ -610,6 +673,26 @@ export default function ScheduledActions() {
     }
   }
 
+  const handleAutoThreadCapChange = async (next: number) => {
+    const prev = autoThreadCap
+    if (!prev) return
+    // Optimistic so the select doesn't snap back while the POST is in flight; reverted on any failure.
+    setAutoThreadCap({ ...prev, max_auto_threads: next })
+    try {
+      const res = await api(AUTO_THREAD_CAP_PATH, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        // Must be a JSON number — the dispatcher setter rejects strings (AST-1916 strict type check).
+        body: JSON.stringify({ max_auto_threads: next }),
+      })
+      if (!res.ok) await readApiError(res, AUTO_THREAD_CAP_PATH, "POST") // always throws ApiError
+      setAutoThreadCap(await res.json()) // server-returned value is authoritative
+    } catch (e) {
+      setAutoThreadCap(prev)
+      setToast(e instanceof ApiError ? errorToastFromApiError(e) : { text: "Failed to set max AUTO threads", variant: "error" })
+    }
+  }
+
   const activeThreads = useMemo(() =>
     Object.entries(threadStatus).filter(([, e]) => e.running),
     [threadStatus]
@@ -617,7 +700,7 @@ export default function ScheduledActions() {
 
   const openAdd = () => {
     setEditRow(null)
-    setForm({ candidate_id: selectedId ?? "", task_key: "", trigger_state: "", freq_hrs: "0", min_count: "1", batch_size: "", max_runs: "1", score_floor: "1.00", auto_mode: false, debug: false, skip_daisy_chain: false, entity_type: "", is_scored: false })
+    setForm({ candidate_id: selectedId ?? "", task_key: "", trigger_state: "", freq_hrs: "0", sweep_hrs: "", min_count: "1", batch_size: "", max_runs: "1", score_floor: "1.00", auto_mode: false, debug: false, skip_daisy_chain: false, entity_type: "", is_scored: false, batch_call_mode: false })
     setShowModal(true)
   }
   const openEdit = (row: DispatchTask) => {
@@ -632,6 +715,7 @@ export default function ScheduledActions() {
       task_key: row.task_key,
       trigger_state: row.trigger_state || cfg?.trigger_state || "",
       freq_hrs: String(row.freq_hrs ?? 0),
+      sweep_hrs: row.sweep_hrs != null ? String(row.sweep_hrs) : "",
       min_count: String(row.min_count),
       batch_size: row.batch_size != null ? String(row.batch_size) : "",
       max_runs: row.max_runs != null ? String(row.max_runs) : "1",
@@ -641,6 +725,7 @@ export default function ScheduledActions() {
       skip_daisy_chain: !!row.skip_daisy_chain,
       entity_type: row.entity_type || cfg?.entity_type || "",
       is_scored: row.is_scored ?? !!cfg?.is_scored,
+      batch_call_mode: !!(row.batch_call_mode ?? cfg?.batch_call_mode),
     })
     setShowModal(true)
   }
@@ -654,11 +739,13 @@ export default function ScheduledActions() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             freq_hrs: parseFloat(form.freq_hrs) || 0,
+            sweep_hrs: form.sweep_hrs !== "" ? parseFloat(form.sweep_hrs) : null,
             min_count: parseInt(form.min_count, 10),
             trigger_state: form.trigger_state,
             task_key: form.task_key,
             entity_type: form.entity_type,
             batch_size: form.batch_size ? parseInt(form.batch_size, 10) : null,
+            batch_call_mode: form.batch_call_mode,
             max_runs: form.max_runs !== "" ? parseInt(form.max_runs, 10) : 1,
             score_floor: form.is_scored
               ? (() => {
@@ -689,8 +776,10 @@ export default function ScheduledActions() {
             trigger_state: form.trigger_state,
             entity_type: form.entity_type,
             freq_hrs: parseFloat(form.freq_hrs) || 0,
+            sweep_hrs: form.sweep_hrs !== "" ? parseFloat(form.sweep_hrs) : null,
             min_count: parseInt(form.min_count, 10),
             batch_size: form.batch_size ? parseInt(form.batch_size, 10) : null,
+            batch_call_mode: form.batch_call_mode,
             max_runs: form.max_runs !== "" ? parseInt(form.max_runs, 10) : 1,
             score_floor: form.is_scored
               ? (() => {
@@ -723,6 +812,23 @@ export default function ScheduledActions() {
       <div className="list-page-header">
         <h1 className="list-page-title">Scheduled Actions</h1>
         <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+          {autoThreadCap && (
+            <label
+              style={{ display: "flex", gap: "0.35rem", alignItems: "center" }}
+              title={`Max AUTO tasks running at once (config default ${autoThreadCap.default}). Manual Run is not capped. Resets to the default on server restart.`}
+            >
+              Max AUTO threads
+              <select
+                value={autoThreadCap.max_auto_threads}
+                onChange={e => { void handleAutoThreadCapChange(Number(e.target.value)) }}
+              >
+                {/* min..max inclusive, step 1 — bounds from the API, never literals */}
+                {Array.from({ length: autoThreadCap.max - autoThreadCap.min + 1 }, (_, i) => autoThreadCap.min + i).map(n => (
+                  <option key={n} value={n}>{n}</option>
+                ))}
+              </select>
+            </label>
+          )}
           {activeThreads.length > 0 && (
             <span className="dispatch-status-badge dispatch-status-warn">
               {activeThreads.length} running
@@ -889,7 +995,7 @@ export default function ScheduledActions() {
                 {activeThreads.map(([id, entry]) => (
                   <li key={id} style={{ padding: "0.25rem 0", fontFamily: "monospace", fontSize: "0.88rem" }}>
                     <span className="dispatch-status-badge dispatch-status-warn">{entry.is_auto ? "AUTO" : "CLICK"}</span>
-                    {" "}{entry.task_key} <span style={{ color: "var(--text-secondary, #8b949e)" }}>({entry.candidate_id})</span>
+                    {" "}{entry.task_key} <span style={{ color: "var(--text-secondary)" }}>({entry.candidate_id})</span>
                   </li>
                 ))}
               </ul>
@@ -933,6 +1039,7 @@ export default function ScheduledActions() {
                       entity_type: cfg?.entity_type || "",
                       trigger_state: cfg?.trigger_state || "",
                       is_scored: !!cfg?.is_scored,
+                      batch_call_mode: !!cfg?.batch_call_mode,
                       score_floor: "1.00",
                     })
                   }
@@ -975,12 +1082,28 @@ export default function ScheduledActions() {
                 <input type="number" min="0" step="0.25" value={form.freq_hrs} onChange={e => setForm({ ...form, freq_hrs: e.target.value })} />
               </div>
               <div className="modal-detail-row">
+                <span className="modal-detail-label">Sweep (hrs)</span>
+                <input type="number" min="0" step="0.25" placeholder="off" value={form.sweep_hrs} onChange={e => setForm({ ...form, sweep_hrs: e.target.value })}
+                  title="When AUTO is on and 0 < Avail < Min Count, run one batch (min 1) every N hours since Last Run. Blank or 0 = off." />
+              </div>
+              <div className="modal-detail-row">
                 <span className="modal-detail-label">Min Count</span>
                 <input type="number" min="0" value={form.min_count} onChange={e => setForm({ ...form, min_count: e.target.value })} />
               </div>
               <div className="modal-detail-row">
                 <span className="modal-detail-label">Batch Size</span>
                 <input type="number" min="1" placeholder="default" value={form.batch_size} onChange={e => setForm({ ...form, batch_size: e.target.value })} />
+              </div>
+              <div className="modal-detail-row">
+                <span className="modal-detail-label">Batch mode</span>
+                <label style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                  <input
+                    type="checkbox"
+                    checked={form.batch_call_mode}
+                    onChange={e => setForm({ ...form, batch_call_mode: e.target.checked })}
+                  />
+                  <span>Full batch (all claimed entities in one runner call)</span>
+                </label>
               </div>
               <div className="modal-detail-row">
                 <span className="modal-detail-label">Max Runs</span>

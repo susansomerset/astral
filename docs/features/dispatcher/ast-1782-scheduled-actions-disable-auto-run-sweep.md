@@ -1,3 +1,78 @@
+<!-- linear-archive: AST-1782 archived 2026-10-02 -->
+
+## Linear archive (AST-1782)
+
+**Archived:** 2026-10-02  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1782/scheduled-actions-disable-auto-and-runsweep-dispatch-validation  
+**Status at archive:** Archive  
+**Project:** Astral Dispatcher  
+**Assignee:** ada  
+**Priority / estimate:** None / 2  
+**Parent:** AST-1766 — Dispatch Validation  
+**Blocked by / blocks / related:** parent: AST-1766
+
+### Description
+
+## What this implements
+
+Owns UI-only: read the list flag and disable AUTO + Run/Sweep (visual mute + no click); Stop/Drain and Debug unchanged. After #2.
+
+## Citations
+
+`astral.dispatch.entity-state-bound`; patterns: none (`no established pattern applies`).
+
+## Scope
+
+`src/ui/frontend/src/pages/AdminScheduledActions.tsx` — disable AUTO and Run/Sweep from the list flag only.
+
+## Acceptance criteria
+
+- [X] On such a row, AUTO and Run/Sweep are disabled in the UI (not clickable; Run/Sweep visually muted). **Fail:** click still fires `PUT` `auto_mode: true` or `POST …/run`.
+- [X] Grep of `AdminScheduledActions.tsx` shows no local `resolve_tokens` / `TOKEN_SOURCES` reimplementation. **Fail:** client-side resolver added for this gate.
+- [X] A row whose candidate-scoped tokens all resolve non-empty keeps AUTO and Run/Sweep enabled (subject to existing API-key and Sweep/min_count rules), even if prompts also reference job tokens that would be blank without a job context. **Fail:** controls disabled solely because job tokens are empty.
+
+## Boundaries
+
+Does not own the predicate or API 400 / force-off behavior (siblings #1/#2).
+
+## Notes for planning
+
+After #2. Consume list enrichment flag only.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/AST-1766-dispatch-validation`, child `sub/AST-1766/AST-1782-scheduled-actions-disable-auto-run-sweep`. Created at dispatch-parent.
+
+## QA test manifest
+
+1. Routed page (§6c) empty_render mute suite: `tests/component/frontend/pages/test_AdminScheduledActions.test.tsx` — describe `AST-1782 empty_render mutes AUTO and Run/Sweep`
+
+```bash
+cd src/ui/frontend && npm run test:component --   ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx   -t 'AST-1782'
+```
+
+**Bible shasum (publish tip):**
+
+* `docs/test-bible/frontend/pages.md` — `59e7f08e7a08b5359a45de04033f6faa2ce61a5d`
+
+**Publish tip:** `origin/sub/AST-1766/AST-1782-scheduled-actions-disable-auto-run-sweep` @ `519d4763`
+
+### Comments
+
+#### radia — 2026-09-23T02:13:06.737Z
+[code-rubric] PROCEED (Commit: 519d4763) empty_render UI mute clean
+
+#### betty — 2026-09-23T02:11:03.242Z
+`origin/sub/AST-1766/AST-1782-scheduled-actions-disable-auto-run-sweep` @ `519d4763` · empty_render UI mute
+
+#### joan — 2026-09-23T02:05:44.123Z
+[plan-rubric] PROCEED (Commit: ff280dda6d25e945c25e78291b29244a66df74ac) UI disable plan clean
+
+#### ada — 2026-09-23T02:04:05.845Z
+`origin/sub/AST-1766/AST-1782-scheduled-actions-disable-auto-run-sweep` @ `ff280dda6d25e945c25e78291b29244a66df74ac` · UI empty_render disable planned
+
+---
+
 # AST-1782 — Scheduled Actions disable AUTO and Run/Sweep
 
 - **Linear:** https://linear.app/astralcareermatch/issue/AST-1782

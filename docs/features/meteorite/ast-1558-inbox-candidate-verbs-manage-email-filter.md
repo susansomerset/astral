@@ -1,3 +1,92 @@
+<!-- linear-archive: AST-1558 archived 2026-10-02 -->
+
+## Linear archive (AST-1558)
+
+**Archived:** 2026-10-02  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1558/inbox-candidate-verbs-manage-email-filter-meteorite-ingress-staging  
+**Status at archive:** Archive  
+**Project:** Astral Meteorite  
+**Assignee:** hedy  
+**Priority / estimate:** None / 5  
+**Parent:** AST-1555 — Meteorite ingress: staging table + inbox/meteorite consolidation  
+**Blocked by / blocks / related:** parent: AST-1555; blocks: AST-1559
+
+### Description
+
+## What this implements
+
+Shrink `inbox.py` to candidate-scoped fetch/archive + keep HTML/strip helpers; delete `run_fetch_email` / land-bound helpers / bind machinery / `FETCH_EMAIL_CONFIG` / `INBOX_BIND_CONFIG` / dispatcher `fetch_email` branch and seeds. Rewrite Manage Email: candidate filter default All; drop Matched/bound column; selected candidate → aliases → `fetch_candidate_email`; Land → meteorite ingress. Does not implement `check_inbox` or staging transitions.
+
+## Citations
+
+## Scope
+
+## Acceptance criteria
+
+- [X] 6 (this-child slice). `inbox.py` has no `run_fetch_email` / `fetch_email` / From-then-To bind path. (`meteorite_email.py` delete, meteorite↛gmail, unbound Trash hygiene — AST-1559/1562 Boundaries.)
+- [X] 7. Manage Email shows a candidate filter defaulting to All (unfiltered list) and, when a candidate is selected, lists via aliases → `fetch_candidate_email`; the bound/Matched column is gone; Land uses meteorite ingress (`stage_meteorite` + required `candidate_id`).
+
+## Boundaries
+
+- [X] Does not own sibling slices: #1 meteorite table + claim helpers, #3 check_inbox + monitoring log, #4 stage / scrape / land transitions, #5 BOT_BLOCKED Estelle recovery + apply_paste, #6 Retention sweep + delete meteorite_email.
+
+## Notes for planning
+
+Citations and Scope above are authoritative for plan-child. Parent: AST-1555.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/<parent-segment>`, child `sub/AST-1555/<child-segment>`. Created at dispatch-parent.
+
+## QA test manifest
+
+1. Core inbox verbs: `tests/component/core/test_inbox.py`
+2. Config retirements: `tests/component/utils/test_config.py::TestAst1558FetchEmailBindRetired`
+3. Manage Email API: `tests/component/ui/api/test_api_inbox.py`
+4. Manage Email page (§6c): `tests/component/frontend/pages/test_AdminManageEmail.test.tsx`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_inbox.py \
+  tests/component/utils/test_config.py::TestAst1558FetchEmailBindRetired \
+  tests/component/ui/api/test_api_inbox.py \
+  -q
+```
+
+```bash
+cd src/ui/frontend && npx vitest run ../../../tests/component/frontend/pages/test_AdminManageEmail.test.tsx
+```
+
+**Pass criterion:** pytest + Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasums** (`origin/sub/AST-1555/AST-1558-inbox-candidate-verbs-manage-email-filter`):
+
+* `docs/test-bible/core/inbox.md` `2c45a15db58410c3851940e803b97955ddf2e5e3`
+* `docs/test-bible/ui/api/api_inbox.md` `cc6593bfc40373eec3e6f72ff68dc9d05276a924`
+* `docs/test-bible/frontend/pages.md` `28b6d1e40f3772d98907ff49148df28e0a5b5f40`
+* `docs/test-bible/utils/config.md` `f69d53155c9986f2f5c63b1827391eab5bbc620e`
+
+Primary map: `docs/test-bible/core/inbox.md` § AST-1558.
+
+### Comments
+
+#### chuckles — 2026-08-31T22:56:21.673Z
+[merge-child] blocked: validate-sub-log — missing plan(AST-1558): (have docs(AST-1558): … instead of plan(); use plan() or docs(): plan —). @Hedy Lamarr republish with plan() vocabulary then Chuckles re-runs merge-child.
+
+#### radia — 2026-08-31T22:54:34.054Z
+[code-rubric] REVIEW (Commit: 158e73aa) plan faithful; branch hygiene discuss
+
+#### betty — 2026-08-31T22:50:38.391Z
+`origin/sub/AST-1555/AST-1558-inbox-candidate-verbs-manage-email-filter` @ `158e73aa` · inbox Manage Email tests
+
+#### joan — 2026-08-31T22:26:22.668Z
+[plan-rubric] PROCEED (Commit: 81c44eb91a13ff71c363e609643e4eac65251ca5) scope-faithful candidate verbs ME
+
+#### hedy — 2026-08-31T22:23:48.939Z
+`origin/sub/AST-1555/AST-1558-inbox-candidate-verbs-manage-email-filter` @ `81c44eb91a13ff71c363e609643e4eac65251ca5` · plan ready
+
+---
+
 # AST-1558 — inbox candidate verbs + Manage Email filter
 
 **Linear:** [AST-1558](https://linear.app/astralcareermatch/issue/AST-1558/inbox-candidate-verbs-manage-email-filter)  

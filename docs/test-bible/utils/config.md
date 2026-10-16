@@ -10,6 +10,84 @@
 
 ---
 
+### AST-2086 · AST-2073 (terminal-state grammar `ERROR_<TASK_KEY>[_<CONDITION>]` / `BOT_BLOCKED_<TASK_KEY>`; bot-wall split)
+
+**Publish:** `origin/sub/AST-2073/AST-2086-terminal-state-rename`. Plan: `docs/features/foundation/ast-2086-terminal-state-rename-and-bot-wall-split.md`.
+
+Every terminal failure / bot state on job, company, candidate and meteorite is named for the task that failed, built by `error_state_for` / `bot_blocked_state_for` (parsed back by `parse_terminal_state`, conditions closed over `TERMINAL_CONDITIONS`). `FAILED_TECHNICAL` and the dead `PREFILTER_UNKNOWN` / `HARD_PARSE` / `BUILD_FAILED` are gone; `RETIRED_TERMINAL_STATE_MAP` records old → new per entity (rows are AST-2087's). Writers read their own task's state from config: out of a retry holding → bare `ERROR_<TASK_KEY>`; empty-token → the failing hop's own error (chain and craft hops each have one); a refused empty-token edge warns, no catch-all. Meteorite scrape adopts `SCRAPE_LINK_RETRY` → `ERROR_SCRAPE_METEORITE`; expired links → `JD_SCRAPE_FAIL_CLOSED` / `_MISSING`. fetch_website / fetch_job_pages / fetch_culture_pages run `is_bot_wall` → `BOT_BLOCKED_<TASK>`; plain unreadable stays `ERROR_<TASK>_UNREADABLE`.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Grammar, registries, retired map, chain/craft error sets, AC6 chain dispatch, AC7 bulk retry + labels, AC8 notify seed, gazer/roster task terminals | `src/utils/config.py` | **`TestAst2086TerminalStateGrammar`** (10) |
+| Prior-states pin across the rename | `src/utils/config.py` | **`TestAst1808RetryRegistryPurge::test_prior_snapshot_pinned`** (AST-1806 snapshot translated via `_ast2086_translate` / `_ast2086_additions`; fixture JSON unchanged) |
+| Batch fail dest (3-arg, out of holding → `ERROR_<TASK>`), empty-token dest, chain hop errors, refused edge warns | `src/core/consult.py` | `test_consult.py` **`TestConsultBatchFailDest`** · **`TestAst2006EmptyTokenRouting`** · **`TestPrepLiveContent::test_transitions_when_website_content_missing`** — see `core/consult.md` |
+| Company terminals by writing task; parse empty-token → `ERROR_PARSE_JOB_LIST`; select bot wall → `BOT_BLOCKED_SELECT_JOB_PAGE` | `src/core/roster.py` | `test_roster.py` — see `core/roster.md` |
+| AC4 bot split (fetch_website, fetch_job_pages, fetch_culture_pages fresh + cached); task-aware JD `classified_states` | `src/core/gazer.py` | `test_gazer.py` **`TestAst2086GazerBotWallSplit`** (11) · **`TestAst1195BotBlockedErrorState`** — see `core/gazer.md` |
+| AC5 scrape retry; closed / missing; stage / land errors | `src/core/meteorite.py` | `test_meteorite.py` **`TestAst1560RunScrapeMeteorite::test_ast2086_scrape_failure_retries_once_then_errors`** — see `core/meteorite.md` |
+| Craft hop errors (`ERROR_CRAFT_<HOP>`) | `src/core/candidate.py` | `test_candidate.py` **`TestAst2006RequestedArtifactsEmptyTokens`** · **`TestAst1808RetryResolvesViaBase`** — see `core/candidate.md` |
+
+**Broken / revised (194 ticket-attributable failures, all rewritten in place):** `test_config.py` 47, `test_roster.py` 52, `test_consult.py` 31, `test_meteorite.py` 24, `test_gazer.py` 18, `test_candidate.py` 8, `test_agent.py` 6, `test_contact.py` 5, `test_api_jobs.py` 2, plus retired names in `data/database/test_meteorites.py`, `frontend/fixtures/stateUiManifestFixture.ts` (retired `skipped` entries swapped for their successors from `build_state_ui_manifest()`; the fixture stays a partial snapshot) and four frontend tests. Renamed nodes: roster `test_select_only_parse_goes_to_parse_error`, `test_scrape_error_transitions_to_select_error`; consult `…_to_bare_task_error` (×2), `test_dispatch_chain_failing_hop_error_wins_over_entry`, `test_dispatch_chain_invalid_edge_warns_without_fallback`; gazer `test_bot_maps_to_task_bot_blocked`, `test_short_text_after_click_is_relative_unreadable_with_link_resolved`; agent `test_hard_failure_transitions_hop_error_state`; candidate `test_goes_straight_to_hop_error_state`.
+
+**Integration:** none.
+
+## QA test manifest
+
+Baseline: on the epic tree the component failure set equals `origin/dev`'s (345 pre-existing, none new); Vitest failures equal dev's.
+
+1. `tests/component/utils/test_config.py::TestAst2086TerminalStateGrammar` + `::TestAst1808RetryRegistryPurge`
+2. `tests/component/core/test_gazer.py::TestAst2086GazerBotWallSplit` + `::TestAst1195BotBlockedErrorState` + `::TestAst2025FetchRelativeJdBatch`
+3. `tests/component/core/test_meteorite.py::TestAst1560RunScrapeMeteorite`
+4. `tests/component/core/test_consult.py::TestConsultBatchFailDest` + `::TestAst2006EmptyTokenRouting` + `::TestPrepLiveContent`
+5. `tests/component/core/test_roster.py::TestAst2006EmptyTokenCompanyTerminals` + `::TestAst2004BotWalledSelect` + `::TestJobsFoundProcessJobSite469`
+6. `tests/component/core/test_candidate.py::TestAst2006RequestedArtifactsEmptyTokens` + `::TestAst1808RetryResolvesViaBase`
+7. Whole modules (no new failures vs dev): `test_config.py`, `test_roster.py`, `test_consult.py`, `test_meteorite.py`, `test_gazer.py`, `test_candidate.py`, `test_agent.py`, `test_contact.py`, `tests/component/ui/api/test_api_jobs.py`.
+8. Vitest: `test_JobsSkipped`, `test_StateUiContext`, `test_JobDetailModal`, `test_JobAnalysisReportModal`, `test_ArtifactEditor`, `test_recommendedJobReport`.
+9. **Product fix required (LOCKED_AT_100, `consult.py`):** `_prep_live_content`'s `else: tracker.transition_job_state(...)` arm is unreachable — `error_state_for(None, …)` raises first, and every caller passes `scoring_task_key`. Dev covered it; nothing can now. Drop the dead arm (or make `scoring_task_key` required).
+
+Notes (no action required): `fetch_job_pages` with one walled + one errored PJL and no prior capture lands `BOT_BLOCKED_FETCH_JOB_PAGES` with the "bot wall on every PJL" note — matches plan step 5, not pinned. `data/database/test_meteorites.py` still fails collection on dev (`METEORITE_STATES_RETENTION`); names updated, not runnable. `origin/tests` also carries AST-2096 (`_ALL_X`) tests written against pre-rename names (e.g. `METEORITE_FAILED_TECHNICAL_LIKE`) — reconcile when the second epic lands on dev.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py tests/component/core/test_roster.py tests/component/core/test_consult.py \
+  tests/component/core/test_meteorite.py tests/component/core/test_gazer.py tests/component/core/test_candidate.py \
+  tests/component/core/test_agent.py tests/component/core/test_contact.py tests/component/ui/api/test_api_jobs.py -q
+./scripts/testing/run_component_tests.sh
+```
+
+**Bible shasum (after publish):** `git show origin/sub/AST-2073/AST-2086-terminal-state-rename:docs/test-bible/utils/config.md | shasum`
+
+### AST-2105 · AST-2102 (Skipped group rules — `JOBS_SKIPPED_GROUPS` + manifest `jobs.skipped.groups`)
+
+**Publish:** `origin/sub/AST-2102/AST-2105-skipped-group-rules` (carries AST-2073's ftr until it lands on dev). Plan: `docs/features/interface/ast-2105-skipped-group-rules-in-config-and-manifest.md`.
+
+`JOBS_SKIPPED_GROUPS` (dict keyed by group id, insertion order = display order): Error (`ERROR_STATE_PREFIX`), Bot block (`BOT_BLOCKED_STATE_PREFIX`), Fail (`FAILED_` / `METEORITE_FAILED_` / `JD_SCRAPE_FAIL_` + members `CANDIDATE_SKIPPED`, `JOBS_SKIPPED_BELOW_DISPATCH_KEY`), Other (catch-all, last). Two import-time asserts: every member is a `SKIPPED_STATES` key or the below-dispatch key; exactly one catch-all, last. `build_state_ui_manifest()["jobs"]["skipped"]["groups"]` emits an ordered list of `{key, label, prefixes, members}` copies. Other `jobs.skipped` keys unchanged.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| AC1 exact groups; AC2 Other = `INVALID_TITLE` only; manifest lists are copies; AC3 member guard + catch-all-last guard (source splice, same pattern as AST-2061 / AST-1974) | `src/utils/config.py` | **`TestAst2105SkippedGroupRules`** (5) |
+
+**Broken / revised:** none — no existing node pins the `jobs.skipped` key set. `tests/component/frontend/fixtures/stateUiManifestFixture.ts` stays a partial snapshot without `groups` (page consumer is sibling **AST-2106**).
+
+**Integration:** none.
+
+## QA test manifest
+
+1. `tests/component/utils/test_config.py::TestAst2105SkippedGroupRules` (5 — all must pass).
+2. Whole module `tests/component/utils/test_config.py` — no new failures vs `origin/dev` (+ AST-2073 merged base).
+3. `python3 -c "import src.utils.config"` exits 0 (AC 11).
+
+```bash
+./scripts/testing/run_component_tests.sh tests/component/utils/test_config.py::TestAst2105SkippedGroupRules -q
+./scripts/testing/run_component_tests.sh tests/component/utils/test_config.py -q
+python3 -c "import src.utils.config"
+```
+
+**Bible shasum (after publish):** `git show origin/sub/AST-2102/AST-2105-skipped-group-rules:docs/test-bible/utils/config.md | shasum`
+
+### AST-2096 · AST-2011 (pointer)
+
+**`TestAst2096AllXFailStates`** — `{fail_state}_ALL_X` rows (`all_x_of`, `ALL_X_FAIL_STATES`, base priors, Skipped). Primary manifest: **`docs/test-bible/core/consult.md`** § AST-2096.
+
 ### AST-1348 · AST-1346
 
 **`PHASE_SCORE_HEADER_TITLE_TEMPLATE`** + `build_state_ui_manifest()["jobs"]["recommended"]["phase_score_header_title_template"]`. Base `report_phase_tabs` `nav_label`s unchanged. Breakdown persist: **AST-1347**. Chrome: **`docs/test-bible/frontend/`**.
@@ -271,7 +349,7 @@ Structured **`run_next`** hop observability: parent → child **`task_key`**, **
 
 ### AST-641 · AST-642 · AST-630
 
-**AST-630 (parent):** Primary dispatch `trigger_state` rows (not ending in `_RETRY`) **count** and **claim** eligible entities in both the primary state and its registry companion `trigger_state + "_RETRY"` when that companion exists in `JOB_STATES` / `COMPANY_STATES`. Retry-only rows stay single-state. Score-floor gating remains keyed off the dispatch row’s `trigger_state` via **`dispatch_claim_uses_score_floor`** — one floor across the combined pool when scored. Mixed consult batches route envelope/hydration/missing-ID/bad-grade failures **per entity** — primary → `retry_state`, `*_RETRY` → terminal `error_state`; `analysis_upshot` second failure → `FAILED_TECHNICAL`.
+**AST-630 (parent):** Primary dispatch `trigger_state` rows (not ending in `_RETRY`) **count** and **claim** eligible entities in both the primary state and `trigger_state + "_RETRY"` always (companion need not exist in `JOB_STATES` / `COMPANY_STATES` — **AST-1798** / **AST-1799**). Retry-only rows stay single-state. Registry `retry_state` is for failure **routing** only, not claim grouping. Score-floor gating remains keyed off the dispatch row’s `trigger_state` via **`dispatch_claim_uses_score_floor`** — one floor across the combined pool when scored. Mixed consult batches route envelope/hydration/missing-ID/bad-grade failures **per entity** — primary → `retry_state`, `*_RETRY` → terminal `error_state`; `analysis_upshot` second failure → `FAILED_TECHNICAL`.
 
 | Child | Behavior | Sources | Manifest tests |
 | --- | --- | --- | --- |
@@ -323,7 +401,7 @@ Rename craft task key **`craft_company_prefilter`** → **`craft_prefilter_rubri
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Schema example | `src/utils/config.py` (`stringify_response_schema`) | `tests/component/utils/test_config.py::TestStringifyResponseSchema::test_prefilter_company_schema_shows_bracket_link_set_tails` |
+| Schema example (retired **AST-2177** — grader envelope is `agent_performance` only) | `src/utils/config.py` (`stringify_response_schema`) | `tests/component/utils/test_config.py::TestStringifyResponseSchema::test_prefilter_company_schema_has_no_encoded_link_tails` |
 | Output type key | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst507EncodedPrefilterConfig::test_prefilter_company_grades_encoded` |
 
 ---
@@ -402,13 +480,15 @@ Gazer batch + roster helpers: **`docs/test-bible/core/gazer.md`** · **`docs/tes
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Embedded RC registry | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst707EmbeddedPrefilterConfig` |
+| Embedded RC registry — company-site scale A/B/C/D/F/X (AST-707; revised AST-1881) | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst707EmbeddedPrefilterConfig` |
 
-Consult merge + roster batch regression: **`docs/test-bible/core/consult.md`** · **`docs/test-bible/core/roster.md`** (**AST-707**).
+Persisted-default merge (save / craft generate / persist) + prompt dedupe: **`docs/test-bible/core/candidate.md`** (**AST-1881**). Consult merge + roster batch regression: **`docs/test-bible/core/consult.md`** · **`docs/test-bible/core/roster.md`** (**AST-707**).
 
 ---
 
 ### AST-695 · AST-694
+
+> **AST-1880:** Historical. `tier_map["deepseek"]`, `test_resolve_deepseek_tier_meta`, the DeepSeek-only `do_task` node, and `TestAst492ResolveAdhocApiAdmin` are retired. DeepSeek tiers are catalog rows (`TestAst492LlmBrainTierConfig::test_deepseek_v4_catalog_tiers`). See the AST-1880 pointer below.
 
 **Scope:** `LLM_PROVIDER_CONFIG["tier_map"]["deepseek"][BRAIN_MEDIUM]` — Medium retargets from `deepseek-v4-flash` + thinking to `deepseek-v4-pro` non-thinking (**AST-694** ladder). Little and Big unchanged; runtime dispatch reads tier meta from config — no `agent.py` / `deepseek.py` edits.
 
@@ -738,15 +818,15 @@ UI wiring: **`docs/test-bible/frontend/pages.md`** (**AST-876**).
 
 ### AST-882 · AST-881
 
-**`dispatch_claim_states`** prefers registry **`retry_state`** over **`{ts}_RETRY`** name convention — **`HOMEPAGE_READY`** claims **`WEBSITE_FOUND_RETRY`**. **`WEBSITE_FOUND`** companion claim unchanged.
+**`dispatch_claim_states`** is suffix-always (**AST-1798** / **AST-1799**): **`HOMEPAGE_READY`** claims **`HOMEPAGE_READY_RETRY`** (never **`WEBSITE_FOUND_RETRY`** via claim). Registry **`retry_state`** (e.g. **`HOMEPAGE_READY` → `WEBSITE_FOUND_RETRY`**) remains for failure routing only. **`WEBSITE_FOUND`** companion claim still **`WEBSITE_FOUND_RETRY`** (suffix match).
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| HOMEPAGE_READY → WFR claim list | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst882DispatchClaimStates` |
+| HOMEPAGE_READY → HOMEPAGE_READY_RETRY claim list | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst882DispatchClaimStates` |
 
 Roster / gazer / dispatch: **`docs/test-bible/core/roster.md`** · **`docs/test-bible/core/gazer.md`** · **`docs/test-bible/data/database/dispatch_tasks.md`** (**AST-882**).
 
-**AST-892:** **`fetch_website_prefilter_second_strike_filter()`** — claim/count exclusion keys; primary manifest **`docs/test-bible/data/database/dispatch_tasks.md`** (**AST-892**).
+**AST-892:** **`fetch_website_prefilter_second_strike_filter()`** — claim/count exclusion keys; primary manifest **`docs/test-bible/data/database/dispatch_tasks.md`** (**AST-892**). **Retired by AST-1810:** helper deleted; `TestAst892FetchWebsiteSecondStrikeFilter` removed (see **`dispatch_tasks.md`** § AST-1810).
 
 ---
 
@@ -764,7 +844,7 @@ Primary roster batch manifest: **`docs/test-bible/core/roster.md`** (**AST-891**
 
 ### AST-898 · AST-895
 
-**`NEW_RETRY`** qualify holding; **`NEW`** / **`VALID_TITLE`** `retry_state` → **`NEW_RETRY`**; primary qualify claim **`["NEW","NEW_RETRY"]`**; **`VALID_TITLE_RETRY`** remains in registry for drain only (no new writes from NEW qualify path). UI: **`NEW_RETRY`** / **"New (retry)"** + grade field.
+**`NEW_RETRY`** qualify holding; **`NEW`** / **`VALID_TITLE`** registry `retry_state` → **`NEW_RETRY`** (routing / fail-dest). Primary **claim** is suffix-always (**AST-1798** / **AST-1799**): **`["NEW","NEW_RETRY"]`**, **`["VALID_TITLE","VALID_TITLE_RETRY"]`**. **`VALID_TITLE_RETRY`** remains in registry for drain only (no new writes from NEW qualify path). UI: **`NEW_RETRY`** / **"New (retry)"** + grade field.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
@@ -829,6 +909,8 @@ Consult fail-dest matrix: **`docs/test-bible/core/consult.md`** (**AST-1339**). 
 **AST-955:** Save membership = registered **`TASK_CONFIG`** (optional trigger override on **`dispatch_task_admin_defaults`**). Primary manifest: **`docs/test-bible/ui/api/api_admin.md`** (**AST-955**).
 
 ### AST-1391 · AST-1390 (DeepSeek Big output floor)
+
+> **AST-1880:** `deepseek_brain_max_tokens_floor` and `DEEPSEEK_MODEL_PRICING` are retired. `TestAst1391DeepseekBigMaxTokensFloor::test_big_tier_floor` now reads the catalog tier row (`max_tokens_floor` 384000 on Big only).
 
 **`deepseek_brain_max_tokens_floor`** + DeepSeek `BRAIN_BIG` `max_tokens: 384000`. Not on Little/Medium; `DEEPSEEK_MODEL_PRICING["deepseek-v4-pro"]["default_max_tokens"]` stays **16000**. Primary hop manifest: **`docs/test-bible/core/agent.md`** § AST-1391.
 
@@ -1457,7 +1539,7 @@ Registers **METEORITE_QUALIFIED** / **METEORITE_FAILED_QUALIFY** / **METEORITE_E
 
 **Parent:** [AST-1043 — Slack Bot Agent](https://linear.app/astralcareermatch/issue/AST-1043/slack-bot-agent). **Publish:** `origin/sub/AST-1043/AST-1066-contact-core-module-and-contact-config`.
 
-`CONTACT_CONFIG`: listen flag (default off), non-production reply prefix template, Slack env-**name** contracts, `skills` ACL home (empty at AST-1066; populated **AST-1071**). `CANDIDATE_LOOKUP_CONFIG["slack_user_id_paths"]` = `("contact.slack_user_id",)`. Core scaffold: **`docs/test-bible/core/contact.md`**.
+`CONTACT_CONFIG`: listen flag (default off), no reply prefix template (removed **AST-2085**), Slack env-**name** contracts, `skills` ACL home (empty at AST-1066; populated **AST-1071**; skills emptied by **AST-2061**). `CANDIDATE_LOOKUP_CONFIG["slack_user_id_paths"]` = `("contact.slack_user_id",)`. Core scaffold: **`docs/test-bible/core/contact.md`**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
@@ -1482,9 +1564,11 @@ Registers **METEORITE_QUALIFIED** / **METEORITE_FAILED_QUALIFY** / **METEORITE_E
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Two skill ACL entries + path inventory | `src/utils/config.py` | **`TestAst1071ContactSkillsConfig`** |
+| Two skill ACL entries + path inventory | `src/utils/config.py` | retired → **`TestAst2061ContactSkillsEmpty`** |
 
 **Broken / obsolete:** AST-1066 empty-skills asserts — revised above.
+
+**Retired by AST-2061 / AST-2062:** skills ACL emptied; class TestAst1071ContactSkillsConfig replaced by TestAst2061ContactSkillsEmpty.
 
 **Integration:** none.
 
@@ -1738,6 +1822,9 @@ CHAT-only conversational envelope: `CONVERSATIONAL_OUTCOMES` / `CONVERSATIONAL_P
 | Area | Source | Component tests |
 | --- | --- | --- |
 | Embedded QC/GC registry | `src/utils/config.py` | **`TestAst1084EvaluateJdCriteria`** |
+| QC never-X rule line + A/B/C/F table (AST-1910 fix, pinned by AST-1911) | `src/utils/config.py` | **`TestAst1084EvaluateJdCriteria::test_qc_content_forbids_x_and_grade_table_stays_abcf`** |
+
+QC `content` carries a "Never grade Quality Check X" line between the header and the A row (**AST-1910**); grades stay A/B/C/F and hydrate stays strict. Prompt-side exception + fixture lockstep: **`docs/test-bible/core/repo_admin_json.md`** § AST-1911.
 
 **Broken / obsolete:** none — additive constant; consume path covered under **AST-1085**.
 
@@ -2542,12 +2629,12 @@ UAT: `TASK_CONFIG["parse_meteorite_email"].response_schema.jobs.items_schema.met
 
 **Parent:** [AST-1150 — Technical fail for Do prompt](https://linear.app/astralcareermatch/issue/AST-1150/technical-fail-for-do-prompt). **Publish:** `origin/sub/AST-1150/AST-1154-rubric-completeness-contracts-all-graded-tasks`.
 
-Shared `_ENCODED_GRADE_SET_COMPLETENESS` clause on multi-vector encoded `payload_instructions` (`grades_encoded`, `_notes`, `_meta`, `_prefilter_links`); not on `grades_encoded_vet_meta` / `grades_json`. Seven graded `agent_task` `cache_prompt`s carry the same AST-1154 marker + VALIDATE/Rules tighteners; AST-756 fixture stays byte-identical. Retry/Skipped Retry remain AST-1155 / AST-1156.
+Shared `_ENCODED_GRADE_SET_COMPLETENESS` clause on multi-vector encoded `payload_instructions` (`grades_encoded`, `_notes`, `_meta`, `_prefilter_links`); not on `grades_encoded_vet_meta` / `grades_json`. Seven graded `agent_task` `cache_prompt`s carry a `## GRADE SET COMPLETENESS` section (ticket-free since `c06eaefdf`; the AST-756 fixture rows still carry the `(AST-1154)` sentinel) + VALIDATE/Rules tighteners. AST-2120 adds, on `qualify_job_listings`, the illustrative-code-count sentence (7-code examples are not a segment-count template) and scopes the "omit unstated" rule to metadata only; the shared constant gains one closing line ("their code count is not a template") on the same four types. Retry/Skipped Retry remain AST-1155 / AST-1156.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Shared encoded completeness clause | `src/utils/config.py` | **`TestAst1154EncodedGradeSetCompleteness`** |
-| Graded task prompts + fixture lock | `data/admin/agent_task.json` | **`TestAst1154GradedTaskCompletenessPrompts`**; existing **`TestAst786AgentTaskRepoJsonSeed::test_repo_json_matches_uat_fixture_byte_for_byte`** |
+| Shared encoded completeness clause | `src/utils/config.py` | **`TestAst1154EncodedGradeSetCompleteness`** (incl. **`::test_grade_count_not_template_on_multi_vector_types`**, AST-2121 bug-repro) |
+| Graded task prompts + fixture marker | `data/admin/agent_task.json`, `docs/uat-fixtures/AST-756/expected-agent_task.json` | **`TestAst1154GradedTaskCompletenessPrompts`** (incl. **`::test_qualify_cache_prompt_grade_count_and_metadata_omit_scope`**, AST-2121 bug-repro); existing **`TestAst786AgentTaskRepoJsonSeed::test_repo_json_matches_uat_fixture_byte_for_byte`** |
 
 **Broken / obsolete:** none — additive prompt/contract text; catalog count unchanged.
 
@@ -2560,6 +2647,29 @@ Shared `_ENCODED_GRADE_SET_COMPLETENESS` clause on multi-vector encoded `payload
   tests/component/core/test_repo_admin_json.py::TestAst786AgentTaskRepoJsonSeed::test_repo_json_matches_uat_fixture_byte_for_byte \
   -q
 ```
+
+### AST-2121 · AST-2108 (qualify grade-set repro — test gap for AST-2120)
+
+**Publish:** `origin/sub/AST-2108/AST-2121-qualify-grade-set-tests`. Test tree + bible only; product fix is AST-2120 (on ftr @ `6ad17bcbb`).
+
+**Revised:** `TestAst1154GradedTaskCompletenessPrompts::test_marker_and_tighten_lines_on_graded_cache_prompts` — catalog check now `_CATALOG_MARKER = "## GRADE SET COMPLETENESS"` (stale `(AST-1154)` sentinel stripped from catalog by `c06eaefdf`; red before this pass). Every other assertion unchanged. Fixture-side `test_fixture_graded_keys_carry_completeness_marker` untouched (still `_MARKER`).
+
+**Broken / obsolete:** none new. AST-756 whole-file twins (`TestAst1494…::test_fixture_byte_identical_to_catalog`, `TestAst1773…::test_fixture_catalog_byte_lockstep`) stay red — out of scope.
+
+**Integration:** none.
+
+**Repro-first (gap-child — AST-2120 already on ftr):** with `27cd7cbcf`'s `data/admin/agent_task.json` + `src/utils/config.py` swapped in → **2 failed, 4 passed**: both new nodes red for the root-cause reason (qualify prompt lacks the illustrative-count sentence; constant lacks "their code count is not a template"); revised marker test green. Restored sub tip → **6 passed**. Whole-file baseline (`test_repo_admin_json.py` + `test_config.py`): 62 → 61 failed, the only delta being the marker test fixed; no new failures.
+
+## QA test manifest
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_repo_admin_json.py::TestAst1154GradedTaskCompletenessPrompts \
+  tests/component/utils/test_config.py::TestAst1154EncodedGradeSetCompleteness \
+  -q
+```
+
+Repro node ids (`[bug-repro]`): `test_repo_admin_json.py::TestAst1154GradedTaskCompletenessPrompts::test_qualify_cache_prompt_grade_count_and_metadata_omit_scope`, `test_config.py::TestAst1154EncodedGradeSetCompleteness::test_grade_count_not_template_on_multi_vector_types`. `docs/test-bible/core/repo_admin_json.md` manifests already list the class-level node — no edit.
 
 ### AST-1155 · AST-1150
 
@@ -4321,7 +4431,7 @@ See **`docs/test-bible/frontend/pages.md`** § AST-1749.
 
 **Parent:** [AST-1766 — Dispatch Validation](https://linear.app/astralcareermatch/issue/AST-1766). **Publish:** `origin/sub/AST-1766/AST-1779-empty-token-predicate-helper`.
 
-`empty_render_for_prompts` — candidate-scoped empty-render predicate over prompt texts via `TOKEN_SOURCES` / `resolve_tokens`; ignores `source: chain`; does not fail on empty job tokens unless `entity_contexts` supplies that source; returns `{"empty_render": bool, "empty_tokens": list[str]}` (field name frozen for sibling #2 list enrichment). `resolve_tokens(..., warn_on_empty=False)` suppresses empty/unresolved WARNINGs for the helper’s quiet probe. Config-only — no API / version hooks / React (siblings #2–#4).
+`empty_render_for_prompts` — empty-render predicate over prompt texts via `TOKEN_SOURCES` / `resolve_tokens`; scores `source: candidate` **and `source: rubric`** by default (rubric rows are candidate-keyed — **AST-2092**), other sources only via `entity_contexts`; ignores `source: chain`; does not fail on empty job tokens unless `entity_contexts` supplies that source; returns `{"empty_render": bool, "empty_tokens": list[str]}` (field name frozen for sibling #2 list enrichment). `resolve_tokens(..., warn_on_empty=False)` suppresses empty/unresolved WARNINGs for the helper’s quiet probe. Config-only — no API / version hooks / React (siblings #2–#4).
 
 | Area | Source | Component tests |
 | --- | --- | --- |
@@ -4331,9 +4441,11 @@ See **`docs/test-bible/frontend/pages.md`** § AST-1749.
 | Job seam via `entity_contexts` | same | **`…::test_job_seam_via_entity_contexts`** |
 | `warn_on_empty=False` quiet + default still warns | same | **`…::test_warn_on_empty_false_suppresses_empty_warning`** |
 | None/empty/non-str texts; first-seen order | same | **`…::test_none_empty_and_non_str_texts_and_order`** |
-| Rubric scored only via `entity_contexts` | same | **`…::test_rubric_scored_only_via_entity_contexts`** |
+| Rubric scored by default (and via `entity_contexts`) | same | **`…::test_rubric_scored_by_default_and_via_entity_contexts`** |
+| Empty `RUBRIC_VECTORS` → `empty_render` **[bug-repro]** (AST-2092) | same | **`…::test_empty_rubric_vectors_sets_empty_render`** |
+| Filled `RUBRIC_VECTORS` → valid (AST-2092 AC 3) | same | **`…::test_filled_rubric_vectors_validates`** |
 
-**Broken / obsolete:** none — existing `TestResolveTokens` empty-WARNING asserts keep default `warn_on_empty=True`.
+**Broken / obsolete:** none — existing `TestResolveTokens` empty-WARNING asserts keep default `warn_on_empty=True`. **AST-2094:** AST-2092 reversed the rubric rule — former line-7 node `test_rubric_scored_only_via_entity_contexts` renamed to `test_rubric_scored_by_default_and_via_entity_contexts`, default-call assertion inverted (False → True / `["GET_RUBRIC"]`).
 
 **Integration:** none — no existing scenario asserts `empty_render_for_prompts` / `warn_on_empty`; do not invent new integration coverage.
 
@@ -4345,7 +4457,9 @@ See **`docs/test-bible/frontend/pages.md`** § AST-1749.
 4. Job entity_contexts seam: `tests/component/utils/test_config.py::TestAst1779EmptyRenderForPrompts::test_job_seam_via_entity_contexts`
 5. warn_on_empty quiet: `tests/component/utils/test_config.py::TestAst1779EmptyRenderForPrompts::test_warn_on_empty_false_suppresses_empty_warning`
 6. Text tolerance + order: `tests/component/utils/test_config.py::TestAst1779EmptyRenderForPrompts::test_none_empty_and_non_str_texts_and_order`
-7. Rubric seam: `tests/component/utils/test_config.py::TestAst1779EmptyRenderForPrompts::test_rubric_scored_only_via_entity_contexts`
+7. Rubric default + seam: `tests/component/utils/test_config.py::TestAst1779EmptyRenderForPrompts::test_rubric_scored_by_default_and_via_entity_contexts`
+8. **[bug-repro]** empty rubric (AST-2092 / AST-2094 — red on `823d37605`, green on `origin/ftr/AST-2019-rubric-empty-render-gate`): `tests/component/utils/test_config.py::TestAst1779EmptyRenderForPrompts::test_empty_rubric_vectors_sets_empty_render`
+9. Filled rubric control: `tests/component/utils/test_config.py::TestAst1779EmptyRenderForPrompts::test_filled_rubric_vectors_validates`
 
 ```bash
 ./scripts/testing/run_component_tests.sh \
@@ -4379,3 +4493,836 @@ See **`docs/test-bible/frontend/pages.md`** § AST-1749.
   tests/component/utils/test_config.py::TestAst1788ManageListAndProfileSlackChannelShapes \
   -q
 ```
+
+
+### AST-1807 · AST-1805 (implicit _RETRY substate)
+
+**Parent:** [AST-1804](https://linear.app/astralcareermatch/issue/AST-1804). **Publish:** `origin/sub/AST-1804/AST-1807-implicit-retry-tests`. Product: **AST-1805** (`{base}_RETRY` validates through its registered base; retry priors derived by `state_prior_states`). Probe retries are never registry keys, so these stay green through **AST-1806**'s purge. Unregistered base (`NOPE_RETRY`) is still rejected everywhere.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Helpers `retry_of` / `retry_base` / `registered_base` / `is_registered_state` / `state_prior_states` (cross-base feeders, self-drain, `None` stays unrestricted, `KeyError` on unregistered) | `src/utils/config.py` | **`TestAst1807ImplicitRetryHelpers`** |
+| `is_valid_{job,candidate}_batch_claim_state`, `_dispatch_sort_by_for` job + company (base `batch_criteria`) | `src/utils/config.py` | **`TestAst1807ImplicitRetryConfigValidators`** |
+
+**Broken / obsolete:** none.
+
+**Integration:** none — do not invent.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1807ImplicitRetryHelpers \
+  tests/component/utils/test_config.py::TestAst1807ImplicitRetryConfigValidators \
+  -q
+```
+
+
+### AST-1808 · AST-1806 (explicit _RETRY registry purge)
+
+**Parent:** [AST-1804](https://linear.app/astralcareermatch/issue/AST-1804). **Publish:** `origin/sub/AST-1804/AST-1808-purge-retry-tests`. Product: **AST-1806** (18 `*_RETRY` registry keys + declared retry priors deleted; retries are implicit substates, priors derived by `state_prior_states`). Green only once AST-1806 is on the tree (ftr `2a419fbf`+); pre-purge `65e3ca6f` is red.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| **[bug-repro]** zero `*_RETRY` keys / declared retry priors in JOB/COMPANY/CANDIDATE registries | `src/utils/config.py` | **`TestAst1808RetryRegistryPurge::test_no_explicit_retry_keys_in_entity_registries`** |
+| Effective priors identical to pre-purge (AST-1806 gate snapshot; `*_RETRY_RETRY` stripped both sides — they only exist while legacy keys do) | `src/utils/config.py` + fixture `tests/component/utils/fixtures/ast1806_prior_snapshot.json` (captured on `65e3ca6f`) | **`…::test_prior_snapshot_pinned`** |
+| AST-642 consult fail-dest for retry job states (Radia ask on AST-1806): primary → holding, holding → terminal, `PASSED_LIKE_RETRY` → `FAILED_TECHNICAL` | `src/core/consult.py` `_consult_batch_fail_dest` | **`…::test_consult_fail_dest_for_retry_job_states`** |
+| `database.save_company` accepts implicit retry (existing real-DB anchors — `save_company(state="WEBSITE_FOUND_RETRY")`; `tests/component/data/**` + `docs/test-bible/data/**` are blocked for agent edits by the `data/` rule in `.cursorignore`, so no new node there) | `src/data/database.py` | `tests/component/data/database/test_dispatch_tasks.py::TestAst641UnionClaimCount` · `::TestAst882HomepageReadyClaimsWfr::test_claim_company_batch_homepage_ready_and_wfr` |
+
+**Broken / obsolete → revised (14, same file):** AST-721 `test_parse_states_and_transitions`; AST-720 `test_selection_states_and_transitions`; AST-507 `test_company_states_and_transitions`; AST-874 `test_job_states_and_like_priors`; AST-898 `test_registry_retry_pointers_and_drain`; AST-1339 `test_registry_retry_pointer_no_nested`; AST-1253 `test_requested_artifacts_priors_include_regenerate_states`; AST-1375 `test_inflight_hide_states_exact_membership`; AST-1053 `test_job_states_priors` + `test_non_meteorite_gdl_and_recommended_untouched`; AST-1195 `test_bot_blocked_registry_and_skipped_ui`; AST-1197 `test_task_config_email_and_bot_knobs`; AST-1055 `test_recommended_priors_include_meteorite_like_states`; AST-1155 `test_retry_state_and_dispatch_claim_companions`. Membership → `is_registered_state` / `registered_base` + key absence; effective priors → `state_prior_states` (`in` / `set`, never exact derived list); raw `prior_states` equality keeps checking the declared base-only list. Earlier prior rows naming explicit retry priors (AST-1053 / AST-1195 / AST-1339 notes above) are superseded by this block.
+
+**Pre-existing failures (not AST-1808):** `TestAst882HomepageReadyClaimsWfr::test_count_eligible_homepage_ready_unions_wfr` (count 1 ≠ 2, red on `65e3ca6f` too) and 19 unrelated `test_config.py` cases.
+
+**Integration:** none — do not invent.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1808RetryRegistryPurge \
+  tests/component/utils/test_config.py::TestAst721ParseJobListConfig \
+  tests/component/utils/test_config.py::TestAst720SelectJobPageConfig \
+  tests/component/utils/test_config.py::TestAst507EncodedPrefilterConfig \
+  tests/component/utils/test_config.py::TestAst874FetchCulturePagesConfig \
+  tests/component/utils/test_config.py::TestAst898NewRetryQualifyHolding \
+  tests/component/utils/test_config.py::TestAst1339MeteoriteNewRetryQualifyHolding \
+  tests/component/utils/test_config.py::TestAst1253GenerateRegenerateHandoffConfig \
+  tests/component/utils/test_config.py::TestAst1375ArtifactGenerateInflightHideStates \
+  tests/component/utils/test_config.py::TestAst1053MeteoriteGdlJobStates \
+  tests/component/utils/test_config.py::TestAst1195SchemaNullsAndBotBlocked \
+  tests/component/utils/test_config.py::TestAst1197QualifyMeteoriteApplyKnobs \
+  tests/component/utils/test_config.py::TestAst1055MeteoriteLikeUpshotTasks::test_recommended_priors_include_meteorite_like_states \
+  tests/component/utils/test_config.py::TestAst1155GradedRetryHoldings \
+  -q
+```
+
+### AST-1846 · AST-1828 (flips — prefilter retry holding is `HOMEPAGE_READY_RETRY`)
+
+**Primary manifest:** **`docs/test-bible/core/roster.md`** § AST-1846. AST-1839 config: `HOMEPAGE_READY.retry_state` / prefilter `retry_state` = `HOMEPAGE_READY_RETRY` (implicit registration); `envelope_retry_state` = `WEBSITE_FOUND_RETRY`; edges HR → HR_RETRY and HR → WFR; HR_RETRY → 7 destinations; WFR priors drop HR.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Flipped | `src/utils/config.py` | `TestAst702PrefilterBatchConfig::test_prefilter_input_state_and_retry_on_homepage_ready` · `TestAst507EncodedPrefilterConfig::test_company_states_and_transitions` · `TestAst1807ImplicitRetryHelpers::test_state_prior_states_cross_base_feeders` · `TestAst1808RetryRegistryPurge::test_prior_snapshot_pinned` |
+| Fixture re-pin | `tests/component/utils/fixtures/ast1806_prior_snapshot.json` | `COMPANY_STATES["WEBSITE_FOUND_RETRY"]` → `["WEBSITE_FOUND","WEBSITE_FOUND_RETRY"]` |
+
+**Integration:** none.
+
+**AST-1872 (pointer):** `JOBS_RECOMMENDED_REPORT_TOP_TABS` is Analysis-first (first entry = default tab); `PHASE_SCORE_HEADER_TITLE_TEMPLATE` gains ` - {score}` — revised `TestBuildStateUiManifest::test_ast565_recommended_report_manifest_tabs`, `TestAst1550DiscussionHopKeys::test_top_tabs_discussion_after_artifacts`; extended `TestAst1348PhaseScoreHeaderTitleConfig`. Manifest: **`docs/test-bible/core/tracker.md`** § AST-1872.
+
+### AST-1877 · AST-1851 (model/server catalog + shared compat client)
+
+Config gains `LLM_SERVER_CONFIG` / `LLM_MODEL_CONFIG`, catalog resolvers, catalog-only startup validation (no provider env key), `requires_candidate_key: True` on every task, `ALLOWED_TIMESHEET_PROVIDERS = tuple(LLM_SERVER_CONFIG)`, `DEEPSEEK_CONCURRENCY` alias. Legacy provider symbols stay importable (additive until AST-1880). New client `src/external/llm_compat.py` ([`external/llm_compat.md`](../external/llm_compat.md)); cost pricing via catalog ([`cost_calculator.md`](cost_calculator.md)).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| New — catalogs, resolvers, startup catalog validation (every raise branch), task-flag sweep, derived timesheet providers | `src/utils/config.py` | `TestAst1877LlmCatalogConfig` |
+| Revised — boot needs no provider env key; `active_provider` not consulted | `validate_llm_provider_environment` | `TestAst492LlmBrainTierConfig::test_validate_llm_provider_environment_ignores_active_provider` · `::test_validate_llm_provider_environment_needs_no_provider_env_keys` (replace `_unknown_active_provider` / `_deepseek_requires_key` / `_anthropic_requires_key`) |
+| Revised — `requires_candidate_key` is `True` | `TASK_CONFIG` | `TestAst1037SimpleResumeParseConfig::test_simple_resume_parse_shares_schema_object_with_craft_base` · `TestAst1072ConversationalEnvelopeConfig::test_contact_estelle_turn_task_registration` |
+| New — AC 9 intercepted request + client contract | `src/external/llm_compat.py` | `tests/component/external/test_llm_compat.py` |
+| New — catalog pricing | `src/utils/cost_calculator.py` | `tests/component/utils/test_cost_calculator.py::TestAst1877CatalogPricing` |
+
+`LOCKED_AT_100`: every new `config.py` line is branch-covered by the tests above.
+
+**Integration:** none (no `tests/integration/` scenario reads these symbols).
+
+## QA test manifest
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1877LlmCatalogConfig \
+  tests/component/utils/test_config.py::TestAst492LlmBrainTierConfig \
+  tests/component/utils/test_config.py::TestAst1037SimpleResumeParseConfig \
+  tests/component/utils/test_config.py::TestAst1072ConversationalEnvelopeConfig \
+  tests/component/utils/test_cost_calculator.py \
+  tests/component/utils/test_cost_calculator_deepseek.py \
+  tests/component/external/test_llm_compat.py \
+  tests/component/external/test_deepseek.py \
+  tests/component/external/test_anthropic.py \
+  tests/component/core/test_bootstrap.py \
+  tests/component/data/database/test_timesheets.py \
+  --deselect tests/component/external/test_deepseek.py::TestAst1190EmptyUnusableProviderResponse::test_hollow_stop_question_zero_tokens_fails_closed \
+  --deselect tests/component/external/test_anthropic.py::TestAst1190EmptyUnusableProviderResponse::test_hollow_stop_question_zero_tokens_fails_closed
+```
+
+**Pass criterion:** narrowed run green — not the zero-arg harness. The two deselected AST-1190 nodes fail identically with `origin/dev` product (pre-existing, not this ticket). Zero-arg / full `tests/component` red on this tip is the same set with or without AST-1877 product (baseline diff: exactly the five revised nodes above changed).
+
+**AST-1880 (pointer):** DeepSeek-only config retired. `TestAst492LlmBrainTierConfig::test_deepseek_v4_catalog_tiers` replaces `test_resolve_deepseek_tier_meta`. `…::test_legacy_global_provider_symbols_retired` asserts no `active_provider` / `tier_map["deepseek"]` / `CONTACT_ESTELLE_CONFIG["default_brain_setting"]` / `get_active_llm_provider` / `resolve_brain_setting_to_deepseek_tier_meta` / `deepseek_brain_max_tokens_floor` / `DEEPSEEK_MODEL_PRICING` / `DEEPSEEK_CONCURRENCY`. `TestAst1391DeepseekBigMaxTokensFloor::test_big_tier_floor` reads the catalog tier row. The Estelle config tests assert no brain override. Retired: `test_get_active_llm_provider_strips_and_rejects_invalid`, `test_resolve_deepseek_raises_when_mapping_has_no_vendor_model`, `test_deepseek_concurrency_is_alias_of_server_block`. Historical manifests above that cite those nodes or `tests/component/external/test_deepseek.py` are frozen records. Manifest: [`../ui/api/api_admin.md`](../ui/api/api_admin.md) § AST-1880.
+
+### AST-1916 · AST-1875 (runtime AUTO-thread cap bounds)
+
+`ASTRAL_CONFIG["max_auto_threads_min"]` = 1 / `["max_auto_threads_max"]` = 100 beside unchanged `max_auto_threads`. No test in `test_config.py`: values asserted via the admin GET payload (`tests/component/ui/api/test_api_admin.py::TestAst1916AutoThreadCapApi::test_get_reports_default_and_bounds`); setter reads them live (`tests/component/core/test_dispatcher.py::TestAst1916AutoThreadCap::test_setter_bounds_come_from_config`). Manifest: [`../core/dispatcher.md`](../core/dispatcher.md) § AST-1916.
+
+### AST-1938 · AST-1937 (OpenRouter model shortlist in the catalog)
+
+> **AST-1947:** Frozen record. The 76-slug table, Little/Medium-by-reasoning sizes, temperature 1.0 defaults, `OPENROUTER_TIER_DEFAULTS` / `OPENROUTER_PIN_QUANTIZATIONS`, the hand-priced skip and `kimi-k2.6-openrouter` are gone, and so is `tests/component/utils/fixtures/ast1937_openrouter_brief.txt`. `TestAst1938OpenRouterShortlist` keeps only the two validator raises; catalog content moved to `TestAst1947CatalogByQuantization` (§ AST-1947 below). Do not re-run the manifest below as written.
+
+`OPENROUTER_MODEL_TABLE` (one row per brief slug: price, upstream provider routing slug, reasoning flag, pinned provider max output) is expanded by `_build_openrouter_models()` into `LLM_MODEL_CONFIG` after the hand-written entries. That gives 75 new OpenRouter models: `moonshotai/kimi-k2.6` is skipped because the hand-written `kimi-k2.6-openrouter` already prices it. Every new model offers Little; reasoning rows also offer Medium; none offers Big. Defaults are temperature 1.0 and `min(16000 Little | 32000 Medium, pinned max output)`. Brain-size rows gain optional `request_extras` (the `provider` pin, fallbacks off; `google/gemma-4-31b-it` also carries `quantizations: ["fp8"]`). `kimi-k2.6-openrouter` is pinned to SiliconFlow and repriced to 0.77 / 3.4 / 0.14, keeping Little / Big. `validate_llm_provider_environment` now also rejects a non-dict `request_extras` and any same-server ambiguous SKU. `llm_compat` merges tier extras last ([`../external/llm_compat.md`](../external/llm_compat.md) § AST-1938). Agent save on new models: [`../ui/api/api_admin.md`](../ui/api/api_admin.md) § AST-1938.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| New — AC 1 every brief slug catalogued on openrouter; AC 2 brief pricing (incl. Kimi reprice), cache write 0 | `OPENROUTER_MODEL_TABLE` / `_build_openrouter_models` / `get_sku_pricing` | `TestAst1938OpenRouterShortlist::test_every_brief_slug_catalogued_on_openrouter` · `::test_pricing_matches_brief` · `::test_brief_fixture_has_76_slugs` |
+| New — AC 3 Little (+ Medium when reasoning), no Big; spot checks; Kimi-OpenRouter stays Little / Big | `_build_openrouter_models` | `…::test_brain_sizes_follow_reasoning_flag_no_big` |
+| New — AC 7 temperature 1.0, capped `default_max_tokens` (both sides of the `min`) | `_build_openrouter_models` | `…::test_defaults_temperature_one_and_capped_max_tokens` |
+| New — AC 8 79 models, skip branch for the hand-priced slug | `_build_openrouter_models` | `…::test_catalog_count_and_skip_of_hand_priced_slug` |
+| New — pin on every openrouter tier, fallbacks off; brief PROVIDER ↔ routing slug one-to-one; quantization branch | `_openrouter_pin` | `…::test_every_openrouter_tier_pins_its_table_provider_fallbacks_off` · `::test_table_provider_slug_is_a_bijection_of_brief_provider` · `::test_openrouter_pin_quantization_branch` |
+| New — startup rejects non-dict `request_extras` / same-server ambiguous SKU | `validate_llm_provider_environment` | `…::test_startup_rejects_non_dict_request_extras` · `::test_startup_rejects_same_server_ambiguous_sku` |
+| Revised — `__bad__` fixtures get `pricing: {}` so the new ambiguity check can't fire first on a cloned `kimi-k2.6` row | `validate_llm_provider_environment` | `TestAst1877LlmCatalogConfig::test_startup_rejects_model_without_brain_sizes` · `::test_startup_rejects_off_vocabulary_brain_size` |
+
+**Brief fixture:** `tests/component/utils/fixtures/ast1937_openrouter_brief.txt` is Susan's AST-1937 brief table verbatim (header + 76 rows). AC 1 / AC 2 compare config against it, not against config's own table. `TestAst1938OpenRouterShortlist.NEW` is a lazy property so this module still collects on a tree without the AST-1938 product.
+
+`LOCKED_AT_100`: every new `config.py` line and branch is covered by `TestAst1938OpenRouterShortlist` (builder add / skip, reasoning yes / no, pin with / without quantizations, both new validator raises) — `--cov-branch` on the publish tip reports no missing line or partial branch in the AST-1938 ranges.
+
+**Integration:** none (no `tests/integration/` scenario reads the LLM catalog).
+
+## QA test manifest
+
+1. **Component (narrowed):**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1877LlmCatalogConfig \
+  tests/component/utils/test_config.py::TestAst1938OpenRouterShortlist \
+  tests/component/external/test_llm_compat.py \
+  tests/component/ui/api/test_api_admin.py::TestAdminConfigAndAgents \
+  tests/component/utils/test_cost_calculator.py \
+  tests/component/core/test_agent_ast1879.py \
+  tests/component/data/database/test_timesheets.py \
+  tests/component/data/database/test_agents.py
+```
+
+2. **AC 6 (no slug literal outside config):**
+
+```bash
+rg -n "qwen/|z-ai/|meta-llama/|mistralai/|bytedance-seed/|nousresearch/|thedrummer/|undi95/|gryphe/|anthracite-org/|sao10k/|tencent/|xiaomi/|stepfun/|morph/|nvidia/|google/gemma|openai/gpt-oss|deepseek/deepseek" src/ --glob '!src/utils/config.py'
+```
+
+Expect no output.
+
+3. **AC 8 boot:** `ASTRAL_DB_DIR=$(mktemp -d) python -c "from src.utils.config import validate_llm_provider_environment as v; v()"` returns without raising.
+
+**Pass criterion:** item 1 green (134 on the publish tip), item 2 empty, item 3 clean. Not the zero-arg harness. Baseline (`origin/dev` product vs AST-1938 product, same files): exactly six existing nodes changed, all revised above (four in `test_llm_compat.py`, two in `TestAst1877LlmCatalogConfig`). The other reds in `test_config.py` / `test_api_admin.py` sit in unrelated classes and are identical with `origin/dev` product, so they are outside this manifest.
+
+### AST-1947 · AST-1946 (catalog by quantization, mode-aware resolver, settings cleanup)
+
+`OPENROUTER_MODEL_TABLE` is now the AST-1946 brief's 95 slugs: `slug → (IN, OUT, CACHE, host routing slug, host quantization, reasoning, host max output)`. `_build_openrouter_models()` gives each row **one** brain size from `OPENROUTER_QUANT_BRAIN_SIZE` (int4/fp4 → Little, int8/fp8 → Medium, fp16/bf16 → Big), `can_think` + `thinking_params` (adaptive when the host reasons, else `{}`), `max_output_tokens`, a stored listing `default_max_tokens = min(16000, host max)`, and `request_extras = {"provider": {"order": [host], "allow_fallbacks": False, "quantizations": [quant]}}` on every row. `kimi-k2.6-openrouter` is retired (`moonshotai/kimi-k2.6` is a plain row, Inceptron int4 → Little); catalog = 98 models. `AGENT_MODE_CONFIG` (Deterministic: thinking off, 0.2, cap 16000; Creative: thinking on, 0.6, cap 32000) + `validate_agent_mode`. `resolve_model_brain(model_id, brain_setting, mode)` — `mode` required — returns the stored size plus `thinking = mode thinking AND can_think`, `thinking_params`, `temperature`, and on models with `max_output_tokens` a `default_max_tokens = min(mode cap, host max)`. Stored sizes carry no `thinking` / `thinking_params` / `default_temperature`; `AGENT_CONFIG` loses `default_temperature`. Removed: `infer_brain_setting_from_legacy_model_code`, `brain_setting_for_anthropic_agent_key`, `admin_brain_setting_catalog`, `OPENROUTER_TIER_DEFAULTS`, `OPENROUTER_PIN_QUANTIZATIONS`. `REPO_ADMIN_JSON_CONFIG` agent columns: `temperature` → `mode`; `data/admin/agent.json` + `docs/uat-fixtures/AST-756/expected-agent.json` follow (Big agents Creative). Wire side: [`../external/llm_compat.md`](../external/llm_compat.md) § AST-1947.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| New — AC 1 openrouter ids = brief (both set differences); fixture is 95 rows | `OPENROUTER_MODEL_TABLE` / `_build_openrouter_models` | `TestAst1947CatalogByQuantization::test_openrouter_catalog_equals_brief` · `::test_brief_fixture_has_95_slugs` |
+| New — AC 2 one size per model from quantization (literal map + all 95 + spot checks) | `OPENROUTER_QUANT_BRAIN_SIZE` / builder | `…::test_one_brain_size_per_model_from_quantization` |
+| New — AC 3 brief pricing, cache write 0 | builder / `get_sku_pricing` | `…::test_pricing_matches_brief` |
+| New — AC 4 host + brief-quant pin, fallbacks off (all 95 + remm / gemma spots); brief PROVIDER ↔ one routing slug | `_openrouter_pin` | `…::test_every_tier_pins_host_and_brief_quantization_fallbacks_off` · `::test_brief_provider_maps_to_one_routing_slug` |
+| New — builder reasoning yes / no → `can_think` + payload; 57 reasoning hosts | builder | `…::test_can_think_follows_host_reasoning_flag` |
+| New — AC 5 resolved output default by mode ≤ host max (all 95 × 2 modes + spots); stored listing default; direct model keeps stored default (no cap) | `resolve_model_brain` | `…::test_output_default_by_mode_capped_at_host_max` |
+| New — AC 6 no stored tier keeps thinking / temperature keys; direct models (sizes, SKUs, floors, defaults, pricing fields) equal pre-epic `origin/dev`; direct `can_think` | `LLM_MODEL_CONFIG` | `…::test_stored_tiers_carry_no_thinking_or_temperature` · `::test_direct_models_unchanged_from_pre_epic` |
+| New — AC 8 (config half) Kimi-OpenRouter gone, 98 models, boot passes, removed symbols absent | catalog / `validate_llm_provider_environment` | `…::test_kimi_openrouter_retired_and_catalog_boots_with_98` |
+| New — mode constants, `validate_agent_mode` ok / raise, resolver rejects unknown mode | `AGENT_MODE_CONFIG` / `validate_agent_mode` / `resolve_model_brain` | `…::test_agent_mode_constants_and_validation` |
+| New — mode wiring (six plan cases: glm-4.6 both modes, phi-4 Creative, kimi-k2.6 Creative, deepseek-v4 Big Creative, claude Medium Deterministic) | `resolve_model_brain` | `…::test_mode_decides_thinking_and_temperature` |
+| New — AC 7 repo-JSON agent columns; seed modes (7 agents); fixture agrees per `agent_id`, no `temperature` | `REPO_ADMIN_JSON_CONFIG` + seed files | `…::test_agent_repo_json_columns_and_seed_modes` |
+| Revised — resolver takes `mode`; Kimi-OpenRouter → `moonshotai/kimi-k2.6` Little Creative (resolved tier shape) | `resolve_model_brain` | `TestAst1877LlmCatalogConfig::test_resolve_model_brain_shape` · `TestAst492LlmBrainTierConfig::test_deepseek_v4_catalog_tiers` · `TestAst1391DeepseekBigMaxTokensFloor::test_big_tier_floor` |
+| Revised — Claude tiers: output default kept, `default_temperature` gone (replaces `test_manage_agents_catalog_shape_via_resolve_matches_three_tiers`, whose `/agents/brain_settings` route no longer exists) | `AGENT_CONFIG` | `TestAst492LlmBrainTierConfig::test_anthropic_tiers_carry_output_default_not_temperature` |
+| Retired — helper removed by Scope (absence asserted in AC 8 test) | — | `TestAst492LlmBrainTierConfig::test_infer_brain_setting_from_legacy_model_code` · `::test_brain_setting_for_anthropic_agent_key_inverse` |
+| Retired — AST-1938 catalog content (76-slug brief, reasoning sizes, temp 1.0, quant one-off, 79 count) → AST-1947 rows above; `TestAst1938OpenRouterShortlist` keeps its two validator raises | — | `TestAst1938OpenRouterShortlist::test_brief_fixture_has_76_slugs` · `::test_every_brief_slug_catalogued_on_openrouter` · `::test_pricing_matches_brief` · `::test_brain_sizes_follow_reasoning_flag_no_big` · `::test_defaults_temperature_one_and_capped_max_tokens` · `::test_table_provider_slug_is_a_bijection_of_brief_provider` · `::test_every_openrouter_tier_pins_its_table_provider_fallbacks_off` · `::test_openrouter_pin_quantization_branch` · `::test_catalog_count_and_skip_of_hand_priced_slug` |
+
+**Brief fixture:** `tests/component/utils/fixtures/ast1946_openrouter_brief.txt` is the AST-1946 Original brief table verbatim (header + 95 rows, with QUANT). AC 1–4 compare config against it, not against config's own table. `ast1937_openrouter_brief.txt` is deleted (no reader left).
+
+`LOCKED_AT_100`: `--cov-branch` over `test_config.py` on the publish tip reports no missing line or partial branch in any AST-1947 hunk of `config.py` (builder, `_openrouter_pin`, mode constants, `validate_agent_mode`, `resolve_model_brain`).
+
+**Integration:** none (no `tests/integration/` scenario reads the LLM catalog or agent mode).
+
+**Sequencing (option A, AST-1951):** `src.data.database` does not import on this sub until sibling **AST-1948** lands, so every `test_config.py` node that lazily imports `database` / core fails with `ImportError: cannot import name 'infer_brain_setting_from_legacy_model_code'`. Those flip green on `ftr` after AST-1948; do not chase them here. `test_repo_admin_json.py`, `test_agent.py`, `test_api_admin.py` are AST-1948's.
+
+## QA test manifest
+
+1. **Component (narrowed — must be all green):**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst492LlmBrainTierConfig \
+  tests/component/utils/test_config.py::TestAst1391DeepseekBigMaxTokensFloor \
+  tests/component/utils/test_config.py::TestAst1877LlmCatalogConfig \
+  tests/component/utils/test_config.py::TestAst1938OpenRouterShortlist \
+  tests/component/utils/test_config.py::TestAst1947CatalogByQuantization \
+  tests/component/external/test_llm_compat.py
+```
+
+2. **Whole files (informational — expected reds only):**
+
+```bash
+.venv/bin/python -m pytest tests/component/utils/test_config.py tests/component/external/test_llm_compat.py -q --tb=line
+```
+
+Every failure must be either the `infer_brain_setting_from_legacy_model_code` ImportError (sibling gap above) or one of the 21 pre-existing `test_config.py` reds that fail identically on `origin/dev` product with this test tree (`TestAst1060…`, `TestAst1061…`, `TestAst1071…`, `TestAst1098…`, `TestAst1127…::test_schema_required_false`, `TestAst1195…` ×2, `TestAst1214…`, `TestAst1229…`, `TestAst1386…`, `TestAst1529…`, `TestAst1557…`, `TestAst1562…` ×2, `TestAst1621…`, `TestAst1726…`, `TestAst721…`, `TestAst853…`, `TestAst901…`, `TestResolveTokens::test_resolves_candidate_config_output_and_chain_tokens` · `::test_resolves_cover_letter_signature_from_profile`). Any other failure is real.
+
+3. **AC 9 (config half):** `rg -n "apodex/|bytedance/ui-tars|ibm-granite/|inclusionai/|meta/muse|microsoft/|minimax/|sao10k/l3|thedrummer/|z-ai/glm-4|moonshotai/kimi-k2\.[57]" src/ --glob '!src/utils/config.py'` and `rg -n "kimi-k2.6-openrouter" src/` — expect no output.
+
+**Pass criterion:** item 1 green (84 on the publish tip), item 2 reds limited to those two categories, item 3 empty. Not the zero-arg harness. On `ftr` after AST-1948: AC 6 / AC 9 `src/`-wide greps, `rg -n "temperature" src/ui/frontend/src/pages/AdminAgentPrompts.tsx` (AST-1949), and `GET /api/admin/agents/models` = 98.
+
+### AST-1955 · AST-1953 (plain agent settings, per-SKU direct models, `resolve_agent_settings`)
+
+Direct models are one id per vendor SKU: `kimi-k2.6`, `claude-haiku-4-5`, `claude-sonnet-4-6`, `claude-opus-4-6`, `deepseek-v4-flash`, `deepseek-v4-pro` (`claude` / `deepseek-v4` gone; catalog = 101). Every entry is flat: `label`, `server`, `sku`, `max_tokens_floor` (all `None` — the old DeepSeek Big 384k floor moved to the agent's own `max_tokens`), `default_max_tokens`, `pricing` (rows unchanged). `OPENROUTER_MODEL_TABLE` rows are `(cpm_in, cpm_out, cpm_cache, max_out)`; `_build_openrouter_models()` sets `default_max_tokens = min(OPENROUTER_DEFAULT_MAX_TOKENS=16000, max_out)` and no `max_output_tokens`. `resolve_agent_settings(model_id, agent)` replaces `resolve_model_brain`: same top-level keys; `tier` = `sku`, `max_tokens_floor`, `default_max_tokens`, `temperature` (as stored), `reasoning_effort` (`""` → None), `provider` (OpenRouter only — `quantizations` / `allow_fallbacks` / `only` / `ignore` / `sort` from the row, empty keys omitted, all empty → None; no host pin). Startup check loses the brain-size / `request_extras` branches. Removed: mode table + constants, `validate_agent_mode`, `OPENROUTER_QUANT_BRAIN_SIZE`, `OPENROUTER_THINKING_PARAMS`, `_openrouter_pin`, `model_brain_sizes`, `validate_brain_setting_for_model`, `BRAIN_*`, `LLM_PROVIDER_CONFIG`, tier-map helpers. Agent repo-JSON columns: `agent_id, content, model_id, max_tokens, quantization, temperature, reasoning_effort, provider_allow_fallbacks, provider_only, provider_ignore, provider_sort, updated_at`. Data layer: [`../data/database/agents.md`](../data/database/agents.md) § AST-1955. Wire side (AC 1–4, 6 stubbed client, 8 debug line) is **AST-1956**'s.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| New — AC 6 six direct ids, flat fields, picker order, pricing rows; old ids absent; 101 models; boot passes | `LLM_MODEL_CONFIG` | `TestAst1955PlainAgentSettings::test_direct_models_one_id_per_sku` |
+| New — no entry keeps `brain_sizes` / `can_think` / `thinking_params` / `max_output_tokens` | catalog + builder | `…::test_no_model_carries_brain_layer_or_thinking_fields` |
+| New — AC 5 (config half) retired symbols absent | `config.py` | `…::test_retired_symbols_absent` |
+| New — table rows are 4-tuples (95), `z-ai/glm-4.6` spot | `OPENROUTER_MODEL_TABLE` | `…::test_openrouter_table_keeps_price_and_max_output_only` |
+| New — AC 7 default output budget: all 95 = min(16000, max out); mythomax 3686, qwen3.5-27b 16000, Sonnet = SKU default | builder / resolver | `…::test_default_output_budget` |
+| New — resolver shape on a direct model (provider None, settings passed through) | `resolve_agent_settings` | `…::test_resolver_shape_direct_model` |
+| New — AC 1 / AC 2 (catalog half) provider object from the row: bf16 + fallbacks; + only/sort; all-empty-but-fallbacks; ignore + fallbacks false; nothing → None | `resolve_agent_settings` | `…::test_resolver_provider_object_from_agent_row` (5 cases) |
+| New — AC 3 (catalog half) no gating: 0.0 kept, `none` / `high` passed (phi-4 couldn't think), empty → None; retired id raises | `resolve_agent_settings` | `…::test_resolver_passes_temperature_and_effort_as_stored` |
+| New — AC 8 repo columns; seed = plan Stage 3 values (literal table) + fallbacks true / rest empty; fixture same settings fields + same rule (6 rows, `model_code` kept — plan's "field-for-field") | `REPO_ADMIN_JSON_CONFIG` + seed files | `…::test_agent_repo_json_columns_and_seed` (replaces `TestAst1947…::test_agent_repo_json_columns_and_seed_modes`) |
+| Revised — DeepSeek via per-SKU ids; retired-provider list adds `LLM_PROVIDER_CONFIG`; Claude SKU defaults via catalog ids | `LLM_MODEL_CONFIG` / `AGENT_CONFIG` | `TestAst492LlmBrainTierConfig::test_deepseek_v4_catalog_skus` · `::test_legacy_global_provider_symbols_retired` · `::test_anthropic_skus_carry_output_default_not_temperature` |
+| Revised — AC 6 (catalog half): `deepseek-v4-pro` floor None, default 16000 | `resolve_agent_settings` | `TestAst1391DeepseekBigMaxTokensFloor::test_no_catalog_floor_on_v4_skus` (was `test_big_tier_floor`) |
+| Revised — `get_llm_model` hit on `claude-sonnet-4-6` | `get_llm_model` | `TestAst1877LlmCatalogConfig::test_get_llm_server_and_model_hit_and_unknown` |
+| Retired — brain tiers / tier map / size validation / mode resolver (symbols gone; absence asserted above) | — | `TestAst492…::test_resolve_anthropic_tier_maps_to_agent_config_keys` · `::test_validate_allowed_brain_setting_rejects_unknown` · `::test_resolve_anthropic_raises_when_tier_maps_to_unknown_agent_config_key` · `TestAst1877…::test_model_brain_sizes_are_per_model_in_catalog_order` · `::test_validate_brain_setting_for_model` · `::test_resolve_model_brain_shape` · `::test_startup_rejects_model_without_brain_sizes` · `::test_startup_rejects_off_vocabulary_brain_size` · `TestAst1938…::test_startup_rejects_non_dict_request_extras` |
+| Retired — AST-1947 quantization sizes / host pin / routing-slug bijection / `can_think` / mode defaults / mode wiring / pre-epic direct shape / 98 count | — | `TestAst1947…::test_one_brain_size_per_model_from_quantization` · `::test_every_tier_pins_host_and_brief_quantization_fallbacks_off` · `::test_brief_provider_maps_to_one_routing_slug` · `::test_can_think_follows_host_reasoning_flag` · `::test_output_default_by_mode_capped_at_host_max` · `::test_stored_tiers_carry_no_thinking_or_temperature` · `::test_direct_models_unchanged_from_pre_epic` · `::test_kimi_openrouter_retired_and_catalog_boots_with_98` · `::test_agent_mode_constants_and_validation` · `::test_mode_decides_thinking_and_temperature` (6) |
+| Kept — AST-1946 brief: 95 slugs, catalog = brief, brief pricing | — | `TestAst1947CatalogByQuantization` (3 remaining) |
+
+`LOCKED_AT_100`: `--cov-branch` over `test_config.py` on the publish tip reports no missing line or partial branch in any AST-1955 hunk of `config.py` (builder, `resolve_agent_settings`, startup loop).
+
+**Integration:** none (no `tests/integration/` scenario reads the LLM catalog or agent rows).
+
+**Sequencing:** `src/core/agent.py` and `src/ui/api/api_admin.py` still import `resolve_model_brain` until **AST-1956** / **AST-1957** land on `ftr`. So every test under `tests/component/core/` (autouse conftest imports `candidate` → `agent`), all of `tests/component/ui/api/`, `test_llm_compat.py`, and 13 `test_config.py` nodes that lazily import core fail with that `ImportError` on this sub. `test_remap_openrouter_agents.py` is **AST-1958**'s (deleted there). `test_repo_admin_json.py` revisions (§ AST-1955 in [`../core/repo_admin_json.md`](../core/repo_admin_json.md)) were verified locally with a throwaway stub for that import; they run for real on `ftr`.
+
+## QA test manifest
+
+1. **Component (narrowed — must be all green, 72 on the publish tip):**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst492LlmBrainTierConfig \
+  tests/component/utils/test_config.py::TestAst1391DeepseekBigMaxTokensFloor \
+  tests/component/utils/test_config.py::TestAst1877LlmCatalogConfig \
+  tests/component/utils/test_config.py::TestAst1938OpenRouterShortlist \
+  tests/component/utils/test_config.py::TestAst1947CatalogByQuantization \
+  tests/component/utils/test_config.py::TestAst1955PlainAgentSettings \
+  tests/component/utils/test_cost_calculator.py \
+  tests/component/data/database/test_agents.py
+```
+
+2. **Whole files (informational — expected reds only):**
+
+```bash
+.venv/bin/python -m pytest tests/component/utils/test_config.py tests/component/utils/test_cost_calculator.py tests/component/data/database/test_agents.py -q --tb=line
+```
+
+Expect 34 failed. Every failure must be either (a) the `cannot import name 'resolve_model_brain'` ImportError (13 — sibling gap above: `TestAst1055…`, `TestAst1127…::test_validate_allows_omit_null_empty`, `TestAst1333…`, `TestAst1339…`, `TestAst1405…` ×3, `TestAst1494…`, `TestAst1688…`, `TestAst1779…`, `TestAst1808…`, `TestAst898…`, `TestResolveTokens::test_base_resume_token_emits_section_json_not_markdown`) or (b) one of the 21 pre-existing `test_config.py` reds that fail identically on `origin/dev` product with this test tree — the same 21 listed in § AST-1947 item 2 above. Any other failure is real.
+
+3. **AC 5 / AC 6 (sub half):** `rg -n "_openrouter_pin|AGENT_MODE|OPENROUTER_QUANT_BRAIN_SIZE|resolve_model_brain|validate_agent_mode|brain_setting|brain_sizes|can_think" src/utils/config.py src/data/database.py` — expect no output.
+
+4. **AC 8 seed validates:** `ASTRAL_DB_DIR=/tmp .venv/bin/python -c "from src.core import repo_admin_json as r; from src.data import database as d; d._validate_agent_repo_json_rows(r.load_repo_admin_json_file('agent'))"` — exits 0 (revert-from-seed is `TestAst1955AgentSettings::test_seed_round_trips_and_revert_restores_it` in item 1).
+
+**Pass criterion:** item 1 green, item 2 reds limited to those two categories, items 3–4 clean. Not the zero-arg harness (`tests/component/core/` cannot collect on this sub). On `ftr` after AST-1956 / AST-1957: `tests/component/core/test_repo_admin_json.py` (no new reds vs `origin/dev` baseline), and AC 5's `src/`-wide `rg`.
+
+**Bible shasums (after publish):** `for p in utils/config.md utils/cost_calculator.md data/database/agents.md core/repo_admin_json.md; do git show origin/sub/AST-1953/AST-1955-plain-agent-settings:docs/test-bible/$p | shasum; done`
+
+### AST-1959 · AST-1954 (server `probe` flag + probe message)
+
+**Primary manifest:** [`../external/llm_compat.md`](../external/llm_compat.md) § AST-1959. Every `LLM_SERVER_CONFIG` entry gains `probe` (bool; `True` on `openrouter` only); `LLM_PROBE_MESSAGE = "Respond with 1."`; `validate_llm_provider_environment` raises `LLM server '<sid>': probe must be True or False` when `probe` is missing or not a bool.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| New — every server's `probe` is a bool; the probing set is exactly `{"openrouter"}` | `LLM_SERVER_CONFIG` | `TestAst1959ServerProbeFlag::test_probe_flag_is_bool_everywhere_and_true_on_openrouter_only` |
+| New — probe message literal | `LLM_PROBE_MESSAGE` | `…::test_probe_message_constant` |
+| New — startup rejects `probe` None / `"yes"` / `1` / missing | `validate_llm_provider_environment` | `…::test_startup_rejects_missing_or_non_bool_probe` (4) |
+
+`LOCKED_AT_100`: `--cov-branch` over `test_config.py` on the publish tip reports no missing line or partial branch on the new validator check (pass arc via `TestAst1877LlmCatalogConfig::test_shipped_catalog_passes_startup_validation`, raise arc above).
+
+**Integration:** none.
+
+### AST-1964 · AST-1963 (model routing type, routing helper, reconcile constants)
+
+Every `LLM_MODEL_CONFIG` entry carries `routing` ∈ `LLM_MODEL_ROUTING_TYPES = ("direct", "openrouter")`: `openrouter` on every `_build_openrouter_models` entry (95), `direct` on the six hand-written ones. `resolve_agent_settings` builds the provider object when `routing == "openrouter"` (was `server == "openrouter"`). `validate_llm_provider_environment` raises `LLM model '<id>': routing <v> not in ('direct', 'openrouter')` on a missing / unknown value (checked right after the server lookup, before pricing). `get_model_routing(server_id, sku)` → routing, `ValueError("No LLM model for server … and SKU …")` when no entry matches both. `TIMESHEET_RECONCILE_RETRIES = 5`, `TIMESHEET_RECONCILE_BACKOFF_BASE_SECONDS = 2.0`. Lookup side: [`../external/openrouter.md`](../external/openrouter.md) § AST-1964. The retry loop / doubling waits are AST-1966's.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| New — AC 1 allowed tuple; all 95 table slugs `openrouter`; direct set = the six ids in picker order; no third value | `LLM_MODEL_CONFIG` / `LLM_MODEL_ROUTING_TYPES` | `TestAst1964ModelRouting::test_routing_values_per_model` |
+| New — AC 1 startup rejects routing missing / `None` / `""` / `"proxy"` / `"OpenRouter"` (fake entry has its own SKU + pricing row so only the routing check can fire) | `validate_llm_provider_environment` | `…::test_startup_rejects_missing_or_unknown_routing` (5) |
+| New — AC 1 provider object keyed on routing, not server: openrouter-server entry routed `direct` → `None`; kimi-server entry routed `openrouter` → object; shipped models unchanged | `resolve_agent_settings` | `…::test_resolver_provider_object_follows_routing_not_server` |
+| New — helper hit (openrouter / deepseek / anthropic / kimi); real SKU on the wrong server and unknown pair raise | `get_model_routing` | `…::test_get_model_routing_hit_and_unknown` |
+| New — AC 3 retry count `5`, backoff base `2` | constants | `…::test_reconcile_retry_constants` |
+| Kept — resolver / validator / catalog shape (entries copied from real models carry `routing`, so existing fake-entry tests still reach their intended raise) | — | `TestAst1877LlmCatalogConfig` · `TestAst1938OpenRouterShortlist` · `TestAst1947CatalogByQuantization` · `TestAst1955PlainAgentSettings` · `TestAst1959ServerProbeFlag` |
+
+`LOCKED_AT_100`: `--cov-branch` over the manifest on the publish tip covers both arcs of the routing check in the validator and in `resolve_agent_settings`, and both exits of `get_model_routing`.
+
+**Integration:** none (no `tests/integration/` scenario reads the LLM catalog).
+
+## QA test manifest
+
+1. **Component (narrowed — must be all green, 66 on the publish tip):**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/external/test_openrouter.py \
+  tests/component/utils/test_config.py::TestAst1964ModelRouting \
+  tests/component/utils/test_config.py::TestAst1877LlmCatalogConfig \
+  tests/component/utils/test_config.py::TestAst1938OpenRouterShortlist \
+  tests/component/utils/test_config.py::TestAst1947CatalogByQuantization \
+  tests/component/utils/test_config.py::TestAst1955PlainAgentSettings \
+  tests/component/utils/test_config.py::TestAst1959ServerProbeFlag
+```
+
+2. **Whole files (informational — expected reds only):**
+
+```bash
+.venv/bin/python -m pytest tests/component/utils/test_config.py tests/component/external/test_openrouter.py -q --tb=line
+```
+
+Expect 21 failed, 602 passed, 4 skipped — the 21 pre-existing `test_config.py` reds listed in § AST-1947 item 2 above (identical on `origin/dev` product). Any other failure is real.
+
+3. **AC 1 greps:** `rg -n '"openrouter"' src/external/ src/core/timesheets.py src/data/database.py` and `rg -n 'server"\] == "openrouter"' src/utils/config.py` — expect no output (re-check on `ftr` after AST-1965 / AST-1966).
+
+**Pass criterion:** item 1 green, item 2 reds limited to those 21, item 3 empty. Not the zero-arg harness.
+
+**Bible shasums (after publish):** `for p in utils/config.md external/openrouter.md; do git show origin/sub/AST-1963/AST-1964-routing-and-generation-lookup:docs/test-bible/$p | shasum; done`
+
+---
+
+### AST-1974 · AST-1970
+
+`READY_JOB_STATES` / `REVIEW_JOB_STATES` replace `RECOMMENDED_JOB_STATES`; `IN_REVIEW_STATES` deleted (Processing = complement of `JOBS_PROCESSING_EXCLUDED_STATES`, import-time "Jobs lists overlap" assert); `SKIPPED_STATES` + section order/labels/bulk retry gain `ERROR_BUILD_ARTIFACTS` / `BUILD_FAILED`; `CANDIDATE_SKIPPED` priors derived (every state outside Applied + Skipped); `JOBS_IN_REVIEW_UI_SECTIONS` → `JOBS_PROCESSING_UI_SECTIONS` (+ Building Artifacts last); `JOBS_RECOMMENDED_METEORITE_SECTION` removed; manifest `jobs.processing_sections`, recommended sections Review/Ready; `JOBS_METEORITES_LIST_COLUMNS` gains `job_state`; Jobs `NAV_CONFIG` = six items.
+
+**New:** **`TestAst1974JobsListPartition`** (nav exact, retired constants, Skipped build failures, disjoint concatenation, overlap-at-import probe, derived skip priors, processing sections, manifest contract, Meteorites column).
+
+**Revised:** `TestAst479LikePassStates`, `TestAst803FlatBuildArtifactsChainDispatch`, `TestAst874…::test_score_gate_and_ui_manifests`, `TestAst898…::test_ui_sections_and_grade_field`, `TestAst1339…::test_ui_sections_label_no_grade_field`, `TestAst1053MeteoriteGdlJobStates` (2), `TestAst1057MeteoriteRecommendedSection` (now asserts retirement), `TestAst1155…::test_processing_ui_labels_and_grade_fields`, `TestAst1749JobsMeteoritesNav`, `TestBuildStateUiManifest::test_ast522_…`, `TestAst1808RetryRegistryPurge::test_prior_snapshot_pinned` (skips `CANDIDATE_SKIPPED` family — deliberately widened, pinned in AST-1974 class).
+
+Manifest: [`ui/api/api_jobs.md`](../ui/api/api_jobs.md) § AST-1974 item 2.
+
+### AST-2004 · AST-1998 (company `BOT_BLOCK` → `BOT_BLOCKED`)
+
+`COMPANY_STATES["BOT_BLOCKED"] = {}` (terminal); three `company_state_transitions` tuples renamed; `("PJL_READY", "BOT_BLOCKED")` added. Job/meteorite `BOT_BLOCKED` registries (AST-1195 / AST-1560) are separate and untouched.
+
+**New:** **`TestAst2004CompanyBotBlocked`** (rename complete + terminal; no `BOT_BLOCK` tuples; TO_WATCH / JOBS_FOUND / PREFILTER_PASSED / PJL_READY → `BOT_BLOCKED`).
+
+**Revised:** **`TestAst1808RetryRegistryPurge::test_prior_snapshot_pinned`** — pinned AST-1806 fixture predates the rename; test translates `COMPANY_STATES` `BOT_BLOCK*` keys/priors to `BOT_BLOCKED*` in-memory (fixture JSON left as captured).
+
+Manifest: **`docs/test-bible/core/roster.md`** § AST-2004.
+
+### AST-2006 · AST-2000 (bug — runtime empty-token guard)
+
+**Parent:** [AST-1986](https://linear.app/astralcareermatch/issue/AST-1986) (orphaned mini-parent). **Product:** [AST-2000](https://linear.app/astralcareermatch/issue/AST-2000); canon carve-out [AST-2005](https://linear.app/astralcareermatch/issue/AST-2005) (`patt.task.dispatch-retry`). **Publish:** `origin/sub/AST-1986/AST-2006-empty-token-guard-tests`. `resolve_tokens(..., empty_tokens=[...])` appends each recognized token whose substituted value is blank (`.strip() == ""`), ordered-unique, and forces `warn_on_empty=False`; unrecognized names stay literal and are not collected; the default call is unchanged. Supersedes the AST-530 row's mid-chain empty-caller guard (folded into the `do_task` guard — **`core/agent.md`** § AST-2006).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Collects candidate + job + chain (`CALLER_*`) blanks, ordered-unique; collector path never warns | `resolve_tokens` | **`TestAst2006ResolveTokensEmptyCollector::test_collects_blank_names_ordered_unique_across_sources`** |
+| Unrecognized `{$NOT_A_TOKEN}` literal, not collected | same | **`…::test_unrecognized_token_stays_literal_and_is_not_collected`** |
+| Default call (no collector) output + WARNING unchanged | same | **`…::test_default_call_unchanged_still_warns`** |
+
+**Broken / obsolete:** none — `TestResolveTokens` / `TestAst1779*` use default args. (`TestResolveTokens::test_resolves_candidate_config_output_and_chain_tokens` / `::test_resolves_cover_letter_signature_from_profile` are pre-existing reds, identical with and without this pass.)
+
+Manifest: **`docs/test-bible/core/agent.md`** § AST-2006.
+
+### AST-2008 · AST-2007 (TIMESHEET_RECONCILE_ENABLED)
+
+**New:** `TestAst1964ModelRouting::test_reconcile_ships_disabled` — `TIMESHEET_RECONCILE_ENABLED is False`. Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-2008.
+
+### AST-2010 · AST-2009 (OpenRouter retry block + `PROVIDER_RATE_LIMIT`)
+
+**New:** `TestAst2010OpenRouterRetryConfig`. OpenRouter `concurrency == {"rate_limit_retries": 5, "backoff_base_seconds": 10.0, "exhausted_stops_batch": True}` (base raised from 2.0 to 10.0 so a 429 waits roughly 2.5–5 min). The DeepSeek block is unchanged, and only OpenRouter sets `exhausted_stops_batch`. The `PROVIDER_RATE_LIMIT` registry is pinned. Primary manifest: **`docs/test-bible/external/llm_compat.md`** § AST-2010.
+
+### AST-2024 · AST-2022 (`RELATIVE_JOB_LINK` / `RELATIVE_LINK_FAIL` + `fetch_relative_jd` registration)
+
+**Scope:** two new `JOB_STATES`; `RELATIVE_JOB_LINK` added to the priors of `JD_READY`, `BOT_BLOCKED`, `JD_SCRAPE_FAIL{,_COOKIE,_MISSING,_CLOSED}`; `RELATIVE_LINK_FAIL` skipped (order / label / bulk retry → `RELATIVE_JOB_LINK`); processing section; `GAZER_CONFIG["fetch_relative_jd"]`; dispatch trigger / entity rules; `qualify_job_listings.relative_link_state`; `agent_task.json` row ([`core/repo_admin_json.md`](../core/repo_admin_json.md) § AST-2024). No routing / runner (AST-2025).
+
+| Area | Component tests |
+| --- | --- |
+| AC1 registry (exact priors, no `VALID_TITLE`, six JD outcomes, `NEW_RETRY` derived) | `TestAst2024RelativeJobLinkRegistry::test_ac1_registry` |
+| AC2 skipped section + bulk retry → `RELATIVE_JOB_LINK` (config + manifest) | `…::test_relative_link_fail_skipped_with_bulk_retry` |
+| AC2 processing section `Relative Job Link` between `PASSED_JOBLIST` / `JD_READY` | `…::test_relative_job_link_processing_section_after_passed_joblist` |
+| `GAZER_CONFIG` block; `error_states` = `fetch_jd` fail + error states; outcomes legal from trigger | `…::test_gazer_config_fetch_relative_jd` |
+| Dispatch `RELATIVE_JOB_LINK` / `job`; qualify key; no score floor, `updated_at` sort | `…::test_dispatch_rules_and_qualify_key` |
+
+**Broken / obsolete (revised this pass):**
+- `TestAst1195SchemaNullsAndBotBlocked::test_bot_blocked_registry_and_skipped_ui` — exact `BOT_BLOCKED` priors now end with `RELATIVE_JOB_LINK`.
+- `TestAst1808RetryRegistryPurge::test_prior_snapshot_pinned` — fixture stays frozen; in-test AST-2024 delta (same pattern as the AST-2004 rename translation): six JD outcomes gain `RELATIVE_JOB_LINK{,_RETRY}`, four new targets pinned to exact derived priors.
+
+All 8 new/revised nodes red on pre-AST-2024 `config.py` / `agent_task.json`, green on the sub tip. Across `test_config.py` / `test_repo_admin_json.py` / `test_dispatcher.py` / `test_gazer.py` / `test_tracker.py` / `test_api_*` etc., the only failures this diff introduced were these two; the other ~149 reds are identical before and after. Frontend: Jobs pages read `build_state_ui_manifest()` (static `stateUiManifestFixture.ts` unaffected); no page file changed, §6c n/a. **Integration:** none.
+
+## QA test manifest
+
+1. **Gap + revised (required):**
+
+```bash
+/home/susan/astral/.venv/bin/python -m pytest \
+  tests/component/utils/test_config.py::TestAst2024RelativeJobLinkRegistry \
+  tests/component/utils/test_config.py::TestAst1195SchemaNullsAndBotBlocked::test_bot_blocked_registry_and_skipped_ui \
+  tests/component/utils/test_config.py::TestAst1808RetryRegistryPurge \
+  tests/component/core/test_repo_admin_json.py::TestAst2024FetchRelativeJdCatalogRow \
+  -q
+```
+
+2. **AC1 one-liner (required):** the `python -c "…"` registry command from the ticket's AC1 exits 0 (set `ASTRAL_DB_DIR`).
+
+**Pass criterion:** both green — not zero-arg harness / branch-lock gate (pre-existing reds across these files are unchanged by AST-2024).
+
+### AST-2035 · AST-2032
+
+`CONTACT_CONFIG["commands"]` registry (command id → `handler` dotted `src.core.*` path, `mode` ∈ {`code`, `agent`}, `description`, `usage_reply_text`, `ack_reply_template` with `{meteorite_id}`); `add-job` ships `code` → `src.core.meteorite.insert_slack_meteorite`. Import-time asserts cover shape, mode vocabulary, handler prefix, placeholder, and no collision with `CONTACT_CONFIG["skills"]` / `CONTACT_TASK_CONFIG` — a bad registry fails at import, so every test module importing config is the gate.
+
+| Area | Component tests |
+| --- | --- |
+| Shipped `add-job` entry (code mode, handler resolves) | `tests/component/core/test_contact.py::TestAst2035ContactCommandIntercept::test_registry_ships_add_job_code_mode` |
+
+**Broken / obsolete:** none — no `test_config.py` test pins the `CONTACT_CONFIG` key set. **Manifest:** [`../core/contact.md`](../core/contact.md) § AST-2035.
+
+**AST-2047 (pointer):** `UI_CONFIG["themes"]` / `default_theme` (+ import-time assert that the default is a selectable id), profile `theme` select generated from selectable entries, and every registry id having an `App.css` `[data-theme]` block — **`TestAst2047ThemeRegistry`**. Manifest: [`../frontend/pages.md`](../frontend/pages.md) § AST-2047.
+
+**AST-2122 (pointer):** registry is exactly `dark` + `light`; Tools is admin-only with six items (no Theme Examples); no `*_grade_sets` key in `UI_CONFIG`. **`TestAst2047ThemeRegistry`** (5, revised + one new), **`TestAst1386ThreeSegmentAdminNav`** (`/admin/telescope` added to Tools paths). `TestAst2064ThemeExampleGradeSets` is deleted. Manifest: [`../frontend/pages.md`](../frontend/pages.md) § AST-2122.
+
+**AST-2129 (pointer):** registry is exactly `dark`, `light`, `shapes_light`, `shapes_dark` (labels Dark, Light, Shapes - Light, Shapes - Dark, all selectable, default `dark`); profile Theme select lists all four. **`TestAst2047ThemeRegistry`** (2 revised; `test_every_registry_id_has_an_app_css_block` unchanged and green, because a twin's `[data-theme]` sits on its sibling's selector list). Manifest: [`../frontend/root.md`](../frontend/root.md) § AST-2129.
+
+### AST-2062 · AST-2055 (Estelle pinhole — tests for AST-2061)
+
+**Parent:** [AST-2055](https://linear.app/astralcareermatch/issue/AST-2055) (fix child [AST-2061](https://linear.app/astralcareermatch/issue/AST-2061)). **Publish:** `origin/sub/AST-2055/AST-2062-estelle-pinhole-tests`.
+
+AST-2061 config: `CONTACT_CONFIG["skills"] = {}` (map kept for `contact_skills()` / admin routes), `CONTACT_CONFIG["allowed_channel_types"] = ("im", "group")` with import-time asserts (tuple, Slack vocabulary, never `"channel"`), `create_contact_meteorite` removed from `CONTACT_TASK_CONFIG`, and the `_CONTACT_PINHOLE_HANDLERS` allowlist + import-time assert (every task/command handler listed; `write` kinds only under `src.core.meteorite.` — **amended by § AST-2210**: `write meteorite` under `src.core.meteorite.` or `write artifact`). Contact behavior: [`../core/contact.md`](../core/contact.md) § AST-2062.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Skills registry empty | `src/utils/config.py` | **`TestAst2061ContactSkillsEmpty`** (1) |
+| `allowed_channel_types`; **[bug-repro]** retired task key; every handler in pinhole (no `create_meteorite_job` / `land_meteorite`); real import-time assert fires on a spliced `create_meteorite_job` handler (anchor `# AST-2061 pinhole:` must appear exactly once) | `src/utils/config.py` | **`TestAst2061ContactPinholeConfig`** (4) |
+| Revised: five task keys | same | **`TestAst1515ContactTaskConfig::test_five_keys_handler_metadata_and_collision_guards`** (was `test_six_keys_…`) |
+| Revised: Slack profile fields (skills ACL path read dropped) | same | **`TestAst1105ProfileSlackFields::test_slack_id_and_username_fields`** |
+
+**Broken / obsolete:** `TestAst1071ContactSkillsConfig` (replaced); `TestAst1515ContactTaskConfig::test_six_keys_…` (renamed/revised); `TestAst1105ProfileSlackFields` skills read (removed). `TestAst1073ContactEstelleTurnConfig::test_skill_calls_optional_on_chat_schema` unchanged — AST-2061 deliberately kept the optional schema entry.
+
+**Integration:** none — do not invent.
+
+## QA test manifest
+
+1. `tests/component/utils/test_config.py::TestAst2061ContactSkillsEmpty`
+2. `tests/component/utils/test_config.py::TestAst2061ContactPinholeConfig`
+3. Revised: `tests/component/utils/test_config.py::TestAst1515ContactTaskConfig`, `TestAst1105ProfileSlackFields`
+
+Full AST-2062 command (all four pages): [`../core/contact.md`](../core/contact.md) § AST-2062.
+
+### AST-2072 · AST-2050 (thread_response + reply text)
+
+**Parent:** [AST-2050](https://linear.app/astralcareermatch/issue/AST-2050). **Publish:** `origin/sub/AST-2050/AST-2072-estelle-thread-response`.
+
+`CONTACT_CONFIG["thread_response"]` (default `threads_only`; import-time assert limits it to `threads_only` / `always_no_share` / `always_with_share`). `known_recognition_reply_text` + its assert removed (supersedes § AST-1668's known half). New verbatim values: `unknown_recognition_reply_text` = "Sorry, I don't recognize you, yet.  Let's check with @susan", `hear_ack_reply_text` = "That didn't work as planned.  Let's ask @susan." (double spaces are deliberate). Contact behavior: [`../core/contact.md`](../core/contact.md) § AST-2072.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Default `threads_only`; real import-time assert rejects `"sometimes"` and accepts the other two values (spliced source, anchor line must appear exactly once) | `src/utils/config.py` | **`TestAst2072ThreadResponseConfig`** (4) |
+| Revised: known key absent; unknown exact text | same | **`TestAst1668RecognitionReplyConfig::test_recognition_reply_defaults`** |
+| Revised: hear-ack exact text | same | **`TestAst1101HearAckConfig::test_hear_ack_reply_text`** |
+
+**Broken / obsolete this pass:** `TestAst1668RecognitionReplyConfig` (read the removed key — revised); `TestAst1101HearAckConfig` tightened from non-empty to exact text.
+
+**Integration:** none — do not invent.
+
+## QA test manifest
+
+1. `tests/component/utils/test_config.py::TestAst2072ThreadResponseConfig`
+2. Revised: `TestAst1668RecognitionReplyConfig`, `TestAst1101HearAckConfig`
+
+Full AST-2072 command: [`../core/contact.md`](../core/contact.md) § AST-2072.
+
+### AST-2069 · AST-2054 (upshot states, task registration, agent_task rows)
+
+**Parent:** [AST-2054](https://linear.app/astralcareermatch/issue/AST-2054) (Company Upshot). **Publish:** `origin/sub/AST-2054/AST-2069-upshot-states-registration`. Plan: `docs/features/roster/ast-2069-upshot-states-task-registration-and-agent-task-rows.md`.
+
+Registration only: company states `GET_UPSHOT` / `UPSHOT_READY` (retry) / `ERROR_UPSHOT`; every former `(X, "WATCH")` locate/parse pair → `(X, "GET_UPSHOT")`, WATCH entered only from `UPSHOT_READY` / its retry; `ROSTER_CONFIG` locate `pass_states` + parse `pass_state` → `GET_UPSHOT`; `ROSTER_CONFIG["company_upshot"]`, `GAZER_CONFIG["fetch_company_culture_pages"]`, `TASK_CONFIG["company_upshot"]`; both keys company-entity dispatchable; two `data/admin/agent_task.json` rows (telescope fetch, Estelle `company_upshot` with the 200-word cap). **Interim (plan-accepted):** `roster.py` still hard-codes `state="WATCH"` writes until sibling **AST-2070** — not a product bug on this child.
+
+| AC | Source | Component tests |
+| --- | --- | --- |
+| 1 states; 2 only the upshot hop enters WATCH; 4 dispatch registrable; 3 agent_task rows | `src/utils/config.py`, `data/admin/agent_task.json` | new **`TestAst2069UpshotRegistration`** (4) |
+| AST-2088 (bug): optional `company_name` in `company_upshot` items_schema + prompt output shape | same | **`TestAst2069UpshotRegistration::test_upshot_contract_carries_optional_company_name`** — repro; manifest in [`../core/roster.md`](../core/roster.md) § AST-2088 |
+| Revised: locate/parse transitions now land in `GET_UPSHOT` | `src/utils/config.py` | **`TestAst508InflowLocateConfig::test_prefilter_passed_locate_transitions`**, **`TestAst721ParseJobListConfig::test_parse_states_and_transitions`**, **`TestAst721ParseJobListConfig::test_parse_job_list_roster_config`** (`pass_state` line) |
+| Revised: AST-1806 pinned snapshot gains the six upshot targets (bases unrestricted, `_RETRY` → own pair) | same | **`TestAst1808RetryRegistryPurge::test_prior_snapshot_pinned`** |
+| Revised: roster batch counting mocks return the new pass state | `src/core/roster.py` (counting vs config) | see [`../core/roster.md`](../core/roster.md) § AST-2069 (10 tests) |
+
+**Broken / obsolete this pass (13, isolated A/B vs `ftr` config):** the three config transition/snapshot tests above + the ten roster tests in `roster.md` § AST-2069 — all asserted or mocked `WATCH` as the locate/parse pass state.
+
+**Pre-existing red, not this ticket:** `TestAst721ParseJobListConfig::test_parse_job_list_roster_config` still fails on `KeyError: 'max_concurrent'` with or without AST-2069 — only its `pass_state` line was revised; excluded from the manifest.
+
+**Integration:** none — no `tests/integration/` scenario reads locate/parse pass states; do not invent.
+
+## QA test manifest — AST-2069
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst2069UpshotRegistration \
+  tests/component/utils/test_config.py::TestAst508InflowLocateConfig::test_prefilter_passed_locate_transitions \
+  tests/component/utils/test_config.py::TestAst721ParseJobListConfig::test_parse_states_and_transitions \
+  tests/component/utils/test_config.py::TestAst1808RetryRegistryPurge::test_prior_snapshot_pinned \
+  tests/component/core/test_roster.py::TestAst1847ParseJobListBatchPartialTally \
+  tests/component/core/test_roster.py::TestAst721ParseDispatchRouting::test_parse_job_list_dispatch_key \
+  tests/component/core/test_roster.py::TestAst721ParseJobListDispatch::test_run_company_task_routes_identified_and_retry \
+  tests/component/core/test_roster.py::TestAst891ParseJobListBatch::test_passes_batch_session_and_counts_definite_outcomes \
+  tests/component/core/test_roster.py::TestAst891ParseJobListBatch::test_unhandled_gather_exception_increments_errors_and_continues \
+  tests/component/core/test_roster.py::TestRunCompanyTask::test_jobs_found_dispatch_pass_fail_ast469 \
+  tests/component/core/test_roster.py::test_run_company_task_jobs_found_watch_counts_passed \
+  -q
+```
+
+**Pass criterion:** 17 passed. Not the zero-arg harness.
+
+**Bible shasum (after publish):** `git show origin/sub/AST-2054/AST-2069-upshot-states-registration:docs/test-bible/utils/config.md | shasum`; same for `docs/test-bible/core/roster.md`.
+
+### AST-2081 · AST-2046 (Line format, format details, Hidden label, job structure key, thumbnail flag)
+
+Config only, no branches. `line` is appended to `RESUME_STRUCTURE_BODY_FORMATS`. `RESUME_STRUCTURE_BODY_FORMAT_DETAILS` holds the label, description, and `font_stack` for each format (word cloud and dual column use `list_stack`, every other format uses `body_stack`). `RESUME_STRUCTURE_HIDDEN_FLOW_LABEL = "Hidden"`. New `ARTIFACT_CONFIG["job.artifacts.job_resume_structure"]` (job / candidate-scoped / `resume_structure` / tracker). `preview_thumbnail` is set on the three recommended-job artifact tabs (resume True, cover True, application False).
+
+| Area | Component tests |
+| --- | --- |
+| New literals (AC13, AC14 data half) | new **`TestAst2081FormatCatalogAndJobStructureKey`** (4) |
+| Revised: exact body-format tuple gains `line` | **`TestAst1303ResumeStructureCatalog::test_body_formats_defaults_emphasis_and_extra_id_rules`** |
+| Revised: exact catalog key set gains `job.artifacts.job_resume_structure` | **`TestAst1590JobArtifactCatalogKeys::test_artifact_config_has_pilot_and_job_keys`** |
+
+Manifest: [`../core/tracker.md`](../core/tracker.md) § AST-2081.
+
+### AST-2131 · AST-2130 (WEB_DATA_CONFIG + jd_web_data_id)
+
+Config literals plus one module-level guard: every `WEB_DATA_CONFIG["company_data_id_keys"]` entry must be in `ROSTER_CONFIG["company_data_keys"]`. New block is fully line/branch covered.
+
+| Area | Component tests |
+| --- | --- |
+| `data_types` id→value shape (`VISIBLE_TEXT`, `PAGE_LINKS`, reserved `DOM_CONTENT`); exact id-key tuple ⊆ `company_data_keys` | new **`TestAst2131WebDataConfig::test_data_types_and_id_keys`** |
+| `TRACKER_CONFIG["job_data_keys"]["jd_web_data_id"]`; `job_description` unchanged | **`TestAst2131WebDataConfig::test_job_data_keys_gain_jd_web_data_id`** |
+| Guard fires when an id key leaves `company_data_keys` (AST-2105 `_splice_exec` re-exec) | **`TestAst2131WebDataConfig::test_guard_rejects_id_key_missing_from_company_data_keys`** |
+
+Pre-existing: 22 `test_config.py` failures identical on `origin/ftr/AST-2130-telescope-data` (removed symbols, e.g. `SURFER_BATCH_CONFIG`, `METEORITE_RETENTION_CONFIG`) — not this ticket.
+
+Manifest: [`../data/database/telescope_data.md`](../data/database/telescope_data.md) § AST-2131.
+
+### AST-2151 · AST-2144 (`check-status` registry entry, asserts, pinhole, origin env)
+
+`CONTACT_CONFIG["commands"]["check-status"]`: `code` mode, handler `src.core.tracker.contact_command_check_status`, `reply_placement: "always_with_share"`, five job-lookup templates (`match_reply_template`, `matches_header_template`, `matches_line_template`, `deeplink_template`, `no_match_reply_text`), no `ack_reply_template`. Registry asserts: `ack_reply_template` now **optional** (supersedes § AST-2035's required-ack line) but still needs `{meteorite_id}` when present; each declared text field carries its placeholders; the five job-lookup fields are all-or-none; `reply_placement` ∈ the `thread_response` vocabulary (`_CONTACT_THREAD_RESPONSE_MODES`). Pinhole row `read job`. `JOBS_DETAIL_ORIGIN_DOMAIN_ENV = "RAILWAY_PUBLIC_DOMAIN"` beside `JOBS_DETAIL_ROUTE_PREFIX`.
+
+| Area | Component tests |
+| --- | --- |
+| Child AC 1 (mode, placement, handler, no ack; add-job ack unchanged); AC 2 (pinhole `read job`); env-name contract | new **`TestAst2151CheckStatusRegistry`** — `test_ac1_*`, `test_ac2_*`, `test_origin_env_contract_beside_route_prefix` |
+| Real import-time asserts (spliced re-exec, anchors must appear once): ack absent imports; ack without `{meteorite_id}`, `match_reply_template` without `{deeplink}`, half-declared lookup group, `reply_placement: "sometimes"` each raise | same class (5) |
+| Pinhole covers every command handler (now two) | **`TestAst2061ContactPinholeConfig::test_every_contact_handler_in_pinhole`** (unchanged) |
+| `thread_response` assert still anchored on the dict line | **`TestAst2072ThreadResponseConfig`** (unchanged) |
+
+**Broken / obsolete:** none. Manifest: [`../core/tracker.md`](../core/tracker.md) § AST-2151.
+
+### AST-2173 · AST-2168 (`SEARCH_ENTITY_CONFIG`, `SEARCH_JOB_MODAL_BY_LIST` + assert)
+
+`SEARCH_ENTITY_CONFIG` — `job` / `company` / `meteorite` (keys = table names), each `label`, `id_field`, `name_fields`, `base_fields`, `payload_fields` (field lists confirmed by Susan, define round 1; meteorite contact column via `METEORITE_CONFIG["electronic_contact_column"]`). `SEARCH_JOB_MODAL_BY_LIST` — `ready`/`review`/`applied` → `report`, `processing`/`skipped` → `detail`; module assert: exactly the five Jobs lists, kinds ⊆ {`report`, `detail`}.
+
+| Area | Component tests |
+| --- | --- |
+| Type order + exact base/payload lists; entry keys complete; `id_field` is a base field; no field in both tiers; modal map exact | new **`TestAst2173SearchConfig`** (3) |
+| Real import-time assert (spliced re-exec via `TestAst2105SkippedGroupRules._splice_exec`): missing `skipped` list, unknown kind `drawer` | same class (2) |
+| Every configured field is a real column | [`../data/database/search.md`](../data/database/search.md) **`TestAst2173RegistryMatchesSchema`** |
+
+**Broken / obsolete:** none (additions only; no new branches in locked `config.py`). Manifest: [`../core/search.md`](../core/search.md) § AST-2173.
+
+### AST-2177 · AST-2172 (structured-output capability registry, grader marker, semantics-only prompts)
+
+`structured_output_capability` on every `LLM_SERVER_CONFIG` entry (all `None` as built) + optional per-model override; `OPENROUTER_STRUCTURED_OUTPUT_OVERRIDES` (`openai/gpt-oss-120b`, `qwen/qwen3-235b-a22b-2507` → provisional `"advisory"`, spike not run per Susan 2026-10-13); `LLM_STRUCTURED_OUTPUT_CAPABILITIES`; `get_structured_output_capability()` (model override → server value; unknown model `ValueError`). The five `grades_encoded*` output types carry `structured_output: True` + `extra_fields` (vet adds `grade_letters` / `confidence_range (1, 5)`); `payload_instructions` are semantics only (`_GRADE_SEMANTICS`, `_CONFIDENCE_SCALE_LINES`); `_ENCODED_GRADE_SET_COMPLETENESS` deleted; `stringify_response_schema` shows `agent_performance` only for grader types; `prompt_prefix` bytes unchanged + new `prompt_prefix_structured` (rules without the envelope sentence). Nine grader `cache_prompt` rows in `data/admin/agent_task.json` lose encoded-line text (catalog side: [`../core/repo_admin_json.md`](../core/repo_admin_json.md) § AST-2177).
+
+| Area | Component tests |
+| --- | --- |
+| Capability values allowed; grader slugs stay selectable; server fallback; model override wins; unknown model raises (both lookup branches) | new **`TestAst2177StructuredOutputConfig`** — `test_capability_values_are_allowed_everywhere`, `test_current_grader_models_stay_selectable`, `test_lookup_falls_back_to_server_value`, `test_model_override_wins_over_server`, `test_unknown_model_raises` |
+| Marker is exactly the five grader types; `extra_fields` per type; scale lines kept + no encoding text (`stat.agent.confidence-bounds`); `prompt_prefix` / `prompt_prefix_structured` split | same class — `test_structured_output_marker_is_exactly_the_grader_types`, `test_extra_field_declarations`, `test_grader_instructions_keep_confidence_scale_without_encoding`, `test_prompt_prefix_split` |
+| Grader envelope = `agent_performance` only | revised **`TestStringifyResponseSchema::test_grader_types_show_agent_performance_only`** (was `test_encoded_meta_notes_and_default_encoded_examples`) · **`::test_prefilter_company_schema_has_no_encoded_link_tails`** (was AST-697 `test_prefilter_company_schema_shows_bracket_link_set_tails`) |
+| `{$OUTPUT_INSTRUCTIONS}` = tool + scale, no grade segments | revised **`TestResolveTokens::test_output_type_token_uses_task_instructions`** |
+| Vet output type: marker, `website` extra field, A–F letters, confidence 1–5 | revised **`TestAst505InflowDiscoveryConfig::test_vet_grades_encoded_vet_meta_output_type`** |
+| AST-1154 completeness: never-omit rule now in `_GRADE_SEMANTICS`; shared constant retired | revised **`TestAst1154EncodedGradeSetCompleteness::test_shared_clause_on_multi_vector_encoded_types`** · **`::test_grade_count_not_template_on_multi_vector_types`** (`test_clause_absent_from_vet_meta_and_grades_json` unchanged) |
+
+**Broken / obsolete (revised this pass):** the 6 `test_config.py` functions above (red on tip before revision, encoded-line assertions). **Masked drift, revised:** `TestResolveTokens::test_resolves_candidate_config_output_and_chain_tokens` asserted `"agent_payload"` for `grade_get` — now `agent_performance` present / `agent_payload` absent; the test stays a pre-existing red at its earlier `"Hi Ada"` line (`{$FIRST_NAME}` resolves empty), not this ticket. Repro check: every revised/new function above is red with `01c1478eb`'s `config.py` + `agent_task.json` swapped in, green on tip.
+
+#### QA test manifest (AST-2177)
+
+1. **Must pass** (revised + new, both files):
+   ```bash
+   ASTRAL_PYTHON=<venv python> scripts/testing/run_component_tests.sh \
+     tests/component/utils/test_config.py::TestAst2177StructuredOutputConfig \
+     tests/component/utils/test_config.py::TestStringifyResponseSchema \
+     tests/component/utils/test_config.py::TestResolveTokens::test_output_type_token_uses_task_instructions \
+     tests/component/utils/test_config.py::TestAst505InflowDiscoveryConfig::test_vet_grades_encoded_vet_meta_output_type \
+     tests/component/utils/test_config.py::TestAst1154EncodedGradeSetCompleteness \
+     tests/component/core/test_repo_admin_json.py::TestAst2177GraderPromptsSemanticsOnly \
+     tests/component/core/test_repo_admin_json.py::TestAst1154GradedTaskCompletenessPrompts \
+     tests/component/core/test_repo_admin_json.py::TestAst1910EvaluateJdQcNeverXPrompt::test_catalog_evaluate_jd_cache_prompt_qc_exception
+   ```
+2. **Pre-existing reds, name-skipped:** `TestResolveTokens::test_resolves_candidate_config_output_and_chain_tokens` (fails at `"Hi Ada"`); `TestAst1910EvaluateJdQcNeverXPrompt::test_fixture_evaluate_jd_row_lockstep_with_catalog` (AST-756 fixture ≠ catalog, red before this ticket).
+3. **No-new-reds gate** over the 15 files that read the touched config / catalog: `test_config.py`, `test_agent.py`, `test_roster.py`, `test_consult.py`, `test_candidate.py`, `test_anthropic.py`, `test_repo_admin_json.py`, `test_llm_compat.py`, `test_cost_calculator.py`, `test_api_candidate.py`, `test_api_admin.py`, `test_remap_agent_settings.py`, `test_meteorite.py`, `test_ast1467_gaze_email_retire.py`, `test_agent_ast1879.py`. Baseline = same run with `git checkout 01c1478eb -- src/utils/config.py data/admin/agent_task.json` (restore after). QA run: 219 failed both sides, identical sets; `test_roster.py::TestJobSiteDistinct674` flips 3↔4 cases by run order (4/4 red in isolation on the pre-build tree too) — not this ticket.
+4. **No integration scenario touched** (`tests/integration/scenarios/test_candidate_nav_api.py` does not read grader config).
+
+**Bible shasums (after publish):** `git show origin/sub/AST-2172/AST-2177-capability-registry-grader-marker-prompts:docs/test-bible/<path> | shasum` for `utils/config.md`, `core/repo_admin_json.md`, `core/consult.md`, `core/agent.md`.
+
+
+### AST-2180 · AST-2172
+
+**Revised:** `TestAst1055MeteoriteLikeUpshotTasks::test_rubric_owner_batch_and_encoded_membership` no longer reads the retired agent encoded-batch set. It asserts that `meteorite_like`'s output type carries `structured_output: True`. Manifest: [`../core/agent.md`](../core/agent.md) § AST-2180.
+
+### AST-2210 · AST-2206 (context command registry, generated commands, draft/revise tasks, pinhole amendment)
+
+**Parent:** [AST-2206](https://linear.app/astralcareermatch/issue/AST-2206). **Publish:** `origin/sub/AST-2206/AST-2210-registry-estelle-prompts`. Plan: `docs/features/contact/ast-2210-context-command-registry-and-estelle-prompts.md`.
+
+Config only, no handlers. `CONTACT_CONTEXT_COMMAND_CONFIG` (six suffixes → `artifact_key` / `draft_task` / `label`; import-time asserts: token-shaped suffix, non-empty fields, `draft_task` in `TASK_CONFIG`, one artifact key per row, every artifact key in `ARTIFACT_CONFIG`) × `_CONTACT_CONTEXT_COMMAND_VERBS` generates the 18 `draft-`/`save-`/`show-<suffix>` entries in `CONTACT_CONFIG["commands"]`. Optional entry fields + asserts: `payload_optional` (bool; draft/show only), `private_channel_only` (bool; all 18), `artifact_key` (non-empty str). Draft entries carry `reply_placement: "always_no_share"`. New reply texts `private_channel_only_reply_text` / `unmapped_channel_reply_text`. Six `draft_context_*` CRAFT tasks + `contact_draft_revise` CHAT task, none with `artifact_key` (drafting never saves). `CONTACT_DRAFT_THREAD_CONFIG["revise_task_key"]`. Pinhole: show `read artifact`, save `write artifact`, draft `read artifact (LLM draft, no artifact write)`; write-kind assert amended to `write meteorite` (under `src.core.meteorite.`) or `write artifact`. Seven `data/admin/agent_task.json` rows: [`../core/repo_admin_json.md`](../core/repo_admin_json.md) § AST-2210.
+
+**Interim (plan-accepted):** handlers resolve "unavailable" and `payload_optional` is inert in the runner until siblings **AST-2211** / **AST-2212** — not a product bug on this child.
+
+| Area | Component tests |
+| --- | --- |
+| AC 1 exact 18 ids; AC 2 no hand-listed id literal in `config.py`; per-verb handler / mode / `artifact_key` / `private_channel_only` / usage + description / `payload_optional` (absent on save) / `reply_placement` (draft only) | new **`TestAst2210ContextCommandRegistry`** — `test_ac1_*`, `test_ac2_*`, `test_entry_fields_per_verb` |
+| Registry rows resolve; draft + revise tasks carry no `artifact_key`; response schemas; revise key | same — `test_registry_rows_resolve_and_drafts_never_save` |
+| Reply texts (exact, double space deliberate); AC 4 three pinhole rows | same — `test_reply_texts`, `test_ac4_pinhole_rows` |
+| Real import-time asserts (AST-2151 `_splice_exec`, anchors must appear once): non-bool `payload_optional`; unregistered artifact key; duplicate artifact key; `write candidate` kind outside meteorite/artifact | same class (4) |
+| Revised: AC 4 amended write rule + save handler is `write artifact` | **`TestAst2061ContactPinholeConfig::test_every_contact_handler_in_pinhole`** |
+
+**Broken / obsolete this pass (isolated A/B vs `ftr` product):** `TestAst2061ContactPinholeConfig::test_every_contact_handler_in_pinhole` — asserted every `write` kind sits under `src.core.meteorite.`; the parent spec amends that rule. Revised. No other new red across `test_config.py`, `test_repo_admin_json.py`, `test_agent.py`, `test_meteorite.py`, `test_contact.py`.
+
+**Pre-existing red, not this ticket:** 63 failures across `test_config.py` + `test_repo_admin_json.py`, identical on `origin/ftr/AST-2206-contact-context-draft-commands` product. `test_contact.py` / `test_meteorite.py` need `asyncpg` / `nh3` in the interpreter to collect.
+
+**Integration:** none — no `tests/integration/` scenario reads `CONTACT_CONFIG["commands"]` or the pinhole map; do not invent.
+
+## QA test manifest — AST-2210
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst2210ContextCommandRegistry \
+  tests/component/utils/test_config.py::TestAst2061ContactPinholeConfig \
+  tests/component/utils/test_config.py::TestAst2151CheckStatusRegistry \
+  tests/component/core/test_repo_admin_json.py::TestAst2210ContextDraftCatalogRows \
+  tests/component/core/test_repo_admin_json.py::TestAst1072ContactEstelleTurnCatalogRow \
+  -q
+./scripts/testing/run_component_tests.sh tests/component/utils/test_config.py -k pinhole -q
+```
+
+**Pass criterion:** 24 passed on the first command; 6 passed on the `-k pinhole` run (ticket AC 4). Not the zero-arg harness.
+
+**Bible shasum (after publish):** `git show origin/sub/AST-2206/AST-2210-registry-estelle-prompts:docs/test-bible/utils/config.md | shasum`; same for `docs/test-bible/core/repo_admin_json.md`.
+
+### AST-2232 · AST-2226 (agent_name column + Job Description top tab)
+
+**Parent:** [AST-2226](https://linear.app/astralcareermatch/issue/AST-2226). **Publish:** `origin/sub/AST-2226/AST-2232-agent-name-detail-enrichment-tab-config`.
+
+`REPO_ADMIN_JSON_CONFIG` agent columns insert `agent_name` after `agent_id` (keeps AST-2181 `requires_structured_output`). `JOBS_RECOMMENDED_REPORT_TOP_TABS` = analysis → **job_description** → summary → artifacts → discussion → meteorite (first entry still default). Summary sections drop `raw_jd`. Seed `data/admin/agent.json` every row has non-empty `agent_name` and exact column key set. Primary manifest: **`docs/test-bible/core/tracker.md`** § AST-2232.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Tab order + Summary sections (manifest) | `build_state_ui_manifest` | **`TestBuildStateUiManifest::test_ast565_recommended_report_manifest_tabs`** (revised) |
+| Constant tab order | `JOBS_RECOMMENDED_REPORT_TOP_TABS` | **`TestAst1550DiscussionHopKeys::test_top_tabs_discussion_after_artifacts`** (revised) · **`TestAst1691MeteoriteReportConfig`** (unchanged, holds) |
+| Columns + seed names | `REPO_ADMIN_JSON_CONFIG` + `data/admin/agent.json` | **`TestAst1955PlainAgentSettings::test_agent_repo_json_columns_and_seed`** (revised) |
+
+**Broken / obsolete (revised):** Analysis→Summary without `job_description`; Summary `raw_jd`; agent column tuple without `agent_name` / `requires_structured_output`; AST-1955 seed model pin (models drifted on later tickets — pin is now names + column contract).
+
+**Frontend fixture deferral:** `stateUiManifestFixture.ts` still pre-2232 until siblings #2/#3.
+
+**Integration:** none.
+
+### AST-2221 · AST-1201 (base resume chain registry + stage-generic resolvers)
+
+**Parent:** [AST-1201](https://linear.app/astralcareermatch/issue/AST-1201). **Publish:** `origin/sub/AST-1201/AST-2221-base-resume-chain-registry-and-seed-prompts`. Plan: `docs/features/artifacts/ast-2221-base-resume-chain-registry-and-seed-prompts.md`.
+
+Config + seed only (no `src/core/*`). `BASE_RESUME_CHAIN_TASK_KEYS` / `BASE_RESUME_CHAIN_ERROR_STATES` (nine hops, Functional-scope order); nine `TASK_CONFIG` entries (`entity_type: candidate`, JSON schemas; `draft_resume_base` shares `_CRAFT_RESUME_BASE_RESPONSE_SCHEMA` by identity + `artifact_key` `candidate.artifacts.base_resume`; `draft_resume_experiences` reuses `_EXPERIENCE_JOB_ARRAY_FIELD`); ERROR states with priors `REQUESTED_RESUME` only / `progress_rank` 4; `CANDIDATE_STAGE_DISPATCH["requested_resume"]` entry (`shape_the_story` → `REQUESTED_RESUME` → `RESUME_READY`, `auto_mode` False); three resolvers loop every stage entry (`_dispatch_trigger_state_for_task_key`, `_dispatch_entity_type_for_task_key`, `is_valid_candidate_batch_claim_state`). Catalog seed: [`../core/repo_admin_json.md`](../core/repo_admin_json.md) § AST-2221. Sibling **AST-2222** owns the stage runner.
+
+| Area | Component tests |
+| --- | --- |
+| AC 1 nine hops + shell fields; AC 2 schema/`artifact_key` identity; experience field object identity | new **`TestAst2221BaseResumeChainConfig`** — `test_nine_hops_registered`, `test_assembler_reuses_craft_schema_and_artifact_key` |
+| AC 4 ERROR states + priors; AC 5 stage entry; every stage `task_key` in `TASK_CONFIG` | same — `test_error_states_and_priors`, `test_requested_resume_stage_entry` |
+| AC 6 stage-generic resolvers (entry + craft regression); mid-chain KeyError; hop-label claim | same — `test_stage_generic_resolvers`, `test_hop_label_claim_validation` |
+| Revised: artifacts-only “no `requested_resume`” lock retired | **`TestAst972CandidateStageDispatch::test_stage_dispatch_map_and_task_config`** |
+| Revised: AUTO-off covers every stage entry (not only artifacts) | **`TestAst1022HonorAutoOffStageDispatch::test_stage_dispatch_auto_mode_seed_false`** |
+
+**Broken / obsolete this pass:** AST-972 asserted `"requested_resume" not in CANDIDATE_STAGE_DISPATCH` — product now registers that stage. AST-1022 only checked `requested_artifacts["auto_mode"]`.
+
+**Masked, not revised:** `TestAst786AgentTaskRepoJsonSeed` (pinned 57-key set) stays pre-existing red (also missing AST-2210 keys); do not re-pin here.
+
+**Integration:** none — no `tests/integration/` scenario reads `BASE_RESUME_CHAIN_*` or `requested_resume` stage dispatch.
+
+## QA test manifest — AST-2221
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst2221BaseResumeChainConfig \
+  tests/component/utils/test_config.py::TestAst972CandidateStageDispatch \
+  tests/component/utils/test_config.py::TestAst1022HonorAutoOffStageDispatch \
+  tests/component/utils/test_config.py::TestAst1252ArtifactsDispatchChainConfig \
+  tests/component/core/test_repo_admin_json.py::TestAst2221BaseResumeChainCatalogRows \
+  -q
+```
+
+**Pass criterion:** all nodes green on the command above. Not the zero-arg harness / branch-lock gate.
+
+**Bible shasum (after publish):** `git show origin/sub/AST-1201/AST-2221-base-resume-chain-registry-and-seed-prompts:docs/test-bible/utils/config.md | shasum`; same for `docs/test-bible/core/repo_admin_json.md`.
+
+### AST-2217 · AST-2215 (fetch_timesheet registries)
+
+`FETCH_TIMESHEET_CONFIG` (poller defaults: `entity_type` / `trigger_state` / `freq_hrs` None, `auto_mode` False) plus `TIMESHEET_REQUEST_TYPES`, `TIMESHEET_RECEIPT_FIELDS`, `LEDGER_TIMESHEET_STATES`, `TIMESHEET_SEARCH_SERVER_ID`. Reconcile constants left in place for AST-2218.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| New — fetch_timesheet dispatch-row defaults | `FETCH_TIMESHEET_CONFIG` | `TestAst2217FetchTimesheetRegistries::test_fetch_timesheet_config_poller_defaults` |
+| New — request / receipt / ledger / search-server registries | `TIMESHEET_*` / `LEDGER_TIMESHEET_STATES` | `…::test_request_receipt_ledger_registries` |
+
+**Primary manifest:** [`../data/database/timesheets.md`](../data/database/timesheets.md) § AST-2217.
+
+### AST-2218 · AST-2215 (`dispatch_task_admin_defaults` fold for fetch_timesheet)
+
+Mailbox-twin fold: `fetch_timesheet` → `{entity_type, trigger_state}=None`, `sort_by=None`, `batch_call_mode=0`. `is_fetch_timesheet_task_key`. Reconcile constants left in place (unused).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| New — admin defaults null entity/trigger | `dispatch_task_admin_defaults` | `TestAst2218FetchTimesheetAdminDefaults::test_fold_returns_null_entity_trigger` |
+| New — task-key helper | `is_fetch_timesheet_task_key` | `…::test_is_fetch_timesheet_task_key` |
+
+**Primary manifest:** [`../core/timesheets.md`](../core/timesheets.md) § AST-2218.
+
+### AST-2223 · AST-2216
+
+**Parent:** [AST-2216 — Make meteorite text editable (not versioned)](https://linear.app/astralcareermatch/issue/AST-2216). **Publish:** `origin/sub/AST-2216/AST-2223-candidate-meteorite-edit`.
+
+`CANDIDATE_METEORITE_EDIT_CONFIG`: locked `LANDED`, editable columns (incl. `METEORITE_CONFIG["electronic_contact_column"]`), `state_options` = every `METEORITE_STATES` key minus locked, `default_save_state` `CHECK_UNIQUE`, load-time asserts. Core/API: **`docs/test-bible/core/meteorite.md`** · **`docs/test-bible/ui/api/api_meteorite.md`** § AST-2223.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Config block shape + asserts | `src/utils/config.py` | **`TestAst2223CandidateMeteoriteEditConfig`** |
+
+**Broken / obsolete:** none — additive config block.
+
+**Integration:** none — do not invent.
+
+## QA test manifest
+
+See **`docs/test-bible/core/meteorite.md`** § AST-2223 (shared numbered list).
+### AST-2228 · AST-2225 (candidate stage registry + topic vocabulary cutover)
+
+**Parent:** [AST-2225](https://linear.app/astralcareermatch/issue/AST-2225). **Publish:** `origin/sub/AST-2225/AST-2228-candidate-stage-registry`. Plan: `docs/features/candidate/ast-2228-candidate-stage-registry.md`. Core resolver/migrate: [`../core/candidate.md`](../core/candidate.md) § AST-2228.
+
+`stage` on every `CANDIDATE_STATES` entry; revive `PROFILE_READY` / `CONTEXT_READY`; delete four topic-ready(+stale) keys; locked bands (`PAUSE_SEARCH` 5, `RESUME_READY` 4, `PROFILE_READY` 2, `DELETED` 0; craft `ERROR_*` → 4); `CANDIDATE_LEGACY_STATE_MAP` remaps topics onto the revived path (live PROFILE/CONTEXT drop from the map); import-time asserts. No `candidate.stage` column (AC 4 — registry metadata only). Does **not** regroup `NAV_CONFIG` (sibling #3).
+
+| Area | Component tests |
+| --- | --- |
+| Stage on every entry; happy path keys; no topic keys; no profile/context stale; REQUESTED_RESUME priors = CONTEXT_READY; NEW/LIVE_PROMPTS stay retired | revised **`TestAst970CandidateStateRegistry`** |
+| Locked AC 1–3 bands + craft ERROR stage 4 | new **`TestAst2228CandidateStageRegistry`** |
+| Legacy map + remap (topics → PROFILE/CONTEXT; live keys identity) | revised **`TestAst973LegacyCandidateRemap`** |
+| AST-1806 prior snapshot: drop topic keys; pin PROFILE/CONTEXT + REQUESTED_RESUME priors | revised **`TestAst1808RetryRegistryPurge::test_prior_snapshot_pinned`** (`_ast2228_candidate_topic_cutover`) |
+
+**Broken / obsolete this pass:** AST-970 happy-path / stale / retired-name asserts that still named topic states or claimed PROFILE/CONTEXT absent; AST-973 map that remapped PROFILE/CONTEXT → NEW_CANDIDATE; AST-1808 snapshot set equality without topic cutover.
+
+**Integration:** none — no existing scenario asserts topic-ready labels or `CANDIDATE_STATES[*].stage`; do not invent.
+
+## QA test manifest — AST-2228
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst970CandidateStateRegistry \
+  tests/component/utils/test_config.py::TestAst973LegacyCandidateRemap \
+  tests/component/utils/test_config.py::TestAst2228CandidateStageRegistry \
+  tests/component/utils/test_config.py::TestAst1808RetryRegistryPurge::test_prior_snapshot_pinned \
+  tests/component/core/test_candidate.py::TestAst970CandidateStateMachine \
+  tests/component/core/test_candidate.py::TestAst2228CandidateStageAndTopicMigrate \
+  tests/component/core/test_candidate.py::TestCheckContextCompleteExtended::test_returns_true_when_already_at_or_past_context_ready \
+  -q
+```
+
+**Pass criterion:** 28 passed on the narrowed run. Not the zero-arg harness.
+
+**Bible shasum (after publish):** `git show origin/sub/AST-2225/AST-2228-candidate-stage-registry:docs/test-bible/utils/config.md | shasum`; same for `docs/test-bible/core/candidate.md`.
+
+### AST-2245 · AST-2225 (gap — BASE_RESUME_CHAIN_ERROR_STATES stage 3)
+
+**Parent:** [AST-2225](https://linear.app/astralcareermatch/issue/AST-2225). **Publish:** `origin/sub/AST-2225/AST-2245-gap-base-resume-error-stage`. Plan: `docs/features/candidate/ast-2245-gap-base-resume-error-stage.md`.
+
+After AST-2228 × AST-2221 merge, `BASE_RESUME_CHAIN_ERROR_STATES` expansion omitted `"stage"` (import assert red on `ERROR_SHAPE_THE_STORY`, …). Gap adds `"stage": 3` (resume-request prior band). Craft `ERROR_CRAFT_*` stay stage 4. No NAV / readiness / UI / data-model.
+
+| Area | Component tests |
+| --- | --- |
+| Every `CANDIDATE_STATES` entry has `stage`; every `BASE_RESUME_CHAIN_ERROR_STATES` key is stage 3 (+ priors/rank unchanged); craft ERROR stay 4 | new **`TestAst2245BaseResumeErrorStage`** |
+| AST-2221 error registry row also asserts stage 3 | revised **`TestAst2221BaseResumeChainConfig::test_error_states_and_priors`** |
+
+**Broken / obsolete this pass:** AST-2221 `test_error_states_and_priors` omitted stage (revised). **Keeper:** restored **`### AST-2228`** block above (lost on ftr `sync(dev)` of sibling epics).
+
+**Integration:** none — do not invent.
+
+## QA test manifest — AST-2245
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst2245BaseResumeErrorStage \
+  tests/component/utils/test_config.py::TestAst2221BaseResumeChainConfig::test_error_states_and_priors \
+  tests/component/utils/test_config.py::TestAst2228CandidateStageRegistry \
+  -q
+```
+
+**Pass criterion:** 4 passed on the narrowed run. Not the zero-arg harness.
+
+**Bible shasum (after publish):** `git show origin/sub/AST-2225/AST-2245-gap-base-resume-error-stage:docs/test-bible/utils/config.md | shasum`.
+
+### AST-2230 · AST-2225 (stage-gated NAV_CONFIG regroup + recent defaults)
+
+**Parent:** [AST-2225](https://linear.app/astralcareermatch/issue/AST-2225). **Publish:** `origin/sub/AST-2225/AST-2230-stage-gated-nav`. Plan: `docs/features/candidate/ast-2230-stage-gated-nav.md`. API gates: [`../ui/api/api_system.md`](../ui/api/api_system.md) § AST-2230. Hop labels: [`../core/candidate.md`](../core/candidate.md) § AST-2230. Frontend redirect: [`../frontend/components.md`](../frontend/components.md) § AST-2230.
+
+Candidate-facing groups → **Candidate / Criteria / Company / Job Opportunities** (order locked); item `"enabled"` = min stage int; drop Intake/Surfer/Processing/…; `NAV_GROUP_RECENT_DEFAULTS` knobs. Admin Operations/Admin/Tools unchanged. Does **not** edit `CANDIDATE_STATES` vocabulary (#1) or shell chrome (#4).
+
+| Area | Component tests |
+| --- | --- |
+| Facing order + Criteria stage 4 + Job Opportunities rows; dropped labels; recent defaults | new **`TestAst2230StageGatedNavConfig`** |
+| Facing foursome (no Jobs/Companies/Artifacts); no group `visible` | revised **`TestAst970CandidateStateRegistry::test_nav_and_gen_states_use_new_vocab`** |
+| Admin segments after facing foursome | revised **`TestAst1386ThreeSegmentAdminNav`** |
+| Applied / Meteorites under Job Opportunities; meteorite_list dropped | revised **`TestAst1479…`**, **`TestAst1495…`**, **`TestAst1749…`**, **`TestAst1974…::test_nav_jobs_items_exact`** |
+
+**Broken / obsolete this pass:** every assert looking up `NAV_CONFIG` groups labeled Jobs / Companies / Artifacts (listed above).
+
+**Integration:** revised `tests/integration/scenarios/test_candidate_nav_api.py` — see [`../integration/README.md`](../integration/README.md).
+
+## QA test manifest — AST-2230
+
+Primary command: [`../ui/api/api_system.md`](../ui/api/api_system.md) § QA test manifest — AST-2230.

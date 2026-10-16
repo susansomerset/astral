@@ -22,6 +22,7 @@ interface AgentTask {
   task_seq: number | null
   task_name: string
   model_code: string | null
+  response_schema_count: number        // RSC: raw {$…} response-schema token count, served by /api/admin/tasks
   system_prompt_tokens: number
   base_cache_tokens: number
   parsed_cache_tokens: number | null   // null = TBD (unresolved tokens remain)
@@ -142,7 +143,7 @@ function runNextGraphIsAcyclic(edges: Map<string, string>): boolean {
 
 function CacheMinCell({ tokens, satisfied }: { tokens: number; satisfied: boolean }) {
   return (
-    <span style={{ color: satisfied ? "var(--color-pass, #34d399)" : undefined, fontWeight: satisfied ? 600 : undefined }}>
+    <span style={{ color: satisfied ? "var(--success)" : undefined, fontWeight: satisfied ? 600 : undefined }}>
       {tokens.toLocaleString()}
     </span>
   )
@@ -409,6 +410,7 @@ export default function TaskPrompts() {
                       <th>Run next</th>
                       <th>Agent</th>
                       <th>Model</th>
+                      <th style={{ textAlign: "right" }}>RSC</th>
                       <th style={{ textAlign: "right" }}>System</th>
                       <th style={{ textAlign: "right" }}>Base Cache</th>
                       <th style={{ textAlign: "right" }}>Parsed Cache</th>
@@ -423,12 +425,13 @@ export default function TaskPrompts() {
                     {sec.rows.map(row => (
                       <tr key={row.task_key} className="clickable" onClick={() => openEdit(row)}>
                         <td>
-                          {!row.task_ready && <span style={{ color: "#f87171", marginRight: 5 }}>●</span>}
+                          {!row.task_ready && <span style={{ color: "var(--error)", marginRight: 5 }}>●</span>}
                           {row.task_name || row.task_key}
                         </td>
                         <td style={{ color: "var(--text-secondary)" }}>{row.run_next || "—"}</td>
                         <td style={{ color: "var(--text-secondary)" }}>{row.agent_id || "—"}</td>
                         <td style={{ color: "var(--text-secondary)" }}>{row.model_code || "—"}</td>
+                        <td style={{ textAlign: "right" }}>{row.response_schema_count}</td>
                         <td style={{ textAlign: "right" }}>{row.system_prompt_tokens.toLocaleString()}</td>
                         <td style={{ textAlign: "right" }}>{row.base_cache_tokens.toLocaleString()}</td>
                         <td style={{ textAlign: "right" }}>{row.parsed_cache_tokens != null ? row.parsed_cache_tokens.toLocaleString() : <span style={{ color: "var(--text-secondary)" }}>TBD</span>}</td>
@@ -453,12 +456,6 @@ export default function TaskPrompts() {
         title={editTask ? `Edit: ${editTask.task_key}` : ""}
         onSave={handleSave}
       >
-        {editTask && (
-          <div style={{ display: "flex", gap: 24, marginBottom: 12, fontSize: 13, color: "var(--text-secondary)" }}>
-            <span><strong>Model:</strong> {editTask.model_code || "—"}</span>
-          </div>
-        )}
-
         <div className="dep-field">
           <label className="dep-field-label">Group order</label>
           <input className="dep-input" value={editGroupOrder} onChange={e => setEditGroupOrder(e.target.value)} />
@@ -499,7 +496,7 @@ export default function TaskPrompts() {
             {runNextSelectKeysForUi.map(k => <option key={k} value={k}>{k}</option>)}
           </select>
           {runNextSelectionInvalid && (
-            <div style={{ marginTop: 6, fontSize: 11, color: "#f87171" }}>
+            <div style={{ marginTop: 6, fontSize: 11, color: "var(--error)" }}>
               Current value would repeat a task in this chain. Clear it or pick a different next hop.
             </div>
           )}

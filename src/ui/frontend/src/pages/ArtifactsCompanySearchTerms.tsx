@@ -173,10 +173,10 @@ export default function CompanySearchTerms() {
     })
   }
 
-  if (!selectedId) return <p style={{ padding: 20, color: "#fff" }}>No candidate selected.</p>
+  if (!selectedId) return <p style={{ padding: 20, color: "var(--text-primary)" }}>No candidate selected.</p>
   if (loadState === "loading") return <p className="list-page-status">Loading...</p>
   if (loadState === "error" || !manifest) return <p className="list-page-status">State UI manifest unavailable.</p>
-  if (!loaded) return <p style={{ padding: 20, color: "#fff" }}>Loading...</p>
+  if (!loaded) return <p style={{ padding: 20, color: "var(--text-primary)" }}>Loading...</p>
 
   return (
     <>
@@ -225,10 +225,10 @@ export default function CompanySearchTerms() {
           background: "rgba(0,0,0,0.6)",
         }}>
           <div style={{
-            background: "var(--bg-elevated)", border: "2px solid #ff6b6b",
+            background: "var(--bg-elevated)", border: "2px solid var(--error)",
             borderRadius: 8, padding: 24, maxWidth: 460, width: "90%",
           }}>
-            <h3 style={{ margin: "0 0 12px", color: "#ff6b6b", fontSize: 16 }}>
+            <h3 style={{ margin: "0 0 12px", color: "var(--error)", fontSize: 16 }}>
               Reset all artifact rubrics?
             </h3>
             <p style={{ margin: "0 0 16px", color: "var(--text-secondary)", fontSize: 13, lineHeight: 1.5 }}>

@@ -421,3 +421,74 @@ cd src/ui/frontend && npm run test:component -- \
 ```
 
 **Bible shasum (after publish):** fill — `git show origin/sub/AST-1770/AST-1771-recommended-analysis-vector-order-and-tooltips:docs/test-bible/frontend/lib.md | shasum`
+
+---
+
+### AST-1768 · AST-1687 (bug)
+
+**Parent:** [AST-1687 — Copy single page access link from recommended job modal](https://linear.app/astralcareermatch/issue/AST-1687/copy-single-page-access-link-from-recommended-job-modal). **Publish:** `origin/sub/AST-1687/AST-1768-copied-job-detail-link-bind-candidate-open-modal`.
+
+Copied `/jobs/detail/<id>` opened logged-out → magic link completes in a **new tab** → lands `/` on the wrong candidate. Fix: `astral-auth-return-path` moves `sessionStorage` → `localStorage` (had-session / log-off reason stay tab-scoped); `CandidateContext` binds selection once per login email via new `@require_auth` `GET /api/candidates/by_email` (verified-first email; null/ambiguous/unknown id → keep stored/first); `JobsJobDetail` waits on `candidatesHydrated` for **all** users, not admins only. `[bug-repro]` nodes must flip red→green under `test-fix`.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Return path survives new tab; tab-scoped keys unchanged | `sessionAuthMark.ts` | **`test_sessionAuthMark.test.ts`** — **`AST-1768 return path survives magic-link new tab`** (`[bug-repro]`) |
+| Magic-link new tab → captured deeplink (§6c routed page) | `Authenticate.tsx` (no product diff) | **`test_Authenticate.test.tsx`** — **`[bug-repro] AST-1768: magic link in a new tab…`** |
+| Login-email bind: match / verified-first / once-per-login / null+fail / unknown id / passthrough | `CandidateContext.tsx` | **`test_CandidateContext.test.tsx`** — **`CandidateProvider — AST-1768 login-email candidate bind`** |
+| Non-admin host waits for hydration (§6c routed page) | `JobsJobDetail.tsx` | **`test_JobsJobDetail.test.tsx`** — **`JobsJobDetail — AST-1768 non-admin waits for candidate hydration`** (`[bug-repro]`) |
+| `GET /api/candidates/by_email` | `src/ui/api/api_candidate.py` | **`test_api_candidate.py::TestAst1768CandidateByEmailApi`** (`test_bug_repro_*` + auth gate) — see [`../ui/api/api_candidate.md`](../ui/api/api_candidate.md) |
+
+**Broken / obsolete this pass (revised, not annotated):** `test_sessionAuthMark.test.ts` AST-1482 **`consume removes unsafe stored paths`** now asserts `localStorage`; AST-1482 `beforeEach` also clears the localStorage key. `stytchMock.tsx` gains `useStytchUser` (`stytchTestState.user`, default `null` → no bind) and `resetStytchTestState` removes `astral-auth-return-path` from localStorage (cross-test leak guard for RequireAuth / Authenticate). Existing JobsJobDetail cases are all admin and already resolve `/api/candidates` — no rewrite needed.
+
+**Pre-existing red on `origin/dev` (not AST-1768, excluded from manifest patterns):** `CandidateProvider — AST-1311 browser tab title › restores the persisted selection's Full Name after load`; `test_api_candidate.py::TestCandidateRoutes::test_list_candidates_and_states` and `::test_update_merges_data_state_and_api_key`. Red on the pristine tree before any AST-1768 change. Full frontend suite baseline on this tip: 46 pre-existing FAIL nodes, unchanged by this pass (the `stytchMock` edit adds no new reds; only the 7 intended AST-1768 repro/revised nodes are red pre-fix).
+
+**Integration:** no existing auth/deeplink scenario — no revision. Do not invent new integration coverage.
+
+## QA test manifest (AST-1768)
+
+1. **[bug-repro]** `tests/component/frontend/lib/test_sessionAuthMark.test.ts` — `AST-1482|AST-1768`
+2. **[bug-repro]** `tests/component/frontend/pages/test_Authenticate.test.tsx` — `AST-1768|AST-1482|AST-1441`
+3. **[bug-repro]** `tests/component/frontend/contexts/test_CandidateContext.test.tsx` — `AST-1768|AST-1481|CandidateProvider loads|non-admin|clears candidates|leaves selection`
+4. **[bug-repro]** `tests/component/frontend/pages/test_JobsJobDetail.test.tsx` — whole file (AST-1481 / AST-1704 regression + AST-1768)
+5. **[bug-repro]** `tests/component/ui/api/test_api_candidate.py::TestAst1768CandidateByEmailApi`
+6. Regression: `tests/component/frontend/components/test_RequireAuth.test.tsx`, `tests/component/frontend/components/test_LogOffScreen.test.tsx`
+
+Narrowed run:
+
+```bash
+python -m pytest tests/component/ui/api/test_api_candidate.py::TestAst1768CandidateByEmailApi -q
+cd src/ui/frontend && npx tsc -b --noEmit && npm run test:component -- \
+  ../../../tests/component/frontend/lib/test_sessionAuthMark.test.ts \
+  ../../../tests/component/frontend/pages/test_Authenticate.test.tsx \
+  ../../../tests/component/frontend/contexts/test_CandidateContext.test.tsx \
+  ../../../tests/component/frontend/pages/test_JobsJobDetail.test.tsx \
+  ../../../tests/component/frontend/components/test_RequireAuth.test.tsx \
+  ../../../tests/component/frontend/components/test_LogOffScreen.test.tsx \
+  --testNamePattern="AST-1768|AST-1482|AST-1481|AST-1704|AST-1441|AST-625|CandidateProvider loads|non-admin|clears candidates|leaves selection|sessionAuthMark|LogOffScreen|RequireAuth"
+```
+
+**Pass criterion (test-fix):** every `[bug-repro]` node red on pre-fix tip (verified by Betty) flips green after make-fix — not zero-arg harness / branch-lock gate. Betty dry-ran the plan's Proposed change locally (not committed): all AST-1768 nodes green, only the pre-existing reds above remain.
+
+**AST-1874 (pointer):** `formatPhaseScore` (one decimal, else em dash) now lives here, shared with `JobsRecommended`; `formatPhaseSectionScoreTitle(label, breakdown, template, score?)` fills `{score}` and drops the whole ` - {score}` segment when the score is not a finite number — **`recommendedJobReport — AST-1874 list score in phase header`**. Manifest: **`docs/test-bible/frontend/components.md`** § AST-1874.
+
+**AST-1968 (pointer):** `recommendedJobReport.tsx` adds the private `phaseGradeCells` helper (column set, order, lookup, tooltip), shared by `buildPhaseSectionGradeConfidenceRow` (modal, unchanged output) and the new `buildPhaseListGradeRow` (letterless, no confidence); `gradeDot` gains `letterless`. `candidateJobActions.ts` adds `postGenerateArtifacts` — **`recommendedJobReport — AST-1968 letterless list grade row`**. Manifest: **`docs/test-bible/frontend/pages.md`** § AST-1968.
+
+**AST-1982 (pointer):** `uiConfig.ts` adds `job_title_truncate_chars` and `resolveJobTitleTruncateChars` (served value, else 50): **`tests/component/frontend/lib/test_uiConfig.test.ts`**. Manifest: **`docs/test-bible/frontend/components.md`** § AST-1982.
+
+### AST-2082 · AST-2046 (printHtml shared fetch/open helper)
+
+New `printHtml.ts`. `fetchPrintHtml({kind, id})` reads `base` → `/candidate/resume/base?candidate_id=`, `job_resume` → `/candidate/resume/<id>`, and `cover` → `/candidate/cover/<id>`, with ids URL-encoded. It returns `{ok, html}` (the exact body) or `{ok: false, error}` and never throws. The error is the builder's `error` text, else `HTTP <status>`. A blank body becomes `HTML response was empty`, and a thrown non-Error becomes `Print failed`. For `base` only, the legacy `Candidate missing artifacts.base_resume` error is mapped to the operator copy. `openHtmlInNewTab(html)` opens a blob URL with `window.open(url, "_blank")` (no feature string), sets `opener = null`, revokes the URL after 60 s, and returns `POPUP_BLOCKED_MESSAGE` when the popup is blocked. The base page and JAR modal still use their own copies until **AST-2084**.
+
+**New:** **`tests/component/frontend/lib/test_printHtml.test.ts`** (8). Manifest: [`components.md`](components.md) § AST-2082.
+
+### AST-2234 · AST-2226 (shared Analysis helpers)
+
+**Parent:** AST-2226. **Publish:** `origin/sub/AST-2226/AST-2234-modal-panes-and-wiring`.
+
+Exports `totalScore` (was local in `JobsRecommended`), `phaseThermometerModel`, `jobGradablePercent`, `extractAgentPayloadText`. Retires `materialsPreviewVisible`.
+
+| Helper | Tests |
+| --- | --- |
+| `totalScore` / `phaseThermometerModel` / `jobGradablePercent` / `extractAgentPayloadText` | **`test_recommendedJobReport.test.tsx`** — **`recommendedJobReport — AST-2234 helpers`** |
+
+Manifest: [`components.md`](components.md) § AST-2234.

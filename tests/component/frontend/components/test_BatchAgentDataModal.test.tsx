@@ -2,7 +2,7 @@ import { screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import api from "../../../../src/ui/frontend/src/lib/api"
-import BatchAgentDataModal from "../../../../src/ui/frontend/src/components/BatchAgentDataModal"
+import BatchAgentDataModal, { BatchAgentDataPanes } from "../../../../src/ui/frontend/src/components/BatchAgentDataModal"
 import { renderWithProviders } from "../test-utils"
 
 vi.mock("../../../../src/ui/frontend/src/lib/api", async (importOriginal) => {
@@ -236,5 +236,111 @@ describe("BatchAgentDataModal", () => {
     const body = JSON.parse(String((hydrateCall![1] as RequestInit).body))
     expect(body.candidate_id).toBe("c-from-ledger")
     expect(body.task_key).toBe("evaluate_jd")
+  })
+})
+
+// AST-2031: entityId scopes only the agent-data fetch; timesheets + ledger stay batch-wide.
+describe("BatchAgentDataPanes — AST-2031 entity-scoped agent data", () => {
+  const calledUrls = () => mockedApi.mock.calls.map(call => String(call[0]))
+
+  beforeEach(() => {
+    mockedApi.mockReset()
+    mockedApi.mockImplementation(async (url: string) => {
+      if (url.startsWith("/api/agent_data/")) {
+        return {
+          json: async () => [
+            // SYSTEM row: the active pane in both batch-wide and entity mode (AST-2075 entity mode opens on SYSTEM)
+            { agent_data_id: "1", block_type: "SYSTEM", block_data: `rows for ${url}`, token_size: 1, task_key: "t", created_at: "now" },
+          ],
+        } as Response
+      }
+      if (url.startsWith("/api/admin/timesheets")) return { json: async () => [] } as Response
+      if (url.startsWith("/api/admin/dispatch_ledger/")) return { ok: false } as Response
+      throw new Error(url)
+    })
+  })
+
+  it("entityId → encoded entity_id on agent data only", async () => {
+    renderWithProviders(<BatchAgentDataPanes batchId="run 1" entityId="job/1 x" />)
+    expect(await screen.findByDisplayValue("rows for /api/agent_data/run%201?entity_id=job%2F1%20x")).toBeInTheDocument()
+    expect(calledUrls()).toContain("/api/admin/timesheets?batch_id=run%201")
+    expect(calledUrls()).toContain("/api/admin/dispatch_ledger/run%201")
+    expect(calledUrls().filter(url => url.includes("entity_id"))).toHaveLength(1)
+  })
+
+  it("no entityId → whole-batch agent data URL (batch-wide callers unchanged)", async () => {
+    renderWithProviders(<BatchAgentDataPanes batchId="run-2" />)
+    expect(await screen.findByDisplayValue("rows for /api/agent_data/run-2")).toBeInTheDocument()
+    expect(calledUrls().some(url => url.includes("entity_id"))).toBe(false)
+  })
+
+  it("changing entityId refetches the scoped agent data", async () => {
+    const view = renderWithProviders(<BatchAgentDataPanes batchId="run-3" entityId="job-a" />)
+    await screen.findByDisplayValue("rows for /api/agent_data/run-3?entity_id=job-a")
+    view.rerender(<BatchAgentDataPanes batchId="run-3" entityId="job-b" />)
+    expect(await screen.findByDisplayValue("rows for /api/agent_data/run-3?entity_id=job-b")).toBeInTheDocument()
+  })
+})
+
+// AST-2075: entity-scoped panes always show one Each-mode call's tabs; missing rows say so instead of vanishing.
+describe("BatchAgentDataPanes — AST-2075 missing-row placeholder tabs", () => {
+  const MISSING = "No agent_data found for this part of the call — it has aged out or was never stored."
+  const row = (block_type: string, block_data: string) =>
+    ({ agent_data_id: block_type, block_type, block_data, token_size: 1, task_key: "consult_do", created_at: "2026-10-08 12:00:00" })
+  const tabLabels = () => Array.from(document.querySelectorAll(".tabbed-ta-tab")).map(el => el.textContent)
+
+  function mockRows(rows: ReturnType<typeof row>[]) {
+    mockedApi.mockReset()
+    mockedApi.mockImplementation(async (url: string) => {
+      if (url.startsWith("/api/agent_data/")) return { json: async () => rows } as Response
+      if (url.startsWith("/api/admin/timesheets")) return { json: async () => [] } as Response
+      if (url.startsWith("/api/admin/dispatch_ledger/")) return { ok: false } as Response
+      throw new Error(url)
+    })
+  }
+
+  it("[bug-repro] RESPONSE-only entity run → SYSTEM/CACHE/NO_CACHE/TASK placeholders + RESPONSE", async () => {
+    mockRows([row("RESPONSE", "Provider failed: boom")])
+    renderWithProviders(<BatchAgentDataPanes batchId="R" entityId="J" />)
+    await waitFor(() => expect(tabLabels()).toEqual(["SYSTEM", "CACHE", "NO_CACHE", "TASK", "RESPONSE"]))
+    expect(screen.getByDisplayValue(MISSING)).toBeInTheDocument()  // opens on the SYSTEM placeholder
+    await userEvent.click(screen.getByRole("button", { name: "RESPONSE" }))
+    expect(screen.getByDisplayValue("Provider failed: boom")).toBeInTheDocument()
+    await userEvent.click(screen.getByRole("button", { name: "TASK" }))
+    expect(screen.getByDisplayValue(MISSING)).toBeInTheDocument()
+  })
+
+  it("present SYSTEM with no CACHE_* rows → no CACHE tab (caches were empty, D1-2075)", async () => {
+    mockRows([row("SYSTEM", "sys"), row("RESPONSE", "resp")])
+    renderWithProviders(<BatchAgentDataPanes batchId="R" entityId="J" />)
+    await waitFor(() => expect(tabLabels()).toEqual(["SYSTEM", "NO_CACHE", "TASK", "RESPONSE"]))
+    expect(screen.getByDisplayValue("sys")).toBeInTheDocument()
+    await userEvent.click(screen.getByRole("button", { name: "NO_CACHE" }))
+    expect(screen.getByDisplayValue(MISSING)).toBeInTheDocument()
+  })
+
+  it("real CACHE_* rows keep their own tabs; no CACHE stand-in", async () => {
+    mockRows([row("SYSTEM", "sys"), row("CACHE_B", "cb"), row("NO_CACHE", "live"), row("TASK", "task"), row("RESPONSE", "resp")])
+    renderWithProviders(<BatchAgentDataPanes batchId="R" entityId="J" />)
+    await waitFor(() => expect(tabLabels()).toEqual(["SYSTEM", "CACHE_B", "NO_CACHE", "TASK", "RESPONSE"]))
+    expect(screen.queryByDisplayValue(MISSING)).not.toBeInTheDocument()
+  })
+
+  it("entity run with no rows at all → five placeholder tabs, not the batch empty state", async () => {
+    mockRows([])
+    renderWithProviders(<BatchAgentDataPanes batchId="R" entityId="J" />)
+    await waitFor(() => expect(tabLabels()).toEqual(["SYSTEM", "CACHE", "NO_CACHE", "TASK", "RESPONSE"]))
+    expect(screen.queryByText("No agent data blocks recorded for this batch.")).not.toBeInTheDocument()
+  })
+
+  it("batch-wide (no entityId) unchanged: present tabs only, empty state when no rows", async () => {
+    mockRows([row("RESPONSE", "resp")])
+    const view = renderWithProviders(<BatchAgentDataPanes batchId="R1" />)
+    await waitFor(() => expect(tabLabels()).toEqual(["RESPONSE"]))
+    expect(screen.queryByDisplayValue(MISSING)).not.toBeInTheDocument()
+    view.unmount()
+    mockRows([])
+    renderWithProviders(<BatchAgentDataPanes batchId="R2" />)
+    expect(await screen.findByText("No agent data blocks recorded for this batch.")).toBeInTheDocument()
   })
 })

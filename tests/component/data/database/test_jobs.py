@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import sqlite3
+
 import pytest
 
 
@@ -569,3 +571,104 @@ class TestAst1701SourceEntitySchema:
         seed_blob = repr(cfg.SEED_CONFIG)
         assert "ast_1701" not in seed_blob
         assert "job_source_entity_backfill" not in seed_blob
+
+
+# AST-1974 · AST-1970: list_jobs / count_jobs exclude_states (NOT IN, combinable with IN);
+# list_meteorites_for_candidate carries landed job_state (None when unlanded / job row gone).
+# Meteorite join lives here: tests/component/data/database/test_meteorites.py is collection-red on dev
+# (imports METEORITE_STATES_RETENTION, removed from config 2026-09-20).
+class TestAst1974ExcludeStatesAndMeteoriteJobState:
+    def _seed(self, db) -> None:
+        db.save_company("acme", state="IMPORTED", candidate_id="cand-1")
+        for jid, state in (("j-new", "NEW"), ("j-rev", "RECOMMENDED"), ("j-app", "CANDIDATE_APPLIED")):
+            db.save_job(jid, company="acme", state=state, candidate_id="cand-1")
+
+    def test_exclude_states_list_and_count_agree(self, seeded_db) -> None:
+        db = seeded_db
+        self._seed(db)
+        rows = db.list_jobs(candidate_id="cand-1", exclude_states=["RECOMMENDED", "CANDIDATE_APPLIED"])
+        assert [r["astral_job_id"] for r in rows] == ["j-new"]
+        assert db.count_jobs(candidate_id="cand-1", exclude_states=["RECOMMENDED", "CANDIDATE_APPLIED"]) == 1
+        # IN + NOT IN compose (AND).
+        both = db.list_jobs(states=["NEW", "RECOMMENDED"], candidate_id="cand-1", exclude_states=["NEW"])
+        assert [r["astral_job_id"] for r in both] == ["j-rev"]
+        assert db.count_jobs(states=["NEW", "RECOMMENDED"], candidate_id="cand-1", exclude_states=["NEW"]) == 1
+        # Empty / None exclude = no filter.
+        assert db.count_jobs(candidate_id="cand-1", exclude_states=[]) == 3
+        assert len(db.list_jobs(candidate_id="cand-1")) == 3
+
+    def test_meteorite_rows_carry_landed_job_state(self, seeded_db) -> None:
+        db = seeded_db
+        self._seed(db)
+        landed, unlanded, orphan = db.insert_meteorite_rows([
+            {"candidate_id": "cand-1", "source_kind": "email", "source_id": "m1", "state": "LANDED"},
+            {"candidate_id": "cand-1", "source_kind": "email", "source_id": "m2"},
+            {"candidate_id": "cand-1", "source_kind": "email", "source_id": "m3", "state": "LANDED"},
+        ])
+        db.update_meteorite(landed, astral_job_id="j-rev")
+        db.update_meteorite(orphan, astral_job_id="j-gone")
+        by_id = {r["id"]: r for r in db.list_meteorites_for_candidate("cand-1")}
+        assert by_id[landed]["job_state"] == "RECOMMENDED"
+        # meteorite.state is not shadowed by the join alias.
+        assert by_id[landed]["state"] == "LANDED"
+        assert by_id[unlanded]["job_state"] is None
+        assert by_id[orphan]["job_state"] is None
+
+
+# AST-1980 · AST-1971: job_created_at = landed job's created_at from the same LEFT JOIN as job_state
+# (AC 6 / AC 8). meteorite.created_at is not shadowed.
+class TestAst1980MeteoriteJobCreatedAt:
+    JOB_CREATED = "2025-06-01T12:00:00+00:00"
+
+    def _seed(self, db) -> tuple[int, int, int]:
+        db.save_company("acme", state="IMPORTED", candidate_id="cand-1")
+        db.save_job("j-rev", company="acme", state="RECOMMENDED", candidate_id="cand-1")
+        landed, unlanded, orphan = db.insert_meteorite_rows([
+            {"candidate_id": "cand-1", "source_kind": "email", "source_id": "m1", "state": "LANDED"},
+            {"candidate_id": "cand-1", "source_kind": "email", "source_id": "m2"},
+            {"candidate_id": "cand-1", "source_kind": "email", "source_id": "m3", "state": "LANDED"},
+        ])
+        db.update_meteorite(landed, astral_job_id="j-rev")
+        db.update_meteorite(orphan, astral_job_id="j-gone")
+        # Job row's created_at set far from the meteorite's, so a shadowed / swapped value can't pass.
+        with sqlite3.connect(db.DB_PATH) as conn:
+            conn.execute("UPDATE job SET created_at = ? WHERE astral_job_id = 'j-rev'", (self.JOB_CREATED,))
+        return landed, unlanded, orphan
+
+    def test_job_created_at_is_landed_jobs_and_meteorite_created_at_kept(self, seeded_db) -> None:
+        db = seeded_db
+        landed, unlanded, orphan = self._seed(db)
+        with sqlite3.connect(db.DB_PATH) as conn:
+            job_created = conn.execute("SELECT created_at FROM job WHERE astral_job_id = 'j-rev'").fetchone()[0]
+            own_created = dict(conn.execute("SELECT id, created_at FROM meteorite").fetchall())
+        by_id = {r["id"]: r for r in db.list_meteorites_for_candidate("cand-1")}
+        assert job_created == self.JOB_CREATED
+        assert by_id[landed]["job_created_at"] == job_created
+        # Unlanded and job-row-gone both carry None.
+        assert by_id[unlanded]["job_created_at"] is None
+        assert by_id[orphan]["job_created_at"] is None
+        # Each row's own created_at is still meteorite.created_at.
+        for mid, row in by_id.items():
+            assert row["created_at"] == own_created[mid]
+        assert by_id[landed]["created_at"] != job_created
+
+    def test_one_select_and_no_per_row_get_job(self, seeded_db, monkeypatch: pytest.MonkeyPatch) -> None:
+        db = seeded_db
+        self._seed(db)
+        db.list_meteorites_for_candidate("cand-1")  # warm schema-ensure flags so only the read is traced
+        monkeypatch.setattr(db, "get_job", lambda *a, **k: pytest.fail("per-row get_job on the list read"))
+        stmts: list[str] = []
+        real_conn = db._get_connection
+
+        def _traced() -> sqlite3.Connection:
+            conn = real_conn()
+            conn.set_trace_callback(stmts.append)
+            return conn
+
+        monkeypatch.setattr(db, "_get_connection", _traced)
+        rows = db.list_meteorites_for_candidate("cand-1")
+        selects = [s for s in stmts if s.lstrip().upper().startswith("SELECT")]
+        # One SELECT carries both landed-job fields (AC 8).
+        assert len(selects) == 1
+        assert "job_state" in selects[0] and "job_created_at" in selects[0]
+        assert len(rows) == 3

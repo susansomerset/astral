@@ -79,6 +79,31 @@ describe("CompanyDetailModal", () => {
     expect(row?.textContent).toContain("—")
   })
 
+  it("AST-2071: shows an Upshot row only when company_upshot is non-empty; Notes row unchanged", async () => {
+    let upshot = "  Strong product team.  "
+    installBaseApiMocks(mockedApi, async (url: string) => {
+      if (url === "/api/companies/acme") {
+        return jsonResponse({ ...company, state: "WATCH", company_upshot: upshot })
+      }
+      throw new Error(url)
+    })
+    const { unmount } = renderWithProviders(
+      <CompanyDetailModal shortName="acme" onClose={() => {}} onSaved={() => {}} />,
+    )
+    await waitFor(() => expect(screen.getByText("Upshot")).toBeInTheDocument())
+    // trimmed text in the row; Notes still shows prefilter_company_notes
+    expect(screen.getByText("Upshot").closest("div")?.textContent).toBe("UpshotStrong product team.")
+    expect(screen.getByText("Notes")).toBeInTheDocument()
+    expect(screen.getByText("note")).toBeInTheDocument()
+    unmount()
+
+    // whitespace-only upshot → no row
+    upshot = "   "
+    renderWithProviders(<CompanyDetailModal shortName="acme" onClose={() => {}} onSaved={() => {}} />)
+    await waitFor(() => expect(screen.getByText("Notes")).toBeInTheDocument())
+    expect(screen.queryByText("Upshot")).not.toBeInTheDocument()
+  })
+
   it("renders readonly watch companies", async () => {
     installBaseApiMocks(mockedApi, async (url: string) => {
       if (url === "/api/companies/acme") {

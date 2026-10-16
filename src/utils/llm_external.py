@@ -1,12 +1,15 @@
-"""Shared helpers for Anthropic- and DeepSeek-compatible external LLM clients (AST-687 / AST-538)."""
+"""Shared helpers for Anthropic and Anthropic-Messages-compatible external LLM clients (AST-687 / AST-538 / AST-1851)."""
 
 import asyncio
+import json
 from typing import Any, Callable, Dict, List, Optional
 
 from src.utils.config import (
     PROVIDER_BALANCE_REFUSAL,
     PROVIDER_CALL_BUDGET,
     PROVIDER_EMPTY_RESPONSE,
+    PROVIDER_PROBE_FAILURE,
+    PROVIDER_RATE_LIMIT,
 )
 from src.utils.logging import get_logger
 
@@ -31,6 +34,39 @@ def is_provider_balance_refusal(result: Optional[Dict[str, Any]]) -> bool:
     if not isinstance(result, dict):
         return False
     return result.get("failure_class") == PROVIDER_BALANCE_REFUSAL["failure_class"]
+
+
+def classify_provider_rate_limit(exc_or_msg: Any) -> Optional[str]:
+    """Return PROVIDER_RATE_LIMIT failure_class when exc_or_msg is a 429 — an exception or, on the
+    host-probe path, its error string (AST-2010)."""
+    status = getattr(exc_or_msg, "status_code", None)
+    if status is None:
+        status = getattr(getattr(exc_or_msg, "response", None), "status_code", None)
+    if status in PROVIDER_RATE_LIMIT["http_status_codes"]:
+        return PROVIDER_RATE_LIMIT["failure_class"]
+    msg = str(exc_or_msg).lower()
+    if any(s in msg for s in PROVIDER_RATE_LIMIT["message_substrings"]):
+        return PROVIDER_RATE_LIMIT["failure_class"]
+    return None
+
+
+def is_provider_rate_limit(result: Optional[Dict[str, Any]]) -> bool:
+    """True when an agent/provider result dict was tagged as an exhausted rate limit."""
+    if not isinstance(result, dict):
+        return False
+    return result.get("failure_class") == PROVIDER_RATE_LIMIT["failure_class"]
+
+
+def is_provider_probe_failure(result: Optional[Dict[str, Any]]) -> bool:
+    """True when an agent/provider result dict was tagged as a failed host probe (AST-2098)."""
+    if not isinstance(result, dict):
+        return False
+    return result.get("failure_class") == PROVIDER_PROBE_FAILURE["failure_class"]
+
+
+def is_provider_state_hold(result: Optional[Dict[str, Any]]) -> bool:
+    """True when the entity keeps its state: balance refusal (AST-897) or failed host probe (AST-2098)."""
+    return is_provider_balance_refusal(result) or is_provider_probe_failure(result)
 
 
 def provider_call_http_timeout_seconds() -> float:
@@ -134,7 +170,7 @@ def is_provider_empty_response(result: Optional[Dict[str, Any]]) -> bool:
 
 
 def extract_api_response_text(api_response: Any) -> str:
-    """Return model answer text; skip thinking blocks that lack `.text` (DeepSeek / extended thinking)."""
+    """Return model answer text; skip thinking blocks that lack `.text` (extended thinking)."""
     if not hasattr(api_response, "content") or not api_response.content:
         raise ValueError("API response content is empty or missing")
     text_parts: List[str] = []
@@ -143,8 +179,22 @@ def extract_api_response_text(api_response: Any) -> str:
         if isinstance(text, str) and text:
             text_parts.append(text)
     if not text_parts:
+        # Forced-tool reply (AST-2172): no text block, so audit/debug text is the tool input as JSON.
+        tool_inputs = [b.input for b in api_response.content if getattr(b, "type", None) == "tool_use"]
+        if tool_inputs:
+            return json.dumps(tool_inputs[-1])
         raise ValueError("API response content block missing text attribute")
     return text_parts[-1]
+
+
+def extract_tool_input(api_response: Any, tool_name: str) -> Dict[str, Any]:
+    """Input dict of the named tool_use block — the payload of a forced-tool call (AST-2172). Raises when absent."""
+    for block in getattr(api_response, "content", None) or []:
+        if getattr(block, "type", None) == "tool_use" and getattr(block, "name", None) == tool_name:
+            if not isinstance(block.input, dict):
+                raise ValueError(f"Tool {tool_name!r} input is not an object")
+            return block.input
+    raise ValueError(f"API response has no {tool_name!r} tool call")
 
 
 def emit_llm_call_debug(

@@ -73,10 +73,20 @@ Config registry tests: **`TestAst676CraftRubricSchema`** in **`docs/test-bible/u
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Schema example envelope | `src/utils/config.py` (`stringify_response_schema`) | `tests/component/utils/test_config.py::TestStringifyResponseSchema::test_prefilter_company_schema_shows_bracket_link_set_tails` |
+| Schema example envelope (retired **AST-2177** — grader envelope is `agent_performance` only) | `src/utils/config.py` (`stringify_response_schema`) | `tests/component/utils/test_config.py::TestStringifyResponseSchema::test_prefilter_company_schema_has_no_encoded_link_tails` |
 | Output type registry | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst507EncodedPrefilterConfig::test_prefilter_company_grades_encoded` |
 
 See **`docs/test-bible/core/consult.md`** (**AST-697**) for decode-path manifest rows.
+
+---
+
+### AST-2138 · AST-2136 (bug-repro — link-prefix fields never classify as grades; tests via gap AST-2139)
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| **`_decode_payload`** field classification via **`_grade_segment`** (`JOB:`/`CULT:` → meta before AST-483 strip) | `src/core/agent.py` | `tests/component/core/test_agent.py::TestAst2138JobLinkPrefixNotGrade::test_single_digit_job_link_is_meta_not_grade`; `TestAst2138JobLinkPrefixNotGrade::test_job_link_with_empty_culture_tail` |
+
+See **`docs/test-bible/core/consult.md`** (**AST-2138**) for the routing row and narrowed run.
 
 ---
 
@@ -363,32 +373,35 @@ Batch **`astral_candidate_id`** wiring: **`docs/test-bible/core/consult.md`**.
 
 ### AST-1191 · AST-1164
 
-**Dispatch-chain provider hop failure:** `_apply_dispatch_chain_hop_failure` — non-balance provider failures apply `error_state` then `release_job_dispatch_claim`; balance refusal holds state but still releases claim; `_close_hop_ledger` returns outcome on every exit. **`debug=True`:** found (duration/stop/tokens/`failure_class`, `n/a` not silent 0) + recorded (error / error_state|held / batch_released). Hop-label-false non-job (or no index) → `_HOP_FAILURE_NOOP`; hop-label-false **job** + `provider_failed` claim release is **AST-1298**.
+**Dispatch-chain provider hop failure:** `_apply_dispatch_chain_hop_failure` — provider failures (balance or otherwise) hold state — no `error_state` — and release the claim; only `Job not found` / `Missing candidate_data` apply `error_state` then release (**AST-1941**, supersedes the AST-1191 provider → `error_state` rule); `_close_hop_ledger` returns outcome on every exit. **`debug=True`:** found (duration/stop/tokens/`failure_class`, `n/a` not silent 0) + recorded (error / error_state|held / batch_released). Hop-label-false non-job (or no index) → `_HOP_FAILURE_NOOP`; hop-label-false **job** + `provider_failed` claim release is **AST-1298**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Hop failure apply + claim release + debug | `src/core/agent.py` | **`TestAst1191ArtifactHopFailureRelease`** |
-| Hard-string path still transitions (release added) | `src/core/agent.py` | **`TestAst848DispatchChainDoTask::test_hard_failure_transitions_error_build_artifacts`** |
+| Hop failure apply (provider → held state) + claim release + debug | `src/core/agent.py` | **`TestAst1191ArtifactHopFailureRelease`** |
+| Bug repro: provider failure holds state (AST-1941 / AST-1942) | `src/core/agent.py` | **`TestAst1191ArtifactHopFailureRelease::test_apply_provider_failed_holds_state_and_releases`** |
+| Hard-string path still transitions (release added) — **AST-2086:** lands the hop's own `ERROR_ANTICIPATE_SCAN` | `src/core/agent.py` | **`TestAst848DispatchChainDoTask::test_hard_failure_transitions_hop_error_state`** |
 
 **AST-1191** narrowed run:
 
 ```bash
 .venv/bin/python -m pytest \
   tests/component/core/test_agent.py::TestAst1191ArtifactHopFailureRelease \
-  tests/component/core/test_agent.py::TestAst848DispatchChainDoTask::test_hard_failure_transitions_error_build_artifacts \
+  tests/component/core/test_agent.py::TestAst848DispatchChainDoTask::test_hard_failure_transitions_hop_error_state \
   -q
 ```
+
+**AST-1942 manifest (`[bug-repro]`, parent AST-1940):** repro node `TestAst1191ArtifactHopFailureRelease::test_apply_provider_failed_holds_state_and_releases` — red on `origin/dev` `src/core/agent.py` (provider clause transitions → `assert_not_called` fails), green on the AST-1941 tip. Run the narrowed command above plus `tests/component/core/test_agent.py::TestAst1298OrphanedJobClaimRelease`; all green. `test_agent.py` + `test_llm_external.py` failures must equal the 40 pre-existing ftr-baseline nodes (none in these classes).
 
 ### AST-1298 · AST-1280
 
 **Parent:** [AST-1280 — Connection error on dispatch task did not clear the batch_id](https://linear.app/astralcareermatch/issue/AST-1280/connection-error-on-dispatch-task-did-not-clear-the-batch-id). **Publish:** `origin/sub/AST-1280/AST-1298-release-orphaned-job-claim-after-provider-connection-error`.
 
-Close orphaned job `batch_id` after provider Connection-style failure on hop-label-true BUILD_ARTIFACTS dispatch: helper `try`/`finally` still releases when `transition_job_state` raises non-`ValueError`; consult `_run_dispatch_chain_job_batch` releases when `do_task` raises; hop-label-false job+`provider_failed` defense-in-depth release (no error_state). No new debug contract strings; `debug=True` keeps recorded `batch_released=true`.
+Close orphaned job `batch_id` after provider Connection-style failure on hop-label-true BUILD_ARTIFACTS dispatch: helper `try`/`finally` still releases when `transition_job_state` raises non-`ValueError` (reachable on hard strings only since AST-1941); consult `_run_dispatch_chain_job_batch` releases when `do_task` raises; hop-label-false job+`provider_failed` defense-in-depth release (no error_state). No new debug contract strings; `debug=True` keeps recorded `batch_released=true`.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Transition non-`ValueError` still releases | `src/core/agent.py` | **`TestAst1298OrphanedJobClaimRelease::test_apply_transition_non_value_error_still_releases`** |
-| `draft_job_resume` Connection error → `ERROR_BUILD_ARTIFACTS` + release + debug | `src/core/agent.py` | **`TestAst1298OrphanedJobClaimRelease::test_do_task_draft_job_resume_connection_error_releases_and_errors`** |
+| Transition non-`ValueError` (hard string `Job not found`) still releases | `src/core/agent.py` | **`TestAst1298OrphanedJobClaimRelease::test_apply_transition_non_value_error_still_releases`** |
+| `draft_job_resume` Connection error → held state (no transition) + release + debug (AST-1941) | `src/core/agent.py` | **`TestAst1298OrphanedJobClaimRelease::test_do_task_draft_job_resume_connection_error_releases_and_errors`** |
 | Hop-label-false job release (revised AST-1191 noop) | `src/core/agent.py` | **`TestAst1191ArtifactHopFailureRelease::test_apply_hop_label_false_job_provider_failed_releases`** |
 | Consult `do_task` raise → claim release | `src/core/consult.py` | **`TestAst371ResumeArtifactDispatch::test_dispatch_chain_batch_do_task_raise_releases_claim`** |
 | Regression: structured `success=False` still releases | `src/core/consult.py` | **`TestAst371ResumeArtifactDispatch::test_dispatch_chain_batch_failure_releases_claim`** |
@@ -993,7 +1006,7 @@ Retarget entity-story coverage from roster → agent; add dangling `propose_appl
 | Area | Source | Component tests |
 | --- | --- | --- |
 | Story ownership + enrich / AST-520 label | `src/core/agent.py` (`get_entity_agent_story`) | **`TestEntityAgentStory`** |
-| Duplicate block labels / scored filter | same + `_filter_response_block` | **`TestEntityAgentStoryBranches`**, **`TestFilterResponseBlock`** |
+| Duplicate block labels / entity slice | same + `_slice_entity_block` (was `_filter_response_block`, AST-2030) | **`TestEntityAgentStoryBranches`**, **`TestSliceEntityBlock`** |
 | Soft-fail list / per-id resolve (AST-1274/1354) | same | **`TestAst1274AgentStorySoftFail`** |
 | Dangling TASK sibling → partial story, exception log then continue | same | **`TestAst1354AgentStoryDanglingTaskSibling::test_partial_story_does_not_raise`** (**[bug-repro]**) |
 | Company `vector_grades` (AST-726) | same | **`TestEntityAgentStory::test_company_prefilter_vector_grades_from_company_data`** |
@@ -1005,7 +1018,7 @@ Retarget entity-story coverage from roster → agent; add dangling `propose_appl
 ```bash
 ./scripts/testing/run_component_tests.sh \
   tests/component/core/test_agent.py::TestEntityAgentStory \
-  tests/component/core/test_agent.py::TestFilterResponseBlock \
+  tests/component/core/test_agent.py::TestSliceEntityBlock \
   tests/component/core/test_agent.py::TestEntityAgentStoryBranches \
   tests/component/core/test_agent.py::TestAst1274AgentStorySoftFail \
   tests/component/core/test_agent.py::TestAst1354AgentStoryDanglingTaskSibling \
@@ -1026,8 +1039,11 @@ Stored `do_task` and Ad Hoc workbench Test commit prompt segments via `_store_pr
 | Workbench Test sequencing; bare `run_adhoc` | same | **`test_workbench_stores_prompt_before_run_adhoc`**, **`test_workbench_raise_keeps_prompt_omits_response`**, **`test_bare_run_adhoc_does_not_store_agent_data`** |
 | Prompt-only batch is not latest story | `src/data/database.py` | **`test_prompt_only_batch_is_not_latest_ref`**; existing **`tests/component/data/database/test_agent_responses.py::TestAst984EntityColumnRetired::test_list_latest_per_task_key`** |
 | Existing store-once + ledger | `src/core/agent.py` | **`TestDoTask::test_returns_api_failure_and_stores_agent_data`**, **`TestAst515AdhocWorkbenchLedger`**, **`TestDoTaskStorageFailures`** |
+| Store off the event loop (AST-1842 / AST-1843) | `src/core/agent.py` (`do_task` → `asyncio.to_thread(_store_*)`) | **`tests/component/core/test_agent.py::TestAst1842DoTaskStoreOffLoop::test_slow_save_agent_data_does_not_block_loop`** — `[bug-repro]`: 0.3s blocking `save_agent_data`, heartbeat max gap < 0.2s; pre-fix `origin/dev` gap ≈ 1.5s (5 stores on the loop) |
 
 **Broken / obsolete:** none — `_store_prompt_blocks` still runs once; order moved before the await. Count-only tests still hold.
+
+**Known pre-existing reds (not AST-1842, red on `origin/dev` too):** `test_do_task_debug_emits_prompt_found_recorded_before_provider`, `test_prompt_only_batch_is_not_latest_ref`, `test_bare_run_adhoc_does_not_store_agent_data`.
 
 **Integration:** no existing scenario asserts in-flight `agent_data` vs provider await — no revision; do not invent new integration coverage.
 
@@ -1035,6 +1051,7 @@ Stored `do_task` and Ad Hoc workbench Test commit prompt segments via `_store_pr
 ./scripts/testing/run_component_tests.sh \
   tests/component/core/test_agent_ast1448.py::TestAst1448PersistPromptBeforeProvider \
   tests/component/core/test_agent.py::TestAst515AdhocWorkbenchLedger \
+  tests/component/core/test_agent.py::TestAst1842DoTaskStoreOffLoop \
   tests/component/data/database/test_agent_responses.py::TestAst984EntityColumnRetired::test_list_latest_per_task_key \
   -q
 ```
@@ -1385,6 +1402,39 @@ Shared assembly prepends `[astral-<id>]` as the first bytes of the first system 
 
 **Bible shasum (after publish):** `git show origin/sub/AST-1638/AST-1639-candidate-id-system-prompt-prefix:docs/test-bible/core/agent.md | shasum`
 
+### AST-1992 · AST-1985 (gap — candidate-prefix idempotence; product AST-1990)
+
+**Parent:** [AST-1985](https://linear.app/astralcareermatch/issue/AST-1985) (orphaned mini-parent). **Publish:** `origin/sub/AST-1985/AST-1992-candidate-prefix-dedupe-tests`. **Gap from** `[board-betty] TESTS: REVISE` on **AST-1990** — product fix (`_system_text_with_candidate_prefix` strips any leading `[astral-…]` run, then prepends one `[astral-<cid>]`) is **AST-1990** (`origin/sub/AST-1985/AST-1990-candidate-prefix-dedupe`); this ticket is test tree + bible only.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Already-prefixed / 5× stacked (AST-1985 sample) collapse to one marker | `src/core/agent.py` | `TestAst1639CandidateIdSystemPrefix::test_helper_already_prefixed_input_keeps_one_marker`, `::test_helper_five_stacked_markers_collapse_to_one` |
+| Other-id leading marker replaced by current cid (Susan-approved any-id strip) | same | `::test_helper_other_id_leading_marker_replaced_by_current_cid` |
+| Byte-zero run only — leading whitespace / mid-body markers untouched | same | `::test_helper_non_leading_marker_left_in_body` (green pre- and post-fix guard) |
+| Fail closed with marker already in body | same | `::test_helper_blank_id_raises_even_when_body_already_prefixed` (green pre- and post-fix guard) |
+| AC3 parity on re-fed text (wire + runtime system) | same | `::test_assemble_already_prefixed_system_keeps_one_marker` |
+
+**Broken / obsolete:** none — un-prefixed output unchanged; existing AST-1639 nodes stay green. Monkeypatched helper stubs elsewhere in `test_agent.py` don't assert stacking.
+
+**Integration:** none.
+
+**Sequencing deviation (gap child):** product not on ftr yet. `[bug-repro]` proven both ways — **RED on pre-fix tree** (4 nodes: already-prefixed, 5× stacked, other-id, assemble parity; stacked-marker assertion diffs) and **GREEN with AST-1990 plan `## Proposed change` overlaid** on `src/core/agent.py` (scratch, restored, not committed).
+
+## QA test manifest (AST-1992)
+
+1. `[bug-repro]` nodes (must flip red→green under `test-fix` once AST-1990 lands): `test_helper_already_prefixed_input_keeps_one_marker`, `test_helper_five_stacked_markers_collapse_to_one`, `test_helper_other_id_leading_marker_replaced_by_current_cid`, `test_assemble_already_prefixed_system_keeps_one_marker`
+2. Guards + existing AST-1639 suite stay green: full `TestAst1639CandidateIdSystemPrefix`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestAst1639CandidateIdSystemPrefix \
+  -q
+```
+
+**Pass criterion:** pytest green on the class (13 nodes) with AST-1990 product merged — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (after publish):** `git show origin/sub/AST-1985/AST-1992-candidate-prefix-dedupe-tests:docs/test-bible/core/agent.md | shasum`
+
 ### AST-1679 · AST-1677
 
 **Parent:** [AST-1677](https://linear.app/astralcareermatch/issue/AST-1677). **Publish:** `origin/sub/AST-1677/AST-1679-operative-save-hydrate-blob-retirement`.
@@ -1515,3 +1565,701 @@ Thread AST-1698 harvest into generative lands: `do_task` passes `list(source_art
 **Bible shasum (publish tip):**
 - `docs/test-bible/core/agent.md` — *(filled after publish)*
 - `docs/test-bible/core/candidate.md` — *(filled after publish)*
+
+### AST-1846 · AST-1828 (bug-repro — `agent_failure` flag on rubric envelope failure)
+
+**Primary manifest:** **`docs/test-bible/core/roster.md`** § AST-1846. AST-1839: `do_task` on a rubric-encoded task whose envelope reports `agent_performance.status == "failure"` returns `{"success": False, "agent_failure": True, "error": "Agent failure: <note>"}` so prefilter can route the envelope first strike to WFR.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Envelope failure sets `agent_failure` | `src/core/agent.py` (`do_task`) | **`TestAst1846DoTaskAgentFailureFlag::test_rubric_envelope_failure_sets_agent_failure`** (**bug-repro**) |
+| Note fallback: top-level `failure_note` → default text | same | **`…::test_failure_note_fallbacks`** (branch lock, 2 params) |
+| Response-block store exception swallowed | same | **`…::test_failure_response_store_exception_is_swallowed`** (branch lock) |
+| Non-rubric task never sets the flag | same | **`…::test_non_rubric_task_does_not_set_agent_failure`** (guard — green at base and tip) |
+
+**Integration:** none.
+
+### AST-1879 · AST-1851 (route agent calls by model → server)
+
+`do_task` resolves the agent row's `model_id` + `brain_setting` through `resolve_model_brain` (server, SKU, tier). It sends **only** the candidate's key for that server: `ctx["candidate_api_keys"]` when present, otherwise the map loaded by candidate id. There is no env key and no other platform's key. Dispatch goes by server `protocol` (`send_to_anthropic` vs `send_to_llm_compat`). With no key for the server, the call returns a failure envelope naming the server, sends no request and writes no prompt rows. The conversational brain override is gone. `run_adhoc` / `run_adhoc_workbench_test` take `server_id` / `tier` / `candidate_api_keys`. Pointers: dispatcher key gate ([`dispatcher.md`](dispatcher.md)), Estelle turn ctx ([`contact.md`](contact.md)), classify hand-off ([`meteorite.md`](meteorite.md)).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| New — `_candidate_server_key` (ctx map wins; DB load by id; explicit `{}` honoured; blank/no id → None) | `src/core/agent.py` | `test_agent_ast1879.py::TestAst1879CandidateServerKey` |
+| New — `_agent_llm_route`, `task_llm_server_id`, `_missing_server_key_result` | same | `…::TestAst1879RouteHelpers` |
+| AST-1944 — `task_llm_server_id_or_none`: `telescope` / empty / blank `agent_id` / no row → `None`; LLM row → catalog server; unknown real agent and real agent without `model_id` re-raise; `stage_email_meteorite` mailbox fold resolves the legacy `parse_meteorite_email` agent's server, and returns `None` when there is no legacy agent. Data layer patched (`get_agent_task` / `get_agent`); strict `_resolve_task_prompts` runs for real | same | `…::TestAst1944TaskLlmServerIdOrNone` (9; AST-1945) |
+| New — `_send_to_server` protocol dispatch (anthropic SKU + override key; compat server/SKU/tier/key; `record_timesheet_entry`) | same | `…::TestAst1879SendToServer` |
+| AC 7 — right key, no fallback (intercept at `llm_compat._get_client` / `anthropic.Anthropic`; env key never used; four missing-key cases name the server, zero client calls, no prompt storage, warning line) | `do_task` | `…::TestAst1879RightKeyNoFallback` |
+| AC 8 — Kimi-routed Estelle task writes a catalog-priced `agent_timesheets` row | `do_task` → `send_to_llm_compat` → `record_timesheet_entry` | `…::TestAst1879KimiLedgerRow` |
+| AC 9 / 10 — contact turn at `contact_recruiter_estelle` seed model + brain on the candidate's kimi key; `agent.py` free of `default_brain_setting` / legacy provider symbols | `do_task` | `…::TestAst1879EstelleTurnRoute` |
+| AC 7 — `run_adhoc` routes by server; missing key → failure naming server, no request | `run_adhoc` | `test_agent.py::TestRunAdhoc` (revised + 3 new) |
+| Workbench wrapper forwards route + key map | `run_adhoc_workbench_test` | `test_agent.py::TestAst515AdhocWorkbenchLedger::test_forwards_server_route_and_key_map_to_run_adhoc` |
+| Revised — catalog route replaces `get_active_llm_provider` / `send_to_deepseek` / `resolve_brain_setting_to_*` stubs | `do_task` | `test_agent.py::TestAst492BrainSettingDoTask` (DeepSeek-tier test → compat route; unknown-provider / vendor-model tests → parametrized broken-model-config raise), `TestAst1380…` (Big thinking cases on Kimi Big — catalog DeepSeek Big is thinking-off), `TestAst1391DeepseekBigOutputFloor` (floor from tier `max_tokens_floor`), `TestAst1072ConversationalEnvelope::test_do_task_concern_preserves_outcome_at_agent_rows_own_brain` (AC 9: no Medium override), `TestAst1639…`, `TestAst1846…`, `TestAst1298…`, `TestDoTask::test_rejects_unknown_or_misconfigured_tasks` (model_id checked first) |
+| Revised — fixtures | `test_agent.py` | `_agent_rows(model_id="claude")`; autouse `_candidate_server_key_stub` (this file tests past the gate; key selection lives in `test_agent_ast1879.py`); `test_agent_ast1448.py` `_patch_prompts` stubs the key, bare `run_adhoc` passes a route |
+| Retired | — | `test_send_to_deepseek_receives_vendor_model_and_tier_meta`, `test_do_task_deepseek_raises_when_vendor_model_not_in_pricing`, `test_do_task_raises_on_unknown_llm_provider`, `TestRunAdhoc::test_with_tier_meta_sends_via_deepseek`, `test_non_craft_deepseek_big_keeps_thinking`, `test_do_task_concern_preserves_outcome_and_uses_medium_brain`: each is replaced by the catalog-route case named above |
+
+**AC 8 gap (flagged to Susan):** `agent_timesheets` has **no `provider` column**. The server id is only `_add_timesheet_entry`'s `provider` argument (SKU-on-server validation, plus the `anthropic_timesheets` mirror switch). So the test asserts: insert called with `provider="kimi"`, SKU `kimi-k2.6` (priced only on `kimi`), token columns, the per-type catalog cost sum, and no anthropic mirror. It cannot assert a stored provider. Adding a column is `database.py`, which is outside AST-1879's scope.
+
+**Handed to #4 (AST-1880):** `tests/component/core/conftest.py` `_core_default_anthropic_llm_provider` patches `cfg.get_active_llm_provider` without `raising=False`. That breaks when #4 deletes the symbol. Its agent-module loop is now a no-op (`hasattr` guard).
+
+**Integration:** none.
+
+## QA test manifest (AST-1879)
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent_ast1879.py \
+  tests/component/core/test_agent.py::TestDoTask::test_rejects_unknown_or_misconfigured_tasks \
+  tests/component/core/test_agent.py::TestDoTask::test_returns_api_failure_and_stores_agent_data \
+  tests/component/core/test_agent.py::TestDoTask::test_do_task_stores_agent_data_for_craft_null_entity_type \
+  tests/component/core/test_agent.py::TestDoTask::test_decodes_top_level_json_string_encoded_payload \
+  tests/component/core/test_agent.py::TestDoTask::test_ast501_rejects_evaluate_jd_when_api_returns_bare_encoded_lines_without_envelope \
+  tests/component/core/test_agent.py::TestDoTask::test_ast501_rejects_evaluate_jd_when_agent_payload_is_structured_json_object \
+  tests/component/core/test_agent.py::TestDoTask::test_ast503_rejects_grade_do_when_api_returns_bare_encoded_lines_without_envelope \
+  tests/component/core/test_agent.py::TestDoTask::test_ast503_rejects_grade_do_when_agent_payload_is_structured_json_object \
+  tests/component/core/test_agent.py::TestDoTask::test_chains_run_next_when_configured \
+  tests/component/core/test_agent.py::TestDoTask::test_chain_entry_log \
+  tests/component/core/test_agent.py::TestDoTask::test_hop_boundary_log_on_run_next \
+  tests/component/core/test_agent.py::TestDoTask::test_debug_flag_passed_to_child \
+  tests/component/core/test_agent.py::TestDoTask::test_ignores_invalid_run_next \
+  tests/component/core/test_agent.py::TestAst492BrainSettingDoTask \
+  tests/component/core/test_agent.py::TestRunAdhoc \
+  tests/component/core/test_agent.py::TestAst531RunNextHopLedger \
+  tests/component/core/test_agent.py::TestAst515AdhocWorkbenchLedger \
+  tests/component/core/test_agent.py::TestAst1190DoTaskEmptyProviderError \
+  tests/component/core/test_agent.py::TestAst1298OrphanedJobClaimRelease \
+  tests/component/core/test_agent.py::TestAst903CraftRubricMaxTokensFloor \
+  tests/component/core/test_agent.py::TestAst1380CraftRubricThinkingOffAndFailureBanner \
+  tests/component/core/test_agent.py::TestAst1072ConversationalEnvelope \
+  tests/component/core/test_agent.py::TestAst1576CraftPersistOperative \
+  tests/component/core/test_agent.py::TestAst1264CandidateCraftSuccession::test_persist_craft_skips_hydrate_when_live_caller \
+  tests/component/core/test_agent.py::TestAst1264CandidateCraftSuccession::test_persist_craft_hydrate_hard_fails_without_live_caller \
+  tests/component/core/test_agent.py::TestAst1264CandidateCraftSuccession::test_persist_craft_reinjects_caller_on_recurse \
+  tests/component/core/test_agent.py::TestAst1391DeepseekBigOutputFloor \
+  tests/component/core/test_agent.py::TestAst1639CandidateIdSystemPrefix \
+  tests/component/core/test_agent.py::TestAst1683ContactBaseResumeCurrentRead \
+  tests/component/core/test_agent.py::TestAst1698HarvestSourceArtifactIds \
+  tests/component/core/test_agent.py::TestAst1700ThreadHarvestGenerativeLands::test_cover_letter_land_passes_harvest \
+  tests/component/core/test_agent.py::TestAst1700ThreadHarvestGenerativeLands::test_job_resume_land_still_passes_harvest_list \
+  tests/component/core/test_agent.py::TestAst1846DoTaskAgentFailureFlag \
+  tests/component/core/test_agent_ast1448.py::TestAst1448PersistPromptBeforeProvider::test_do_task_stores_prompt_before_provider_and_response_after \
+  tests/component/core/test_agent_ast1448.py::TestAst1448PersistPromptBeforeProvider::test_do_task_provider_raise_keeps_prompt_omits_response \
+  tests/component/core/test_agent_ast1448.py::TestAst1448PersistPromptBeforeProvider::test_do_task_storage_off_skips_prompt_and_response \
+  tests/component/core/test_agent_ast1448.py::TestAst1448PersistPromptBeforeProvider::test_do_task_prompt_persist_failure_still_calls_provider \
+  tests/component/core/test_agent_ast1448.py::TestAst1448PersistPromptBeforeProvider::test_do_task_debug_false_skips_persist_contract_lines \
+  tests/component/core/test_agent_ast1448.py::TestAst1448PersistPromptBeforeProvider::test_do_task_later_success_does_not_rewrite_interrupted_batch_prompts \
+  tests/component/core/test_agent_ast1448.py::TestAst1448PersistPromptBeforeProvider::test_workbench_stores_prompt_before_run_adhoc \
+  tests/component/core/test_agent_ast1448.py::TestAst1448PersistPromptBeforeProvider::test_workbench_raise_keeps_prompt_omits_response \
+  tests/component/core/test_dispatcher.py::TestDispatchOne \
+  tests/component/core/test_dispatcher.py::TestAst1847TimeoutPartialCounts \
+  tests/component/core/test_dispatcher.py::TestAst1867ProviderBalanceOutage \
+  tests/component/core/test_dispatcher.py::TestAst1829ScheduledSweep \
+  tests/component/core/test_contact.py::TestAst1879EstelleTurnCandidateCtx \
+  tests/component/core/test_contact.py::TestAst1073ContactEstelleTurnLoop::test_listen_off_skips_do_task \
+  tests/component/core/test_contact.py::TestAst1073ContactEstelleTurnLoop::test_success_posts_prefixed_reply \
+  tests/component/core/test_contact.py::TestAst1073ContactEstelleTurnLoop::test_failure_does_not_post \
+  tests/component/core/test_contact.py::TestAst1073ContactEstelleTurnLoop::test_skill_calls_run_for_resolved_candidate \
+  tests/component/core/test_contact.py::TestAst1073ContactEstelleTurnLoop::test_handle_slack_event_attaches_estelle_turn \
+  tests/component/core/test_contact.py::TestAst1515ContactEstelleTurnMarkup \
+  tests/component/core/test_contact.py::TestAst1561ContactPasteRouting \
+  tests/component/core/test_contact.py::TestAst1585ContactPinnedBaseResume \
+  tests/component/core/test_meteorite.py::TestAst1879ClassifyKeyMapHandOff \
+  -q
+```
+
+**Pass criterion:** narrowed run green (169 passed), not the zero-arg harness. Every new `test_agent_ast1879.py` node is red on the `origin/ftr/AST-1851-support-openrouter-api-models` product (22/22). The full `tests/component` failure set on this tip has zero new entries against the same tree with `ftr` product (153 moved nodes back to green). Pre-existing reds in touched classes are left out of the manifest: `TestDoTask::{test_rejects_json_schema_and_confidence_failures, test_rejects_grade_vector_mismatch, test_decodes_encoded_payload_and_stores_success, test_returns_decode_and_post_decode_validation_errors, test_mid_chain_empty_caller_skips_api}`, `TestAst1264…::test_do_task_source_has_caller_reinject_and_hydrate_gates`, `TestAst1700…::test_craft_str_path_passes_harvest_not_dict_path`, `TestAst1448…::{test_do_task_debug_emits_prompt_found_recorded_before_provider, test_prompt_only_batch_is_not_latest_ref, test_bare_run_adhoc_does_not_store_agent_data}`, `TestAst841DispatchTerminalLogging` (2), `TestAst1073…::{test_concern_posts_and_logs_aside, test_debug_style_d_index_and_detail}`. LOCKED_AT_100: no line changed by AST-1879 in `agent.py` / `dispatcher.py` is uncovered.
+
+> **AST-1948:** The manifest above calls `resolve_model_brain` with two arguments and puts `temperature` on agent rows. Both are gone (§ AST-1948 below). Do not re-run it as written.
+
+### AST-1948 · AST-1946 (agent mode persisted and applied; temperature and model_code retired from the agent row)
+
+The agent row now carries `mode` (`Deterministic` | `Creative`), and the mode decides thinking and temperature. `_agent_llm_route` passes the row's mode into `resolve_model_brain`. A blank or missing mode raises `Agent '<id>' has no mode configured.`, and an unknown mode raises `Invalid mode '<x>'`. There is no fallback. `do_task` sends `temperature = tier["temperature"]` (0.2 / 0.6 from `AGENT_MODE_CONFIG`). The row has no `temperature` or `model_code` column any more. Data layer: [`../data/database/agents.md`](../data/database/agents.md) § AST-1948. Admin routes: [`../ui/api/api_admin.md`](../ui/api/api_admin.md) § AST-1948. Repo JSON: [`repo_admin_json.md`](repo_admin_json.md) § AST-1948. Catalog / resolver: [`../utils/config.md`](../utils/config.md) § AST-1947.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| New — AC 5 wire cases through `do_task`, with `send_to_llm_compat` / `send_to_anthropic` stubbed. The six compat cases (glm-4.6 Little Creative / Deterministic, phi-4 Big Creative, kimi-k2.6 Little Creative / Big Deterministic, deepseek-v4 Big Creative) check server, SKU, the `temperature` kwarg, `tier.thinking` / `thinking_params`, and the deepseek Big `max_tokens` floor of at least 384000. The Anthropic case is claude Medium Deterministic → `claude-sonnet-4-6` at 0.2 | `src/core/agent.py` (`_agent_llm_route`, `do_task`) | `test_agent.py::TestAst1948ModeOnTheWire` (7) |
+| New — mode-less (`None` / `""` / `"  "`) and unknown-mode routes raise | `_agent_llm_route` | `test_agent_ast1879.py::TestAst1879RouteHelpers::test_agent_llm_route_raises_without_mode` (3) · `::test_agent_llm_route_rejects_unknown_mode` |
+| New — broken-config raise also covers `mode: None` and `mode: "Wild"`, with no client call | `do_task` | `test_agent.py::TestAst492BrainSettingDoTask::test_do_task_raises_on_broken_agent_model_config` (+2 params) |
+| Revised — fixtures carry `mode` and drop `temperature`. Resolver calls take a mode: Deterministic by default, and Creative where the old case was a Kimi Big thinking case | `test_agent.py` `_agent_rows(mode=…)`, `_DEEPSEEK_BIG_FLOOR`; `test_agent_ast1879.py` `_seeded_rows`, `_REAL`; `test_agent_ast1448.py` | `TestAst1380CraftRubricThinkingOffAndFailureBanner` (Kimi Big Creative), `TestAst1072ConversationalEnvelope`, `TestAst1391DeepseekBigOutputFloor`, `TestAst1879…` |
+| Revised — `kimi-k2.6-openrouter` → `moonshotai/kimi-k2.6` (retired by AST-1947) | `test_agent_ast1879.py` | `TestAst1879SendToServer` compat parametrize · `TestAst1879RightKeyNoFallback` missing-key param |
+| Revised — the Estelle turn routes with the seed row's mode (Deterministic) and sends the tier temperature 0.2 | `do_task` | `TestAst1879EstelleTurnRoute` |
+
+**Broken / obsolete:** none retired. Every test that broke was repaired in place.
+
+**Pre-existing test-order leak (not AST-1948, flagged):** if `test_agent_ast1879.py` runs before `TestDoTask` run-next / `TestAst1264…` nodes in one session, those fail with `no such table: agent_timesheets`. The same pair fails the same way on pre-epic `ae494c618`. The manifest below runs `test_agent_ast1879.py` last. The fixture fix is a separate ticket.
+
+**Integration:** none (no `tests/integration/` scenario reads the agent row's mode or temperature).
+
+## QA test manifest (AST-1948)
+
+1. **Component (narrowed — must be all green, run in this order):**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestDoTask::test_rejects_unknown_or_misconfigured_tasks \
+  tests/component/core/test_agent.py::TestDoTask::test_returns_api_failure_and_stores_agent_data \
+  tests/component/core/test_agent.py::TestDoTask::test_do_task_stores_agent_data_for_craft_null_entity_type \
+  tests/component/core/test_agent.py::TestDoTask::test_decodes_top_level_json_string_encoded_payload \
+  tests/component/core/test_agent.py::TestDoTask::test_ast501_rejects_evaluate_jd_when_api_returns_bare_encoded_lines_without_envelope \
+  tests/component/core/test_agent.py::TestDoTask::test_ast501_rejects_evaluate_jd_when_agent_payload_is_structured_json_object \
+  tests/component/core/test_agent.py::TestDoTask::test_ast503_rejects_grade_do_when_api_returns_bare_encoded_lines_without_envelope \
+  tests/component/core/test_agent.py::TestDoTask::test_ast503_rejects_grade_do_when_agent_payload_is_structured_json_object \
+  tests/component/core/test_agent.py::TestDoTask::test_chains_run_next_when_configured \
+  tests/component/core/test_agent.py::TestDoTask::test_chain_entry_log \
+  tests/component/core/test_agent.py::TestDoTask::test_hop_boundary_log_on_run_next \
+  tests/component/core/test_agent.py::TestDoTask::test_debug_flag_passed_to_child \
+  tests/component/core/test_agent.py::TestDoTask::test_ignores_invalid_run_next \
+  tests/component/core/test_agent.py::TestAst492BrainSettingDoTask \
+  tests/component/core/test_agent.py::TestRunAdhoc \
+  tests/component/core/test_agent.py::TestAst531RunNextHopLedger \
+  tests/component/core/test_agent.py::TestAst515AdhocWorkbenchLedger \
+  tests/component/core/test_agent.py::TestAst1190DoTaskEmptyProviderError \
+  tests/component/core/test_agent.py::TestAst1298OrphanedJobClaimRelease \
+  tests/component/core/test_agent.py::TestAst903CraftRubricMaxTokensFloor \
+  tests/component/core/test_agent.py::TestAst1380CraftRubricThinkingOffAndFailureBanner \
+  tests/component/core/test_agent.py::TestAst1072ConversationalEnvelope \
+  tests/component/core/test_agent.py::TestAst1576CraftPersistOperative \
+  tests/component/core/test_agent.py::TestAst1264CandidateCraftSuccession::test_persist_craft_skips_hydrate_when_live_caller \
+  tests/component/core/test_agent.py::TestAst1264CandidateCraftSuccession::test_persist_craft_hydrate_hard_fails_without_live_caller \
+  tests/component/core/test_agent.py::TestAst1264CandidateCraftSuccession::test_persist_craft_reinjects_caller_on_recurse \
+  tests/component/core/test_agent.py::TestAst1391DeepseekBigOutputFloor \
+  tests/component/core/test_agent.py::TestAst1639CandidateIdSystemPrefix \
+  tests/component/core/test_agent.py::TestAst1683ContactBaseResumeCurrentRead \
+  tests/component/core/test_agent.py::TestAst1698HarvestSourceArtifactIds \
+  tests/component/core/test_agent.py::TestAst1700ThreadHarvestGenerativeLands::test_cover_letter_land_passes_harvest \
+  tests/component/core/test_agent.py::TestAst1700ThreadHarvestGenerativeLands::test_job_resume_land_still_passes_harvest_list \
+  tests/component/core/test_agent.py::TestAst1846DoTaskAgentFailureFlag \
+  tests/component/core/test_agent_ast1448.py::TestAst1448PersistPromptBeforeProvider::test_do_task_stores_prompt_before_provider_and_response_after \
+  tests/component/core/test_agent_ast1448.py::TestAst1448PersistPromptBeforeProvider::test_do_task_provider_raise_keeps_prompt_omits_response \
+  tests/component/core/test_agent_ast1448.py::TestAst1448PersistPromptBeforeProvider::test_do_task_storage_off_skips_prompt_and_response \
+  tests/component/core/test_agent_ast1448.py::TestAst1448PersistPromptBeforeProvider::test_do_task_prompt_persist_failure_still_calls_provider \
+  tests/component/core/test_agent_ast1448.py::TestAst1448PersistPromptBeforeProvider::test_do_task_debug_false_skips_persist_contract_lines \
+  tests/component/core/test_agent_ast1448.py::TestAst1448PersistPromptBeforeProvider::test_do_task_later_success_does_not_rewrite_interrupted_batch_prompts \
+  tests/component/core/test_agent_ast1448.py::TestAst1448PersistPromptBeforeProvider::test_workbench_stores_prompt_before_run_adhoc \
+  tests/component/core/test_agent_ast1448.py::TestAst1448PersistPromptBeforeProvider::test_workbench_raise_keeps_prompt_omits_response \
+  tests/component/core/test_agent.py::TestAst1948ModeOnTheWire \
+  tests/component/data/database/test_agents.py \
+  tests/component/core/test_repo_admin_json.py::TestExportRepoAdminJsonToFiles \
+  tests/component/core/test_repo_admin_json.py::TestAst783RepoAdminJsonDivergence \
+  tests/component/core/test_repo_admin_json.py::TestAst787AgentRepoJsonSeed::test_repo_rows_use_repo_columns_only \
+  tests/component/core/test_repo_admin_json.py::TestAst1878AgentSeedModels \
+  tests/component/ui/api/test_api_admin.py::TestAdminConfigAndAgents \
+  tests/component/ui/api/test_api_admin.py::TestEnrichTasks \
+  tests/component/ui/api/test_api_admin.py::TestAst1880ResolveAdhocCatalogRoute \
+  tests/component/ui/api/test_api_admin.py::TestAdhocHelpers::test_adhoc_entities_and_resolve \
+  tests/component/ui/api/test_api_admin.py::TestAdhocHelpers::test_resolve_adhoc_job_entity_resolves_visible_jd_token \
+  tests/component/ui/api/test_api_admin.py::TestApiAdminBranchGaps::test_resolve_adhoc_candidate_and_preview_errors \
+  tests/component/ui/api/test_api_admin.py::TestAst1411AdhocSevenSegment::test_resolve_preview_seven_segment_and_system_fallback \
+  tests/component/core/test_agent_ast1879.py \
+  -q
+```
+
+2. **Whole files (informational — pre-existing reds only):**
+
+```bash
+.venv/bin/python -m pytest tests/component/core/test_agent.py tests/component/core/test_agent_ast1448.py \
+  tests/component/core/test_agent_ast1879.py tests/component/core/test_repo_admin_json.py \
+  tests/component/data/database/test_agents.py tests/component/ui/api/test_api_admin.py -q --tb=line
+```
+
+Every failure here must also fail on pre-epic `ae494c618` with this test tree. That baseline covers the 43 core-agent reds, 18 `test_repo_admin_json.py` reds (catalog / fixture lockstep, `TestApplyRepoAdminJsonAtStartup` ×3, `TestAst1400…` craft pins) and 5 `test_api_admin.py` reds. `test_agents.py` is all green. Any other failure is real.
+
+3. **AC 6 / AC 8 greps (all three empty on the publish tip):**
+
+```bash
+rg -n "default_temperature|brain_setting_for_anthropic_agent_key|admin_brain_setting_catalog|infer_brain_setting_from_legacy_model_code" src/ --glob '!src/ui/frontend/**'
+rg -n "0\.6\b|0\.2\b" src/core/agent.py src/ui/api/api_admin.py src/data/database.py
+rg -n "apodex/|bytedance/ui-tars|ibm-granite/|inclusionai/|meta/muse|microsoft/|minimax/|sao10k/l3|thedrummer/|z-ai/glm-4|moonshotai/kimi-k2\.[57]" src/ --glob '!src/utils/config.py'
+```
+
+**Pass criterion:** item 1 green (206 passed on the publish tip), item 2 reds limited to the baseline set, item 3 empty. Not the zero-arg harness. **AC 6 is composite on `ftr`** (Joan, validate-plan discuss). Once both subs merge, re-run item 3 plus [`../utils/config.md`](../utils/config.md) § AST-1947 manifest item 1 on `origin/ftr/AST-1946-big-brain-openrouter`. The `temperature` grep on `src/ui/frontend/src/pages/AdminAgentPrompts.tsx` belongs to AST-1949, so leave it out here. Between this merge and AST-1949, an agent edit from the UI returns `400 mode is required`. That is by design (plan Stage 2 decision), not a bug.
+
+> **AST-1956:** `mode` is gone from the agent row, and `TestAst1948ModeOnTheWire` is retired (§ AST-1956 below). Do not re-run the manifest above as written.
+
+### AST-1956 · AST-1953 (send the agent's settings on the wire)
+
+`_agent_llm_route` now calls `resolve_agent_settings(model_id, agent_row)` (AST-1955). The tier carries the row's `temperature`, `reasoning_effort` and the OpenRouter-only `provider` object exactly as stored. There is no mode, no brain size and no thinking-from-tier. The craft-rubric guard sets `tier["reasoning_effort"] = "none"` instead of thinking off. `_send_to_server` passes `reasoning_effort` to `send_to_anthropic`. The `Calling _send_to_server` debug line in `do_task`, and a new one in `run_adhoc` (`task_key=adhoc`), print `temp=%s, effort=%s` with what was actually sent (`temp=None` when the row's temperature is empty). Pre-SKU ids (`claude`, `deepseek-v4`) raise `Unknown LLM model`. Wire bodies: [`../external/llm_compat.md`](../external/llm_compat.md) § AST-1956 · [`../external/anthropic.md`](../external/anthropic.md) § AST-1956. Resolver: [`../utils/config.md`](../utils/config.md) § AST-1955.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| New — AC 1 / AC 3 through `do_task`, `send_to_llm_compat` stubbed. gpt-oss-120b `bf16` → provider object; phi-4 temperature 0.3 + effort `high` with no gating; kimi-k2.6 effort `none`; deepseek-v4-pro `provider_only` on a direct server → `provider` None | `_agent_llm_route`, `do_task` | `test_agent.py::TestAst1956SettingsOnTheWire::test_compat_call_carries_row_settings` (4) |
+| New — Anthropic leg gets the row's temperature and `reasoning_effort` | `_send_to_server` | `::test_anthropic_call_carries_temperature_and_effort` |
+| New — AC 4: a 400 "Reasoning is mandatory…" from the compat client is `success: False` with the message in `error` and no `failure_class` | `do_task` → `send_to_llm_compat` | `::test_rejected_setting_is_an_ordinary_failure` |
+| New — AC 5: `do_task` debug line shows `temp=` / `effort=` as sent (`temp=None` when empty) | `do_task` | `::test_debug_line_shows_what_was_sent` (2) |
+| New — AC 5: `run_adhoc` forwards effort and logs the same line with `task_key=adhoc` | `run_adhoc` | `::test_run_adhoc_forwards_effort_and_logs_it` |
+| New — pre-SKU ids raise | `_agent_llm_route` | `test_agent_ast1879.py::TestAst1879RouteHelpers::test_agent_llm_route_raises_on_pre_sku_model_id` (2) |
+| Revised — route resolves catalog + row settings (moonshotai/kimi-k2.6, effort `ultra` passes through, provider `{"quantizations": ["int4"], "allow_fallbacks": false}`) | `_agent_llm_route` | `TestAst1879RouteHelpers::test_agent_llm_route_resolves_catalog` |
+| Revised — Anthropic protocol carries effort (None / `high` / `none`) and temperature 0.3 | `_send_to_server` | `TestAst1879SendToServer::test_anthropic_protocol` (3) |
+| Revised — Estelle turn sends the seed row's temperature 0.2 and `extra_body == {"thinking": {"type": "disabled"}}` | `do_task` | `TestAst1879EstelleTurnRoute` |
+| Revised — craft rubric forces effort `none`; non-craft keeps the stored effort (`high`) | craft guard | `TestAst1380CraftRubricThinkingOffAndFailureBanner::test_craft_get_rubric_forces_effort_none` · `::test_non_craft_keeps_stored_effort` |
+| Revised — parent AC 6 wire half: deepseek-v4-pro row `max_tokens: 384000` → sent as 384000; flash sends the row's 100. Catalog floor lifts a low row; a row above the floor wins; Opus keeps the row; craft effort `none` still uses the catalog floor | `do_task` `max_tokens` | `TestAst1391DeepseekBigOutputFloor::test_catalog_floor_lifts_low_agent_row` · `::test_agent_row_above_catalog_floor_wins` · `::test_deepseek_sends_row_max_tokens_as_stored` · `::test_anthropic_opus_keeps_agent_row` · `::test_debug_true_max_tokens_line_shows_floor` · `::test_craft_effort_none_uses_catalog_floor` |
+| Revised — Anthropic routing by per-SKU id (claude-opus-4-6); broken-config params are `""`, `__no_such_model__`, `claude`, `deepseek-v4` | `do_task` | `TestAst492BrainSettingDoTask::test_send_to_anthropic_receives_row_per_sku_model` · `::test_do_task_raises_on_broken_agent_model_config` |
+| Revised — fixtures carry plain settings (`_agent_rows(model_id=…, **settings)`, `_route(model_id, **settings)`, `_STUB_FLOOR`; ast1879 `_SEED_KEYS`, `_REAL` = deepseek-v4-pro; ast1448 tier from `resolve_agent_settings`). `brain_setting` / `deepseek-v4` / `claude` ids → per-SKU ids | `test_agent.py`, `test_agent_ast1879.py`, `test_agent_ast1448.py` | `TestRunAdhoc`, `TestAst1072ConversationalEnvelope`, concern test, `TestAst1879…` |
+| Revised — needle test also forbids `resolve_model_brain` and `brain_setting` in `agent.py` | source scan | `TestAst1879…` needle test |
+| Revised — non-LLM gate row uses `model_id: deepseek-v4-pro` (was red on the dev product too; green now) | `dispatcher.py` | `test_dispatcher.py::TestAst1944NonLlmGate::test_llm_key_without_server_key_still_skipped` |
+
+**Broken / obsolete:** `TestAst1948ModeOnTheWire` (7) retired → `TestAst1956SettingsOnTheWire`. `test_agent_ast1879.py::TestAst1879RouteHelpers::test_agent_llm_route_raises_without_mode` (3) and `::test_agent_llm_route_rejects_unknown_mode` retired (no mode). Renamed in place: `test_send_to_anthropic_receives_resolved_key_for_big_tier`, `test_craft_get_rubric_deepseek_big_forces_thinking_false`, `test_non_craft_kimi_big_keeps_thinking`, and the `TestAst1391` deepseek Big / Medium / Little / anthropic-Big floor nodes (the size split no longer exists).
+
+**Pre-existing reds:** whole-file runs of `tests/component/core` + `tests/component/external` on this tip show zero new failures against the same test tree on the `origin/tests` (dev) product. The 40 `test_agent.py` reds, 3 `test_agent_ast1448.py` reds and `test_anthropic.py::TestAst1190…` red are all baseline. `test_candidate.py` `TestAst901…` reds are order-dependent (green alone and at file level).
+
+**LOCKED_AT_100:** `--cov-branch` reports no missing line or partial branch in any AST-1956 hunk of `agent.py`, `anthropic.py` or `llm_compat.py`. Mutants all caught: debug line printing a constant, a truthy temperature check (drops 0.0), the craft guard removed, server extras overriding the agent's `provider`.
+
+**Integration:** none (no `tests/integration/` scenario reads agent settings, effort, temperature or provider).
+
+## QA test manifest (AST-1956)
+
+1. **Component (narrowed — must be all green, run in this order):**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestDoTask::test_rejects_unknown_or_misconfigured_tasks \
+  tests/component/core/test_agent.py::TestDoTask::test_returns_api_failure_and_stores_agent_data \
+  tests/component/core/test_agent.py::TestDoTask::test_do_task_stores_agent_data_for_craft_null_entity_type \
+  tests/component/core/test_agent.py::TestDoTask::test_decodes_top_level_json_string_encoded_payload \
+  tests/component/core/test_agent.py::TestDoTask::test_ast501_rejects_evaluate_jd_when_api_returns_bare_encoded_lines_without_envelope \
+  tests/component/core/test_agent.py::TestDoTask::test_ast501_rejects_evaluate_jd_when_agent_payload_is_structured_json_object \
+  tests/component/core/test_agent.py::TestDoTask::test_ast503_rejects_grade_do_when_api_returns_bare_encoded_lines_without_envelope \
+  tests/component/core/test_agent.py::TestDoTask::test_ast503_rejects_grade_do_when_agent_payload_is_structured_json_object \
+  tests/component/core/test_agent.py::TestDoTask::test_chains_run_next_when_configured \
+  tests/component/core/test_agent.py::TestDoTask::test_chain_entry_log \
+  tests/component/core/test_agent.py::TestDoTask::test_hop_boundary_log_on_run_next \
+  tests/component/core/test_agent.py::TestDoTask::test_debug_flag_passed_to_child \
+  tests/component/core/test_agent.py::TestDoTask::test_ignores_invalid_run_next \
+  tests/component/core/test_agent.py::TestAst492BrainSettingDoTask \
+  tests/component/core/test_agent.py::TestRunAdhoc \
+  tests/component/core/test_agent.py::TestAst531RunNextHopLedger \
+  tests/component/core/test_agent.py::TestAst515AdhocWorkbenchLedger \
+  tests/component/core/test_agent.py::TestAst1190DoTaskEmptyProviderError \
+  tests/component/core/test_agent.py::TestAst1298OrphanedJobClaimRelease \
+  tests/component/core/test_agent.py::TestAst903CraftRubricMaxTokensFloor \
+  tests/component/core/test_agent.py::TestAst1380CraftRubricThinkingOffAndFailureBanner \
+  tests/component/core/test_agent.py::TestAst1072ConversationalEnvelope \
+  tests/component/core/test_agent.py::TestAst1576CraftPersistOperative \
+  tests/component/core/test_agent.py::TestAst1264CandidateCraftSuccession::test_persist_craft_skips_hydrate_when_live_caller \
+  tests/component/core/test_agent.py::TestAst1264CandidateCraftSuccession::test_persist_craft_hydrate_hard_fails_without_live_caller \
+  tests/component/core/test_agent.py::TestAst1264CandidateCraftSuccession::test_persist_craft_reinjects_caller_on_recurse \
+  tests/component/core/test_agent.py::TestAst1391DeepseekBigOutputFloor \
+  tests/component/core/test_agent.py::TestAst1639CandidateIdSystemPrefix \
+  tests/component/core/test_agent.py::TestAst1683ContactBaseResumeCurrentRead \
+  tests/component/core/test_agent.py::TestAst1698HarvestSourceArtifactIds \
+  tests/component/core/test_agent.py::TestAst1700ThreadHarvestGenerativeLands::test_cover_letter_land_passes_harvest \
+  tests/component/core/test_agent.py::TestAst1700ThreadHarvestGenerativeLands::test_job_resume_land_still_passes_harvest_list \
+  tests/component/core/test_agent.py::TestAst1846DoTaskAgentFailureFlag \
+  tests/component/core/test_agent.py::TestAst1956SettingsOnTheWire \
+  tests/component/core/test_agent_ast1448.py::TestAst1448PersistPromptBeforeProvider::test_do_task_stores_prompt_before_provider_and_response_after \
+  tests/component/core/test_agent_ast1448.py::TestAst1448PersistPromptBeforeProvider::test_do_task_provider_raise_keeps_prompt_omits_response \
+  tests/component/core/test_agent_ast1448.py::TestAst1448PersistPromptBeforeProvider::test_do_task_storage_off_skips_prompt_and_response \
+  tests/component/core/test_agent_ast1448.py::TestAst1448PersistPromptBeforeProvider::test_do_task_prompt_persist_failure_still_calls_provider \
+  tests/component/core/test_agent_ast1448.py::TestAst1448PersistPromptBeforeProvider::test_do_task_debug_false_skips_persist_contract_lines \
+  tests/component/core/test_agent_ast1448.py::TestAst1448PersistPromptBeforeProvider::test_do_task_later_success_does_not_rewrite_interrupted_batch_prompts \
+  tests/component/core/test_agent_ast1448.py::TestAst1448PersistPromptBeforeProvider::test_workbench_stores_prompt_before_run_adhoc \
+  tests/component/core/test_agent_ast1448.py::TestAst1448PersistPromptBeforeProvider::test_workbench_raise_keeps_prompt_omits_response \
+  tests/component/core/test_dispatcher.py::TestAst1944NonLlmGate \
+  tests/component/external/test_llm_compat.py \
+  tests/component/external/test_anthropic.py::TestSendToAnthropic \
+  tests/component/external/test_anthropic.py::TestAst1956SettingsOnTheWire \
+  tests/component/core/test_agent_ast1879.py \
+  -q
+```
+
+2. **Whole files (informational — pre-existing reds only):**
+
+```bash
+.venv/bin/python -m pytest tests/component/core tests/component/external -q --tb=line
+```
+
+Every failure here must also fail with this test tree on the `origin/tests` (dev) product. Any other failure is real. `tests/component/ui/api/` is left out: `api_admin.py` still imports `resolve_model_brain` until AST-1957, so it does not collect on this sub alone.
+
+3. **AC 4 / parent AC 5 greps (both empty on the publish tip):**
+
+```bash
+rg -n "config_error|configuration_error" src/
+rg -n "_openrouter_pin|AGENT_MODE|OPENROUTER_QUANT_BRAIN_SIZE|resolve_model_brain|validate_agent_mode|brain_setting|brain_sizes|can_think|thinking_params" src/core/agent.py src/external/llm_compat.py src/external/anthropic.py
+```
+
+**Pass criterion:** item 1 green (185 passed on the publish tip), item 2 reds limited to the baseline set, item 3 empty. Not the zero-arg harness.
+
+### AST-1960 · AST-1954 (served host on the dispatch ledger)
+
+**Primary manifest** (this file). Siblings: [`../data/database/dispatch_ledger.md`](../data/database/dispatch_ledger.md) § AST-1960 (`host` column); AST-1959's `host` on the compat result is [`../external/llm_compat.md`](../external/llm_compat.md) § AST-1959.
+
+After `_send_to_server`, `do_task` writes `host` to the `dispatch_ledger` row for `log_batch_id.get()` (a dispatcher batch, or the hop row `_open_run_next_hop_ledger` set), via `asyncio.to_thread(database.update_dispatch_ledger, id, host=…)`. It writes only when a batch id is set **and** `result["success"]`. The value is `result["host"]`, else `get_llm_server(server_id)["label"]` (Anthropic-direct results carry no host). A raising ledger write is logged (`logger.exception`, "Ledger host write failed for batch …") and the call still succeeds. `TestAst1960LedgerHost` runs on `sqlite_in_memory` with a saved ledger row and stubs both send functions at `agent_mod`. Its `ledger` fixture snapshots the core conftest `_SCHEMA_FLAGS` through `monkeypatch` (`raising=False`) before requesting `sqlite_in_memory`. That fixture sets the flags with plain `setattr` and never restores them, so without the snapshot every later `do_task` test in the run skips schema-ensure against the harness DB and fails "no such table" on a fresh `data/` (24 reds in this manifest on a new worktree).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| New — AC 1 OpenRouter-routed success with `host: "DeepInfra"` → `get_dispatch_ledger(id)["host"] == "DeepInfra"` | `do_task` | `TestAst1960LedgerHost::test_ac1_compat_result_host_lands_on_ledger_row` |
+| New — AC 1 Anthropic-direct success, no `host` key → row host = `LLM_SERVER_CONFIG["anthropic"]["label"]` (`"Anthropic"`) | `do_task` | `…::test_ac1_anthropic_direct_records_server_label` |
+| New — failed call (carries the server label) does not overwrite a host already on the row | `do_task` | `…::test_failed_call_keeps_the_real_host` |
+| New — no `log_batch_id` → no ledger write | `do_task` | `…::test_no_batch_id_writes_nothing` |
+| New — ledger write raises → call still `success: True`, failure logged | `do_task` | `…::test_ledger_write_failure_never_fails_the_call` |
+| Revised — two-hop chain: each hop's host write (`(hop_id, {"host": "Anthropic"})`) lands on its own hop row before that hop's finalize; finalize updates still 2 × `COMPLETED` | `do_task` / hop ledger | `TestAst531RunNextHopLedger::test_two_hop_chain_creates_distinct_ledger_rows` |
+
+**Broken / obsolete:** `TestAst531RunNextHopLedger::test_two_hop_chain_creates_distinct_ledger_rows` (`len(updates) == 2`) — revised above. No other test counts `update_dispatch_ledger` calls.
+
+**Note:** existing `test_agent.py` tests that run a successful `do_task` under the `batch-1` token (no temp DB) now also send the host `UPDATE` to the harness DB (`ASTRAL_DB_DIR`, default `data/`). It matches no row, so nothing changes; left as is.
+
+`LOCKED_AT_100`: `--cov-branch` over `TestAst1960LedgerHost` reports no missing line or partial branch in the AST-1960 hunk of `agent.py`.
+
+**Integration:** none (no `tests/integration/` scenario calls `do_task` or reads the ledger; the conftest only resets `_dispatch_ledger_schema_ensured`).
+
+## QA test manifest (AST-1960)
+
+1. **Component (narrowed — must be all green, 67 on the publish tip):**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestAst1960LedgerHost \
+  tests/component/core/test_agent.py::TestAst531RunNextHopLedger \
+  tests/component/core/test_agent.py::TestAst515AdhocWorkbenchLedger \
+  tests/component/core/test_agent.py::TestAst1846DoTaskAgentFailureFlag \
+  tests/component/core/test_agent.py::TestAst1956SettingsOnTheWire \
+  tests/component/core/test_agent_ast1879.py \
+  tests/component/data/database/test_dispatch_ledger.py \
+  -q
+```
+
+2. **Whole files (informational — pre-existing reds only):**
+
+```bash
+.venv/bin/python -m pytest tests/component/core/test_agent.py tests/component/core/test_dispatcher.py -q --tb=line
+```
+
+Expect 40 reds in `test_agent.py` and 12 in `test_dispatcher.py`. Each one fails identically with this test tree on `origin/ftr/AST-1954-host-probe` product (no AST-1960). Causes: resume-section message drift, `KeyError: 'company_id'` / `'jobs'`, `empty agent_payload` wording, and others. Any other failure is real.
+
+3. **Boundary gate (expect no output):** `git diff origin/ftr/AST-1954-host-probe...HEAD --stat -- src/core/dispatcher.py src/external/ src/utils/`
+
+**Pass criterion:** item 1 green, item 2 limited to the baseline reds, item 3 empty. Not the zero-arg harness.
+
+### AST-2001 · AST-1884 (bug-repro — AST-1996 decode-line isolation, agent side)
+
+Test gap for **AST-1996** (`96bc0471d`): `_decode_payload` records grades-only trailing content (a token failing `_GRADE_SEG`, e.g. `DEC35`) in `decode_failures` (`astral_job_id`, `pos`, `reason` — reason text identical to the old `ValueError`) and skips that line; clean lines in the same payload still decode. Key present **only** when a line failed. `_meta` / `_notes` output types keep the tail as meta/notes (never a decode failure). Bad position, duplicate code (**AST-1513**) and the vet branch still raise for the whole payload; an X segment with nonzero confidence is a per-line `decode_failures` entry (since `f8d3f9a12`); a letter with confidence 0 decodes as `X0` (**AST-2124**, see AST-2125; was `{letter}1` under AST-2053). Routing / batch side: **`core/consult.md`** (**AST-2001**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Trailing content → `decode_failures` entry, `jobs == []` (flipped from raise; bad-position raise kept; `0|CRX2` → X-branch `decode_failures` entry) | `src/core/agent.py` (`_decode_payload`) | **`TestDecodePayload::test_rejects_bad_positions_and_records_trailing_meta`** (**bug-repro**) |
+| Repro A — malformed line 0 isolated, line 1 decodes (`DE/C/3`, `EC/C/3`, `OR/X/0`) | same | **`…::test_ast1996_malformed_line_isolated_clean_line_decodes`** (**bug-repro**) |
+| Clean payload has no `decode_failures` key | same | **`…::test_ast1996_clean_payload_has_no_decode_failures_key`** (guard) |
+| `grades_encoded_notes` tail stays `notes`, no `decode_failures` | same | **`…::test_ast1996_notes_type_tail_is_not_a_decode_failure`** (guard) |
+
+**Integration:** none.
+
+### AST-2057 · AST-2045 (bug-repro — AST-2053 letter-confidence-0 normalisation)
+
+Test gap for **AST-2053** (`2d1b73da1`): in `_decode_payload`'s non-vet encoded loop, a letter segment with confidence `0` (`{A-F}0`) decodes as the same letter with confidence `1` (no signal) — no `decode_failures` entry. Unchanged: X with nonzero confidence → `decode_failures`; letter confidence 6–9 fails `_GRADE_SEG` → trailing-content `decode_failures`; vet branch (`grades_encoded_vet_meta`) still raises on `LT{letter}0`. Statute: `astral.agent.confidence-bounds`.
+
+**Superseded by AST-2124 / AST-2125:** letter0 now decodes as `X0`, not `{letter}1`. The rows below cite the current asserts.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| `CFC0`/`SSC0`/`TCC0` line decodes as `X0`, both entities in `jobs`, no `decode_failures` key | `src/core/agent.py` (`_decode_payload`) | **`TestDecodePayload::test_ast2124_letter_conf0_decodes_as_x0`** (**bug-repro**) |
+| `0\|CRA7` trailing failure; `_notes` `CRF0` → `X/0` with notes kept; vet `LTA0` raises | same | **`…::test_ast2053_normalisation_boundaries`** (guard) |
+| `0\|CRA0` → `X/0` grade row (flipped from raise) | same | **`TestDecodeAndAuditBranches::test_skips_non_dict_payload_rows_and_invalid_confidence`** |
+| `0\|CRX2` → X-branch `decode_failures` entry (flipped from raise) | same | **`TestDecodePayload::test_rejects_bad_positions_and_records_trailing_meta`** |
+
+**Integration:** none.
+
+**QA test manifest (test-fix):**
+
+1. **[bug-repro]** `tests/component/core/test_agent.py::TestDecodePayload::test_ast2053_letter_conf0_normalised_to_conf1`.
+2. Decode classes: `pytest tests/component/core/test_agent.py -k "TestDecodePayload or TestDecodeAndAuditBranches"` → **12 passed, 0 failed**.
+3. `git diff origin/ftr/AST-2045-letter-conf0-normalize -- src/` empty (test-tree only).
+
+**Red/green record (qa-fix, test-gap sibling — product fix already on ftr):**
+
+- **Red** — pre-fix `src/core/agent.py` from `06df211db` (byte-identical to `055c53c2a`), swapped in temporarily: repro fails `['job-1'] == ['job-0', 'job-1']` (`CFC0` line went to `decode_failures`); `test_ast2053_normalisation_boundaries` fails at `_notes` `CRF0` (`IndexError`, no job row); `0|CRA0` rewrite fails (got `decode_failures` "non-X grade requires confidence 1-5, got 0"). 3 failed / 9 passed across the two decode classes.
+- **Green** — ftr tip `3d51b06c7` (AST-2053 `2d1b73da1` merged): 12 passed.
+- **Out of scope:** `TestDoTask::test_returns_decode_and_post_decode_validation_errors` is red on **both** trees at its first assert (`'empty agent_payload' in 'Agent failure: nope'` — failure-envelope drift, one of the pre-existing `test_agent.py` reds per AST-2057 Boundaries); its `0|CRX2` assert is never reached.
+
+### AST-2125 · AST-2116 (letter0 → X0 decode — AST-2124)
+
+**AST-2124** (`0d01e20d2`) changes `_decode_payload`'s non-vet encoded loop: a letter segment with confidence `0` (`{A-F}0`) is stored as `X0`, replacing AST-2053's `{letter}1`. `X0` is always no signal. Unchanged: X with nonzero confidence → `decode_failures`; letter confidence 6–9 → trailing-content `decode_failures`; vet (`grades_encoded_vet_meta`) still raises on `LT{letter}0`. Statute: `astral.agent.confidence-bounds`. Hydrate side: **`core/consult.md`** (AST-2125).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| `CFC0`/`SSC0`/`TCC0` → `X/0`, both entities in `jobs`, no `decode_failures` key | `src/core/agent.py` (`_decode_payload`) | **`TestDecodePayload::test_ast2124_letter_conf0_decodes_as_x0`** |
+| `_notes` `CRF0` → `X/0`, notes kept; `0\|CRA7` trailing failure; vet `LTA0` raises | same | **`…::test_ast2053_normalisation_boundaries`** |
+| `0\|CRA0` → `X/0` grade row | same | **`TestDecodeAndAuditBranches::test_skips_non_dict_payload_rows_and_invalid_confidence`** |
+
+**Integration:** none.
+
+### AST-2090 · AST-2015 (bug-repro — AST-2089 salvaged_response on rubric envelope failure, agent side)
+
+Test gap for **AST-2089** (`f3897829d`). In `do_task`'s AST-1839 branch (rubric-encoded, envelope `status == "failure"`), when `ctx.batch_entities` is present, the payload goes through the success-path bar (`_normalize_rubric_task_response` → `_coerce_schema_str_fields_from_list` → `_validate_response_schema` → `_validate_grade_confidence_in_payload`). If that yields ≥1 job / company it is returned as `salvaged_response`; otherwise `salvaged_response` is `None`. The failure result is otherwise unchanged (`success False`, `agent_failure True`, `parsed_response None`, `error "Agent failure: <note>"` — **AST-1846** rows above still hold). Consumer: **`core/consult.md`** (**AST-2090**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Clean lines salvaged (empty job-ID slot → `company_job_id None`, title/link in place); AST-1846 fields unchanged | `src/core/agent.py` (`do_task`) | **`TestAst2089DoTaskSalvagedResponse::test_envelope_failure_salvages_clean_lines`** (**bug-repro**) |
+| Empty / letter-pipe garbage / bad-confidence-only payload → `None` | same | **`…::test_no_salvage_without_a_clean_line`** (guard, 3 params) |
+| Schema-invalid decode → `None` | same | **`…::test_no_salvage_when_schema_invalid`** (guard) |
+| No `batch_entities` → `None` | same | **`…::test_no_salvage_without_batch_entities`** (guard) |
+
+**Integration:** none.
+
+**Red/green record (qa-fix, test-gap sibling — product fix already on ftr):** red with pre-fix `22ff5e47a` `src/core/agent.py` + `src/core/consult.py` overlaid (scratch worktree) — repro fails `assert None == {'jobs': …}` (no `salvaged_response`); guards pass. Green on ftr tip `e8119b1da`. Run command and consult half: **`core/consult.md`** § AST-2090.
+
+### AST-2006 · AST-2000 (bug — runtime empty-token guard)
+
+**Parent:** [AST-1986](https://linear.app/astralcareermatch/issue/AST-1986) (orphaned mini-parent). **Product:** [AST-2000](https://linear.app/astralcareermatch/issue/AST-2000); canon carve-out [AST-2005](https://linear.app/astralcareermatch/issue/AST-2005) (`patt.task.dispatch-retry`). **Publish:** `origin/sub/AST-1986/AST-2006-empty-token-guard-tests`. `do_task` resolves every segment with an `empty_tokens` collector; any blank recognized token in a segment that is actually sent → no provider call, no hop ledger, one ERROR (`<index> | <task> skipped — empty tokens …`), result carries `empty_tokens` + `empty_token_task` (the failing hop's key on a mid-chain hop). Agent content counts only when a segment references `{$SELECTED_AGENT}`; intake-snapshot-replaced segments are dropped. AST-530 `_mid_chain_empty_caller_tokens` is folded into this guard. Siblings: config collector **`utils/config.md`**, routing **`core/consult.md`** / **`core/roster.md`** / **`core/candidate.md`** / **`core/intake.md`**, probe **`ui/api/api_admin.md`** (all § AST-2006).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| **[bug-repro]** entry hop blank `{$DEAL_BREAKERS}` → provider not called; `empty_tokens == ["DEAL_BREAKERS"]`, `empty_token_task`; one ERROR; no `resolved to empty` WARNING | `do_task` guard | **`TestAst2006DoTaskEmptyTokenGuard::test_bug_repro_entry_hop_blank_token_is_not_sent`** |
+| Populated prompt → sent once, no `empty_tokens` key | same | **`…::test_populated_prompt_is_sent_without_empty_tokens`** |
+| Whitespace-only value is empty | same | **`…::test_whitespace_only_value_counts_as_empty`** |
+| `{$SELECTED_AGENT}` rule (no reference → sent; reference → guarded) | same | **`…::test_blank_agent_content_ignored_without_selected_agent_reference`** · **`…::test_blank_agent_content_guarded_when_selected_agent_referenced`** |
+| Intake snapshot drops replaced segment (control: no snapshot → guarded) | same | **`…::test_intake_snapshot_replaced_segment_not_guarded`** (2 params) |
+| Mid-chain blank `{$CALLER_SYSTEM}` → `empty_tokens`, `empty_token_task` = hop key, one ERROR | same | **`TestDoTask::test_mid_chain_empty_caller_skips_api`** (rewritten in place) |
+
+Fixtures: module helper `_ast2006_guard_ctx` (candidate row with name columns → token view from ctx, no DB); class-local `_rows` / `_ctx` patch `candidate.get_candidate` + `company_search_terms_joined_text` so sent prompts need no DB. Shared `_agent_rows` unchanged (token-free).
+
+**Broken / obsolete:** `TestDoTask::test_mid_chain_empty_caller_skips_api` — pinned AST-530 contract (`"CALLER_SYSTEM" in error`) and was already red on its unstubbed caller hydration (`job not found: job-1`). Rewritten in place: stubs `_hydrate_caller_chain_context` (AST-1264 seam), asserts the AST-2000 result fields + single ERROR.
+
+**Red / green:** `[bug-repro]` red on `origin/dev` `65e23b71b` (provider called with `[astral-cand-1]Deal breakers: `), green on `origin/ftr/AST-1986-runtime-empty-token-error`. 29 of the 39 new/rewritten nodes are red on dev; the 10 dev-green are controls / unchanged behavior. Clean detached worktrees, temp `ASTRAL_DB_DIR`.
+
+**Pre-existing failures (not AST-2006):** hermetic full `tests/component` run on the ftr product: 359 failing nodes without this pass, 357 with it — zero new; fixed = the rewritten mid-chain test plus `TestIntakeSessionFlow::test_background_initiate_failure_writes_assistant_error` (not touched — timing-dependent, not claimed). Five collection errors (`test_meteorite_email.py`, `test_page_intake.py`, `test_surfer.py`, `database/test_meteorites.py`, `database/test_surfer_batches.py`) are pre-existing. Out of scope.
+
+**Integration:** none — no `tests/integration/` scenario exercises `do_task` prompt assembly or empty-token routing.
+
+## QA test manifest — AST-2006
+
+1. **New + rewritten pytest (required):**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestAst2006DoTaskEmptyTokenGuard \
+  tests/component/core/test_agent.py::TestDoTask::test_mid_chain_empty_caller_skips_api \
+  tests/component/utils/test_config.py::TestAst2006ResolveTokensEmptyCollector \
+  tests/component/utils/test_config.py::TestAst1779EmptyRenderForPrompts \
+  tests/component/core/test_consult.py::TestAst2006EmptyTokenRouting \
+  tests/component/core/test_roster.py::TestAst2006EmptyTokenCompanyTerminals \
+  tests/component/core/test_candidate.py::TestAst2006RequestedArtifactsEmptyTokens \
+  tests/component/core/test_intake.py::TestAst2006IntakeEmptyTokenLedger \
+  tests/component/ui/api/test_api_admin.py::TestAst2006EnrichTasksProbeSilent \
+  -q
+```
+
+2. **[bug-repro] flip:** `tests/component/core/test_agent.py::TestAst2006DoTaskEmptyTokenGuard::test_bug_repro_entry_hop_blank_token_is_not_sent` — red on `origin/dev`, green on ftr.
+
+### AST-2008 · AST-2007 (do_task ledger call outcome)
+
+Post-call ledger write runs on every call with a batch id: `llm_call_seconds` (timesheet duration) + `llm_failure_class` (NULL on success, `failure_class` or `provider_failed` on failure); `host` still success-only (AST-1960). **Revised:** `TestAst1960LedgerHost::test_ledger_write_failure_never_fails_the_call` (parametrized ok/failed; message names "call outcome"). **New:** `…::test_ast2008_success_writes_duration_and_null_class`, `…::test_ast2008_timeout_writes_outcome_and_keeps_host`, `…::test_ast2008_failed_call_kwargs_carry_no_host`, `…::test_ast2008_last_call_wins_and_unclassified_is_provider_failed` (Decision A). Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-2008.
+
+### AST-2029 · AST-2028 (store agent data with real entity ids)
+
+**Parent:** [AST-2028](https://linear.app/astralcareermatch/issue/AST-2028). **Publish:** `origin/sub/AST-2028/AST-2029-store-agent-data-with-entity-ids`. `do_task` builds `_store_ids` once from `ctx["batch_entities"]` (`company_id` for company tasks, else `astral_job_id`; all-or-nothing, D3) and passes `entity_ids=` to `_store_prompt_blocks` (hydrates the **live** `NO_CACHE` row only, D4) and every `_store_response_block` call (hydrated text is also the hash input). Wire blocks are built from unhydrated text. Helpers: **`utils/formatting.md`** § AST-2029.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Live NO_CACHE hydrated, prompt-text NO_CACHE not (seven-segment + legacy); no ids → positional | `src/core/agent.py` (`_store_prompt_blocks`) | **`tests/component/core/test_agent_ast2029.py::TestAst2029StorePromptBlocks`** |
+| RESPONSE hydrated + id hash over hydrated text; no ids → unchanged | same (`_store_response_block`) | **`…::TestAst2029StoreResponseBlock`** |
+| AC1 stored ids / wire positional · AC2 `[index=NNN]` · AC3 failed RESPONSE · company ids · D3 partial/non-dict/empty · success split by id | same (`do_task`) | **`…::TestAst2029DoTaskStoresIds`** |
+
+**Broken / obsolete:** none — existing store fakes take `**kwargs`; no exact-kwarg assertion on the store mocks.
+
+**Red / green:** 26 of 31 new nodes red on `origin/dev` `0e81d63a8`; the 5 dev-green are the no-ids / D3 guards.
+
+**Pre-existing failures (not AST-2029):** `tests/component/core/test_agent.py` + `test_formatting.py` have 45 failing nodes on both `origin/tests` (dev product) and the AST-2029 tip — identical list (resume-section validation text, `KeyError: 'company_id'` / `'jobs'` decode shapes, missing `config.CRAFT_RUBRIC_MAX_TOKENS` / `tracker.persist_advise_job_resume_coded_advice`, token-resolve drift). `test_agent_ast1448.py` has 3 pre-existing reds. Out of scope; manifest is narrowed to the new classes.
+
+**Integration:** none — no `tests/integration/` scenario reads stored `agent_data` block text.
+
+## QA test manifest — AST-2029
+
+1. **New pytest (required):**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent_ast2029.py \
+  tests/component/utils/test_formatting.py::TestAst2029HydrateEntityLabels \
+  tests/component/utils/test_formatting.py::TestAst2029SplitEntitySegments \
+  -q
+```
+
+2. **AC4 scope gate:** `git diff origin/dev...origin/sub/AST-2028/AST-2029-store-agent-data-with-entity-ids -- src/ui/api/ src/data/` is empty.
+
+**Pass criterion:** item 1 green, item 2 empty. Not the zero-arg harness (pre-existing reds above).
+
+### AST-2030 · AST-2028 (slice agent-data reads and agent story by entity)
+
+**Parent:** [AST-2028](https://linear.app/astralcareermatch/issue/AST-2028). **Publish:** `origin/sub/AST-2028/AST-2030-slice-agent-data-reads-by-entity`. New `_slice_entity_block(content, entity_id)` over `split_entity_segments` (AST-2029): `{}` → whole block, this id → its segment, other ids only → `None` (D1). `get_agent_data(entity_id=…)` slices `NO_CACHE` / `TASK` / `RESPONSE` and **drops** `None` rows; `SYSTEM` / `CACHE_*` pass through. `get_entity_agent_story` slices `NO_CACHE` / `RESPONSE` for **every** task when the entity has `astral_job_id` / `short_name` (candidates stay whole, D5); `None` → `""` (D2). `_filter_response_block` deleted (D3); `_extract_entity_segment` stays for `get_entity_response`.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| AC4 tagged slice · AC5 chunk-2 rows dropped · AC7 legacy whole · D6 shared prompt whole · CACHE/SYSTEM pass-through · no mutation | `src/core/agent.py` (`get_agent_data`) | **`tests/component/core/test_agent_ast2030.py::TestAst2030GetAgentDataSlice`** |
+| AC6 unscored story slice · other chunk `""` · legacy whole · TASK unsliced · company by `short_name` · candidate whole | same (`get_entity_agent_story`) | **`…::TestAst2030AgentStorySlice`** |
+| Helper three outcomes (retargeted) | same (`_slice_entity_block`) | **`tests/component/core/test_agent.py::TestSliceEntityBlock`** |
+
+**Broken / obsolete (revised in place):**
+- `TestFilterResponseBlock` (both methods) → renamed **`TestSliceEntityBlock`**, retargeted onto `_slice_entity_block`; id-less `jobs[]` now whole, other-id `jobs[]` now `None`.
+- `TestAgentDataAccess::test_get_agent_data_keeps_row_when_segment_missing` → **`…_drops_row_when_segment_missing`** (AC5, JSON `jobs[]` shape).
+- `TestEntitySegmentAccess::test_get_agent_data_keeps_rows_without_matching_segment` → **`…_drops_rows_without_matching_segment`** (AC5, tagged shape; SYSTEM kept).
+- `TestEntityAgentStoryBranches::test_scored_response_without_job_id_keeps_content` → asserts the whole block (AC7 / D4; was `""`).
+- AST-1355 table row + run line retargeted to `TestSliceEntityBlock`.
+
+**Red / green:** all 8 revised/new behaviour nodes red on `origin/ftr/AST-2028-…` (pre-AST-2030); 9 guards green there.
+
+**Pre-existing failures:** same 45 as § AST-2029 — unchanged by this ticket (failure list identical after revision).
+
+**Integration:** none — no `tests/integration/` scenario calls `/api/agent_data` or the agent story.
+
+## QA test manifest — AST-2030
+
+1. **New + revised pytest (required):**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent_ast2030.py \
+  tests/component/core/test_agent.py::TestSliceEntityBlock \
+  tests/component/core/test_agent.py::TestAgentDataAccess \
+  tests/component/core/test_agent.py::TestEntitySegmentAccess \
+  tests/component/core/test_agent.py::TestEntityAgentStoryBranches \
+  tests/component/core/test_agent_ast2029.py \
+  -q
+```
+
+2. **AC8 scope gate:** `git diff origin/dev...origin/sub/AST-2028/AST-2030-slice-agent-data-reads-by-entity -- src/ui/api/ src/data/` is empty.
+3. **Deleted helper gone:** `rg -n "_filter_response_block" src/ tests/` → no matches.
+
+**Pass criterion:** item 1 green, items 2–3 empty. Not the zero-arg harness (pre-existing reds).
+
+### AST-2052 · AST-2028 (bug — job run modal reads like one Each-mode call)
+
+**Parent:** [AST-2028](https://linear.app/astralcareermatch/issue/AST-2028). **Publish:** `origin/sub/AST-2028/AST-2052-run-modal-each-mode-layout`. Plan: `docs/features/agent/ast-2030-slice-agent-data-reads-and-agent-story-by-entity.md` § Bug: AST-2052. `get_agent_data(entity_id=X)` returns live `NO_CACHE` / `RESPONSE` as an Each-mode call for X would have stored them (JSON `companies[]` / `jobs[]` filtered to X's item, compact `json.dumps`; tagged text = preamble before the first `[entity_id=` + X's segment) and omits blank rows. Story keeps the bare slice.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| **[bug-repro]** plan Repro fixture → envelope + preamble kept, blank `CACHE_C` omitted | `src/core/agent.py` (`get_agent_data`, `_entity_call_view`) | **`tests/component/core/test_agent_ast2052.py::TestAst2052EntityCallView::test_bug_repro_entity_read_is_one_each_mode_call`** |
+| D2-2052 non-last entity keeps opener, not closing `"}` · `companies[]` with numeric id · blank rows (`None` / whitespace) omitted | same | **`…::TestAst2052EntityCallView`** (other three nodes) |
+| Still holds: AC5 other chunk dropped + AC7 legacy whole · batch view byte-identical · story bare slice | same | **`…::TestAst2052StillHolds`** (green pre- and post-fix) |
+
+**Broken / obsolete (rewritten):** `test_agent_ast2030.py::TestAst2030GetAgentDataSlice::test_ac4_ac5_ac7_entity_read` pinned a blank `TASK` row as `("TASK", "")`; the blank fixture row and its expectation are removed, so the test stays a pure AC4/AC5/AC7 check (blank-row omission lives in the AST-2052 class).
+
+**Red / green:** 4 `TestAst2052EntityCallView` nodes red on the pre-fix tree (`135df3dee`) for the plan's root cause (bare segment / blank rows kept); `TestAst2052StillHolds` + rewritten AST-2030 test green there. All 22 nodes in item 1 green against the plan's Proposed change applied in a throwaway tree (not committed — `test-fix` confirms on the real fix).
+
+## QA test manifest — AST-2052
+
+1. **Repro + guards (required):**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent_ast2052.py \
+  tests/component/core/test_agent_ast2030.py \
+  tests/component/core/test_agent.py::TestAgentDataAccess \
+  tests/component/core/test_agent.py::TestEntitySegmentAccess \
+  tests/component/core/test_agent.py::TestSliceEntityBlock \
+  -q
+```
+
+2. **[bug-repro] flip:** `tests/component/core/test_agent_ast2052.py::TestAst2052EntityCallView::test_bug_repro_entity_read_is_one_each_mode_call` — red pre-fix, green after `make-fix`.
+3. **Scope gate:** `git diff origin/dev...origin/sub/AST-2028/AST-2052-run-modal-each-mode-layout -- src/ui/api/ src/data/ src/ui/frontend/ src/utils/` shows no AST-2052 product change.
+
+### AST-2093 · AST-2012 (batch-unique row index → entity map decode; test gap AST-2095)
+
+**Parent:** [AST-2012](https://linear.app/astralcareermatch/issue/AST-2012). **Product:** AST-2093 on `origin/ftr/AST-2012-grade-batch-unique-index` @ `759a19247`. **Tests:** AST-2095, publish `origin/sub/AST-2012/AST-2095-grade-batch-unique-index-tests`. Plan: `docs/features/agent/response-validation-layers.md` § Bug: AST-2093 + § Bug: AST-2095. When `ctx["batch_index_map"]` is truthy, `_decode_payload` (job/company loop) binds each line by its leading index through the map, not `batch_entities[pos]`. An unknown index warns and skips. An index on more than one line is one `decode_failures` row (first sight) and every line carrying it is dropped. Per-line failures carry the mapped entity's id. No map or an empty map keeps positional decode. The vet branch takes no map. Consult / dispatcher rows: [`consult.md`](consult.md) § AST-2093, [`dispatcher.md`](dispatcher.md) § AST-2093.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| **[bug-repro]** chunk-1 map `{20..39}`, 20 × `000\|THA4\|QQB3` → `{"jobs": []}`, no `decode_failures` | `src/core/agent.py` (`_decode_payload`) | **`tests/component/core/test_agent.py::TestAst2093BatchIndexMapDecode::test_bug_repro_chunk1_all_000_echo_grades_nothing`** |
+| **[bug-repro]** `020`…`039` → 20 rows `J20`…`J39` | same | **`::TestAst2093BatchIndexMapDecode::test_bug_repro_global_indexes_map_to_their_own_jobs`** |
+| **[bug-repro]** chunk-0 map, 3 × `000` + `001` → one failure `duplicate row index 000 on 3 lines` (first-sight + already-reported arcs), `001` still grades | same | **`::…::test_bug_repro_duplicate_index_is_one_failure_and_drops_its_lines`** |
+| Unknown index `555` → WARNING `index 555 not in this batch`, skipped (map-miss branch) | same | **`::…::test_unknown_index_skipped_with_warning`** |
+| Map pre-pass `abc\|THA4` → `ValueError` "bad position field" (pre-pass raise branch) | same | **`::…::test_map_prepass_bad_position_raises`** |
+| Trailing junk (`grades_encoded`) and `THX3` → `decode_failures` id `J20`, `pos` 20 from the map | same | **`::…::test_map_path_per_line_failures_carry_mapped_entity`** |
+| No map / `{}` → positional decode unchanged (guard) | same | **`::…::test_without_map_decode_stays_positional[no_map/empty_map]`** |
+
+**Kept unchanged:** `TestDecodePayload`, `TestAst697PrefilterBracketLinkDecode`, `TestAst880GradesEncodedVetMetaDecode`, and the five AST-2093 qa-handoff nodes in `test_dispatcher.py`.
+
+**Red / green:** the `[bug-repro]` nodes were run against a `git archive 823d37605` export (the pre-fix ftr base), and all 8 failed for the plan's root cause. Decode: chunk-1 echo → 20 rows all `J20`; `020`…`039` → 0 rows; duplicate → `['J20','J20','J20','J21']`. Consult: rows labeled `000: [index=000]: jd`. Dispatcher: `batch_index_offset` absent (`None`); no `repeat_processed`; loop total 50, not 27. On ftr tip `759a19247` all 23 new nodes pass. The failing-id set across `test_agent.py` / `test_consult.py` / `test_dispatcher.py` is identical before and after these tests (80 pre-existing reds). Every line and branch added by AST-2093 in `agent.py` / `consult.py` / `dispatcher.py` is covered.
+
+**Integration:** none — do not invent.
+
+## QA test manifest — AST-2095 (AST-2093 coverage)
+
+1. **New nodes (required):**
+
+```bash
+/home/susan/astral/.venv/bin/python -m pytest \
+  tests/component/core/test_agent.py::TestAst2093BatchIndexMapDecode \
+  tests/component/core/test_consult.py::TestAst2093EncodedDispatchIndex \
+  tests/component/core/test_dispatcher.py::TestAst2093BatchIndexDispatch \
+  -q
+```
+
+Expect **23 passed**.
+
+2. **[bug-repro] flip (8 nodes):** `TestAst2093BatchIndexMapDecode::test_bug_repro_*` (3), `TestAst2093EncodedDispatchIndex::test_bug_repro_rows_carry_one_global_label`, `TestAst2093BatchIndexDispatch::test_bug_repro_*` (4). Red on a `git archive 823d37605` export with these three test files copied in; green on the publish tip.
+3. **No-regression (required):** `/home/susan/astral/.venv/bin/python -m pytest tests/component/core/test_agent.py tests/component/core/test_consult.py tests/component/core/test_dispatcher.py -q -rf`. The failing-id set must equal the pre-existing ftr reds (80), and no `TestAst2093*` node may fail.
+4. **Scope gate:** `git diff origin/ftr/AST-2012-grade-batch-unique-index...origin/sub/AST-2012/AST-2095-grade-batch-unique-index-tests -- src/ data/` is empty.
+
+### AST-2127 · AST-2112 (bug-repro — AST-2126 zero-segment notes line)
+
+`_decode_payload` (`grades_encoded_notes`): a line with no grade segment is a per-entity `decode_failures` entry (`[task] no grade segments in encoded line: '<line>'`) and is skipped; other lines decode. AST-1996 notes-tail guard (`test_ast1996_notes_type_tail_is_not_a_decode_failure`) unchanged — that line has a segment. Primary manifest: **`core/consult.md`** § AST-2127.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| `000\|AAA3\|ok` + `001\|just notes` → job-0 row (`notes == "ok"`), job-1 a decode failure at pos 1 | `src/core/agent.py` (`_decode_payload`) | **`TestDecodePayload::test_ast2126_notes_line_without_segments_is_decode_failure`** |
+
+**Fixture revision:** 13 vector-feedback tests (`TestAst1486FeedbackEntityIdStamp`, `TestAst724VectorFeedbackCapture`, `TestAst809VectorFeedbackBatchMetadata`, `TestAst816VectorFeedbackCapture`, `TestAst820VectorFeedbackDebugTrace`, `TestAst862CleanParseFeedbackBlock`) seed `GA` / `CL` / `DO` instead of `G1` / `CLR` / `DOR` (sync now rejects non-`[A-Z]{2}`); review strings follow (`GARACOVK`, `CLRACOVK`, `DORACOVK`).
+
+### AST-2180 · AST-2172 (graders on the structured path; decoder retired)
+
+**Primary manifest** for AST-2180. Other blocks: [`consult.md`](consult.md) § AST-2180, [`roster.md`](roster.md) § AST-2180, [`../ui/api/api_admin.md`](../ui/api/api_admin.md) § AST-2180, [`../utils/config.md`](../utils/config.md) § AST-2180.
+
+Every grader `do_task` builds `grade_forced_tool(task_key, ctx)` (`submit_grades`, schema from `grade_call_codes` + `grade_row_ids`; `vector_reviews` added to a copy of `agent_performance` for vector-feedback tasks) and sends it with the structured timestamp prefix. The reply is the tool input, hydrated by `grade_schema.hydrate_grade_tool_input`. A grader ctx with no rubric codes logs ERROR and returns `success: False` before send (intentional `_RETRY`). The text decoder (`_decode_payload` and the consult normalize cluster) is gone. Provider calls are mocked (`send_to_anthropic` / `send_to_llm_compat`); there are no live calls, and AC 8 is Susan's staging check.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| New — vet grades its fixed code; other graders follow `vector_labels` order | `grade_call_codes` | **`TestAst2180GraderStructuredPath::test_grade_call_codes_vet_is_fixed_code_others_follow_vector_labels`** |
+| New — non-grader → `None`; grader with no codes raises | `grade_forced_tool` | **`::test_grade_forced_tool_none_for_non_grader_and_raises_without_codes`** |
+| New — tool name, row ids, row codes; `vector_reviews` on feedback tasks only, shared `_AGENT_PERFORMANCE_SCHEMA` unmutated | `grade_forced_tool` | **`::test_grade_forced_tool_schema_rows_codes_and_vector_reviews`** |
+| New — grader sends `forced_tool` + structured prefix; non-grader sends `None` + envelope prefix | `do_task`, `_send_to_server`, `_assemble_blocks_seven_segment` | **`::test_grader_sends_forced_tool_and_structured_prefix`** · **`::test_non_grader_sends_no_tool_and_envelope_prefix`** |
+| New — no rubric codes → one ERROR, `success: False`, nothing sent | `do_task` | **`::test_grader_without_rubric_codes_skips_before_send`** |
+| New — AC 5 (agent): row 001 missing a code → `decode_failures` for job-2, no grades / no X; row 000 hydrates | `do_task` + real hydrate | **`::test_missing_code_row_is_a_decode_failure_not_an_x_grade`** |
+| New — AC 6: Linear pattern (incl. `duplicate vector code \{`) absent from `src` | source scan | **`TestAst2180DecoderRetiredFromSource::test_ac6_decoder_symbols_absent_from_src`** |
+| New — AC 7: no `"grades_encoded` literal in `src/core`, `src/external`, `src/ui/api` | source scan | **`::test_ac7_no_grades_encoded_literal_outside_config`** |
+| Replaced — envelope / bare-text replies (AST-501 / AST-503) | `do_task` | **`TestDoTask::test_non_object_reply_fails_the_hop`** (2) · **`::test_agent_payload_wrapper_grades_nothing`** (2) · **`::test_compat_tool_input_hydrates_into_jobs`** |
+| Revised — grader fixtures carry `vector_labels` and answer with tool input (`_tool_input`, `_rubric_evaluate_jd_ctx`, `_CR_LABELS`, `_grader_llm_ok`, `_patch_hydrate`) | `do_task` | ~50 nodes across `TestDoTask`, `TestAst2089DoTaskSalvagedResponse`, `TestAst1846DoTaskAgentFailureFlag`, AST-897 / AST-1190 classes, `test_agent_ast1448.py`, `test_agent_ast2029.py` |
+
+**Retired (decoder gone):** `TestDecodePayload` (11), `TestAst2093BatchIndexMapDecode` (7), `TestAst1513DuplicateRubricCodes`, `TestAst880GradesEncodedVetMetaDecode` (3), `TestAst603RubricNormalize` (6), `TestAst697PrefilterBracketLinkDecode` (4), `TestAst699LetterPipePositionPrefix` (3), `TestAst2138JobLinkPrefixNotGrade` (3), `TestAst1221RuntimeAliasAgent::test_strict_encoded_batch_via_master_resolve`, `TestDecodeNotesAndChain::test_skips_empty_notes_tail`, `TestDoTaskFinalBranches::test_decode_notes_tail_is_preserved`, and the four `TestDoTask::test_ast50{1,3}_rejects_*` tests. Their behaviours that survive now live in the hydrate ([`grade_schema.md`](grade_schema.md)): index map → `TestGradeRowIds::test_index_map_wins_and_sorts`; per-entity isolation → `TestHydrateLightCheck::test_bad_row_fails_only_its_entity`; missing code never X → `::test_missing_code_is_never_defaulted_to_x`; vet website / letters → `TestHydrateVet`; extras (notes, links) → `TestHydrateExtraFields`. Duplicate codes cannot occur, because a JSON object has one key per code.
+
+**Masked:** `TestDoTask::test_decodes_encoded_payload_and_stores_success` (`KeyError: 'append'`) and `::test_rejects_json_schema_and_confidence_failures` (`draft_job_resume` base_resume) were red before this build for unrelated causes. Their fixtures are revised to tool input, but they stay red on those causes.
+
+**Repro:** every new node in this manifest (agent, roster, api_admin) is red on the pre-build product files (`002a4a490`: `agent.py`, `consult.py`, `roster.py`, `api_admin.py`, `formatting.py`) and green on the tip. The exception is consult's AC 5 routing test, which is green on both by design: hydrate and consult routing predate this build, so it guards them.
+
+**Integration:** none. No `tests/integration/` scenario references the decoder, `agent_payload` or `grades_encoded`.
+
+**AST-2180 QA test manifest:**
+
+```bash
+ASTRAL_DB_DIR=$PWD/data /home/susan/astral/.venv/bin/python -m pytest -q \
+  tests/component/core/test_agent.py::TestAst2180GraderStructuredPath \
+  tests/component/core/test_agent.py::TestAst2180DecoderRetiredFromSource \
+  "tests/component/core/test_agent.py::TestDoTask::test_non_object_reply_fails_the_hop" \
+  "tests/component/core/test_agent.py::TestDoTask::test_agent_payload_wrapper_grades_nothing" \
+  tests/component/core/test_agent.py::TestDoTask::test_compat_tool_input_hydrates_into_jobs \
+  tests/component/core/test_agent.py::TestAst2089DoTaskSalvagedResponse \
+  tests/component/core/test_consult.py::TestEncodedDecodeIsolation \
+  tests/component/core/test_roster.py::TestAst2180LightCheckReasons \
+  tests/component/ui/api/test_api_admin.py::TestAst2180AdhocForcedTool \
+  tests/component/ui/api/test_api_admin.py::TestAdhocRoutes::test_adhoc_preview_and_test \
+  tests/component/utils/test_config.py::TestAst1055MeteoriteLikeUpshotTasks
+git checkout -- data/
+```
+
+**Regression (no new reds):** `tests/component --continue-on-collection-errors`. The failing-id set on the tip is a subset of the 351 failures that were red before this build (337 on the tip). The five collection errors (`test_meteorite_email`, `test_page_intake`, `test_surfer`, `test_meteorites`, `test_surfer_batches`) are pre-existing. `test_intake::test_background_initiate_failure_writes_assistant_error` is order-dependent: it passes alone and in its own file.
+
+**Pass criterion:** pytest green on the manifest lines, not the zero-arg harness or branch-lock gate.
+
+### AST-2232 · AST-2226 (story agent_name)
+
+**Parent:** [AST-2226](https://linear.app/astralcareermatch/issue/AST-2226). **Publish:** `origin/sub/AST-2226/AST-2232-agent-name-detail-enrichment-tab-config`.
+
+`get_entity_agent_story` attaches `agent_name` from the task's agent row when non-empty (parallel to `task_name`); omits when blank / missing `agent_id`. Primary manifest: **`docs/test-bible/core/tracker.md`** § AST-2232.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Attach / omit `agent_name` | `src/core/agent.py` | **`TestAst2232AgentStoryAgentName`** |
+| Regression `task_name` | same | **`TestAst1550AgentStoryTaskName`** |
+
+**Broken / obsolete:** none — additive field.
+
+**Integration:** none.

@@ -2,7 +2,7 @@
 Meteorite placeholder company ensure, legacy create, and public land_meteorite (AST-1470 / AST-1493 / AST-1495).
 
 Dispatch `stage_meteorite` / `scrape_meteorite` / `check_unique_meteorite` / `land_meteorite`
-rows (AST-1560 / AST-1774 / AST-1775) are table transition runners — not Ruth classify hops; dispatcher
+rows (AST-1560 / AST-1774 / AST-1775) are table transition runners — stage Ruth-classifies only raw unclassified NEW rows (AST-2034); dispatcher
 custom branch only. Stage/scrape landable success → CHECK_UNIQUE; unique hop → READY;
 peer Ruth path → DUPLICATE | READY; land remains READY → LANDED.
 
@@ -15,11 +15,13 @@ per-row Ruth company_stem ensure → tracker.save_meteorite_job. check_inbox (AS
 aliases → fetch → inline classify → fan-out staging rows → archive; no Gmail I/O here —
 inbox owns fetch/archive.
 create_meteorite_job accepts optional stem= for legacy callers.
-create_contact_meteorite (AST-1517 contact-task create) wraps scrape-or-text → create.
+sanitize_contact_text (AST-2061): nh3 plain-text sanitize for every Contact-originated meteorite write.
+insert_slack_meteorite (AST-2034): raw Slack blob → NEW unclassified; run_stage_meteorite Ruth-classifies it.
 """
 from __future__ import annotations
 
 import functools
+import html as html_module
 import inspect
 import os
 import re
@@ -27,6 +29,8 @@ import uuid
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from typing import Any, Dict, List, Optional, Tuple
+
+import nh3
 
 from src.core.candidate import email_aliases_for_candidate, get_candidate
 from src.core.inbox import (
@@ -54,6 +58,7 @@ from src.data.database import (
 )
 from src.external.telescope import get_visible_text
 from src.utils.config import (
+    CANDIDATE_METEORITE_EDIT_CONFIG,
     METEORITE_BOT_BLOCKED_NOTIFY_CONFIG,
     METEORITE_CONFIG,
     METEORITE_EMAIL_MAILBOX_CONFIG,
@@ -63,20 +68,24 @@ from src.utils.config import (
     STAGE_METEORITE_CONFIG,
     TASK_CONFIG,
     TRACKER_CONFIG,
+    dispatch_claim_states,
     format_contact_timezone_clock,
     format_job_link_breadcrumb,
 )
 from src.utils.formatting import normalize_pasted_list_email_html, uuid_path_segment_from_url
-from src.utils.logging import get_logger, log_batch_id, log_debug
+from src.utils.logging import get_logger, log_batch_id, log_candidate_id, log_debug
 
 logger = get_logger(__name__)
 
 
-def _hold_log_batch(batch_id: str):
-    """Stamp log_batch_id only when a parent dispatch batch is not already set."""
+def _hold_log_batch(batch_id: str, candidate_id: Optional[str]):
+    """Stamp log_batch_id + log_candidate_id only when a parent dispatch batch is not already set.
+
+    Returns (batch_token, candidate_token) to reset, or None when the parent batch owns both.
+    """
     if log_batch_id.get():
         return None
-    return log_batch_id.set(batch_id)
+    return log_batch_id.set(batch_id), log_candidate_id.set(candidate_id or None)
 
 
 def _resolve_company_job_id(ai_company_job_id: str, job_link: str) -> str:
@@ -409,144 +418,6 @@ def create_meteorite_job(
     }
 
 
-def _contact_param_looks_like_url(param: str) -> bool:
-    """True when param is a single-line URL / bare host-path (link mode)."""
-    s = (param or "").strip()
-    if not s:
-        return False
-    if "\n" in s or "\r" in s:
-        return False
-    if " " in s or "\t" in s:
-        return False
-    if "://" in s:
-        return True
-    return "." in s and not s.startswith(".")
-
-
-# ---- Contact-task create (AST-1517) ----
-
-@_with_log_debug
-async def create_contact_meteorite(
-    astral_candidate_id: str,
-    param: str,
-    *,
-    debug: bool = False,
-) -> Dict[str, Any]:
-    """Contact-task: land meteorite from URL (scrape-first) or pasted page text."""
-    cid = (astral_candidate_id or "").strip()
-    if not cid:
-        _warn_item(
-            "create_contact_meteorite",
-            "no candidate id",
-            "This contact create is not landing a job",
-        )
-        return {
-            "ok": False,
-            "error": "no_candidate",
-            "task_key": "create_contact_meteorite",
-        }
-
-    raw = (param or "").strip()
-    if not raw:
-        _warn_item(
-            cid,
-            "param required",
-            "This contact create is not landing a job",
-        )
-        return {
-            "ok": False,
-            "error": "param_required",
-            "task_key": "create_contact_meteorite",
-        }
-
-    scrape: Optional[Dict[str, Any]] = None
-    if _contact_param_looks_like_url(raw):
-        mode = "link"
-        # Late-import: gazer imports create_meteorite_job at module top.
-        from src.core.gazer import contact_task_gazer_scrape
-
-        logger.debug("Calling contact_task_gazer_scrape: [candidate_id=%s, url=%s]", cid, raw)
-        scrape = await contact_task_gazer_scrape(cid, raw, debug=debug)
-        logger.debug("Response from contact_task_gazer_scrape: %s", scrape)
-        if not isinstance(scrape, dict) or not scrape.get("ok"):
-            err = (
-                (scrape.get("error") if isinstance(scrape, dict) else "scrape_failed")
-                or "scrape_failed"
-            )
-            _warn_item(
-                cid,
-                f"scrape failed ({err})",
-                "This contact create is not landing a job",
-            )
-            return {
-                "ok": False,
-                "error": err,
-                "task_key": "create_contact_meteorite",
-                "mode": mode,
-                "scrape": scrape if isinstance(scrape, dict) else None,
-            }
-        visible = (scrape.get("visible_text") or "").strip()
-        if not visible:
-            _warn_item(
-                cid,
-                "scrape returned empty visible text",
-                "This contact create is not landing a job",
-            )
-            return {
-                "ok": False,
-                "error": "empty_visible_text",
-                "task_key": "create_contact_meteorite",
-                "mode": mode,
-                "scrape": scrape,
-            }
-        html_body = visible
-        job_link = (scrape.get("final_url") or scrape.get("url") or raw).strip()
-    else:
-        mode = "text"
-        html_body = raw
-        job_link = None
-
-    logger.debug(
-        "Calling create_meteorite_job: [candidate_id=%s, mode=%s, job_link=%s]",
-        cid, mode, job_link,
-    )
-    try:
-        created = create_meteorite_job(
-            cid,
-            html_body,
-            job_link=job_link,
-            debug=debug,
-        )
-    except Exception as exc:
-        logger.exception(
-            "%s | create_contact_meteorite %s\n  %s: %s\n  This contact create is not landing a job",
-            cid,
-            mode,
-            type(exc).__name__,
-            exc,
-        )
-        return {
-            "ok": False,
-            "error": str(exc),
-            "task_key": "create_contact_meteorite",
-            "mode": mode,
-        }
-    logger.debug("Response from create_meteorite_job: %s", created)
-
-    out = {
-        "ok": True,
-        "task_key": "create_contact_meteorite",
-        "mode": mode,
-        "astral_candidate_id": cid,
-        "result": created,
-    }
-    if mode == "link" and isinstance(scrape, dict):
-        out["url"] = scrape.get("url")
-        out["final_url"] = scrape.get("final_url")
-        out["page_status"] = scrape.get("page_status")
-    return out
-
-
 async def _land_fetch_link_text(url: str, *, debug: bool = False) -> tuple[str, str]:
     """Return (visible_text, final_url) via Playwright; empty text on failure."""
     _ = debug
@@ -637,7 +508,7 @@ async def enrich_meteorite_land_packet(
 
     batch_id = f"{task_key}-land-{uuid.uuid4()}"
     do_index = f"{task_key}_batch_{batch_id}"
-    token = _hold_log_batch(batch_id)
+    token = _hold_log_batch(batch_id, cid)
     try:
         logger.debug(
             "Calling agent.do_task: [task_key=%s, index=%s, scraps=%s]",
@@ -699,7 +570,8 @@ async def enrich_meteorite_land_packet(
         return {"success": True, "jobs": out_jobs, "error": None, "batch_id": batch_id}
     finally:
         if token is not None:
-            log_batch_id.reset(token)
+            log_batch_id.reset(token[0])
+            log_candidate_id.reset(token[1])
 
 
 def _land_rollup_outcome(outcomes: List[Dict[str, Any]]) -> str:
@@ -729,6 +601,7 @@ async def _classify_stage_blob(
     source_kind: str,
     source_id: str,
     ctx: Optional[Dict[str, Any]] = None,
+    batch_id: Optional[str] = None,
     debug: bool = False,
 ) -> Dict[str, Any]:
     """Ruth classify via stage_meteorite do_task. No insert."""
@@ -751,15 +624,16 @@ async def _classify_stage_blob(
     # Source handle for core source-refs; Ruth classifies CONTENT.
     live_content = f"SOURCE_KIND: {kind}\nSOURCE_ID: {sid}\nCONTENT:\n{body}"
     task_key = STAGE_METEORITE_CONFIG["task_key"]
-    batch_id = f"{task_key}-stage-{uuid.uuid4()}"
+    # Dispatch hop passes its claim id so agent_data joins the claim (AST-2034); ingress callers mint.
+    batch_id = (batch_id or "").strip() or f"{task_key}-stage-{uuid.uuid4()}"
     do_index = f"{task_key}_batch_{batch_id}"
     task_ctx: Dict[str, Any] = {**(ctx or {}), "astral_candidate_id": cid}
     if ctx and ctx.get("candidate_data") is not None:
         task_ctx["candidate_data"] = ctx["candidate_data"]
-    if ctx and ctx.get("candidate_api_key") is not None:
-        task_ctx["candidate_api_key"] = ctx["candidate_api_key"]
+    if ctx and ctx.get("candidate_api_keys") is not None:
+        task_ctx["candidate_api_keys"] = ctx["candidate_api_keys"]
 
-    token = _hold_log_batch(batch_id)
+    token = _hold_log_batch(batch_id, cid)
     try:
         logger.debug(
             "Calling agent.do_task: [task_key=%s, index=%s, source_kind=%s]",
@@ -825,7 +699,8 @@ async def _classify_stage_blob(
         }
     finally:
         if token is not None:
-            log_batch_id.reset(token)
+            log_batch_id.reset(token[0])
+            log_candidate_id.reset(token[1])
 
 
 def _stage_field(job: Dict[str, Any], key: str) -> Optional[str]:
@@ -848,7 +723,7 @@ def _new_email_error_row(
         "candidate_id": cid,
         "source_kind": kind,
         "source_id": sid,
-        "state": "NEW_EMAIL_ERROR",
+        "state": METEORITE_INGRESS_DISPATCH_CONFIG["stage_error_state"],
         "classify_outcome": classify_outcome,
         "content": None,
         "link": None,
@@ -870,6 +745,86 @@ def _insert_stage_rows(row_dicts: List[Dict[str, Any]]) -> Tuple[List[int], Opti
         _meteorite_state_info(row_id, row["state"])
     logger.debug("End stage row info loop after %s items", len(ids))
     return ids, None
+
+
+def sanitize_contact_text(text: str) -> str:
+    """Plain text for Contact-originated meteorite writes (AST-2061) — nh3, no allowed tags.
+
+    Callers unwrap Slack <url|label> link markup first (nh3 would read it as a tag).
+    unescape → nh3.clean(tags=set()) → unescape: Slack's entity encoding is undone so
+    encoded markup (&lt;script&gt;) is stripped, not stored; URLs keep a literal &.
+    """
+    raw = text if isinstance(text, str) else ""
+    # nh3 drops every tag (keeps inner text), drops <script>/<style> content and comments.
+    cleaned = nh3.clean(html_module.unescape(raw), tags=set())
+    return html_module.unescape(cleaned).strip()
+
+
+@_with_log_debug
+def insert_slack_meteorite(
+    candidate_id: str,
+    payload: str,
+    *,
+    source_id: str,
+    thread_ts: Optional[str] = None,
+    debug: bool = False,
+) -> Dict[str, Any]:
+    """Save one raw Slack blob at NEW, unclassified; Ruth classifies at the stage hop (AST-2034).
+
+    Soft-fails: never raises into Contact. Returns {ok, meteorite_id, error}.
+    """
+    cid = (candidate_id or "").strip()
+    body = sanitize_contact_text(payload)
+    sid = (source_id or "").strip()
+    anchor = (thread_ts or "").strip()
+
+    def _miss(why: str) -> Dict[str, Any]:
+        _warn_item(cid or "insert_slack_meteorite", why, "This Slack blob is not being saved")
+        return {"ok": False, "meteorite_id": None, "error": why}
+
+    # First validation miss wins.
+    if not cid:
+        return _miss("candidate_id is required")
+    if not body:
+        return _miss("payload is required")
+    if not sid:
+        return _miss("source_id is required")
+
+    # Link vs text is Ruth's call at the stage hop — store the sanitized payload (AST-2061).
+    row = {
+        "candidate_id": cid,
+        "source_kind": "slack",
+        "source_id": sid,
+        "state": "NEW",
+        "content": body,
+        "link": None,
+        "classify_outcome": None,
+    }
+    try:
+        ids, mismatch = _insert_stage_rows([row])
+    except Exception as exc:
+        logger.exception(
+            "%s | insert_slack_meteorite %s\n  %s: %s\n  This Slack blob is not being saved",
+            cid, sid, type(exc).__name__, exc,
+        )
+        return {"ok": False, "meteorite_id": None, "error": str(exc)}
+    if mismatch or not ids:
+        return _miss(mismatch or "insert returned no id")
+    mid = int(ids[0])
+
+    # insert_meteorite_rows does not persist estelle_thread_ts; stamp it after insert.
+    if anchor:
+        try:
+            logger.debug("Calling update_meteorite: [id=%s, estelle_thread_ts=%s]", mid, anchor)
+            update_meteorite(mid, estelle_thread_ts=anchor)
+            logger.debug("Response from update_meteorite: ok")
+        except Exception as exc:
+            # Row is saved at NEW and will stage; only bot-wall notify thread lookups lose the anchor.
+            logger.exception(
+                "%s | meteorite %s estelle_thread_ts\n  %s: %s\n  The row is saved at NEW without its Slack thread anchor",
+                cid, mid, type(exc).__name__, exc,
+            )
+    return {"ok": True, "meteorite_id": mid, "error": None}
 
 
 @_with_log_debug
@@ -1013,6 +968,13 @@ async def stage_meteorite(
         )
         if map_err:
             failed = _save_error(str(map_err), outcome, batch_id=batch_id)
+            if not failed:
+                # _save_error only logs its own insert failure; surface the map error once here.
+                _warn_item(
+                    cid,
+                    f"{kind} {sid} classify jobs did not map ({outcome}): {map_err}",
+                    "Recorded as an ERROR meteorite row; no job rows were staged",
+                )
             return failed or _err(str(map_err), batch_id=batch_id, stage_outcome=outcome)
         # AST-1785: state from final link scheme — http → SCRAPE_LINK even on text outcomes
         job_dicts = [j for j in (classify.get("jobs") or []) if isinstance(j, dict)]
@@ -1051,6 +1013,13 @@ async def stage_meteorite(
 
     err = classify.get("error") or "stage failed"
     failed = _save_error(err, outcome, batch_id=batch_id)
+    if not failed:
+        # _save_error only logs its own insert failure; surface the classify error once here.
+        _warn_item(
+            cid,
+            f"{kind} {sid} classify failed ({outcome or 'no outcome'}): {err}",
+            "Recorded as an ERROR meteorite row; no job rows were staged",
+        )
     return failed or _err(err, batch_id=batch_id, stage_outcome=outcome)
 
 
@@ -1350,18 +1319,23 @@ def _map_classify_jobs_to_meteorite_rows(
             return [], "text outcome produced no jobs"
         for job in rows:
             text = (job.get("jd_text") or "").strip() if isinstance(job.get("jd_text"), str) else ""
-            # Prefer Ruth jd_text; blank → classify ingress blob (subject+body), not map fail
-            if not text:
-                fallback = ingress_blob.strip() if isinstance(ingress_blob, str) else ""
-                if not fallback:
-                    return [], "text scrap missing jd_text"
-                text = fallback
-            link: Optional[str] = None
             # AST-1785: http(s) job_link wins over email breadcrumb on text outcomes
             job_link = (
                 (job.get("job_link") or "").strip()
                 if isinstance(job.get("job_link"), str) else ""
             )
+            # Prefer Ruth jd_text; blank → classify ingress blob (AST-1756) — except link-only
+            # combo scraps under multi_jd_inline (AST-1796): blank + http job_link must not
+            # swallow the whole email as content.
+            if not text:
+                if _is_http_url(job_link):
+                    text = ""
+                else:
+                    fallback = ingress_blob.strip() if isinstance(ingress_blob, str) else ""
+                    if not fallback:
+                        return [], "text scrap missing jd_text"
+                    text = fallback
+            link: Optional[str] = None
             if _is_http_url(job_link):
                 link = job_link
                 logger.debug("Preferring http job_link over breadcrumb: %s", link)
@@ -1650,9 +1624,109 @@ def _row_miss(row_id: Any, cid: str, why: str, next_step: str) -> None:
     _warn_item(f"meteorite {row_id} for {cid}", why, next_step)
 
 
+async def _classify_new_stage_row(
+    row: Dict[str, Any], *, batch_id: str, debug: bool = False
+) -> Tuple[Optional[Dict[str, Any]], str]:
+    """Ruth-classify one raw NEW row in place (AST-2034).
+
+    Returns (routable_row, "") when job 1 was written onto the row, or
+    (None, summary_key) when the row reached a terminal state here.
+    """
+    row_id = int(row["id"])
+    cid = str(row.get("candidate_id") or "").strip()
+    kind = (row.get("source_kind") or "").strip()
+    sid = (row.get("source_id") or "").strip()
+    blob = row.get("content") if isinstance(row.get("content"), str) else ""
+
+    err_state = METEORITE_INGRESS_DISPATCH_CONFIG["stage_error_state"]
+
+    def _fail(error: str, outcome: Optional[str] = None) -> Tuple[None, str]:
+        # stage_error_state is the human-reset stage-failure hold (reset to NEW to retry).
+        update_meteorite(row_id, state=err_state, error=error, classify_outcome=outcome)
+        _meteorite_state_info(row_id, err_state, from_state="NEW")
+        _row_miss(row_id, cid, error, f"This row is {err_state}; reset to NEW to retry")
+        return None, "total_errors"
+
+    # Candidate context mirrors stage_meteorite (Ruth task requires the candidate key).
+    cand = get_candidate(cid)
+    if not cand:
+        return _fail(f"candidate not found: {cid}")
+    ctx = dict(cand) if isinstance(cand, dict) else {}
+    ctx["astral_candidate_id"] = cid
+
+    try:
+        logger.debug(
+            "Calling _classify_stage_blob: [meteorite_id=%s, source_kind=%s, batch_id=%s]",
+            row_id, kind, batch_id,
+        )
+        classify = await _classify_stage_blob(
+            cid, blob, source_kind=kind, source_id=sid, ctx=ctx,
+            batch_id=batch_id, debug=debug,
+        )
+        logger.debug("Response from _classify_stage_blob: %s", classify)
+    except Exception as exc:
+        # logger.exception carries who/why/next — no _fail, which would double-warn.
+        logger.exception(
+            "%s | meteorite %s classify\n  %s: %s\n  This row is %s",
+            cid, row_id, type(exc).__name__, exc, err_state,
+        )
+        update_meteorite(row_id, state=err_state, error=str(exc))
+        _meteorite_state_info(row_id, err_state, from_state="NEW")
+        return None, "total_errors"
+
+    # Empty blob, bad source_kind, do_task failure, invalid outcome all land here.
+    outcome = classify.get("outcome")
+    if not classify.get("success"):
+        return _fail(classify.get("error") or "stage failed", outcome)
+
+    # Skip → NOT_A_JOB counts as failed, not error (AST-1742 / AST-1751).
+    if outcome in STAGE_METEORITE_CONFIG["skip_outcomes"]:
+        update_meteorite(row_id, state="NOT_A_JOB", classify_outcome=outcome)
+        _meteorite_state_info(row_id, "NOT_A_JOB", from_state="NEW")
+        return None, "total_failed"
+
+    jobs = [j for j in (classify.get("jobs") or []) if isinstance(j, dict)]
+    mapped, map_err = _map_classify_jobs_to_meteorite_rows(
+        outcome, jobs, candidate_id=cid, source_kind=kind, source_id=sid,
+        timezone_key=_candidate_contact_timezone(cid), ingress_blob=blob,
+    )
+    if map_err or not mapped:
+        return _fail(str(map_err or "classify produced no rows"), outcome)
+    # Ruth's title/employer ride on each mapped row, same as stage_meteorite.
+    for m, job in zip(mapped, jobs):
+        m["job_title"] = _stage_field(job, "job_title")
+        m["employer_name"] = _stage_field(job, "employer_name")
+
+    # Job 1 overwrites the raw row so it matches a classified ingress row's shape.
+    col = METEORITE_CONFIG["electronic_contact_column"]
+    first = {k: mapped[0].get(k) for k in (
+        "classify_outcome", "content", "link", "job_title", "employer_name", col,
+    )}
+    # Row keeps NEW; the caller's classified branch picks the next state this pass.
+    update_meteorite(row_id, **first)
+
+    # Jobs 2..N: unclaimed classified NEW siblings; the next stage tick routes them.
+    siblings = [{**m, "state": "NEW"} for m in mapped[1:]]
+    if siblings:
+        try:
+            _ids, mismatch = _insert_stage_rows(siblings)
+        except Exception as exc:
+            logger.exception(
+                "%s | meteorite %s fan-out\n  %s: %s\n  The first posting still routes; %s sibling postings were not staged",
+                cid, row_id, type(exc).__name__, exc, len(siblings),
+            )
+        else:
+            if mismatch:
+                _row_miss(
+                    row_id, cid, mismatch,
+                    "The first posting still routes; some sibling postings may be missing",
+                )
+    return {**row, **first}, ""
+
+
 @_with_log_debug
 async def run_stage_meteorite(task: Dict[str, Any], *, debug: bool = False) -> Dict[str, int]:
-    """Dispatch runner: NEW → SCRAPE_LINK | CHECK_UNIQUE (AST-1560 / AST-1774)."""
+    """Dispatch runner: NEW → SCRAPE_LINK | CHECK_UNIQUE; unclassified NEW → Ruth classify first (AST-1560 / AST-1774 / AST-2034)."""
     cfg = METEORITE_INGRESS_DISPATCH_CONFIG
     batch_size = int((task or {}).get("batch_size") or cfg["batch_size"])
     batch_id = str((task or {}).get("entity_batch_id") or "").strip()
@@ -1682,25 +1756,27 @@ async def run_stage_meteorite(task: Dict[str, Any], *, debug: bool = False) -> D
             try:
                 outcome = (row.get("classify_outcome") or "").strip()
                 if not outcome:
-                    update_meteorite(row_id, state="SCRAPE_ERROR", error="missing classify_outcome")
-                    _row_miss(
-                        row_id, cid, "missing classify_outcome", "This row is SCRAPE_ERROR",
+                    # AST-2034: raw NEW (e.g. Slack /add-job) — Ruth classifies, then fall through.
+                    classified, miss_key = await _classify_new_stage_row(
+                        row, batch_id=batch_id, debug=debug,
                     )
-                    # AST-1751: ERROR arms bump total_errors only — not total_failed.
-                    summary["total_errors"] += 1
-                    continue
+                    if classified is None:
+                        summary[miss_key] += 1
+                        continue
+                    row = classified
+                    outcome = (row.get("classify_outcome") or "").strip()
                 if outcome in STAGE_METEORITE_CONFIG["skip_outcomes"]:
-                    update_meteorite(row_id, state="SCRAPE_ERROR", error="skip outcome on row")
+                    update_meteorite(row_id, state=cfg["stage_unparseable_state"], error="skip outcome on row")
                     _row_miss(
-                        row_id, cid, "skip outcome on row", "This row is SCRAPE_ERROR",
+                        row_id, cid, "skip outcome on row", f"This row is {cfg["stage_unparseable_state"]}",
                     )
                     summary["total_errors"] += 1
                     continue
                 if outcome in STAGE_METEORITE_CONFIG["url_scrape_outcomes"]:
                     link = (row.get("link") or "").strip()
                     if not _is_http_url(link):
-                        update_meteorite(row_id, state="SCRAPE_ERROR", error="missing link")
-                        _row_miss(row_id, cid, "missing link", "This row is SCRAPE_ERROR")
+                        update_meteorite(row_id, state=cfg["stage_unparseable_state"], error="missing link")
+                        _row_miss(row_id, cid, "missing link", f"This row is {cfg["stage_unparseable_state"]}")
                         summary["total_errors"] += 1
                         continue
                     update_meteorite(row_id, state="SCRAPE_LINK", link=link)
@@ -1710,8 +1786,8 @@ async def run_stage_meteorite(task: Dict[str, Any], *, debug: bool = False) -> D
                 if outcome in STAGE_METEORITE_CONFIG["text_source_ref_outcomes"]:
                     content = (row.get("content") or "").strip()
                     if not content:
-                        update_meteorite(row_id, state="SCRAPE_ERROR", error="missing content")
-                        _row_miss(row_id, cid, "missing content", "This row is SCRAPE_ERROR")
+                        update_meteorite(row_id, state=cfg["stage_unparseable_state"], error="missing content")
+                        _row_miss(row_id, cid, "missing content", f"This row is {cfg["stage_unparseable_state"]}")
                         summary["total_errors"] += 1
                         continue
                     # AST-1703: email text rows must already carry breadcrumb on link.
@@ -1720,10 +1796,10 @@ async def run_stage_meteorite(task: Dict[str, Any], *, debug: bool = False) -> D
                     link = (row.get("link") or "").strip()
                     if kind == "email" and not link:
                         update_meteorite(
-                            row_id, state="SCRAPE_ERROR", error="missing breadcrumb link",
+                            row_id, state=cfg["stage_unparseable_state"], error="missing breadcrumb link",
                         )
                         _row_miss(
-                            row_id, cid, "missing breadcrumb link", "This row is SCRAPE_ERROR",
+                            row_id, cid, "missing breadcrumb link", f"This row is {cfg["stage_unparseable_state"]}",
                         )
                         summary["total_errors"] += 1
                         continue
@@ -1737,8 +1813,8 @@ async def run_stage_meteorite(task: Dict[str, Any], *, debug: bool = False) -> D
                     summary["total_passed"] += 1
                     continue
                 err = f"unhandled classify_outcome: {outcome}"
-                update_meteorite(row_id, state="SCRAPE_ERROR", error=err)
-                _row_miss(row_id, cid, err, "This row is SCRAPE_ERROR")
+                update_meteorite(row_id, state=cfg["stage_unparseable_state"], error=err)
+                _row_miss(row_id, cid, err, f"This row is {cfg["stage_unparseable_state"]}")
                 summary["total_errors"] += 1
             except Exception as exc:
                 summary["total_errors"] += 1
@@ -1754,7 +1830,8 @@ async def run_stage_meteorite(task: Dict[str, Any], *, debug: bool = False) -> D
 
 @_with_log_debug
 async def run_scrape_meteorite(task: Dict[str, Any], *, debug: bool = False) -> Dict[str, int]:
-    """Dispatch runner: SCRAPE_LINK → CHECK_UNIQUE | BOT_BLOCKED | LINK_EXPIRED | SCRAPE_ERROR (AST-1560 / AST-1774)."""
+    """Dispatch runner: SCRAPE_LINK | SCRAPE_LINK_RETRY → CHECK_UNIQUE | BOT_BLOCKED_SCRAPE_METEORITE |
+    JD_SCRAPE_FAIL_* | SCRAPE_LINK_RETRY | ERROR_SCRAPE_METEORITE (AST-1560 / AST-1774)."""
     from src.core.gazer import _CONTACT_PAGE_STATUS, _classify_jd
 
     cfg = METEORITE_INGRESS_DISPATCH_CONFIG
@@ -1773,7 +1850,10 @@ async def run_scrape_meteorite(task: Dict[str, Any], *, debug: bool = False) -> 
         "Calling claim_meteorite_batch: [batch_id=%s, state=%s, limit=%s, candidate_id=%s]",
         batch_id, cfg["scrape_trigger_state"], batch_size, entity_candidate_id,
     )
-    claim_meteorite_batch(batch_id, cfg["scrape_trigger_state"], limit=batch_size, candidate_id=entity_candidate_id)
+    claim_meteorite_batch(
+        batch_id, cfg["scrape_trigger_state"], limit=batch_size, candidate_id=entity_candidate_id,
+        states=dispatch_claim_states(cfg["scrape_trigger_state"], "meteorite"),
+    )
     rows = get_meteorite_batch(batch_id)
     logger.debug("Response from get_meteorite_batch: %s", rows)
     if not rows:
@@ -1786,10 +1866,14 @@ async def run_scrape_meteorite(task: Dict[str, Any], *, debug: bool = False) -> 
             row_id = int(row["id"])
             cid = str(row.get("candidate_id") or "")
             link = (row.get("link") or "").strip()
+            from_state = (row.get("state") or "").strip() or cfg["scrape_trigger_state"]
+            # First failure holds on the retry companion; a failure from the companion is terminal
+            # (patt.task.dispatch-retry).
+            fail_dest = cfg["scrape_error_state"] if from_state == cfg["scrape_retry_state"] else cfg["scrape_retry_state"]
             try:
                 if not _is_http_url(link):
-                    update_meteorite(row_id, state="SCRAPE_ERROR", error="missing link")
-                    _row_miss(row_id, cid, "missing link", "This row is SCRAPE_ERROR")
+                    update_meteorite(row_id, state=fail_dest, error="missing link")
+                    _row_miss(row_id, cid, "missing link", f"This row is {fail_dest}")
                     # AST-1751: ERROR arms bump total_errors only — not total_failed.
                     summary["total_errors"] += 1
                     continue
@@ -1803,9 +1887,9 @@ async def run_scrape_meteorite(task: Dict[str, Any], *, debug: bool = False) -> 
                     _row_miss(
                         row_id, cid,
                         f"scrape blocked at {link}",
-                        "This row is BOT_BLOCKED",
+                        f"This row is {status_map['blocked']}",
                     )
-                    # AST-1751: scrape BOT_BLOCKED is fail-only (not pass, not error).
+                    # AST-1751: scrape bot-blocked is fail-only (not pass, not error).
                     summary["total_failed"] += 1
                     continue
 
@@ -1817,7 +1901,7 @@ async def run_scrape_meteorite(task: Dict[str, Any], *, debug: bool = False) -> 
                         content=visible_text,
                         link=final_url or link,
                     )
-                    _meteorite_state_info(row_id, ok_state, from_state="SCRAPE_LINK")
+                    _meteorite_state_info(row_id, ok_state, from_state=from_state)
                     summary["total_passed"] += 1
                     continue
 
@@ -1857,10 +1941,10 @@ async def run_scrape_meteorite(task: Dict[str, Any], *, debug: bool = False) -> 
                         state=status_map[page_status],
                         error=err,
                     )
-                    _row_miss(row_id, cid, err, "This row is LINK_EXPIRED")
+                    _row_miss(row_id, cid, err, f"This row is {status_map[page_status]}")
                     summary["total_failed"] += 1
                     continue
-                state = status_map.get(page_status, "SCRAPE_ERROR")
+                state = status_map.get(page_status, fail_dest)
                 update_meteorite(row_id, state=state, error=err)
                 _row_miss(row_id, cid, err, f"This row is {state}")
                 summary["total_errors"] += 1
@@ -1978,7 +2062,7 @@ async def _review_duplicate_meteorite_hook(
     peer_key = REVIEW_DUPLICATE_METEORITE_CONFIG["peer_id_response_key"]
     task_ctx: Dict[str, Any] = {"astral_candidate_id": cid}
     do_index = f"{task_key}_{row_id}_{batch_id}"
-    token = _hold_log_batch(batch_id)
+    token = _hold_log_batch(batch_id, cid)
     try:
         logger.debug(
             "Calling agent.do_task: [task_key=%s, index=%s, peer_ids=%s]",
@@ -1994,7 +2078,8 @@ async def _review_duplicate_meteorite_hook(
         logger.debug("Response from agent.do_task: %s", result)
     finally:
         if token is not None:
-            log_batch_id.reset(token)
+            log_batch_id.reset(token[0])
+            log_candidate_id.reset(token[1])
 
     if not result.get("success"):
         _warn_item(
@@ -2100,7 +2185,7 @@ async def run_check_unique_meteorite(task: Dict[str, Any], *, debug: bool = Fals
 
 @_with_log_debug
 async def run_land_meteorite(task: Dict[str, Any], *, debug: bool = False) -> Dict[str, int]:
-    """Dispatch runner: READY|BOT_BLOCKED(+content) → LANDED + job create (AST-1560 / AST-1693)."""
+    """Dispatch runner: READY|BOT_BLOCKED_SCRAPE_METEORITE(+content) → LANDED + job create (AST-1560 / AST-1693)."""
     cfg = METEORITE_INGRESS_DISPATCH_CONFIG
     batch_size = int((task or {}).get("batch_size") or cfg["batch_size"])
     batch_id = str((task or {}).get("entity_batch_id") or "").strip()
@@ -2112,7 +2197,8 @@ async def run_land_meteorite(task: Dict[str, Any], *, debug: bool = False) -> Di
         METEORITE_CONFIG["land_outcome_duplicate_skip"],
         METEORITE_CONFIG["land_outcome_superseded"],
     )
-    land_states = ["READY", "BOT_BLOCKED"]
+    bot_state = METEORITE_BOT_BLOCKED_NOTIFY_CONFIG["trigger_state"]
+    land_states = [cfg["land_trigger_state"], bot_state]
 
     entity_candidate_id = str((task or {}).get("candidate_id") or "").strip()
     if not entity_candidate_id:
@@ -2145,15 +2231,15 @@ async def run_land_meteorite(task: Dict[str, Any], *, debug: bool = False) -> Di
                 content = (row.get("content") or "").strip()
                 from_state = (row.get("state") or "").strip()
                 if not content:
-                    # Empty BOT_BLOCKED stays for Estelle paste (AST-1561); READY → ERROR.
-                    if from_state == "BOT_BLOCKED":
+                    # Empty bot-blocked row stays for Estelle paste (AST-1561); READY → ERROR.
+                    if from_state == bot_state:
                         logger.debug(
-                            "land skip empty BOT_BLOCKED meteorite %s for AST-1561",
-                            row_id,
+                            "land skip empty %s meteorite %s for AST-1561",
+                            bot_state, row_id,
                         )
                         continue
-                    update_meteorite(row_id, state="SCRAPE_ERROR", error="missing content")
-                    _row_miss(row_id, cid, "missing content", "This row is SCRAPE_ERROR")
+                    update_meteorite(row_id, state=cfg["land_error_state"], error="missing content")
+                    _row_miss(row_id, cid, "missing content", f"This row is {cfg['land_error_state']}")
                     # AST-1751: ERROR arms bump total_errors only — not total_failed.
                     summary["total_errors"] += 1
                     continue
@@ -2188,8 +2274,8 @@ async def run_land_meteorite(task: Dict[str, Any], *, debug: bool = False) -> Di
                     continue
 
                 err = str(save.get("error") or "land failed")
-                update_meteorite(row_id, state="SCRAPE_ERROR", error=err)
-                _row_miss(row_id, cid, err, "This row is SCRAPE_ERROR")
+                update_meteorite(row_id, state=cfg["land_error_state"], error=err)
+                _row_miss(row_id, cid, err, f"This row is {cfg['land_error_state']}")
                 summary["total_errors"] += 1
             except Exception as exc:
                 summary["total_errors"] += 1
@@ -2207,7 +2293,7 @@ async def run_land_meteorite(task: Dict[str, Any], *, debug: bool = False) -> Di
 async def run_notify_meteorite_bot_blocked(
     task: Dict[str, Any], *, debug: bool = False
 ) -> Dict[str, int]:
-    """Dispatch runner: BOT_BLOCKED → Estelle DM + nag → ABANDONED (AST-1561)."""
+    """Dispatch runner: BOT_BLOCKED_SCRAPE_METEORITE → Estelle DM + nag → ABANDONED (AST-1561)."""
     cfg = METEORITE_BOT_BLOCKED_NOTIFY_CONFIG
     batch_size = int((task or {}).get("batch_size") or cfg["batch_size"])
     batch_id = str((task or {}).get("entity_batch_id") or "").strip()
@@ -2238,11 +2324,11 @@ async def run_notify_meteorite_bot_blocked(
             cid = str(row.get("candidate_id") or "")
             nag_count = int(row.get("nag_count") or 0)
             try:
-                # AST-1693: contentful BOT_BLOCKED belongs to land, not Estelle DM.
+                # AST-1693: a contentful bot-blocked row belongs to land, not Estelle DM.
                 if (row.get("content") or "").strip():
                     logger.debug(
-                        "notify skip contentful BOT_BLOCKED meteorite %s for land",
-                        row_id,
+                        "notify skip contentful %s meteorite %s for land",
+                        cfg["trigger_state"], row_id,
                     )
                     continue
 
@@ -2264,7 +2350,7 @@ async def run_notify_meteorite_bot_blocked(
                     _row_miss(
                         row_id, cid,
                         "no slack dm channel",
-                        "This row is staying BOT_BLOCKED",
+                        f"This row is staying {cfg['trigger_state']}",
                     )
                     summary["total_failed"] += 1
                     continue
@@ -2290,7 +2376,7 @@ async def run_notify_meteorite_bot_blocked(
                     err = str(resp.get("error") or "slack post failed")
                     update_meteorite(row_id, error=err)
                     _row_miss(
-                        row_id, cid, err, "This row is staying BOT_BLOCKED",
+                        row_id, cid, err, f"This row is staying {cfg['trigger_state']}",
                     )
                     summary["total_failed"] += 1
                     continue
@@ -2333,10 +2419,11 @@ def _normalize_apply_paste_content(raw: str) -> str:
     if not text:
         return ""
     if "<" in text and ">" in text:
+        # Gmail/board paste HTML → nested auto-links unwrapped before nh3 strips markup.
         text = normalize_pasted_list_email_html(text)
-        text = re.sub(r"<[^>]+>", " ", text)
-        text = re.sub(r"[ \t]+", " ", text)
+        text = re.sub(r"[ \t]+", " ", sanitize_contact_text(text))
         return text.strip()
+    text = sanitize_contact_text(text)
     return "\n\n".join(line.strip() for line in text.splitlines() if line.strip())
 
 
@@ -2357,7 +2444,7 @@ def find_meteorite_for_estelle_thread(
         return None
     matches = [
         row
-        for row in list_meteorites_by_state("BOT_BLOCKED")
+        for row in list_meteorites_by_state(METEORITE_BOT_BLOCKED_NOTIFY_CONFIG["trigger_state"])
         if str(row.get("candidate_id") or "") == cid
         and str(row.get("estelle_thread_ts") or "").strip() == anchor
     ]
@@ -2370,7 +2457,7 @@ def find_meteorite_bot_blocked_paste_source(*, candidate_id: str) -> Optional[di
         return None
     matches = [
         row
-        for row in list_meteorites_by_state("BOT_BLOCKED")
+        for row in list_meteorites_by_state(METEORITE_BOT_BLOCKED_NOTIFY_CONFIG["trigger_state"])
         if str(row.get("candidate_id") or "") == cid
         and str(row.get("source_kind") or "").strip() == "paste"
     ]
@@ -2387,7 +2474,7 @@ def apply_paste(meteorite_id: int, pasted_text: str, *, debug: bool = False) -> 
             "This paste is not moving a row to READY",
         )
         return {"ok": False, "error": "not_found"}
-    if row.get("state") != "BOT_BLOCKED":
+    if row.get("state") != METEORITE_BOT_BLOCKED_NOTIFY_CONFIG["trigger_state"]:
         _warn_item(
             f"meteorite {meteorite_id} for {row.get('candidate_id')}",
             f"invalid_state {row.get('state')}",
@@ -2407,8 +2494,94 @@ def apply_paste(meteorite_id: int, pasted_text: str, *, debug: bool = False) -> 
         )
         return {"ok": False, "error": "empty_paste"}
     update_meteorite(meteorite_id, content=content, state="READY", error=None)
-    _meteorite_state_info(meteorite_id, "READY", from_state="BOT_BLOCKED")
+    _meteorite_state_info(meteorite_id, "READY", from_state=METEORITE_BOT_BLOCKED_NOTIFY_CONFIG["trigger_state"])
     return {"ok": True, "meteorite_id": meteorite_id, "state": "READY"}
+
+
+def is_meteorite_editable(row: Optional[dict]) -> bool:
+    """True when the row's state is not in CANDIDATE_METEORITE_EDIT_CONFIG locked_states."""
+    if not row:
+        return False
+    locked = CANDIDATE_METEORITE_EDIT_CONFIG["locked_states"]
+    return (row.get("state") or "") not in locked
+
+
+def save_candidate_meteorite_edit(meteorite_id: int, fields: dict) -> dict:
+    """Overwrite candidate-supplied meteorite fields. No pipeline side-effects (AST-2223)."""
+    row = get_meteorite(meteorite_id)
+    if not row:
+        _warn_item(
+            f"meteorite {meteorite_id}",
+            "not found",
+            "This candidate edit is not saving",
+        )
+        return {"ok": False, "error": "not_found"}
+
+    cid = row.get("candidate_id")
+    who = f"meteorite {meteorite_id} for {cid}"
+    cfg = CANDIDATE_METEORITE_EDIT_CONFIG
+
+    if row.get("state") in cfg["locked_states"]:
+        _warn_item(who, "landed", "This candidate edit is not saving")
+        return {"ok": False, "error": "locked"}
+
+    batch_id = row.get("batch_id")
+    if batch_id is not None and batch_id != "":
+        _warn_item(who, "claimed", "This candidate edit is not saving")
+        return {"ok": False, "error": "claimed"}
+
+    if not isinstance(fields, dict):
+        _warn_item(who, "fields not a dict", "This candidate edit is not saving")
+        return {"ok": False, "error": "bad_field"}
+
+    editable = set(cfg["editable_fields"])
+    for key in fields:
+        if key not in editable:
+            _warn_item(who, f"field not editable: {key}", "This candidate edit is not saving")
+            return {"ok": False, "error": "bad_field"}
+
+    to_write: Dict[str, Any] = {}
+    for key, value in fields.items():
+        if key == "content":
+            raw = value if isinstance(value, str) else ""
+            logger.debug("Calling _normalize_apply_paste_content: [len=%s]", len(raw))
+            logger.debug("candidate meteorite edit paste body: %s", raw)
+            normalized = _normalize_apply_paste_content(raw)
+            logger.debug("Response from _normalize_apply_paste_content: len=%s", len(normalized))
+            if not normalized:
+                _warn_item(who, "empty content", "This candidate edit is not saving")
+                return {"ok": False, "error": "empty_content"}
+            to_write["content"] = normalized
+        elif key == "state":
+            state = value if isinstance(value, str) else ""
+            if state not in cfg["state_options"]:
+                _warn_item(
+                    who,
+                    f"state not in pick-list: {state}",
+                    "This candidate edit is not saving",
+                )
+                return {"ok": False, "error": "bad_state"}
+            to_write["state"] = state
+        else:
+            # link / job_title / employer_name / electronic_contact — trim only
+            text = "" if value is None else str(value)
+            to_write[key] = text.strip()
+
+    if "content" not in fields or "state" not in fields:
+        _warn_item(who, "content and state required", "This candidate edit is not saving")
+        return {"ok": False, "error": "bad_field"}
+
+    from_state = row.get("state")
+    state_changing = ("state" in to_write) and (to_write["state"] != from_state)
+    if state_changing:
+        to_write["error"] = None
+
+    update_meteorite(meteorite_id, **to_write)
+    if state_changing:
+        _meteorite_state_info(meteorite_id, to_write["state"], from_state=from_state)
+
+    updated = get_meteorite(meteorite_id)
+    return {"ok": True, "meteorite": updated}
 
 
 def _resolve_slack_dm_channel_for_candidate(candidate_id: str) -> Optional[str]:

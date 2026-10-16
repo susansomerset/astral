@@ -1,3 +1,104 @@
+<!-- linear-archive: AST-1780 archived 2026-10-02 -->
+
+## Linear archive (AST-1780)
+
+**Archived:** 2026-10-02  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1780/list-enrich-autorun-gates-force-auto-off-dispatch-validation  
+**Status at archive:** Archive  
+**Project:** Astral Dispatcher  
+**Assignee:** hedy  
+**Priority / estimate:** None / 5  
+**Parent:** AST-1766 — Dispatch Validation  
+**Blocked by / blocks / related:** parent: AST-1766; blocks: AST-1782
+
+### Description
+
+## What this implements
+
+Owns Scheduled Actions list enrichment, AUTO-on / Run API 400 gates, and persisting AUTO off when a row is non-executable. After #1. Does not own `agent_task` / artifact version hooks (sibling #3) or React (sibling #4).
+
+## Citations
+
+`astral.dispatch.entity-state-bound`, `stat.logging.info.api`, `stat.logging.warning`, `stat.logging.error`; patterns: none (`no established pattern applies`; mirror `_candidate_dispatch_api_key_error`).
+
+## Scope
+
+`src/ui/api/api_admin.py` — list enrichment boolean; create/update AUTO-on + `run_dtask` gates; force AUTO off when enrichment shows empty-render.
+
+## Acceptance criteria
+
+- [X] Predicate **A** (candidate-scoped): for a row whose prompts reference a candidate-source or candidate-backed artifact token that resolves to `""` for that row’s candidate, `GET /api/admin/dispatch_tasks` includes an explicit boolean on that row that is `true` for empty-render. **Fail:** flag missing, or `false` while such a token resolves blank.
+- [X] `PUT …/dispatch_tasks/<id>` with `auto_mode: true` on a failing row returns HTTP 400 and does not persist AUTO on. **Fail:** 200 with AUTO stored on.
+- [X] `POST …/dispatch_tasks/<id>/run` on a failing row returns HTTP 400 with `started: false` (or equivalent) and does not start the thread. **Fail:** thread starts or `started: true`.
+- [X] A row that was AUTO on becomes AUTO off after list enrichment / revalidation once empty-render is true (persisted). **Fail:** `auto_mode` remains on after enrichment when the flag is true. (List-enrichment force-off path; version-hook revalidation remains sibling #3.)
+- [X] A row whose candidate-scoped tokens all resolve non-empty keeps AUTO and Run/Sweep enabled (subject to existing API-key and Sweep/min_count rules), even if prompts also reference job tokens that would be blank without a job context. **Fail:** controls disabled solely because job tokens are empty.
+
+## Boundaries
+
+- [X] Does not own the predicate helper (sibling #1), `agent_task` / artifact version hooks (sibling #3), or React disable wiring (sibling #4).
+
+## Notes for planning
+
+After #1. Mirror `_candidate_dispatch_api_key_error` gate shape.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/AST-1766-dispatch-validation`, child `sub/AST-1766/AST-1780-list-enrich-auto-run-gates-force-auto-off`. Created at dispatch-parent.
+
+## QA test manifest
+
+1. List force off: `tests/component/ui/api/test_api_admin.py::TestAst1780EmptyRenderListGatesForceOff::test_list_sets_empty_render_and_forces_auto_off`
+2. List keeps AUTO: `tests/component/ui/api/test_api_admin.py::TestAst1780EmptyRenderListGatesForceOff::test_list_empty_render_false_keeps_auto`
+3. Create 400: `tests/component/ui/api/test_api_admin.py::TestAst1780EmptyRenderListGatesForceOff::test_create_auto_on_empty_render_400`
+4. PUT 400: `tests/component/ui/api/test_api_admin.py::TestAst1780EmptyRenderListGatesForceOff::test_put_auto_on_empty_render_400`
+5. Run 400: `tests/component/ui/api/test_api_admin.py::TestAst1780EmptyRenderListGatesForceOff::test_run_empty_render_400_started_false`
+6. Helper None: `tests/component/ui/api/test_api_admin.py::TestAst1780EmptyRenderListGatesForceOff::test_error_helper_none_when_evaluate_false`
+7. Revised run success: `tests/component/ui/api/test_api_admin.py::TestDispatchTasks::test_scheduler_and_run_controls`
+8. Revised create AUTO: `tests/component/ui/api/test_api_admin.py::TestApiAdminBranchGaps::test_create_dispatch_task_auto_mode_success`
+9. Revised update AUTO: `tests/component/ui/api/test_api_admin.py::TestApiAdminBranchGaps::test_update_dispatch_task_scored_score_floor_and_auto_mode_success`
+
+```bash
+./scripts/testing/run_component_tests.sh   tests/component/ui/api/test_api_admin.py::TestAst1780EmptyRenderListGatesForceOff   tests/component/ui/api/test_api_admin.py::TestDispatchTasks::test_scheduler_and_run_controls   tests/component/ui/api/test_api_admin.py::TestApiAdminBranchGaps::test_create_dispatch_task_auto_mode_success   tests/component/ui/api/test_api_admin.py::TestApiAdminBranchGaps::test_update_dispatch_task_scored_score_floor_and_auto_mode_success   -q
+```
+
+**Bible shasum (publish tip):**
+
+* `docs/test-bible/ui/api/api_admin.md` — `abe45f830bb58ee1585f059eb400e21c03900e06`
+
+**Publish tip:** `origin/sub/AST-1766/AST-1780-list-enrich-auto-run-gates-force-auto-off` @ `acb25c82`
+
+### Comments
+
+#### hedy — 2026-09-23T02:00:13.118Z
+`origin/sub/AST-1766/AST-1780-list-enrich-auto-run-gates-force-auto-off` @ `c2690426` · stacked on ftr
+
+#### radia — 2026-09-23T01:58:24.471Z
+[code-rubric] PROCEED (Commit: acb25c82) list gates and force-off clean
+
+#### betty — 2026-09-23T01:55:42.175Z
+`origin/sub/AST-1766/AST-1780-list-enrich-auto-run-gates-force-auto-off` @ `acb25c82` · empty_render gates manifest
+
+#### hedy — 2026-09-23T01:51:37.291Z
+`origin/sub/AST-1766/AST-1780-list-enrich-auto-run-gates-force-auto-off` @ `3f1ff2eb` · tip rebuilt for Betty (1779 base + AST-1780-only)
+
+#### betty — 2026-09-23T01:48:33.500Z
+@susan — suspected scope issue: `origin/sub/AST-1766/AST-1780-list-enrich-auto-run-gates-force-auto-off` tip includes sibling AST-1781 product before this child’s own gates are reviewed.
+
+Evidence:
+- Tip history has `sync(publish-ref): origin/sub/.../AST-1781-…` then `code(AST-1781): empty-render revalidate helpers + force AUTO off` landing `src/data/database.py` (+218 / revalidate helpers), then `code(AST-1780)` on top.
+- Ticket Scope / plan Explicit scope gate: `api_admin.py` only — “Do not edit … `database.py`”; sibling #3 (version hooks) is AST-1781 and blockedBy this child, not the other way around.
+- `code(AST-1780)` itself is in-scope (`api_admin.py` only +113). The out-of-scope surface is the AST-1781 commits baked into this publish tip.
+
+Recommendation: rebuild / force the 1780 tip from AST-1779 tip + only `code(AST-1780)` / docs for this child (strip 1781 sync + `code(AST-1781)`), then Betty resumes qa-child. Do not advance to Tests Ready until the tip matches Scope.
+
+#### joan — 2026-09-23T01:42:18.789Z
+[plan-rubric] PROCEED (Commit: 8d65b7fbe0ef8074e538c809ed9f56e90e27a692) API gates plan clean
+
+#### hedy — 2026-09-23T01:39:38.474Z
+`origin/sub/AST-1766/AST-1780-list-enrich-auto-run-gates-force-auto-off` @ `8d65b7fb` · plan ready
+
+---
+
 # AST-1780 — List enrich, AUTO/Run gates, force AUTO off
 
 - **Linear:** https://linear.app/astralcareermatch/issue/AST-1780
@@ -580,19 +681,18 @@ _(generated from epic registry — do not hand-edit; edits are overwritten)_
 
 | Agent | Role | Thread |
 |--------|-------|--------|
-| Hedy | engineer | `/home/susan/.cursor/chats/b9aeae5a2989dd7fb2d5931ab5d3b434/50e6d46f-c237-4b7f-8829-327f19bcbc27/store.db` |
-| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/3c38f6e2-161b-4bd5-b13b-e7ac604ae2bf/store.db` |
-| Radia | review | `/home/susan/.cursor/chats/b9aeae5a2989dd7fb2d5931ab5d3b434/bf0569fe-896f-445f-896a-32b01a34839e/store.db` |
+| Hedy | engineer | `/home/susan/.cursor/chats/c09ef93331882a7375376d0a6349d142/3c823846-3d8c-4c32-a5ff-5264cff2a9e8/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/dbfade24-93b0-4932-9c98-c9c58943de8f/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/c09ef93331882a7375376d0a6349d142/61687e80-1df3-4a29-b2a9-ef3821ca4958/store.db` |
 
 ### Git
 
 | Ticket | `origin/…` |
 |--------|------------|
-| AST-1793 (parent) | ftr/AST-1793-no-agent-empty-render-warning |
-| AST-1794 | sub/AST-1793/AST-1794-no-agent-empty-render-warning |
-| AST-1795 | sub/AST-1793/AST-1795-no-agent-empty-render-warning-tests |
+| AST-2013 (parent) | ftr/AST-2013-rubric-dup-dispatch-gate |
+| AST-2091 | sub/AST-2013/AST-2091-rubric-dup-dispatch-gate |
 
-**Epic worktree:** `astral-AST-1793/` — one active sub checked out at a time.
+**Epic worktree:** `astral-AST-2013/` — one active sub checked out at a time.
 
 ## Bug: AST-1794 — Silence no-agent empty_render warning
 
@@ -814,3 +914,831 @@ AST-1792 proved the fail-open return. AST-1794’s delta is log-only; Betty’s 
 Test/bible gap only — product silence on sibling AST-1794 / ftr.
 
 _Product silence: sibling AST-1794 / ftr. Test delivery: merge-tests(AST-1795)._
+
+## Bug: AST-1854 — Admin token resolves use the hydrated candidate view
+
+Orphaned fix child of AST-1852 (mini-parent off `origin/dev`; no ancestor box checked). Scope gate is this ticket's own `## Scope` (copied from the bug Component/Technical scope) — `src/ui/api/api_admin.py` `_evaluate_dispatch_empty_render`, `_enrich_tasks`, ad hoc run handler (`_resolve_adhoc`): swap the candidate loader only. Product only; tests/bible are Betty's. This is the "operative artifact token view" divergence Radia flagged as discuss on AST-1780 (and carried forward on AST-1791), now surfaced in UAT.
+
+### As-is
+
+Scheduled Actions flags `craft_do_rubric` for candidate somerset as `empty_render: true` with `IDEAL_DAY` in `empty_tokens` (AUTO forced off, AUTO-on / Run 400), even though somerset has a current Ideal Day. `_evaluate_dispatch_empty_render`, `_enrich_tasks`, and `_resolve_adhoc` each load the candidate with raw `database.get_candidate(...)` and pass it straight to `build_candidate_token_view`, so no operative artifact rows are overlaid.
+
+### To-be
+
+All three admin call sites load the candidate with the hydrated `src.core.candidate.get_candidate` (operative artifact rows overlaid onto `candidate_data.context`, legacy blob kept on artifact miss) before `build_candidate_token_view` — the same view the runtime path builds (`src/core/agent.py` ~456–474). Somerset's `craft_do_rubric` validates `empty_render: false`; a candidate with neither a current Ideal Day artifact nor a legacy `context.ideal_day` blob still gets `empty_render: true` / `IDEAL_DAY` in `empty_tokens`.
+
+### Repro
+
+Fixture shape (no SQL seed — persistence is file/JSON / artifacts rows via existing helpers):
+
+1. Candidate `c1` whose `candidate_data.context` has **no** `ideal_day` key (post-AST-1659 save popped it), and a current operative Ideal Day artifact for `c1` (`get_candidate_current("c1", <ideal day artifact key>)` returns a non-empty string, e.g. `"Deep work mornings, collaborative afternoons."`).
+2. An `agent_task` for `craft_do_rubric` whose prompt text references `{$IDEAL_DAY}`; a `dispatch_task` row `{candidate_id: "c1", task_key: "craft_do_rubric", auto_mode: 1}`.
+3. As-is: `_evaluate_dispatch_empty_render("c1", "craft_do_rubric")` → `{"empty_render": True, "empty_tokens": [... "IDEAL_DAY" ...]}`; `GET /api/admin/dispatch_tasks` forces `auto_mode` → 0; `POST …/run` → 400 "Prompt tokens resolve empty…". Task Manager (`_enrich_tasks("c1")`) and ad hoc preview/test for `c1` likewise resolve `{$IDEAL_DAY}` to `""`.
+4. To-be: same fixture → `empty_render: False`, `auto_mode` stays 1, Run not blocked by empty-render; Task Manager / ad hoc resolve `{$IDEAL_DAY}` to the artifact string.
+5. Contrast (must still fail): candidate `c2` with no Ideal Day artifact and no legacy `context.ideal_day` → `empty_render: True`, `IDEAL_DAY` in `empty_tokens`.
+6. Contrast (must still pass): candidate `c3` with legacy `context.ideal_day` blob and no artifact row → `empty_render: False` (hydrate miss leaves the blob untouched).
+
+### Root cause
+
+Since the AST-1643 migration (AST-1659 blob retirement / AST-1660 Ideal Day wire-up), a UI-saved Ideal Day (and the other migrated context artifacts: base resume, resume structure, strengths, priorities, deal breakers, bio summary, backstory, writing preferences) lives only in the artifacts table. The hydrated loader `src.core.candidate.get_candidate` overlays those rows onto `candidate_data.context`; raw `database.get_candidate` does not. AST-1780 Stage 1 step 4 literally named `database.get_candidate` + `build_candidate_token_view` (pre-migration assumption), and `_enrich_tasks` / `_resolve_adhoc` predate the migration with the same raw read. `{$IDEAL_DAY}` walks `context.ideal_day`, finds nothing, and `empty_render_for_prompts` scores it blank.
+
+### Proposed change
+
+All edits in `src/ui/api/api_admin.py` only. Do **not** edit `src/utils/config.py` (`resolve_tokens` / `empty_render_for_prompts`), `src/core/candidate.py` (`get_candidate`, `hydrate_operative_*`, `build_candidate_token_view`), or `src/core/agent.py`.
+
+1. **Import:** add `get_candidate` to the existing `from src.core.candidate import (` block (today lines 37–41, alongside `build_candidate_token_view`). Bare name, same import style as `src/core/agent.py`. No module-level name collision — `api_admin.py` only references the raw loader as `database.get_candidate`.
+
+2. **`_evaluate_dispatch_empty_render(candidate_id, task_key)`** (today ~line 2025): replace `cand = database.get_candidate(cid)` with `cand = get_candidate(cid)`. Everything else byte-for-byte unchanged: blank-`cid` warning + `empty_render: True`; `if not cand:` warning + `empty_render: True` (hydrated loader returns `None` on the same miss); `cd = build_candidate_token_view(cand)`; silent `ValueError` soft-miss pass (AST-1791/1794); `logger.exception` fail-closed; `empty_render_for_prompts(texts, cd, tk, entity_contexts=None)`.
+
+3. **`_enrich_tasks(candidate_id)`** (today ~line 385): replace `database.get_candidate(candidate_id) if candidate_id else None` with `get_candidate(candidate_id) if candidate_id else None`. Leave the `build_candidate_token_view(candidate) if candidate else {}` line and the AST-1014 comment as-is.
+
+4. **`_resolve_adhoc(body)`** (ad hoc run handler, today ~line 1583): replace `candidate = database.get_candidate(candidate_id)` with `candidate = get_candidate(candidate_id)`. `candidate` is also used later in the handler (API key override etc.); the hydrated row carries the same top-level columns (`database.get_candidate` row + `candidate_data` overlay only), so downstream reads are unaffected.
+
+5. No new function, table, field, log line, cap, or cache. Three one-token loader swaps + one import name.
+
+⚠️ **Decision:** Hydration placement mirrors the raw call exactly — `_evaluate_dispatch_empty_render` keeps the load **outside** its `try`, as today. An artifact-read exception propagates the same way a DB read exception already does; no new catch/fail-open added (out of scope, and would change AST-1780 fail-closed behavior).
+
+⚠️ **Decision:** Swap covers all migrated context artifacts the hydrated loader overlays, not just Ideal Day — that is what "same view as runtime" means; no per-token special-casing.
+
+### Blast radius
+
+- `_evaluate_dispatch_empty_render` feeds `list_dtasks` enrichment + force AUTO off, create/update AUTO-on 400, and `run_dtask` 400 — all three flip to the hydrated view together. React (`AdminScheduledActions.tsx`) trusts `row.empty_render`; no edit.
+- `_enrich_tasks` → Task Manager token counts / cache threshold; `_resolve_adhoc` → `adhoc_preview` / `adhoc_test`. Values for artifact-only candidates change from `""` to the operative string (intended).
+- Per-candidate cost: each load now also runs the nine `hydrate_operative_*` artifact reads (`list_dtasks` calls eval once per row). Same cost runtime already pays; no cap/cache added per Susan's no-shortcuts rule.
+- AST-1781 `database._token_view_for_empty_render` revalidation hooks already overlay operative current — this fix converges list/gate with those hooks (Radia's AST-1780 discuss item).
+- **Tests (Betty's lane):** 11 references in `tests/component/ui/api/test_api_admin.py` stub `admin_mod.database.get_candidate`. The hydrated loader calls `database.get_candidate` on the same `src.data.database` module object, so those stubs still take effect — but the hydrate helpers then call `get_candidate_current` against the test DB. Tests that stub only the raw loader may need an artifact-read stub (or stub `admin_mod.get_candidate` directly). Engineer does not edit `tests/`.
+- Out of Scope, not changed: `_resolve_agent_preview_candidate` (~line 175, agent preview) also uses raw `database.get_candidate` → `build_candidate_token_view`; same divergence class. `_candidate_dispatch_api_key_error` (~line 2075) reads the API-key column only — unaffected by artifacts. Flag for Susan/Chuckles if agent preview should follow in a separate delta.
+
+### What must still hold
+
+- Blank `candidate_id` / missing candidate → `empty_render: True` with existing warnings (AST-1780 / AST-1791 decisions).
+- Prompt-load `ValueError` → silent `{"empty_render": False, "empty_tokens": []}` (AST-1791 / AST-1794).
+- Unexpected evaluation exceptions → `logger.exception` + fail-closed.
+- Referenced candidate-scoped token truly blank (no artifact, no legacy blob) → `empty_render: True`; AUTO-on / Run 400; list force-off (AST-1766 AC1, AC3–5).
+- Legacy-blob-only candidates still resolve (hydrate miss leaves the blob).
+- `entity_contexts=None` — job tokens alone never flip the flag (AST-1780 AC5).
+- API-key gate runs first and is independent of empty-render.
+- No edits outside `api_admin.py`; `config.py` resolve semantics, `hydrate_operative_*`, and `agent.py` untouched.
+
+## Joan fix-board — AST-1854
+
+Fix-board Joan pass on **AST-1854** (`plan-fix` § Bug: AST-1854 on `origin/sub/AST-1852/AST-1854-dispatch-gate-hydrated-candidate`).
+
+**Triage:** Three loader swaps (`database.get_candidate` → `get_candidate`) in `_evaluate_dispatch_empty_render`, `_enrich_tasks`, and `_resolve_adhoc` align admin token resolution with the runtime path. That **conforms** to `patt.artifact.read-current` intent (current operative bodies, not stale blob-only context) and `astral.dispatch.entity-state-bound` (still entity/candidate-bound; blank/missing candidate behavior unchanged). No in-force statute requires raw DB reads for empty-render or Task Manager/ad hoc resolves. AST-1780’s written `database.get_candidate` step is a **feature-plan decision**, same class as Joan’s **CANON: OK** on AST-1791 — not a canon contradiction. Logging statutes untouched (no new `logger.info` / route spam). Out-of-scope `_resolve_agent_preview_candidate` is a separate product delta, not an Archie canon halt.
+
+---
+
+BEGIN-VERDICT
+
+[board-joan]  CANON: OK
+
+END-VERDICT
+
+```text
+AST-1854 board-joan done — CANON: OK.
+```
+
+## Radia review — AST-1854
+
+[code-rubric]
+
+**Ticket:** AST-1854  
+**Publish ref:** `b5a72977af962d9e8fdd8b797e0e5e9444898f4c` (`origin/sub/AST-1852/AST-1854-dispatch-gate-hydrated-candidate`)  
+**Diff base:** `origin/ftr/AST-1852-dispatch-gate-hydrated-candidate...origin/sub/AST-1852/AST-1854-dispatch-gate-hydrated-candidate` (product delta: `src/ui/api/api_admin.py` + plan-fix patch in issue doc)  
+**Corpus:** `bd68954dc854ca80fca1fc391821dff9ff288a7a` (canon tree at publish ref; no `docs/canon-index.md` on this ref — ids resolved from `canon/**` on same tip)  
+**Overall:** CLEAN  
+
+**Status gate:** Spawn prompt `Tests Passed` / assignee Hedy — trusted; no re-fetch block.
+
+## Fix-specific checks
+
+**[bug-repro]** not applicable — `[board-betty] TESTS: REVISE` on AST-1854; repro-first coverage owned by sibling **AST-1855** (`origin/sub/AST-1852/AST-1855-dispatch-gate-hydrated-candidate` @ `6c083f3c`, red at ftr `3dd7f249`, green with this fix overlaid per spawn prompt). No qa-fix / no `[bug-repro]` on this tip; valid board opt-out for the product child (same lane pattern as AST-1791 → AST-1792).
+
+**## What must still hold — OK** — traced against tip `api_admin.py` + unchanged branches around the three swaps:
+
+| Item | Verdict |
+|------|---------|
+| Blank `candidate_id` / missing candidate → `empty_render: True` + existing warnings | Unchanged guards before/after `get_candidate(cid)` |
+| Prompt-load `ValueError` → silent `empty_render: False` | `try`/`except ValueError` block untouched |
+| Unexpected evaluation exceptions → `logger.exception` + fail-closed | `except Exception` block untouched |
+| Truly blank candidate-scoped token → fail gates | Still `empty_render_for_prompts` on hydrated `cd` |
+| Legacy-blob-only (hydrate miss leaves blob) | `get_candidate` behavior unchanged; plan § Repro c3 still holds for `ideal_day` |
+| `entity_contexts=None` | Unchanged call |
+| API-key gate independent of empty-render | `_candidate_dispatch_api_key_error` still raw `database.get_candidate` (column-only); runs before empty-render on Run |
+| No edits outside `api_admin.py` for product | Diff is import + three loader swaps only (+ issue doc) |
+
+## Canon scores
+
+*(Frozen **Canon Scope** on Linear AST-1854 description: **none** — same process gap as other fix children. Scored **fix-board Joan overlap** from plan-fix § Bug: AST-1854 / `## Joan fix-board — AST-1854`; logging statutes noted **id-only** — no logging lines added or changed in diff.)*
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.artifact.read-current | A | | Admin token paths use `get_candidate` → operative current overlay before `build_candidate_token_view` |
+| astral.dispatch.entity-state-bound | A | | Evaluation remains per dispatch row `candidate_id`; blank/missing candidate still fail-closed |
+| stat.logging.info.api | A | | (id-only) No new route/info spam |
+| stat.logging.warning | A | | (id-only) Existing warning paths on blank/miss candidate unchanged |
+| stat.logging.error | A | | (id-only) `logger.exception` fail-closed path unchanged |
+
+## Column diff vs plan stage
+
+(aligned) — No `validate-plan` fix-mode per-id table for AST-1854. Fix-board Joan `[board-joan] CANON: OK` triage matches code review on the two substantive ids above; no Joan-high / Radia-low divergence.
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### discuss — Canon Scope missing on ticket (process)
+
+- **Severity:** discuss  
+- **Location:** Linear Description vs fix-lane Radia comparability  
+- **Finding:** No `Canon Scope (frozen at plan)` block on AST-1854; scored Joan fix-board overlap only (AST-1847 / AST-1821 precedent).  
+- **Recommendation:** Archie may add a frozen list for future fix bugs; not a product defect on this tip.  
+- **Default:** Ship on overlap triage; no engineer recall for Description alone.
+
+### discuss — Test coverage deferred to AST-1855
+
+- **Severity:** discuss  
+- **Location:** `[board-betty] TESTS: REVISE` / spawn handoff  
+- **Finding:** No hydrated-view `[bug-repro]` on this tip; sibling AST-1855 owns artifact-only Ideal Day gate assertions + contrasts.  
+- **Recommendation:** Not **fix-now** on Hedy’s product patch; UAT should still exercise somerset / `craft_do_rubric` per parent AST-1852 To-be.  
+- **Default:** Merge product after PROCEED; land tests via AST-1855 before treating repro-first bar closed.
+
+### advisory — Agent preview still raw loader (approved out of scope)
+
+- **Severity:** advisory  
+- **Location:** `_resolve_agent_preview_candidate` (~L175) — still `database.get_candidate`  
+- **Finding:** Same divergence class as pre-fix empty-render; explicitly out of Susan-approved scope.  
+- **Recommendation:** Separate ticket if UAT wants preview parity; do not expand AST-1854.
+
+### advisory — Legacy blob-only `base_resume` in admin
+
+- **Severity:** advisory  
+- **Location:** Full `get_candidate` overlay (all nine `hydrate_operative_*`), not Ideal Day alone  
+- **Finding:** Legacy-only `base_resume` blob without artifact row can read blank in admin after this fix — **same as runtime** (`hydrate_operative_base_resume_for_response` strips stale blob on miss). Susan flagged as known behavior to weigh, not a scope change.  
+- **Recommendation:** UAT awareness only; aligns with plan ⚠️ Decision (“all migrated context artifacts the hydrated loader overlays”).
+
+### advisory — Pre-existing `test_api_admin.py` failures
+
+- **Severity:** advisory  
+- **Location:** Hedy `test-fix` comment — 5 failures identical on `origin/dev`  
+- **Finding:** Not introduced by AST-1854; not a Radia block on this diff.
+
+## What's solid
+
+- Diff matches plan-fix **Proposed change** exactly: one import name + three `database.get_candidate` → `get_candidate` swaps in `_evaluate_dispatch_empty_render`, `_enrich_tasks`, `_resolve_adhoc`; no caps, caches, or new helpers.  
+- Hydration stays **outside** the `try` in `_evaluate_dispatch_empty_render` per plan decision (fail-closed semantics preserved vs AST-1780).  
+- Scope gate honored: no `config.py`, `candidate.py`, `agent.py`, or React edits.  
+- Estimate **2** fits the footprint.  
+- Converges admin list/gate/Task Manager/ad hoc with runtime token view — addresses UAT somerset / `IDEAL_DAY` root cause from plan § Root cause.
+
+## Recommended actions (Chuckles — read-only for Radia)
+
+| Gate | Parent shape | Next action |
+|------|--------------|-------------|
+| **PROCEED** | **Normal** — AST-1852 mini-parent with `origin/ftr/AST-1852-dispatch-gate-hydrated-candidate` (not Done-orphan / not straight-to-dev) | Append artifact → `docs(AST-1854): Radia review — clean` on publish ref → post slim upshot `--as radia` → **Review Posted** → `do-all-the-things` §3h clean-review shortcut → **User Testing** (`resolve-child` skipped). |
+
+1. Do **not** block product on AST-1855 test gap (parallel to AST-1791 / AST-1792).  
+2. Track AST-1855 for `[bug-repro]` / bible REVISE closure.  
+3. Optional follow-up ticket for `_resolve_agent_preview_candidate` only if Susan wants preview parity.
+
+context_tokens≈9500
+
+---
+
+**Slim upshot (Chuckles → `linear_proxy --as radia save-comment`):**
+
+```
+[code-rubric] PROCEED (Commit: b5a72977) Three hydrated loader swaps clean
+```
+
+#### Chuckles disposition (AST-1854)
+
+Clean review: Review Posted → User Testing via the clean-review shortcut (resolve-child skipped). Merged into the mini-parent ftr.
+
+Docs-acceptance on this tip: no test-tree delivery here — tests and bible land on gap sibling AST-1855.
+
+## Bug: AST-1855 — Gap: artifact-only Ideal Day repro for the dispatch empty-render gate
+
+Gap child of AST-1852 from `[board-betty] TESTS: REVISE` on AST-1854. Scope is **test + bible only** (this ticket's `## Scope`): `tests/component/ui/api/test_api_admin.py`, `docs/test-bible/ui/api/api_admin.md`. Product loader swap is sibling **AST-1854** (`api_admin.py`, `origin/sub/AST-1852/AST-1854-dispatch-gate-hydrated-candidate` @ `b5a72977`); do not re-plan or re-implement it here. This gap ref carries AST-1854's plan doc commits only (`sync(AST-1855)` absorb of `b01b1ce8`) — **not** its product commit — so the gap tip stays test-tree only and its own `api_admin.py` is the pre-fix product.
+
+### As-is
+
+Every empty-render test either monkeypatches `_evaluate_dispatch_empty_render` (`TestAst1780EmptyRenderListGatesForceOff`) or stubs raw `admin_mod.database.get_candidate` **and** `admin_mod.build_candidate_token_view` (`TestAst1791NoPromptValueErrorEmptyRender._stub_no_agent_task_prompts`). None drives the real loader → artifact overlay → token view → `empty_render_for_prompts` chain, so reverting AST-1854 to the raw `database.get_candidate` read would leave the suite green. Bible §§ AST-1780 / AST-1792 / AST-1795 have no node for an artifact-only context value.
+
+### To-be
+
+A three-candidate `[bug-repro]` class drives `_evaluate_dispatch_empty_render` through the real hydrated loader, with only the DB edges stubbed: `c1` (Ideal Day only in artifacts) → `empty_render: False` — **red** on pre-fix product (gap tip / `origin/ftr/AST-1852-dispatch-gate-hydrated-candidate` `api_admin.py`), **green** on `b5a72977`; `c2` (no artifact, no legacy blob) → `empty_render: True`, `empty_tokens == ["IDEAL_DAY"]`; `c3` (legacy `context.ideal_day` only) → `empty_render: False`. The existing `admin_mod.database.get_candidate` stubs stay green on `b5a72977`.
+
+### Repro
+
+1. Pre-fix product (`api_admin.py` as on this gap tip): `_evaluate_dispatch_empty_render("c1", "craft_do_rubric")` with `database.get_candidate("c1")` → row whose `candidate_data.context` has no `ideal_day`, `database.get_current_artifact("candidate", "c1", "ideal_day")` → `{"artifact_data": "Deep work mornings, collaborative afternoons."}`, prompt texts `["Ideal day: {$IDEAL_DAY}"]` → returns `{"empty_render": True, "empty_tokens": ["IDEAL_DAY"]}` (raw row, no overlay — `get_current_artifact` is never called).
+2. Same stubs on `b5a72977` → `{"empty_render": False, "empty_tokens": []}` (hydrated loader overlays the artifact onto `context.ideal_day`).
+3. `c2` / `c3` return the same values on both trees (contrasts — they pin that the fix neither blanks a legacy blob nor fills a truly empty Ideal Day).
+
+### Root cause
+
+AST-1780 QA stubbed the evaluate helper (wiring only); AST-1792/1795 stubbed the raw loader **and** the token view to isolate the ValueError soft-miss. No test left the loader + `build_candidate_token_view` + `resolve_tokens` chain real, so the raw-vs-hydrated read (AST-1854's defect) was invisible to the suite.
+
+### Proposed change
+
+**Files only (Scope gate):**
+
+| File | Change |
+|------|--------|
+| `tests/component/ui/api/test_api_admin.py` | New class `TestAst1854HydratedCandidateEmptyRender` directly after `TestAst1791NoPromptValueErrorEmptyRender`; existing tests edited only per step 3's red rule |
+| `docs/test-bible/ui/api/api_admin.md` | New § AST-1855 under the AST-1780 empty-render cluster (after § AST-1795) |
+
+**Do not edit** `src/ui/api/api_admin.py`, `src/core/candidate.py`, or `src/utils/config.py` — AST-1854 owns product.
+
+1. **Class + stub helper** — `TestAst1854HydratedCandidateEmptyRender`, docstring `"""AST-1855 / AST-1854: dispatch empty-render reads the hydrated candidate (artifact overlay), no eval / loader / token-view monkeypatch."""`. Static helper `_stub_hydrated_candidates(monkeypatch)`:
+
+   - `admin_mod.database.get_candidate` → `lambda cid: _rows()[cid]` where `_rows()` builds **fresh** dicts per call (the hydrated loader mutates `candidate_data` in place), keyed by id:
+
+     ```python
+     {
+         "c1": {"astral_candidate_id": "c1", "first": "Ada", "last": "Lovelace",
+                "candidate_data": {"context": {}}},
+         "c2": {"astral_candidate_id": "c2", "first": "Bea", "last": "Blank",
+                "candidate_data": {"context": {}}},
+         "c3": {"astral_candidate_id": "c3", "first": "Cy", "last": "Legacy",
+                "candidate_data": {"context": {"ideal_day": "Legacy blob ideal day."}}},
+     }
+     ```
+
+   - `admin_mod.database.get_current_artifact` → `lambda entity_type, entity_id, artifact_type: {"artifact_data": "Deep work mornings, collaborative afternoons."} if (entity_id, artifact_type) == ("c1", "ideal_day") else None`. Patching the attribute on `admin_mod.database` patches `src.data.database` itself, which `src.core.candidate.get_candidate_current` also calls — so this one stub answers all nine `hydrate_operative_*` reads hermetically (no repo `data/astral.db` access).
+   - `admin_mod._dispatch_empty_render_prompt_texts` → `lambda tk: ["Ideal day: {$IDEAL_DAY}"]` (single candidate-scoped token, so `empty_tokens` is exactly `["IDEAL_DAY"]` when blank).
+   - **Must not** monkeypatch: `admin_mod.get_candidate`, `admin_mod.build_candidate_token_view`, any `hydrate_operative_*`, `get_candidate_current`, `empty_render_for_prompts`, `resolve_tokens`, `_evaluate_dispatch_empty_render`, `_candidate_dispatch_empty_render_error`. Stubbing any of these hides the defect.
+
+2. **Three test methods** (separate methods, not parametrize — keeps the `[bug-repro]` node id stable and distinct from its contrasts, same precedent as AST-1795):
+
+   - `test_evaluate_artifact_only_ideal_day_empty_render_false` — `# [bug-repro] red on pre-AST-1854 (raw row → IDEAL_DAY blank); green after hydrated loader.` Assert `admin_mod._evaluate_dispatch_empty_render("c1", "craft_do_rubric") == {"empty_render": False, "empty_tokens": []}` and `admin_mod._candidate_dispatch_empty_render_error("c1", "craft_do_rubric") is None`.
+   - `test_evaluate_no_ideal_day_anywhere_empty_render_true` — assert `_evaluate_dispatch_empty_render("c2", "craft_do_rubric") == {"empty_render": True, "empty_tokens": ["IDEAL_DAY"]}` and `"IDEAL_DAY" in _candidate_dispatch_empty_render_error("c2", "craft_do_rubric")`.
+   - `test_evaluate_legacy_blob_ideal_day_empty_render_false` — assert `_evaluate_dispatch_empty_render("c3", "craft_do_rubric") == {"empty_render": False, "empty_tokens": []}`.
+
+   Red/green gate for qa-fix: node 1 **fails** with this gap tip's own `api_admin.py` (pre-fix, = `origin/ftr/AST-1852-dispatch-gate-hydrated-candidate`) and **passes** with `b5a72977`'s `api_admin.py`; nodes 2–3 pass on both.
+
+3. **Existing `admin_mod.database.get_candidate` stubs — run, don't pre-edit.** Classification on `b5a72977`:
+
+   - **Unaffected (stub returns `None` → hydrated loader returns before any artifact read, or the call site stays raw):** `TestAdminConfigAndAgents` agent-preview stubs (~lines 177, 190 — `_resolve_agent_preview_candidate` stays raw per AST-1854 scope), `TestEnrichTasks` `None` stubs (~290, 317, 339), `TestBackfillAndCandidateKey` api-key stubs (~1745–1749 — `_candidate_dispatch_api_key_error` stays raw), `TestApiAdminBranchGaps` (~1792, ~1942), `TestAst1412EnrichTaskLens` (~3289).
+   - **Now reach hydrate reads (row-returning stub on a swapped path):** `TestEnrichTasks::test_enrich_tasks_covers_agent_and_cache_branches` (~243), `TestAdhocHelpers::test_adhoc_entities_and_resolve` (~1481), `TestAdhocHelpers::test_resolve_adhoc_job_entity_resolves_visible_jd_token` (~1496), and the four `TestAst1791NoPromptValueErrorEmptyRender` tests via `_stub_no_agent_task_prompts` (~3834). None of these fixtures carry `artifacts.base_resume` or any context leaf their assertions depend on, so they are expected green.
+   - Run the whole module on `b5a72977` product. Edit an existing test **only if it goes red**, and then only by adding `monkeypatch.setattr(admin_mod.database, "get_current_artifact", lambda *a: None)` to that test (or to `_stub_no_agent_task_prompts`). No other changes to existing cases.
+
+4. **Bible** (`docs/test-bible/ui/api/api_admin.md`, new § AST-1855 after § AST-1795):
+   - Table rows for the three node ids; `[bug-repro]` tag on `test_evaluate_artifact_only_ideal_day_empty_render_false` only.
+   - One-line note: AST-1854 — dispatch empty-render loads the hydrated candidate (operative artifact overlay); only `database.get_candidate` / `database.get_current_artifact` / prompt texts stubbed.
+   - QA manifest: the three new nodes + the seven row-returning existing tests from step 3 (re-run guard).
+   - Keep § AST-1780 / AST-1792 / AST-1795 rows unchanged. **Integration:** none.
+
+5. **Implementer lane:** Betty lands tests + bible on `astral-tests` and publishes to `origin/sub/AST-1852/AST-1855-dispatch-gate-hydrated-candidate-tests` per qa-fix. Engineers do not edit `tests/` or `docs/test-bible/**`.
+
+⚠️ **Decision:** Stub at the DB edges (`database.get_candidate`, `database.get_current_artifact`) rather than seeding `sqlite_in_memory` artifact rows — keeps the full product chain (hydrated loader → `hydrate_operative_*` → `build_candidate_token_view` → `resolve_tokens` → `empty_render_for_prompts`) real while staying hermetic and independent of artifact-save helpers.
+
+⚠️ **Decision:** One `_evaluate_dispatch_empty_render` repro is the gate (Betty's board note) — `_enrich_tasks` / `_resolve_adhoc` share the same one-token loader swap; no separate repro nodes for them.
+
+### Blast radius
+
+- **Hermeticity (discuss):** `tests/component/ui/conftest.py` DB isolation (`sqlite_in_memory` / `seeded_db`) is opt-in and `tests/conftest.py` defaults `ASTRAL_DB_DIR` to the repo `data/`. On `b5a72977`, the seven row-returning tests in step 3 now call `database.get_current_artifact` against that default DB (nine reads per load). Expected green (fixture ids like `c1` have no rows), but non-hermetic; step 3 stubs only on red, per Scope ("existing cases change only if needed"). Susan may prefer the `get_current_artifact → None` stub on all seven regardless.
+- **Legacy base resume (discuss, AST-1854 product — not this gap):** `hydrate_operative_base_resume_for_response` **pops** legacy `artifacts.base_resume` on artifact miss (AST-1659 blob retirement), unlike the context leaves, which keep the legacy blob. So on `b5a72977` a candidate with only a legacy `base_resume` blob now reads blank in the admin gate / Task Manager / ad hoc — matching runtime (`agent.py` already hydrates), but narrower than AST-1854's "legacy-blob-only candidates still resolve" line, which holds for Ideal Day (and the other context leaves) only. No test in this gap asserts base-resume behavior.
+- New class is additive; `TestAst1780…` / `TestAst1791…` intent unchanged.
+- Sibling AST-1854 product must be on the line under test for green; merge-child order AST-1854 → AST-1855.
+
+### What must still hold
+
+- Blank / missing `candidate_id` and candidate miss → `empty_render: True` (AST-1780 / AST-1791) — covered by existing product; not re-asserted here.
+- Prompt-load `ValueError` → silent `empty_render: False` (AST-1791 / AST-1794) — `TestAst1791…` stays green.
+- Truly blank candidate-scoped token → `empty_render: True` with the token named (node 2).
+- Legacy `context.ideal_day` blob still resolves (node 3).
+- `entity_contexts=None`; no second list boolean; no product `src/` edits on this tip; no invented integration tier.
+
+## Joan fix-board — AST-1855
+
+Fix-board Joan pass on **AST-1855** (test + bible gap only; product stays on sibling AST-1854). Joan’s single question is whether the plan-fix **requires or conflicts with** in-force canon. This patch adds component tests and bible rows that exercise the real hydrated-loader → token-view → `empty_render_for_prompts` chain via DB-edge stubs only; it does not edit `src/`, statutes, or patterns. The asserted outcomes (artifact-only Ideal Day passes, truly blank fails, legacy blob passes) match `patt.artifact.read-current` / migration intent, not a new exception. Blast-radius discuss items (hermetic `get_current_artifact`, base-resume pop vs AST-1854 wording) are product/UAT scope on AST-1854, not canon edits this gap must land.
+
+BEGIN-VERDICT
+
+[board-joan]  CANON: OK
+
+END-VERDICT
+
+```text
+AST-1855 board-joan done — CANON: OK.
+```
+
+## Radia review — AST-1855
+
+[code-rubric]
+
+**Ticket:** AST-1855  
+**Publish ref:** `4bbeabff46cbc6bc51db807b81bdeb7ad12a5a9f` (`origin/sub/AST-1852/AST-1855-dispatch-gate-hydrated-candidate-tests`)  
+**Diff base:** `origin/ftr/AST-1852-dispatch-gate-hydrated-candidate` @ `ac9c93b6` (AST-1854 product already on ftr) → gap delta: issue doc + bible + `test_api_admin.py` only — **no `src/**`**  
+**Corpus:** `bd68954dc854ca80fca1fc391821dff9ff288a7a` (canon tree at publish ref)  
+**Overall:** CLEAN  
+
+**Status gate:** `Tests Passed` / Hedy — trusted.
+
+## Fix-specific checks
+
+**[bug-repro] OK** — `TestAst1854HydratedCandidateEmptyRender::test_evaluate_artifact_only_ideal_day_empty_render_false` is tagged and pins **concrete To-be** from plan § Repro / AST-1854:
+
+- Asserts `{"empty_render": False, "empty_tokens": []}` and `_candidate_dispatch_empty_render_error(...) is None` for `c1` with **empty** `context` but `get_current_artifact("candidate", "c1", "ideal_day")` returning operative body.
+- **Not tautological:** leaves `admin_mod.get_candidate` (core hydrated loader), all `hydrate_operative_*`, `build_candidate_token_view`, `resolve_tokens`, and `empty_render_for_prompts` **unstubbed**; only DB edges + `_dispatch_empty_render_prompt_texts` (same isolation pattern as AST-1792/1795).
+- **Plausibly red pre-fix:** on raw `database.get_candidate` path, `get_current_artifact` is never consulted → `{$IDEAL_DAY}` blank → `True` / `["IDEAL_DAY"]` (Betty `@ 6c083f3c` red at `3dd7f249`; Hedy red→green at `4bbeabff`; matches plan red/green gate).
+- **Contrast nodes** `c2` / `c3` lock blank vs legacy-blob behavior so the repro is not “always false.”
+
+**## What must still hold — OK** (plan-fix § AST-1855):
+
+| Item | Verdict |
+|------|---------|
+| Truly blank token → `True` + token named | `test_evaluate_no_ideal_day_anywhere_empty_render_true` |
+| Legacy `context.ideal_day` → `False` | `test_evaluate_legacy_blob_ideal_day_empty_render_false` |
+| AST-1791 soft-miss path stays green | Four `get_current_artifact → None` additions in `_stub_no_agent_task_prompts` / related |
+| No product `src/` on this diff | Confirmed (`--name-only` = docs + tests only) |
+| No integration invented | Bible § AST-1855 says none |
+
+## Canon scores
+
+*(Frozen **Canon Scope** on Linear AST-1855: **none** — test/bible gap; scored fix-board Joan overlap.)*
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.artifact.read-current | A | | Repro asserts artifact-table Ideal Day flows through real hydrate → gate pass |
+| astral.dispatch.entity-state-bound | A | | Per-candidate `c1`/`c2`/`c3` eval; no cross-candidate pooling in tests |
+
+## Column diff vs plan stage
+
+(aligned) — Fix-board Joan `[board-joan] CANON: OK`; no validate-plan per-id table. Betty’s REVISE ask (stub all seven row-returning paths with `get_current_artifact → None`) is **implemented** in diff — not a Radia/engineer gap.
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### advisory — sibling test carry: `TestAst1830SweepHrsAdminApi`
+
+- **Severity:** advisory  
+- **Location:** `test_api_admin.py` diff (~19 cases), `merge-tests`  
+- **Finding:** AST-1830 Done on `origin/dev`; not AST-1855 scope. `skipif(not hasattr(admin_mod, "_parse_sweep_hrs"))` limits blast on older tips. Hedy attribution comment matches spawn prompt.  
+- **Recommendation:** Do not score as cross-ticket **fix-now**; no Radia action.
+
+### advisory — Bible sequencing line vs current ftr
+
+- **Severity:** advisory  
+- **Location:** `docs/test-bible/ui/api/api_admin.md` § AST-1855 — “product not on ftr yet”  
+- **Finding:** `origin/ftr/AST-1852…` @ `ac9c93b6` now includes AST-1854 product; pass criterion (“green with AST-1854 on tree”) is satisfied on ftr+sub merge. Wording is slightly stale, not a test defect.  
+- **Recommendation:** Optional docs tidy in docs-acceptance; not **fix-now** for `resolve-child`.
+
+### advisory — Pre-existing module failures
+
+- **Severity:** advisory  
+- **Location:** Hedy test-fix — 5 failures identical on `origin/dev`  
+- **Finding:** Outside AST-1855 manifest; unchanged.
+
+### discuss — Canon Scope missing (process)
+
+- **Severity:** discuss  
+- **Finding:** No frozen list on Linear; Joan overlap scored only.  
+- **Default:** Ship; Archie may add list for comparability later.
+
+## What's solid
+
+- Delivers exactly what `[board-betty] TESTS: REVISE` on AST-1854 asked for: real hydrated-loader chain, three candidates, bible § AST-1855 + manifest (10/10 per Hedy).  
+- Hermeticity: proactive `get_current_artifact` stubs on the seven row-returning swapped-path tests (Betty board call) — avoids env-dependent greens against repo `data/astral.db`.  
+- Closes repro-first bar for AST-1854 board REVISE when merged onto ftr that already carries `b5a72977`/`ac9c93b6` product.  
+- Estimate **2** fits.
+
+## Recommended actions (Chuckles)
+
+| Gate | Parent shape | Next action |
+|------|--------------|-------------|
+| **PROCEED** | Normal — AST-1852 + `ftr/AST-1852-dispatch-gate-hydrated-candidate` | Append artifact → `docs(AST-1855): Radia review — clean` → post slim upshot `--as radia` → **Review Posted** → §3h clean-review → **User Testing** (`resolve-child` skipped). Merge gap sub onto ftr after UT if not already stacked. |
+
+context_tokens≈7200
+
+---
+
+**Slim upshot (Chuckles → `linear_proxy --as radia save-comment`):**
+
+```
+[code-rubric] PROCEED (Commit: 4bbeabff) Bug-repro pins hydrated gate
+```
+
+#### Chuckles disposition (AST-1855)
+
+Clean review (discuss items only, default ship): Review Posted → User Testing via the clean-review shortcut (resolve-child skipped). AST-1854's product fix is on ftr @ ac9c93b6, so the tests run green on ftr without a scratch overlay.
+
+## Bug: AST-2091 — Block Auto/Run on duplicate or empty rubric
+
+`fix` child of orphaned mini-parent bug AST-2013 (`ftr/AST-2013-rubric-dup-dispatch-gate`, fresh off `origin/dev`). Extends this doc's Stage 1 (list enrichment + force AUTO off) and Stage 2 (AUTO-on / Run 400 gates) with one more reason source, the same way AST-1880 added the missing-API-key reason. Scope is this ticket's `## Scope` (copied verbatim from AST-2013): `src/core/candidate.py`, `src/ui/api/api_admin.py`, `src/core/dispatcher.py`; `AdminScheduledActions.tsx` unchanged. No Canon Scope on the ticket or parent — ids stay unresolved; flag for the board, not a blocker for this plan.
+
+### As-is
+
+A Scheduled Actions row is Invalid only for empty prompt tokens (AST-1780 / AST-1819) or a missing platform API key (AST-1880). Nothing checks the rubric behind a scored task. Somerset's `do_rubric` has two current `TP` rows, both labelled `Hands-On Technical Partnership With Engineers`, so `meteorite_grade_do` shows as valid, AUTO stays on, and the job runs. `_vector_labels_map` (`consult.py`) logs `duplicate rubric codes: TP→[…]` and keeps the first. Both grading runs for job `bf81c81e-15e7-4ef2-b61b-e6181a9b8891` came back all `X`, and the AST-1760 guard sent the job to `METEORITE_FAILED_TECHNICAL_DO` (batch `meteorite_grade_do-78b67658-…`, `error:1`). Separately, `dispatcher.run_task` has no validation gate at all. The tick loop keeps spawning an AUTO row until someone loads Scheduled Actions and the list enrichment turns AUTO off.
+
+### To-be
+
+A rubric-backed row (its `task_key`'s `TASK_CONFIG` entry names a `rubric_artifact`) is **Invalid** when the candidate's current rubric for that artifact has **duplicate vector codes** (same code after `strip().upper()`) or is **empty** (zero current criteria). An Invalid row behaves exactly like an empty-token row:
+
+- `empty_render: true`, and the reason is in `invalid_reason`, so AUTO and Run/Sweep are disabled and the tooltip names the problem.
+- AUTO-on create and update return 400, and so does Run.
+- An AUTO-on row is forced off on list load with a warning.
+- `run_task` refuses to start the job and also forces AUTO off, so the scheduler stops without a page load.
+
+Re-saving the rubric runs AST-2008's uptick (`TP` → `TX`), and the row is valid again on the next list load.
+
+### Repro
+
+Fixture: astral persistence is file/JSON, so the repro is a stubbed rubric read, not a seeded DB row. Stub `src.data.database.list_rubric_vectors(candidate_id, owner_task_key, current_only=True)` so that `("somerset", "grade_do")` returns:
+
+```python
+[
+    {"code": "TP", "label": "Hands-On Technical Partnership With Engineers", "content": "…", "importance": 8},
+    {"code": "TP", "label": "Hands-On Technical Partnership With Engineers", "content": "…", "importance": 8},
+    {"code": "SA", "label": "Systems Architecture", "content": "…", "importance": 7},
+]
+```
+
+and `("empty_cand", "grade_do")` returns `[]`. A dispatch row has `candidate_id="somerset"`, `task_key="meteorite_grade_do"`, `auto_mode=1`, and a valid key and tokens.
+
+1. `GET /api/admin/dispatch_tasks`. Today the row has `empty_render: false`, `invalid_reason: ""`, and `auto_mode: 1`. After the fix it has `empty_render: true`, `invalid_reason: "Rubric 'do_rubric' has duplicate vector codes: TP"`, and `auto_mode: 0` (persisted).
+2. `POST /api/admin/dispatch_tasks/<id>/run`. Today it returns 200 `{"started": true}`. After the fix it returns 400 `{"error": "Rubric 'do_rubric' has duplicate vector codes: TP", "started": false}`.
+3. `dispatcher.run_task(<id>)` with `auto_mode=1`. Today it returns `True` and spawns the thread. After the fix it returns `False`, spawns no thread, and calls `update_dispatch_task(<id>, auto_mode=0)`.
+4. The same row with `candidate_id="empty_cand"` follows steps 1–3 with the reason `Rubric 'do_rubric' is empty for this candidate.`
+
+### Root cause
+
+The dispatch validity gate (AST-1766 / AST-1780 / AST-1880) only checks prompt rendering and the platform key. The rubric's integrity is never part of "executable". The only duplicate-code handling is AST-1513's first-wins warning at decode time, which is too late, and AST-2008's uptick, which runs on save and doesn't repair rows already stored. `dispatcher.run_task`, the scheduler's spawn point, delegates all validity to the admin list, so a stored bad rubric keeps sweeping on AUTO.
+
+### Proposed change
+
+1. **`src/core/candidate.py`: new `rubric_dispatch_error(candidate_id, task_key) -> Optional[str]`**, placed directly after `rubric_criteria_for_task` (which it calls). It is a pure read with no writes. `TASK_CONFIG` and `RUBRIC_OWNER_TASK_BY_ARTIFACT_KEY` are already imported here.
+   - `rk = (TASK_CONFIG.get((task_key or "").strip()) or {}).get("rubric_artifact")` and `owner = RUBRIC_OWNER_TASK_BY_ARTIFACT_KEY.get(rk) if rk else None`. This resolves aliases the same way `consult._rubric_criteria_for_cfg` does: `meteorite_grade_do` → `do_rubric` → `grade_do`, `meteorite_like` → `like_rubric` → `grade_like`.
+   - ⚠️ **Do not** use `config.rubric_owner_task_key()`. It also maps `craft_*_rubric` tasks to owners, and gating a craft task on an empty rubric would block the very task that creates the rubric. No `craft_*` key carries `rubric_artifact`, which I verified against `TASK_CONFIG` on this tip: the rubric-backed keys are `prefilter_company`, `qualify_job_listings`, `evaluate_jd`, `evaluate_meteorite`, `grade_do`, `grade_get`, `grade_like`, `meteorite_grade_do`, `meteorite_grade_get`, and `meteorite_like`.
+   - Return `None` when `owner` is falsy (the task isn't rubric-backed) or `str(candidate_id or "").strip()` is blank. A blank candidate already fails `_candidate_dispatch_api_key_error`, so this helper doesn't duplicate that reason.
+   - `criteria = rubric_criteria_for_task(cid, owner)`. This is the same list consult grades with, including the embedded QC/GC/RC merges, so evaluate/prefilter rubrics are never empty.
+   - Empty (`not criteria`) → `f"Rubric '{rk}' is empty for this candidate."`
+   - Duplicates: count `str(c.get("code") or "").strip().upper()` over dict items, skipping blank codes (sync assigns `V{idx}` to those, matching the uptick's blank-code rule). If any code appears more than once → `f"Rubric '{rk}' has duplicate vector codes: {', '.join(sorted(dupes))}"`. The codes are upper-cased and comma-separated, which is the ticket's tooltip example.
+   - Otherwise return `None`.
+
+2. **`src/ui/api/api_admin.py`: add `rubric_dispatch_error` to the existing `from src.core.candidate import (…)` block.**
+   - **`list_dtasks`** (the AST-1780 block after `key_err`):
+     - `rubric_err = rubric_dispatch_error(row.get("candidate_id"), row.get("task_key") or "")`.
+     - `row["empty_render"] = bool(er.get("empty_render")) or bool(key_err) or bool(rubric_err)`.
+     - `row["invalid_reason"] = key_err or rubric_err or ""`.
+     - In the force-off branch, `why = key_err or rubric_err or (<existing tokens text>)`.
+     - The precedence is key, then rubric, then tokens. This keeps AST-1880's key-first rule, and the tooltip (`invalid_reason || tokens`) shows the rubric reason ahead of the token list. `empty_tokens` is unchanged.
+   - **`create_dtask`** (the `auto_mode` branch): after the `_candidate_dispatch_api_key_error` check and before `_candidate_dispatch_empty_render_error`, add `err = rubric_dispatch_error(data.get("candidate_id"), task_key)` and return `jsonify({"error": err}), 400` if it's set.
+   - **`update_dtask`** (the `updates.get("auto_mode") == 1` branch): add the same check at the same position, using `rubric_dispatch_error(cid, effective_task_key)`.
+   - **`run_dtask`**: add the same check at the same position (after the key check, before empty-render), returning `jsonify({"error": err, "started": False}), 400`.
+
+3. **`src/core/dispatcher.py`, `run_task`**: right after `if not task: return False` and before the `available_count` enrichment, add:
+
+   ```python
+   # late: avoid cycle with candidate → dispatcher (module-top import)
+   from src.core.candidate import rubric_dispatch_error
+   rubric_err = rubric_dispatch_error(task.get("candidate_id"), task.get("task_key") or "")
+   if rubric_err:
+       forced = bool(task.get("auto_mode"))
+       if forced:
+           _db_update_dispatch_task(task_id, auto_mode=0)
+       logger.warning(
+           "%s | dispatch_task id=%s task_key=%r %s — not started%s",
+           task.get("candidate_id") or "-", task_id, task.get("task_key"), rubric_err,
+           ", AUTO forced off" if forced else "",
+       )
+       return False
+   ```
+
+   - This applies to both callers: the tick loop (`_tick_loop` → `run_task`) and admin Run. Admin Run already returns 400 earlier, so the second check there is redundant but harmless.
+   - The late import follows the existing `_tick_loop` precedent, because `candidate.py` imports `dispatcher` at module top.
+   - It is only a rubric gate. Do **not** move the key or empty-render checks into `run_task`; that is outside this ticket's scope.
+
+4. **`AdminScheduledActions.tsx`: no change.** It already disables on `empty_render` and shows `invalid_reason` first.
+
+5. **Data (staging, not code):** after deploy, re-save somerset's Do rubric in Artifacts. AST-2008 renames the duplicate `TP` → `TX` and retires the extra row. Then re-run `meteorite_grade_do` for `bf81c81e…` from `METEORITE_PASSED_JD`.
+
+⚠️ **Decision:** "Empty" means `rubric_criteria_for_task` returns `[]`, which is the list grading uses after the embedded merges. It is not the raw `rubric_vector` row count.
+
+⚠️ **Decision:** The duplicate check keys on code only, not code plus label. `_vector_labels_map` also needs a label to count a pair, but a duplicate code with a blank label is still a broken rubric, so code only is a superset of what decode warns on.
+
+⚠️ **Decision:** No try/except around the rubric read in `list_dtasks`, which matches `_candidate_dispatch_api_key_error`. No caching of the per-row read either: optimizations need Susan's sign-off.
+
+### Blast radius
+
+- **Live AUTO rows (production behavior):** on the first list load or scheduler tick after deploy, every AUTO row on a rubric-backed task whose candidate has an empty rubric (`qualify_job_listings`, `grade_*`, `meteorite_grade_*`, `meteorite_like`) or a duplicate-code rubric is forced off with a warning. That is intended, but Susan should expect AUTO to flip off on more than somerset's `meteorite_grade_do`.
+- **`list_dtasks` cost:** one extra `list_rubric_vectors` read per rubric-backed row per list load, on top of the existing per-row empty-render and key reads.
+- **Tests (Betty, fix-board):** `tests/component/ui/api/test_api_admin.py` (115 references to rubric-backed task keys) and `tests/component/core/test_dispatcher.py` (128) build rows on those keys. Any case that puts AUTO on, runs the row, lists rows with AUTO on, or calls `run_task` without a seeded rubric will now see Invalid, 400, or `False` and go red. Those cases need `rubric_dispatch_error` stubbed to `None` (`admin_mod.rubric_dispatch_error`, plus `src.core.candidate.rubric_dispatch_error` for the late import in `dispatcher`) or a seeded rubric. Betty owns that call; engineers do not edit `tests/`.
+- **Shared reads:** `rubric_criteria_for_task` is unchanged. Consult, hydrate, and token resolution see no difference.
+- **Sibling paths not gated:** craft tasks, non-rubric tasks, and mailbox Avail rows (`_meteorite_email_due_tasks`) all get `None`, so they behave exactly as before.
+
+### What must still hold
+
+- **AST-2008:** `_uptick_duplicate_rubric_codes` and `apply_rubric_vectors_save` are unchanged. A re-save still repairs duplicates, and the row turns valid on the next list load.
+- **AST-1513:** `_vector_labels_map` keeps its first-wins decode and its `duplicate rubric codes` warning. The helper does not call it or change it.
+- **AST-1760:** all-X routing and the `_render_score` math are untouched.
+- **AST-1791 / AST-1794:** a task with no agent prompts is still a silent `empty_render: False` soft-miss from `_evaluate_dispatch_empty_render`. The rubric reason is a separate source and only fires for rubric-backed tasks.
+- **AST-1880:** a missing key still wins `invalid_reason` and is the first 400 on create, update, and Run.
+- **AST-1819:** `empty_tokens` is unchanged, so the token tooltip still shows when no key or rubric reason applies.
+- **No new response fields, tables, job states, or `TASK_CONFIG` keys** (Technical scope).
+
+### Joan fix-board (AST-2091)
+
+```
+[board-joan]  CANON: OK
+```
+
+**Reasoning:** Read the `## Bug: AST-2091` plan-fix block (gates via `rubric_dispatch_error`, same shape as AST-1780 / AST-1880: `empty_render` + `invalid_reason`, key-first 400s, list force-off, plus `run_task` refuse + AUTO off). No Canon Scope on the ticket; roster skim used `canon/statutes/README.md` and paths touched (`api_admin.py`, `candidate.py`, `dispatcher.py`).
+
+Overlapping in-force scoped statutes do not need edits:
+
+- **`astral.dispatch.entity-state-bound`** — Still per-row `candidate_id` / task_key evaluation; no fake entity pairs or catalog override.
+- **`astral.agent.grade-vector-validation`** — `do_task` response vectors; not rubric row integrity before dispatch.
+- **`astral.dispatch.seed-auto-false`** — Forcing AUTO off on bad rubrics is operator/runtime behavior, not seed inserting AUTO true.
+- **`astral.layers.import-direction`** — Late `candidate` import inside `run_task` breaks an existing `candidate`→`dispatcher` cycle (same class as prior dispatch patterns); not the utils→data late-import carve-out.
+- **Logging** — `logger.warning` on scheduler skip matches dispatcher skip semantics; no new route `info` spam.
+
+AST-1513 first-wins decode and AST-2008 save uptick stay untouched; no active statute says duplicate/empty rubrics must remain AUTO-runnable. Plan ⚠️ decisions (empty = `rubric_criteria_for_task`, code-only dupes) are product choices in the doc, not ambiguous canon intent — **ESCALATE** not warranted.
+
+Optional F3 note only: if Susan later wants this gate written into corpus law, that would be new scoped statute authoring (Archie), not required because this plan contradicts existing statutes.
+
+```text
+AST-2091 board-joan done — CANON: OK.
+```
+
+context_tokens≈18500
+
+### Radia review-fix (AST-2091)
+
+[code-rubric]
+
+**Ticket:** AST-2091  
+**Publish ref:** `origin/sub/AST-2013/AST-2091-rubric-dup-dispatch-gate` @ `64bcc193539e35a7789ec2c030107abe805f4b48`  
+**Diff base:** `origin/ftr/AST-2013-rubric-dup-dispatch-gate` @ `823d376050014ec3899fa14eee376c75008691e8` (merge-base = ftr tip)  
+**Corpus:** `2d1b73da19cf1d14276e5c26f52b37aa8047d159`  
+**Overall:** CLEAN  
+
+## Canon scores
+
+Frozen list **empty** (AST-2091 description has no **Citations:** / Canon Scope; parent AST-2013 same — locked at Discussion). No directive rows to score; not a §5.3 ESCALATE (Joan fix-board `[board-joan] CANON: OK` roster skim; plan does not contradict in-force scoped statutes).
+
+## Column diff vs plan stage
+
+`no plan-stage scores attached` — Joan fix-board only (no `validate-plan` canon table for this bug).
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+**[bug-repro] OK** — Betty’s F4 bar cleared (`test(AST-2091)` @ `f00854439`, merge-tests @ `2d6cd8eea`). Assertions pin plan **To-be** strings and behavior, not tautologies:
+
+- `TestAst2091RubricDispatchError` — exact reasons (`Rubric 'do_rubric' has duplicate vector codes: TP`, empty message), alias `meteorite_grade_do` → `grade_do`, craft/non-rubric never read DB, key-first blank candidate.
+- `TestAst2091RubricDispatchGate` — list `empty_render` / `invalid_reason` / forced `auto_mode: 0`, create/put/run **400** with plan errors, key-before-rubric precedence, rubric before token reason on Run.
+- `TestAst2091RunTaskRubricGate` — `run_task` → `False`, no thread, `auto_mode=0` when AUTO on; manual row no DB write; craft/non-rubric still start.
+
+Would fail pre-fix ftr (no `rubric_dispatch_error`, list/run/`run_task` green on duplicate TP fixture).
+
+**## What must still hold — OK**
+
+| Item | Check |
+|------|--------|
+| AST-2008 uptick / `apply_rubric_vectors_save` | No edits in diff |
+| AST-1513 `_vector_labels_map` | Untouched (`consult.py` not in diff) |
+| AST-1760 all-X / `_render_score` | Untouched |
+| AST-1791 / AST-1794 soft-miss | Rubric is additive `invalid_reason` source; rubric-backed only |
+| AST-1880 key-first | `invalid_reason` and 400 chain: key → rubric → tokens; tested |
+| AST-1819 `empty_tokens` | Still from `_evaluate_dispatch_empty_render` only |
+| No new API fields / `TASK_CONFIG` | Reuses `empty_render` + `invalid_reason` only |
+
+## Findings
+
+### advisory — publish-ref history vs product footprint
+
+`git diff ftr…sub` includes many `docs/features/**` archive commits and `sync(dev): origin/dev` on the sub tip; **product** delta is only `src/core/candidate.py`, `src/ui/api/api_admin.py`, `src/core/dispatcher.py` plus AST-2091 tests/bible (9 paths). Not cross-ticket **product** scope (§5.4). Chuckles: when landing this orphaned mini-parent fix, be aware doc-archive commits ride the branch — no Radia action on product.
+
+### advisory — sibling test carry
+
+`merge-tests(AST-2091)` + qa-fix stub sweep (`rubric_dispatch_error → None` in existing AUTO/run/`run_task` cases in `test_api_admin.py`) — expected §5.4 pattern.
+
+### advisory — Canon Scope (off-list)
+
+Joan board named `astral.layers.import-direction`, `astral.dispatch.entity-state-bound`, `astral.dispatch.seed-auto-false`, etc. Not on frozen list by design; late `rubric_dispatch_error` import in `run_task` matches plan and existing cycle break. Optional future statute for “bad rubric not AUTO-runnable” is Archie/product, not this review.
+
+## What's solid
+
+- Single shared helper `rubric_dispatch_error` wired list → create/update AUTO-on → Run → `run_task`, matching AST-1780/AST-1880 shape.
+- `TASK_CONFIG.rubric_artifact` + `RUBRIC_OWNER_TASK_BY_ARTIFACT_KEY` (not `rubric_owner_task_key()`) preserves craft tasks.
+- Plan fidelity: three scoped files, no `AdminScheduledActions.tsx` change.
+
+## Recommended actions (Chuckles — not Radia)
+
+| Gate | Parent shape | Next |
+|------|----------------|------|
+| **PROCEED** (C7 complete) | Normal (AST-2013 live; diff vs `ftr/AST-2013-rubric-dup-dispatch-gate`) | Append artifact → `docs(AST-2091): Radia review — clean` on publish ref → post slim upshot `--as radia` → **Review Posted** → `do-all-the-things` §3h clean-review shortcut → **User Testing** (`resolve-child` skipped). |
+| UAT (optional) | — | Plan step 5: re-save somerset Do rubric in Artifacts after deploy; spot-check AUTO forced off on other live bad rubrics per Blast radius. |
+
+context_tokens≈22000
+
+```
+[code-rubric] PROCEED (Commit: 64bcc193) Rubric gate matches plan
+```
+
+## Bug: AST-2103 — Score rubric tokens at the dispatch empty-render call site
+
+`fix` child of orphaned mini-parent bug AST-2020 (`ftr/AST-2020-rubric-gate-call-site`). Scope is this ticket's own `## Scope`: `src/ui/api/api_admin.py`, function `_evaluate_dispatch_empty_render` only — supply the `rubric` entity-context key to `empty_render_for_prompts`. No ancestor box checked; this doc is the one that introduced `_evaluate_dispatch_empty_render` (AST-1854 / AST-2091 precedent). Canon Scope on the ticket: none — ids id-only for the board (`astral.dispatch.entity-state-bound`).
+
+> **⚠️ Headline — this change is a no-op on the current tip.** The ticket was filed on the premise that AST-2092 was not on `origin/dev`. It is now: PR #278 (`16875ec91`, AST-2019) carries `5ff29d792` `code(AST-2092)` onto `origin/dev`, and `sync-child` fast-forwarded this publish ref to dev (`3d9f1d1e5`) at plan time. AST-2091 (`64bcc1935`, `rubric_dispatch_error`) is also on dev and independently gates the exact AST-2020 symptom. The step below is correct with or without AST-2092 and composes with no double-scoring, but on this tip it changes no output. See the ⚠️ Decision at the end of **Proposed change**.
+
+### As-is
+
+Ticket As-is (pre-AST-2092 / pre-AST-2091): `_evaluate_dispatch_empty_render` calls `empty_render_for_prompts(texts, cd, tk, entity_contexts=None)`; that helper scored only `source: candidate`, so an empty `{$RUBRIC_VECTORS}` (and the AST-1405 pins `DO_RUBRIC` / `GET_RUBRIC` / `JD_RUBRIC` / `LIKE_RUBRIC` / `PREFILTER_RUBRIC`) validated `empty_render: false`. abrams' `qualify_job_listings` stayed AUTO, claimed 2 jobs, `agent.do_task` refused ("Empty tokens: RUBRIC_VECTORS"), both routed to `ERROR_QUALIFY_JOB_LISTINGS`.
+
+As-is **on this tip** (verified at plan time): the symptom no longer reproduces. `empty_render_for_prompts` scores `source: rubric` by default (AST-2092), so `_evaluate_dispatch_empty_render` already returns `{"empty_render": True, "empty_tokens": ["RUBRIC_VECTORS", …]}` for a candidate with no current joblist rubric. Independently, `rubric_dispatch_error` (AST-2091) returns `"Rubric 'joblist_rubric' is empty for this candidate."` for `qualify_job_listings` and is wired into `list_dtasks`, create/update AUTO-on, `run_dtask`, and `dispatcher.run_task`.
+
+### To-be
+
+A `source: rubric` token that resolves empty for the row's candidate makes the row `empty_render: true` with that token in `empty_tokens`; AST-1780 list enrichment forces AUTO off; Invalid tooltip names the reason (AST-1819 / AST-1880 / AST-2091 precedence); AUTO-on / Run return 400; no jobs are claimed. Holds on this tip today; this ticket makes `_evaluate_dispatch_empty_render`'s rubric scoring explicit at the call site so it does not depend on the helper's default.
+
+### Repro
+
+Fixture (no DB seed — stub the rubric read; same shape AST-2094's `[bug-repro]` uses):
+
+```python
+import src.core.candidate as c
+from src.utils.config import empty_render_for_prompts
+cd = {"_astral_candidate_id": "abrams", "first": "A"}
+texts = ["Rubric: {$RUBRIC_VECTORS} pin {$DO_RUBRIC}"]
+c.rubric_criteria_for_token = lambda cid, owner: []          # no current rubric
+empty_render_for_prompts(texts, cd, "qualify_job_listings", entity_contexts=None)
+empty_render_for_prompts(texts, cd, "qualify_job_listings", entity_contexts={"rubric": {}})
+```
+
+| Tree | `entity_contexts=None` | `entity_contexts={"rubric": {}}` |
+|------|------------------------|-----------------------------------|
+| pre-`5ff29d792` (`ftr` before sync, `d62d88edc`) | `{"empty_render": False, "empty_tokens": []}` — **the bug** | `{"empty_render": True, "empty_tokens": ["RUBRIC_VECTORS", "DO_RUBRIC"]}` |
+| this tip (`3d9f1d1e5`, AST-2092 on) | `{"empty_render": True, "empty_tokens": ["RUBRIC_VECTORS", "DO_RUBRIC"]}` | identical |
+
+Filled rubric (`lambda cid, owner: [{"code": "TP", "label": "x"}]`) → `{"empty_render": False, "empty_tokens": []}` in all four cells. Both this-tip rows were executed at plan time.
+
+### Root cause
+
+The rubric tokens are candidate-keyed (`resolve_tokens` reads `rubric_vector` rows off the token view's `_astral_candidate_id` + owner task), but AST-1779 classed `source: rubric` as an `entity_contexts`-only source and AST-1780's call site passed `entity_contexts=None`, so the gate never scored them. AST-2092 fixed the classification in the helper; AST-2091 added a separate rubric-integrity gate. The call site itself still documents the old assumption.
+
+### Proposed change
+
+One edit, `src/ui/api/api_admin.py` only. Do **not** edit `src/utils/config.py`, `src/core/candidate.py`, `src/core/dispatcher.py`, or any caller.
+
+1. **`_evaluate_dispatch_empty_render(candidate_id, task_key)`**, final line (today line 2053):
+   - From: `return empty_render_for_prompts(texts, cd, tk, entity_contexts=None)`
+   - To:
+
+     ```python
+     # Rubric tokens are candidate-keyed (resolver reads cd["_astral_candidate_id"]); the
+     # value is unused — only key presence opts source: rubric into scoring (AST-1779 seam).
+     # Job/other entity sources stay out: job tokens alone never flip the gate (AST-1780 AC5).
+     return empty_render_for_prompts(texts, cd, tk, entity_contexts={"rubric": {}})
+     ```
+   - Everything above it byte-for-byte unchanged: blank-`cid` / candidate-miss warnings + `empty_render: True`, hydrated `get_candidate` (AST-1854), `build_candidate_token_view`, silent `ValueError` soft-miss (AST-1791/1794), `logger.exception` fail-closed.
+2. No new function, import, field, log line, cache, or cap. `_candidate_dispatch_empty_render_error`, `list_dtasks`, `create_dtask`, `update_dtask`, `run_dtask` pick it up unchanged.
+
+**Composition with AST-2092 (no conflict, no double-scoring):**
+- Different files: AST-2092 touched only `config.py`; this touches only the `api_admin.py` call line. No merge conflict either way.
+- `empty_render_for_prompts` gate is `source not in ("candidate", "rubric") and source not in contexts` (post-2092) / `source != "candidate" and source not in contexts` (pre-2092). `{"rubric": {}}` admits rubric under both; post-2092 it is redundant. Each token name is resolved once (`seen` set), so a token is never scored or listed twice.
+- `contexts["rubric"]` is never read (only `contexts.get("job")` is) — `{}` vs any other value is irrelevant; `"job"` is deliberately **not** added.
+
+**Composition with AST-2091:** independent reason source. On `list_dtasks`, `empty_render` is already `er OR key_err OR rubric_err`; `empty_tokens` comes only from `er` and already carries `RUBRIC_VECTORS` on this tip. On AUTO-on / Run, `rubric_dispatch_error` runs **before** `_candidate_dispatch_empty_render_error`, so for `qualify_job_listings` the 400 body is AST-2091's `"Rubric 'joblist_rubric' is empty for this candidate."`, not the ticket To-be's `"Prompt tokens resolve empty…"`. That ordering is AST-2091's and out of this ticket's scope; unchanged here.
+
+⚠️ **Decision (for Chuckles / Susan before fix-board):** with AST-2092 on dev and on this ref, step 1 is a **no-op** — identical return values for every input on this tip. Two honest paths:
+- **(a) Ship step 1** as belt-and-suspenders: the call site states its own rubric contract and survives a future revert/narrowing of the helper default. Cost: one line + comment; make-fix / test-fix are trivial (existing AST-2094 + AST-1780/1791/1854 tests cover it; no new `[bug-repro]` can go red on this tip).
+- **(b) Cancel AST-2103 / close AST-2020 as fixed by AST-2092 + AST-2091** (both on `origin/dev`); no product edit.
+Plan is written for (a) per the spawn instruction ("plan the call-site change … state plainly if it becomes a no-op"); (b) needs no further engineer work.
+
+### Blast radius
+
+- Callers of `_evaluate_dispatch_empty_render`: `list_dtasks` (enrich + force AUTO off), `create_dtask` / `update_dtask` AUTO-on, `run_dtask`, via `_candidate_dispatch_empty_render_error`. On this tip: no behavior change. On a pre-2092 tree: every rubric-token-bearing task (incl. any `craft_*` prompt that references `{$RUBRIC_VECTORS}` or a pin, via `rubric_owner_task_key`) would gain the same flag AST-2092 already introduced — identical set, not a superset.
+- Not touched: `dispatcher.run_task` (AST-2091 rubric gate only; no empty-render gate there), AST-1781 revalidation hooks (`database._token_view_for_empty_render` / `_force_auto_off_if_empty_render` call `empty_render_for_prompts` themselves and now score rubric via AST-2092's default).
+- Tests (Betty's lane): `TestAst1780EmptyRenderListGatesForceOff` monkeypatches the evaluator — unaffected. AST-1792/1795/1855 classes stub `_dispatch_empty_render_prompt_texts` with candidate-only tokens — unaffected. AST-2094's `TestAst1779EmptyRenderForPrompts` rubric-by-default tests are on the helper — unaffected. Any test asserting `empty_render_for_prompts` was called with `entity_contexts=None` would go red (none found by name at plan time; Betty to confirm). Engineers do not edit `tests/`.
+
+### What must still hold
+
+- AST-1779: `empty_render_for_prompts` signature and default unchanged; chain never scored; job only via the seam.
+- AST-1780 AC5: job tokens alone never flip the gate — `"job"` stays out of `entity_contexts`.
+- AST-1791 / AST-1794: prompt-load `ValueError` → silent `{"empty_render": False, "empty_tokens": []}`.
+- AST-1780: blank/missing candidate → `empty_render: True` + existing warnings; unexpected exceptions → `logger.exception` + fail-closed.
+- AST-1854: hydrated `get_candidate` load stays outside the `try`.
+- AST-1880 / AST-2091: 400 precedence key → rubric → tokens; `invalid_reason` key-first then rubric; `empty_tokens` sourced only from `_evaluate_dispatch_empty_render`.
+- Filled rubric → `empty_render: False` (no false positive).
+
+
+### AST-2103 — Joan fix-board
+
+[board-joan]  CANON: OK
+
+**Read:** `## Bug: AST-2103` in `docs/features/dispatcher/ast-1780-list-enrich-auto-run-gates-force-auto-off.md` (plan-fix six sections; publish ref `sub/AST-2020/AST-2103-rubric-gate-call-site`, plan context commit `fd31c854b`). Roster overlap: `astral.dispatch.entity-state-bound` (`canon/directives/active/stat.dispatch.entity-state-bound.md`); ticket Canon Scope **none** (board cites that id informally only). No pattern ids on parent scope.
+
+**The one question:** Does the proposed change conflict with or require updating any directive **in force**?
+
+**No.** Canon does not prescribe `entity_contexts=None` vs `{"rubric": {}}` on `_evaluate_dispatch_empty_render`. That contract is AST-1779 / AST-1780 feature plan and bible, same class as AST-2092’s helper default change (prior fix-board **CANON: OK** on `ast-1779` doc). This ticket only makes the call site explicit in `api_admin.py`; it does **not** edit `empty_render_for_prompts` signature or default (`## What must still hold`).
+
+- **`astral.dispatch.entity-state-bound`:** Still satisfied. Per-row `candidate_id` / task_key evaluation; no `dispatch_task`, `entity_type`, `trigger_state`, or claim-path edits. Rubric scoring remains candidate-keyed via existing resolver/`cd`; omitting `"job"` from `entity_contexts` matches plan AC5 intent and does not relax entity-binding law.
+
+- **No statute/pattern amend:** On current tip the edit is a documented no-op (AST-2092 default + AST-2091 gate already fix the symptom). Belt-and-suspenders at the call site does not introduce a new corpus carve-out or contradict in-force text.
+
+**Not ESCALATE:** The (a) ship vs (b) cancel choice in **Proposed change** is lane routing for Chuckles/Susan, not ambiguous statute intent or unbounded architectural precedent.
+
+
+### AST-2103 — Radia review
+
+```
+[code-rubric]
+
+**Ticket:** AST-2103  
+**Publish ref:** `origin/sub/AST-2020/AST-2103-rubric-gate-call-site` @ `ad073edebe8648994baa8291115d150b5abf2950`  
+**Diff base:** `origin/ftr/AST-2020-rubric-gate-call-site` @ `d62d88edc281f4a479187fb47951cfa90404fa62` (merge-base = ftr tip)  
+**Corpus:** `f3186d4c58d889a3a2767e51874a11dd942f002b`  
+**Overall:** CLEAN  
+
+## Canon scores
+
+Frozen list **empty** (AST-2103 description: **Citations:** none / no Canon Scope block — same as AST-2091 / AST-1854 fix children). No directive rows to score; not a §5.3 **ESCALATE** (Joan fix-board `[board-joan] CANON: OK`; one-line call-site change does not contradict in-force scoped statutes on the touched path).
+
+## Column diff vs plan stage
+
+`no plan-stage scores attached` — Joan fix-board only (no `validate-plan` canon table for this bug).
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+**[bug-repro] not applicable — clean board opt-out** — fix-board **TESTS: OK**; no `qa-fix` / no `[bug-repro]` on this ticket (plan documents that on the current tip no repro can flip red post-AST-2092). Existing AST-2094 / AST-1780 family tests cover helper + gate behavior.
+
+**## What must still hold — OK**
+
+| Item | Check |
+|------|--------|
+| AST-1779 — helper signature/default; chain unscored; job via seam only | `empty_render_for_prompts` in `config.py` untouched; call passes only `{"rubric": {}}` |
+| AST-1780 AC5 — job alone never flips gate | `"job"` not added to `entity_contexts` |
+| AST-1791 / AST-1794 — prompt `ValueError` soft-miss | `try`/`except ValueError` path above return unchanged |
+| AST-1780 — blank/missing candidate + fail-closed on unexpected errors | Early returns + `logger.exception` path unchanged |
+| AST-1854 — hydrated `get_candidate` outside `try` | `get_candidate` still before `try` |
+| AST-1880 / AST-2091 — key → rubric → tokens; `empty_tokens` from evaluator only | Additive seam only; no change to `_candidate_dispatch_empty_render_error` or rubric gate ordering |
+| Filled rubric → not false positive | Same resolver/`cd`; explicit rubric key matches AST-1779 manifest intent |
+
+## Findings
+
+### advisory — publish-ref history vs product footprint
+
+`git diff origin/ftr/AST-2020-rubric-gate-call-site...origin/sub/AST-2020/AST-2103-rubric-gate-call-site` is large (dev sync + sibling epics AST-2019/AST-2013/AST-2015/AST-2042, tests, docs). **Product delta for AST-2103** is commit `ad073edeb` only: `src/ui/api/api_admin.py` (+4/−1 in `_evaluate_dispatch_empty_render`). Not cross-ticket **product** smuggling for this ticket (§5.4). Chuckles: when merging/stacking AST-2020, treat carried history like AST-2091 advisory — no Radia action on the one-line fix.
+
+### advisory — sibling test carry
+
+`merge-tests` / AST-2094 / AST-2091 / AST-2090 rows on the publish ref — expected §5.4 pattern; out of AST-2103 scope.
+
+### advisory — Canon Scope (off-list)
+
+Joan board cited `astral.dispatch.entity-state-bound` informally; not on frozen list by design. Change stays per-row `candidate_id`/`task_key` evaluation via existing `cd` and AST-1779 seam; no dispatch_task / claim-path edits. Matches board triage.
+
+### advisory — behavioral no-op on tip
+
+Plan **Proposed change** documents identical outputs with AST-2092 on dev; diff is belt-and-suspenders at the call site. UAT may not observe a delta — acceptable per plan path (a).
+
+## What's solid
+
+- Plan fidelity: single edit in `_evaluate_dispatch_empty_render` exactly as specified (comment explains candidate-keyed rubric + AC5).
+- Composes with AST-2092 (redundant admit) and AST-2091 (independent reason) per plan composition notes.
+- No tests asserting `entity_contexts=None` on this call site (grep clean).
+
+## Recommended actions (Chuckles — not Radia)
+
+| Gate | Parent shape | Next |
+|------|----------------|------|
+| **PROCEED** (C7 complete) | AST-2020 mini-parent with **live** `ftr/AST-2020-rubric-gate-call-site` (ftr tip = merge-base) | Append artifact → `docs(AST-2103): Radia review — clean` on publish ref → post slim upshot `--as radia` → **Review Posted** → `do-all-the-things` §3h clean-review shortcut → **User Testing** (`resolve-child` skipped). |
+| UAT (optional) | — | Spot-check list row `empty_render` / AUTO-off on candidate with empty joblist rubric; expect same as pre-fix tip (no-op) unless AST-2092 reverted in env. |
+
+context_tokens≈12000
+```
+
+```
+[code-rubric] PROCEED (Commit: ad073ede) Call-site rubric seam explicit
+```
+
+
+### AST-2103 — test routing
+
+docs-acceptance: fix-board `[board-betty] TESTS: OK` — no qa-fix, no new tests. Existing AST-2092 / AST-2094 `TestAst1779EmptyRenderForPrompts` coverage (including the `entity_contexts={"rubric": {}}` case) already pins this behavior; the call-site change is a verified no-op on the current tip.
+
+### AST-2020 — epic registry Threads (mirror)
+
+| Agent | Role | Thread |
+|--------|-------|--------|
+| Ada | engineer | `/home/susan/.cursor/chats/44df6ed17f933d3a939581634566a7fc/266932a9-ef4b-4b88-9df8-355722246ab5/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/3e21e535-8623-47ca-bb6e-707d27404871/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/44df6ed17f933d3a939581634566a7fc/e8749e93-07fa-4f0d-a856-0d00e57a4b83/store.db` |
+| Joan | validate | `f9f2c4dd-c376-47b8-bbb3-37859aa99d63` |
+
+Git (deleted at finish-up): parent `ftr/AST-2020-rubric-gate-call-site`, AST-2103 `sub/AST-2020/AST-2103-rubric-gate-call-site`, epic worktree `astral-AST-2020/`.

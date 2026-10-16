@@ -182,10 +182,10 @@ export default function AdminScheduledQueries() {
       >
         <section
           style={{
-            border: "1px solid var(--border-color)",
+            border: "1px solid var(--border)",
             borderRadius: 8,
             padding: 16,
-            background: "var(--bg-secondary)",
+            background: "var(--bg-card)",
           }}
         >
           <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12 }}>
@@ -268,10 +268,10 @@ export default function AdminScheduledQueries() {
                 <div
                   key={row.scheduled_query_id}
                   style={{
-                    border: "1px solid var(--border-color)",
+                    border: "1px solid var(--border)",
                     borderRadius: 8,
                     padding: 14,
-                    background: "var(--bg-secondary)",
+                    background: "var(--bg-card)",
                   }}
                 >
                   <div
@@ -304,7 +304,7 @@ export default function AdminScheduledQueries() {
                     Last run: {row.last_run_at || "—"} · Records affected:{" "}
                     {row.last_rows_affected == null ? "—" : row.last_rows_affected}
                     {row.last_error ? (
-                      <div style={{ color: "var(--danger, #c44)", marginTop: 4 }}>
+                      <div style={{ color: "var(--danger)", marginTop: 4 }}>
                         Last error: {row.last_error}
                       </div>
                     ) : null}

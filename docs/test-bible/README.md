@@ -379,6 +379,38 @@ cd src/ui/frontend && npm run test:component -- \
 
 **Bible shasum (after publish):** `git show origin/sub/AST-1626/AST-1628-rename-plural-drafts-example-enrichment:docs/test-bible/README.md | shasum`
 
+### AST-2176 · AST-2172 (promote grader statutes to active)
+
+**Docs-only** (canon draft → `active/` promotion). Live edits on **`origin/sub/AST-2172/AST-2176-promote-grader-statutes`**: `canon/directives/draft/stat.agent.{grade-vector-validation,confidence-bounds}.md` → `canon/directives/active/` (`git mv`); frontmatter `id:` `astral.agent.*` → `stat.agent.*`, `approved_at: "2026-10-12"`; `confidence-bounds` sanctioned `{A-F}0` → `X0` Statement sentence + second Conforming bullet name the structured hydrate (`src/core/grade_schema.py`) instead of `_decode_payload`. No `src/**`, no `tests/**`. Hydrate / decoder product work is siblings **AST-2177**–**AST-2181**.
+
+**No new component or integration tests; no broken tests.** No test under `tests/` reads these directives, `canon_clerk.py`, or the `directives/draft/` paths. Statute id for **AST-2053** / **AST-2124** blocks in [`core/agent.md`](core/agent.md) (`astral.agent.confidence-bounds`) is now **`stat.agent.confidence-bounds`** — historical blocks left as written. **`test-child`:** docs-acceptance (AC 10b commands below on publish tip) — no pytest / zero-arg harness / branch-lock gate.
+
+#### QA test manifest
+
+1. **Canon in force (AC 10b):** `canon_clerk.py index` lists both `stat.agent.*` ids; zero `astral.agent.*` ids.
+2. **No stale function name (AC 10b):** `rg '_decode_payload' canon/directives/active` empty.
+3. **Clerk resolves both:** `expand` returns `resolved == 2`.
+4. **Moved, not copied:** neither file remains under `canon/directives/draft/`.
+5. **No product / test diff:** `git diff origin/dev -- src/ tests/` empty on publish tip.
+
+```bash
+# 1
+python3 canon/canon_clerk.py index | rg -n '^stat\.agent\.(grade-vector-validation|confidence-bounds)  '   # expect 2 lines
+python3 canon/canon_clerk.py index | rg -c 'astral\.agent\.'                                          # expect rg exit 1
+# 2
+rg -n '_decode_payload' canon/directives/active                                                      # expect rg exit 1
+# 3
+python3 canon/canon_clerk.py expand stat.agent.grade-vector-validation stat.agent.confidence-bounds \
+  | python3 -c 'import json,sys; assert json.load(sys.stdin)["resolved"] == 2'
+# 4
+test ! -e canon/directives/draft/stat.agent.grade-vector-validation.md
+test ! -e canon/directives/draft/stat.agent.confidence-bounds.md
+# 5
+git diff origin/dev -- src/ tests/
+```
+
+**Bible shasum (after publish):** `git show origin/sub/AST-2172/AST-2176-promote-grader-statutes:docs/test-bible/README.md | shasum`
+
 
 ## 2. Where tests live
 
@@ -487,7 +519,7 @@ Cherry-pick any ticket-local **`fix(<same ticket id>):`** product SHAs still mis
 | Symptom on ftr tip | Test-tree response (Betty) |
 | --- | --- |
 | **`RESUME_SECTION_CATALOG`**, AST-551/552/562 tracker helpers, etc. missing on older ftr tips | **`pytest.mark.skipif`** on the asserting class or method (local skips beside the test module). **AST-960** deleted **`DISPATCH_SCHEDULABLE_TASK_KEYS`** — do not reinstate a global skip for that constant. |
-| Default **`active_provider`** is **deepseek**; mocks target **`send_to_anthropic`** only | **`tests/component/conftest.py`** env keys; **`tests/component/core/conftest.py`** + **`tests/component/ui/conftest.py`** autouse **`anthropic`** provider |
+| ~~Default **`active_provider`** is **deepseek**~~ (**AST-1880**: no global provider; each agent routes by its own model → server) | Autouse provider fixtures in **`tests/component/core/conftest.py`** + **`tests/component/ui/conftest.py`** removed. Stub the route / key per test (`task_llm_server_id`, `_candidate_server_key`) |
 | Strict **AST-501** envelope on **`evaluate_jd`** / encoded consult mocks | **`_strict_batch_llm_ok`** / **`_llm_failure_envelope`** in **`tests/component/core/test_agent.py`** |
 | **`LOCKED_AT_100`** files below 100% branch % on composite product | **`run_component_tests.sh`** sets **`ASTRAL_FTR_COVERAGE_INTEGRATION=1`** when **`HEAD`** is contained in **`origin/ftr/*`**; **`check_per_file_coverage.py`** logs and **does not gate** sub-100 locks (pytest + Vitest still must pass) |
 
@@ -528,6 +560,8 @@ Expect **all pytest passed** (includes **`TestDispatchTasks::test_scheduler_and_
 **Broken / obsolete tests (Betty return pass):** `TestDispatchTasks::test_scheduler_and_run_controls` — `run_task` mock accepts **`ui_initiated`** (**AST-653** on `origin/dev`).
 
 ### AST-688 (parent AST-680)
+
+> **AST-1880:** Frozen record. `tests/component/external/test_deepseek.py` is deleted, so drop that node when re-running this manifest.
 
 **Scope:** Global **`review-child`** **§5g** external layer cleanliness rubric (**§5** / **§5a** cross-refs + sample review comment). Plan + **Implementation record** on **`origin/sub/AST-680/AST-688-radia-review-criteria-external-cleanliness`**; skill path **`~/.cursor/skills/review-child/SKILL.md`** (not repo git). **No new Betty tests** — parent forbids log-string manifest; sibling **AST-687** owns product attribution.
 

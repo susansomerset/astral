@@ -1,3 +1,78 @@
+<!-- linear-archive: AST-1557 archived 2026-10-02 -->
+
+## Linear archive (AST-1557)
+
+**Archived:** 2026-10-02  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1557/meteorite-table-claim-helpers-meteorite-ingress-staging-table  
+**Status at archive:** Archive  
+**Project:** Astral Meteorite  
+**Assignee:** ada  
+**Priority / estimate:** None / 5  
+**Parent:** AST-1555 — Meteorite ingress: staging table + inbox/meteorite consolidation  
+**Blocked by / blocks / related:** parent: AST-1555; blocks: AST-1560; blocks: AST-1559
+
+### Description
+
+## What this implements
+
+Own the `meteorite` table, state registry in config, and DB claim/insert/update/retention helpers. No inbox verbs, no classify runner, no Estelle, no Manage Email. Does not own dispatch seed rows beyond config literals the later children wire.
+
+## Citations
+
+`pattern.state.entity-state-transitions`, `pattern.batch.entity-claim-process-release`, `astral.standards.database-header-inventory`, `astral.standards.no-hardcoded-sets`, `astral.state.core-decides-transitions`
+
+## Scope
+
+`src/data/database.py` (new table + claim/insert/update/retention helpers + header inventory); `src/utils/config.py` (meteorite state registry / transition literals only — not monitoring format or task-key retirements owned by later children)
+
+## Acceptance criteria
+
+1. A successful classify of one email that yields N jobs creates exactly N `meteorite` rows and archives the Gmail mid once; a classify LLM failure leaves the mid in inbox and creates zero rows.
+
+## Boundaries
+
+Does not own sibling slices: #2 inbox candidate verbs + Manage Email filter, #3 check_inbox + monitoring log, #4 stage / scrape / land transitions, #5 BOT_BLOCKED Estelle recovery + apply_paste, #6 Retention sweep + delete meteorite_email.
+
+## Notes for planning
+
+Citations and Scope above are authoritative for plan-child. Parent: AST-1555.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/<parent-segment>`, child `sub/AST-1555/<child-segment>`. Created at dispatch-parent.
+
+### Comments
+
+#### chuckles — 2026-08-31T22:44:04.594Z
+Chuckles note on Radia discuss: accepting AST-1556 test/bible hunks as parallel-track carry from shared origin/tests ancestry; Betty manifest scoped to meteorite only. No revert required before UT; strip only if merge-child/ftr conflicts.
+
+#### radia — 2026-08-31T22:43:58.195Z
+[code-rubric] REVIEW (Commit: a83b8dd5) product clean; sibling test bleed
+
+#### betty — 2026-08-31T22:39:19.801Z
+`origin/sub/AST-1555/AST-1557-meteorite-table-claim-helpers` @ `a83b8dd517351a6dfe245a4d3abe7d12b9966be7` · meteorite claim helpers ready
+
+#### joan — 2026-08-31T22:28:24.644Z
+[plan-rubric] PROCEED (Commit: 9e49433068aba301e42fe41160806c4331f7f44c) table spine ready
+
+#### ada — 2026-08-31T22:25:34.870Z
+`origin/sub/AST-1555/AST-1557-meteorite-table-claim-helpers` @ `9e49433068aba301e42fe41160806c4331f7f44c` · plan ready
+
+#### ada — 2026-08-31T22:20:20.824Z
+[scope-gate] ## Citations and ## Scope are empty on this ticket — cannot plan Files Changed / Stages against declared Scope.
+
+What this implements + Boundaries name the slice, but Notes say "Citations and Scope above are authoritative for plan-child," and both sections are blank (same shape on sibling AST-1558).
+
+Needed Scope content already exists on parent AST-1555 proposed child #1 — please copy onto this ticket:
+
+**Citations:** `pattern.state.entity-state-transitions`, `pattern.batch.entity-claim-process-release`, `astral.standards.database-header-inventory`, `astral.standards.no-hardcoded-sets`, `astral.state.core-decides-transitions`
+
+**Scope:** `src/data/database.py` (new table + claim/insert/update/retention helpers + header inventory); `src/utils/config.py` (meteorite state registry / transition literals only — not monitoring format or task-key retirements owned by later children)
+
+Without that, any Files Changed row would be scope invention. Status → Plan Discuss; no plan doc published. Re-spawn plan-child after Scope/Citations are filled.
+
+---
+
 # AST-1557 — meteorite table + claim helpers
 
 **Linear:** [AST-1557](https://linear.app/astralcareermatch/issue/AST-1557/meteorite-table-claim-helpers)  

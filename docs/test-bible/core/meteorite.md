@@ -10,6 +10,10 @@
 
 ---
 
+### AST-2086 · AST-2073 (pointer)
+
+AC5: **`TestAst1560RunScrapeMeteorite::test_ast2086_scrape_failure_retries_once_then_errors`** — `SCRAPE_LINK` → `SCRAPE_LINK_RETRY` (claimed by the same dispatch) → `ERROR_SCRAPE_METEORITE`. Closed / missing → `JD_SCRAPE_FAIL_CLOSED` / `_MISSING` (fail, not error); `BOT_BLOCKED_SCRAPE_METEORITE`; stage → `ERROR_STAGE_METEORITE[_UNPARSEABLE]`; land → `ERROR_LAND_METEORITE`. Primary manifest: **`docs/test-bible/utils/config.md`** § AST-2086.
+
 ### AST-1041 · AST-1034
 
 **Parent:** [AST-1034 — Support meteorite jobs](https://linear.app/astralcareermatch/issue/AST-1034/support-meteorite-jobs). **Publish:** `origin/sub/AST-1034/AST-1041-meteorite-company-config-lazy-ensure`.
@@ -191,9 +195,10 @@ cd src/ui/frontend && npm run test:component -- \
 
 **Integration:** none — do not invent new integration coverage.
 
+**Retired by AST-2061 / AST-2062:** create_contact_meteorite deleted; class TestAst1517CreateContactMeteorite removed.
+
 ```bash
 ./scripts/testing/run_component_tests.sh \
-  tests/component/core/test_meteorite.py::TestAst1517CreateContactMeteorite \
   tests/component/core/test_contact.py::TestAst1515ContactTaskMarkup \
   tests/component/core/test_contact.py::TestAst1515ContactEstelleTurnMarkup \
   -q
@@ -389,6 +394,8 @@ Scheduled `run_meteorite_retention`: batched purge of old `LANDED` rows + always
 | Dispatcher notify branch | `src/core/dispatcher.py` | **`TestAst1561BotBlockedNotifyDispatchOne`** |
 
 **Broken / obsolete:** none — additive on AST-1560 `BOT_BLOCKED` scrape path.
+
+AST-2061: content now passes through sanitize_contact_text — see § AST-2062.
 
 **Integration:** none revised.
 
@@ -793,3 +800,181 @@ Text-outcome map prefers http(s) `job_link` over `_email_breadcrumb_link`; `stag
 
 **Bible path shasums (record after publish):**
 - `docs/test-bible/core/meteorite.md`
+
+### AST-1796 · AST-1783 (bug-repro)
+
+**Parent:** [AST-1783](https://linear.app/astralcareermatch/issue/AST-1783/parsing-emails-with-linked-job-titles). **Bug:** [AST-1796](https://linear.app/astralcareermatch/issue/AST-1796). **Publish:** `origin/sub/AST-1783/AST-1796-combo-email-mixed-jd-job-link-array`.
+
+**qa-fix:** blank `jd_text` + http(s) `job_link` under a text outcome must **not** fall back to `ingress_blob` (combo link-only scrap). Classic blank+no-link still uses AST-1756 blob fallback. Prompt combo section: **`docs/test-bible/core/repo_admin_json.md`** § AST-1796.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Skip ingress_blob when blank jd_text + http job_link | `src/core/meteorite.py` | **`TestAst1796ComboBlankJdTextHttpJobLinkSkipsIngressBlob`** (bug-repro) |
+
+**Broken / obsolete this pass:** none — AST-1756 blank+no-link cases unchanged.
+
+## QA test manifest
+
+1. Bug-repro map: `tests/component/core/test_meteorite.py::TestAst1796ComboBlankJdTextHttpJobLinkSkipsIngressBlob`
+2. Bug-repro prompts: `tests/component/core/test_repo_admin_json.py::TestAst1796StageMeteoriteComboPrompts`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_meteorite.py::TestAst1796ComboBlankJdTextHttpJobLinkSkipsIngressBlob \
+  tests/component/core/test_repo_admin_json.py::TestAst1796StageMeteoriteComboPrompts \
+  -q
+```
+
+**Pass criterion (test-fix):** both were red pre-fix; green after make-fix.
+
+**Bible path shasums (record after publish):**
+- `docs/test-bible/core/meteorite.md`
+- `docs/test-bible/core/repo_admin_json.md`
+
+---
+
+### AST-1617 · AST-1555
+
+**Parent:** [AST-1555](https://linear.app/astralcareermatch/issue/AST-1555/meteorite-ingress-staging-table-inboxmeteorite-consolidation). **Publish:** `origin/sub/AST-1555/AST-1617-check-inbox-total-errors-without-errorwarning-logs`.
+
+**qa-fix:** `stage_meteorite` classify-fail fallthrough and map-error branch must emit exactly one always-on WARNING (candidate id, source kind, source id, error) when the ERROR-row insert succeeds. Callers (`inbox.check_email`, `ingest_candidate_email_message`, `contact_land_meteorite`) count these as errors and log nothing themselves. A failed ERROR-row insert keeps its single `logger.exception` line (no extra warn).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Classify-fail + map-error warn once; insert-fail no double log | `src/core/meteorite.py` | **`TestAst1617StageErrorWarns`** (bug-repro: `test_classify_fail_warns_once`, `test_map_error_warns_once`; guard: `test_error_row_insert_failure_logs_once_no_extra_warn`) |
+
+**Broken / obsolete this pass:** none. No existing test in `test_meteorite.py`, `test_contact.py`, `test_inbox.py`, or `test_api_inbox.py` asserts that there is no warning on these paths.
+
+**Integration:** none revised.
+
+## QA test manifest
+
+1. Bug-repro: `tests/component/core/test_meteorite.py::TestAst1617StageErrorWarns`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_meteorite.py::TestAst1617StageErrorWarns \
+  -q
+```
+
+**Pass criterion (test-fix):** `test_classify_fail_warns_once` and `test_map_error_warns_once` are red pre-fix and must go green after make-fix; the guard test stays green throughout.
+
+### AST-1879 · AST-1851 (classify hand-off carries the key map)
+
+**Primary manifest:** [`agent.md`](agent.md) § QA test manifest (AST-1879).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| `_classify_stage_blob` copies `ctx["candidate_api_keys"]` into the `do_task` ctx; with no map in ctx it leaves the key off (do_task loads by id) | `src/core/meteorite.py` | `TestAst1879ClassifyKeyMapHandOff` |
+
+**Integration:** none.
+
+### AST-2034 · AST-2032
+
+**Parent:** [AST-2032 — Let Estelle post a meteorite from Slack](https://linear.app/astralcareermatch/issue/AST-2032). **Publish:** `origin/sub/AST-2032/AST-2034-raw-new-meteorite-stage-classify`.
+
+New public `insert_slack_meteorite` saves one raw Slack blob at `NEW` (`source_kind = slack`, `classify_outcome` NULL, `content` = trimmed payload, `estelle_thread_ts` stamped after insert); soft-fails, never raises. `run_stage_meteorite` Ruth-classifies unclassified `NEW` rows via `_classify_stage_blob(batch_id=<claim id>)`: job 1 written onto the row then falls through the unchanged classified routing; jobs 2..N inserted as unclaimed classified `NEW` siblings; skip → `NOT_A_JOB` (`total_failed`); classify / map / candidate-missing → `NEW_EMAIL_ERROR` (`total_errors`). Parent AC1/AC2 are tested by **direct call only** — mention/command strip and Slack link unwrap belong to sibling **AST-2035** (`docs/test-bible/core/contact.md`).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| AC1/AC2 row shape, anchor stamp, validation misses, insert/anchor soft-fail | `src/core/meteorite.py` | **`TestAst2034InsertSlackMeteorite`** |
+| AC8 link_list / single_jd_no_link / not_job_content / multi_jd_inline fan-out; map + candidate-missing → NEW_EMAIL_ERROR | same | **`TestAst2034StageHopClassify`** |
+| AC8 Ruth failure → NEW_EMAIL_ERROR (`total_failed == 0`) | same | revised **`TestAst1560RunStageMeteorite::test_missing_classify_outcome_errors_with_monitoring`** |
+| AC9 classified row: zero `do_task` calls, routes as before | same | **`TestAst2034StageHopClassify::test_classified_row_never_calls_ruth`** + unchanged **`TestAst1560RunStageMeteorite`** |
+| AC10 classify `log_batch_id` (→ `agent_data.batch_id`) = claim id; claim released | same | **`TestAst2034StageHopClassify::test_classify_batch_joins_claim_and_claim_released`** |
+
+**Broken / obsolete this pass:** `TestAst1560RunStageMeteorite::test_missing_classify_outcome_errors_with_monitoring` asserted unclassified `NEW` → `SCRAPE_ERROR "missing classify_outcome"` (parent AC8 Fail condition) — rewritten in place to the Ruth-failure → `NEW_EMAIL_ERROR` path; AST-1751 `total_failed == 0` hold kept.
+
+**Integration:** none — `tests/integration/scenarios/` has no meteorite scenario; do not invent.
+
+AST-2061: content now passes through sanitize_contact_text — see § AST-2062.
+
+**Known pre-existing reds (not this ticket):** on the synced tip, `test_meteorite.py` (`TestAst1517CreateContactMeteorite::test_debug_true_emits_style_d`, `TestAst1559CheckInbox::{test_skip_outcome_zero_rows_monitor_archive,test_sanitize_monitor_subject}`, `TestAst1693RunLandBotBlocked::test_contentful_bot_blocked_lands_with_http_link`) and 12 in `test_dispatcher.py` fail before and after this build — manifest is narrowed by class so they do not gate this ticket.
+
+## QA test manifest
+
+1. Insert entry (AC1/AC2 direct call): `tests/component/core/test_meteorite.py::TestAst2034InsertSlackMeteorite`
+2. Stage-hop classify (AC8/AC9/AC10): `tests/component/core/test_meteorite.py::TestAst2034StageHopClassify`
+3. Revised + classified-path regression (AC8 failure bullet, AC9): `tests/component/core/test_meteorite.py::TestAst1560RunStageMeteorite`
+4. Ingress classify regression (`_classify_stage_blob` default mint unchanged): `tests/component/core/test_meteorite.py::TestAst1713StageSavesRuthRow`, `TestAst1879ClassifyKeyMapHandOff`, `TestAst1988HoldLogBatchPairing`
+5. Text-outcome http routing unchanged: `tests/component/core/test_meteorite.py::TestAst1785PreferHttpJobLinkOverBreadcrumb`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_meteorite.py::TestAst2034InsertSlackMeteorite \
+  tests/component/core/test_meteorite.py::TestAst2034StageHopClassify \
+  tests/component/core/test_meteorite.py::TestAst1560RunStageMeteorite \
+  tests/component/core/test_meteorite.py::TestAst1713StageSavesRuthRow \
+  tests/component/core/test_meteorite.py::TestAst1879ClassifyKeyMapHandOff \
+  tests/component/core/test_meteorite.py::TestAst1988HoldLogBatchPairing \
+  tests/component/core/test_meteorite.py::TestAst1785PreferHttpJobLinkOverBreadcrumb \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible path shasums (record after publish):**
+- `docs/test-bible/core/meteorite.md`
+
+### AST-2062 · AST-2055 (Estelle pinhole — tests for AST-2061)
+
+**Parent:** [AST-2055](https://linear.app/astralcareermatch/issue/AST-2055) (fix child [AST-2061](https://linear.app/astralcareermatch/issue/AST-2061)). **Publish:** `origin/sub/AST-2055/AST-2062-estelle-pinhole-tests`.
+
+`create_contact_meteorite` / `_contact_param_looks_like_url` are deleted, so Contact markup can no longer reach `create_meteorite_job` (gazer email ingress keeps it). `sanitize_contact_text` (unescape → `nh3.clean(tags=set())` → unescape, strip) is the one sanitize point for Contact meteorite writes: `insert_slack_meteorite` payload and `_normalize_apply_paste_content` (old regex tag strip gone). Contact-side entry points (land blob, Slack paste unwrap) and the channel gate: [`contact.md`](contact.md) § AST-2062.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Retired create path; **[bug-repro]** job leak — retired key through `run_contact_task_dispatch` never calls `create_meteorite_job` | `src/core/meteorite.py` + `src/core/contact.py` | **`TestAst2061NoContactJobWrite`** (2) |
+| **[bug-repro]** insert stores sanitized content; URL query kept; markup-only → `payload is required`; **[bug-repro]** apply_paste drops script text; entity-encoded markup stripped; plain line shaping pinned; helper table (6 params) | `src/core/meteorite.py` | **`TestAst2061ContactSanitize`** (7) |
+
+**Broken / obsolete:** `TestAst1517CreateContactMeteorite` (deleted). `TestAst1561ApplyPaste` / `TestAst2034InsertSlackMeteorite` unchanged — plain-text / URL fixtures pass through the sanitizer unchanged. The double-encoded plain-text residual is accepted by AST-2061 and deliberately not pinned.
+
+**Integration:** none — no scenario covers meteorite sanitize; do not invent.
+
+## QA test manifest
+
+1. `tests/component/core/test_meteorite.py::TestAst2061NoContactJobWrite`
+2. `tests/component/core/test_meteorite.py::TestAst2061ContactSanitize`
+3. Regression: `tests/component/core/test_meteorite.py::TestAst2034InsertSlackMeteorite`, `TestAst1561ApplyPaste`
+
+Full AST-2062 command (all four pages): [`contact.md`](contact.md) § AST-2062.
+
+### AST-2223 · AST-2216
+
+**Parent:** [AST-2216 — Make meteorite text editable (not versioned)](https://linear.app/astralcareermatch/issue/AST-2216). **Publish:** `origin/sub/AST-2216/AST-2223-candidate-meteorite-edit`.
+
+`is_meteorite_editable` + `save_candidate_meteorite_edit`: overwrite candidate-supplied fields from `CANDIDATE_METEORITE_EDIT_CONFIG` without versioning, pipeline side-effects, or `agent_data`. Locked `LANDED`; claim (`batch_id`) is save-time refuse only. Config + API: **`docs/test-bible/utils/config.md`** § AST-2223 · **`docs/test-bible/ui/api/api_meteorite.md`** § AST-2223. Sibling modal UI: AST-2224.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Editable helper; default/pick-list persist; all fields; error clear; refuse gates; no pipeline / agent_data | `src/core/meteorite.py` | **`TestAst2223SaveCandidateMeteoriteEdit`** |
+| Slack paste recovery unchanged (AC 10) | same | **`TestAst1561ApplyPaste`** (unmodified) + contact paste routing |
+
+**Broken / obsolete:** none — additive core functions; `apply_paste` byte-identical.
+
+**Integration:** no existing scenario exercises candidate meteorite PUT / edit envelope — none revised; do not invent.
+
+## QA test manifest
+
+1. `tests/component/core/test_meteorite.py::TestAst2223SaveCandidateMeteoriteEdit`
+2. `tests/component/utils/test_config.py::TestAst2223CandidateMeteoriteEditConfig`
+3. `tests/component/ui/api/test_api_meteorite.py::TestAst2223CandidateMeteoriteEditApi`
+4. Regression (AC 10): `tests/component/core/test_meteorite.py::TestAst1561ApplyPaste` + `tests/component/core/test_contact.py::TestAst1561ContactPasteRouting`
+5. Docs-acceptance: `git diff origin/dev -- src/data/database.py` empty on publish tip; `rg -n '"NEW"|"LANDED"|"CHECK_UNIQUE"' src/ui/api/api_meteorite.py` shows no new literals vs `origin/dev`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_meteorite.py::TestAst2223SaveCandidateMeteoriteEdit \
+  tests/component/utils/test_config.py::TestAst2223CandidateMeteoriteEditConfig \
+  tests/component/ui/api/test_api_meteorite.py::TestAst2223CandidateMeteoriteEditApi \
+  tests/component/core/test_meteorite.py::TestAst1561ApplyPaste \
+  tests/component/core/test_contact.py::TestAst1561ContactPasteRouting \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible path shasums (publish tip `5de970a4a`):**
+- `docs/test-bible/core/meteorite.md` — `9fd6f92af6954e60b1ab6ef345dfed96182e3ae8`
+- `docs/test-bible/ui/api/api_meteorite.md` — `47169d10ce432f85c1212bbcef1706ff60429173`
+- `docs/test-bible/utils/config.md` — `fcc31904c7675fb535129a8c1ba7b99771a208a4`

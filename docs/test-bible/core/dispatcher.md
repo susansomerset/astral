@@ -177,6 +177,8 @@ Primary data/API manifest: **`docs/test-bible/data/database/dispatch_tasks.md`**
 
 Primary roster / consult manifest: **`docs/test-bible/core/roster.md`** · **`docs/test-bible/core/consult.md`** (**AST-891**).
 
+Timeout partial counts: § AST-1847 · AST-1848.
+
 ### AST-972 · AST-871
 
 Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-972 / **AST-1252**. Dispatcher: **`retire_candidate_requested_wrapper_dispatch_tasks`** (retire-only); candidate claim gate in **`_run_unified`**; tick calls **`age_stale_candidate_states`**; **`start_scheduler`** runs wrapper retire after meteorite provision.
@@ -516,3 +518,378 @@ Primary numbered manifest: **`docs/test-bible/core/meteorite.md`** § AST-1562.
 **Integration:** none revised.
 
 Primary numbered manifest: **`docs/test-bible/core/meteorite.md`** § AST-1561.
+
+---
+
+### AST-1829 · AST-1824
+
+**Parent:** [AST-1824](https://linear.app/astralcareermatch/issue/AST-1824). **Publish:** `origin/sub/AST-1824/AST-1829-sweep-interval-data-scheduled-sweep`.
+
+`dispatch_task.sweep_hrs` scheduled sweep: an AUTO row with 0 < Avail < `min_count` is due **as a sweep** (`_scheduled_sweep=True`) once `sweep_hrs` has elapsed since `last_run_at`. Both due paths (claim-queue `database.get_due_tasks`, mailbox `_meteorite_email_due_tasks`); `_tick_loop` logs sweep-due once and passes `run_task(..., scheduled_sweep=)`; `_run_dispatch_loop` caps a flagged AUTO row at one batch, min 1. `_dispatch_one` debug forcing stays `_ui_initiated`-only. Data half: **`docs/test-bible/data/database/dispatch_tasks.md`** § AST-1829.
+
+| AC | Source | Component tests |
+| --- | --- | --- |
+| 1 column fresh + migrated, NULL | `src/data/database.py` `_ensure_dispatch_task_schema` | `tests/component/data/database/test_dispatch_tasks.py::TestAst1829SweepInterval::{test_fresh_schema_has_nullable_real_column,test_existing_db_migrates_column_without_backfill}` |
+| 2–7 claim-queue due rule | `database.get_due_tasks` / `dispatch_task_sweep_due` | `::TestAst1829SweepInterval::{test_get_due_tasks_sweep_rule,test_sweep_due_helper}` |
+| 7 unflagged AUTO below min skips | `_run_dispatch_loop` | `tests/component/core/test_dispatcher.py::TestAst1829ScheduledSweep::test_loop_unflagged_auto_below_min_skips` (+ existing `TestRunDispatchLoop::test_continues_when_max_runs_zero`) |
+| 8 one batch, no min gate, `last_run_at` stamped | `_run_dispatch_loop` / `_dispatch_one_body` | `::TestAst1829ScheduledSweep::test_sweep_one_batch_no_min_gate_and_debug[scheduled_sweep]` |
+| 9 mailbox parity (freq gate kept) | `_meteorite_email_due_tasks` | `::TestAst1829ScheduledSweep::{test_mailbox_sweep_due_marked,test_mailbox_sweep_blocked_by_freq,test_mailbox_sweep_not_due,test_mailbox_full_batch_unmarked}` |
+| 10 debug forcing UI-only | `_dispatch_one` | `::TestAst1829ScheduledSweep::test_sweep_one_batch_no_min_gate_and_debug` (both ids) |
+| tick → spawn flag + sweep-due debug | `_tick_loop` / `run_task` | `::TestAst1829ScheduledSweep::{test_tick_passes_sweep_flag_and_logs_sweep_due,test_run_task_stores_scheduled_sweep}` |
+| 11 template copy | `_DISPATCH_TASK_TEMPLATE_COPY_COLS` / `_dispatch_task_schedule_assign` | `tests/component/data/database/test_dispatch_tasks.py::TestAst1829SweepInterval::test_template_copy_carries_sweep_hrs` |
+| 12 no parallel scheduler | `src/core/dispatcher.py` | shell grep (manifest item 3) |
+
+**Broken / obsolete → revised:** `run_task` stubs taking only `task_id` now accept `**_kw` (tick passes `scheduled_sweep=`): `TestScheduler::{test_tick_loop_spawns_due_auto_tasks,test_tick_loop_skips_running_and_full_slots,test_tick_loop_ignores_failed_spawn,test_tick_loop_stops_when_spawn_slots_are_exhausted,test_tick_loop_skips_when_auto_slots_full}` and `TestAst1022HonorAutoOffStageDispatch::test_tick_loop_calls_auto_off_debug_helper_before_spawn`. `test_api_admin.py` `run_task` stubs unchanged (admin API is sibling AST-1830).
+
+**Integration:** none revised — no scenario exercises the tick / due selection.
+
+## QA test manifest
+
+1. **New + revised (required, green):**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_dispatcher.py::TestAst1829ScheduledSweep \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst1829SweepInterval \
+  tests/component/core/test_dispatcher.py::TestScheduler \
+  tests/component/core/test_dispatcher.py::TestAst1022HonorAutoOffStageDispatch::test_tick_loop_calls_auto_off_debug_helper_before_spawn \
+  tests/component/core/test_dispatcher.py::TestRunDispatchLoop \
+  tests/component/core/test_dispatcher.py::TestAst1135GazeEmailDueTasks \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst875SetDispatchTasksFromTemplate \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst1135DispatchTaskFreqAllows \
+  -q
+```
+
+2. **Regression sweep (no new reds):** `tests/component/core/test_dispatcher.py` + `tests/component/data/database/test_dispatch_tasks.py` whole-file. **Baseline at QA time (pre-AST-1829 `tests` @ `bd5dc48c` on `origin/dev` product): 11 + 19 failures already red and unrelated to sweep** (candidate `candidate_id required` claim, circuit breaker, AST-641/891 claim states, AST-802/814 debug, AST-841 terminal logs, AST-1022 style-D, meteorite count, `TestSaveDispatchTask::test_inserts_and_reads_task`). Pass = the failing set is identical to that baseline; any new red is AST-1829's.
+3. **AC 12:** `grep -n "Thread(" src/core/dispatcher.py` → exactly 2 lines (per-task thread in `run_task`, tick thread in `start_scheduler`).
+4. **Branch lock:** `src/core/dispatcher.py` (`LOCKED_AT_100`) — no new missed lines in the AST-1829 hunks (`_run_dispatch_loop` flag, `run_task`, `_meteorite_email_due_tasks` sweep branch, `_tick_loop` sweep-due loop). Zero-arg harness gate is unreliable on this tip given item 2 baseline reds.
+
+**Bible shasum (publish tip):** fill after `merge-tests` —
+- `docs/test-bible/core/dispatcher.md`
+- `docs/test-bible/data/database/dispatch_tasks.md`
+
+---
+
+### AST-1847 · AST-1848 (qa-fix bug-repro — parse_job_list timeout partial counts in ledger)
+
+**Parent:** [AST-1845](https://linear.app/astralcareermatch/issue/AST-1845) (orphaned-bug mini-parent). Product: **AST-1847** (`ba60f8e4` on `origin/sub/AST-1845/AST-1847-parse-job-list-timeout-partial-counts`, not yet on ftr); test/bible delivery on gap sibling **AST-1848** (`origin/sub/AST-1845/AST-1848-parse-job-list-timeout-partial-counts-tests`). Contract: `_run_unified` puts a fresh copy of `_SUMMARY_ZERO` on `ctx["dispatch_partial"]` per run and pops it on normal return only; the `_dispatch_one_body` **timeout** branch folds the in-flight partial into `accumulated`, adds the `+1` timeout error **before** logging, and the timeout log line carries `processed= passed= failed= errors=` matching the INTERRUPTED ledger write. Admin-kill (`CancelledError`) branch unchanged (out of scope).
+
+**Sequencing deviation (gap child, AST-1844 / AST-1846 precedent):** product landed first. `[bug-repro]` proven both ways — **RED at ftr base `8e7b77a5`** on assertions (ledger `0/0/0/1`, log without counts; node 5 `KeyError: 'dispatch_partial'`) and **GREEN with `ba60f8e4`'s `roster.py` + `dispatcher.py` overlaid** (scratch worktree, not committed).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Real dispatch → consult → `parse_job_list_batch` timeout: ledger `3/2/0/1` + log counts; `clear_company_batch` on cancel | `_dispatch_one_body` / `_run_unified` + `roster.parse_job_list_batch` | **`tests/component/core/test_dispatcher.py::TestAst1847TimeoutPartialCounts::test_parse_job_list_timeout_ledger_and_log_carry_partial_counts`** (**bug-repro**) |
+| Fold-in loop with items on top of prior runs; `+1` before log; partial popped | `_dispatch_one_body` timeout branch | **`::TestAst1847TimeoutPartialCounts::test_timeout_folds_partial_on_top_of_prior_runs`** (branch lock) |
+| Fresh copy per run (stale replaced, constant not aliased); popped on return | `_run_unified` | **`::TestRunUnified::test_ast1847_sets_fresh_dispatch_partial_and_pops_on_return`** (branch lock) |
+| Cancel leaves partial in place; `finally` still clears batch | `_run_unified` | **`::TestRunUnified::test_ast1847_cancel_keeps_dispatch_partial_and_clears_batch`** (branch lock) |
+| Empty-partial fold (`wait_for` raises before `_run_unified` sets the key) | `_dispatch_one_body` timeout branch | existing **`::TestDispatchOne::test_auto_dispatch_uses_timeout`** (unchanged) |
+
+Roster tally nodes: **`docs/test-bible/core/roster.md`** § AST-1847 · AST-1848.
+
+**Branch lock (AST-1847 lines only):** full component run with `--cov-branch` and the `ba60f8e4` overlay — **0 missing lines / 0 missing branches** on every line `ba60f8e4` added in `dispatcher.py` (16) and `roster.py` (23); missing-branch count unchanged vs base (dispatcher 42 / 42, roster 136 / 136). `check_per_file_coverage.py` on that report still exits 1 whole-file (dispatcher **86.1%**, roster **78.2%**; base 86.0% / 78.1%) solely from pre-existing host drift (316 failing + 5 uncollectable `SURFER_BATCH_CONFIG` modules at tip, 323 at base — the 7-node difference is exactly this ticket's red→green set).
+
+**Broken / obsolete:** none.
+
+**Integration:** none — do not invent.
+
+## QA test manifest
+
+1. **Repro + branch-lock nodes** (**[bug-repro]** — red at `8e7b77a5`, green with AST-1847; `test_auto_dispatch_uses_timeout` green both):
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_dispatcher.py::TestAst1847TimeoutPartialCounts \
+  tests/component/core/test_dispatcher.py::TestRunUnified::test_ast1847_sets_fresh_dispatch_partial_and_pops_on_return \
+  tests/component/core/test_dispatcher.py::TestRunUnified::test_ast1847_cancel_keeps_dispatch_partial_and_clears_batch \
+  tests/component/core/test_dispatcher.py::TestDispatchOne::test_auto_dispatch_uses_timeout \
+  -q
+```
+
+2. **Branch lock:** full `tests/component` with `--cov-branch` (`--continue-on-collection-errors` on this host) — 0 missing lines / branches on AST-1847's added lines in `src/core/dispatcher.py`; whole-file % no lower than base.
+
+**Bible shasum (record after publish):** `git show origin/sub/AST-1845/AST-1848-parse-job-list-timeout-partial-counts-tests:docs/test-bible/core/dispatcher.md | shasum`
+
+---
+
+### AST-1867 · AST-1870 (qa-fix bug-repro — provider balance refusal as one batch-level outage)
+
+**Parent:** [AST-1860](https://linear.app/astralcareermatch/issue/AST-1860) (orphaned-bug mini-parent). Product: **AST-1867** (`144b8850` on `origin/sub/AST-1860/AST-1867-provider-balance-outage`, not yet on ftr); test/bible delivery on gap sibling **AST-1870** (`origin/sub/AST-1860/AST-1870-provider-balance-outage-tests`). Contract: the first result satisfying `is_provider_balance_refusal` sets `ctx["provider_balance_outage"] = {"error", "held"}` (one WARNING; later refusals only add `total_held`); `_run_unified` per-entity `_one` and chunk `_consult_chunk` return `_SUMMARY_ZERO` once it is set (no provider call, not processed; `finally` still releases the claim); `_run_dispatch_loop` breaks after the outage run's mid-run ledger write; `_dispatch_one_body` ends the run **INTERRUPTED**, sends `monitor.provider_balance_outage` **instead of** `auto_run_error` (AUTO + ledger id only), and never reaches `_check_circuit_breaker` (COMPLETED-only; non-COMPLETED rows are also invisible to `get_recent_ledger_summaries`). `total_held` / `failure_class` never enter the summary (ledger-safe). Ordinary errors never set the ctx key.
+
+**Sequencing deviation (gap child, AST-1848 precedent):** product landed first. `[bug-repro]` proven both ways — **RED at ftr base `fbe9486e`** on assertions (`assert 9 == 1` on `run_select_job_page_dispatch.await_count`: 3 companies × 3 runs) and **GREEN with `144b8850`'s `roster.py` + `dispatcher.py` + `monitor.py` overlaid** (scratch worktree, not committed).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Real dispatch → consult → `run_company_task` select_job_page balance hold: 1 provider call, 1 claim, INTERRUPTED `1/…/0` errors, outage alert `(task_key, batch, acc, {"error", "held": 1}, cid)`, no `auto_run_error`, no breaker | `_dispatch_one_body` / `_run_dispatch_loop` / `_run_unified` + `roster.run_company_task` | **`tests/component/core/test_dispatcher.py::TestAst1867ProviderBalanceOutage::test_bug_repro_balance_refusal_one_call_interrupted_outage_alert`** (**bug-repro**) |
+| Per-entity skip after refusal; summary has no `total_held` / `failure_class`; ctx marker `held=1`; claim released | `_run_unified` `_one` + `_note_provider_balance_outage` | **`::TestAst1867ProviderBalanceOutage::test_run_unified_per_entity_skips_after_refusal`** |
+| Job chunk split: head chunk refusal skips both tail chunks; consult envelope → `held=0` | `_run_unified` `_consult_chunk` | **`::TestAst1867ProviderBalanceOutage::test_run_unified_chunk_split_skips_tail_after_head_refusal`** |
+| Ordinary error (no `failure_class`) → every entity called, no ctx marker (guard) | `_run_unified` | **`::TestAst1867ProviderBalanceOutage::test_run_unified_ordinary_error_does_not_skip`** (green both) |
+| Loop stops after the outage run; mid-run ledger write first (`max_runs=0`; finite eligibility `[24,24,24,0]` so the pre-fix loop terminates) | `_run_dispatch_loop` | **`::TestAst1867ProviderBalanceOutage::test_run_dispatch_loop_stops_after_outage_run`** |
+| CLICK outage run → INTERRUPTED, no alert of either kind, no breaker | `_dispatch_one_body` | **`::TestAst1867ProviderBalanceOutage::test_dispatch_one_click_outage_interrupted_no_alert`** |
+| Non-outage AUTO error still → `auto_run_error` | `_dispatch_one_body` | existing **`::TestDispatchOne::test_auto_run_error_on_auto_failures`** (unchanged; passes by accident — its 5-param `_bump` raises `TypeError` against the 6-arg call, run ends FAILED `+1` error; pre-existing, out of scope) |
+
+Roster counting nodes: **`docs/test-bible/core/roster.md`** § AST-1867 · AST-1870. Alert body/subject: **`docs/test-bible/core/monitor.md`** § AST-1867 · AST-1870.
+
+**Not covered (by design):** consult batch branches (`prefilter_company` etc.) rebuild the summary and drop `failure_class` — AST-1867 D5 leaves them unwired; no outage assertions there.
+
+**Pre-existing drift on this tip (not AST-1867, left as-is):** `TestCircuitBreaker::*` (4-arg calls vs 3-arg product); `TestAutoRunErrorSubjectPrefix` (3 nodes). Full `test_dispatcher.py` + `test_roster.py` + `test_monitor.py` run: identical 65-node failure set at `fbe9486e` (base tests) and with the `144b8850` overlay (this ticket's tests) — zero new failures.
+
+**Broken / obsolete:** none in dispatcher.
+
+**Integration:** none — do not invent.
+
+## QA test manifest
+
+1. **Repro + outage nodes + alert-routing regression** (**[bug-repro]** red at `fbe9486e`, green with AST-1867):
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_dispatcher.py::TestAst1867ProviderBalanceOutage \
+  tests/component/core/test_dispatcher.py::TestDispatchOne::test_auto_run_error_on_auto_failures \
+  tests/component/core/test_roster.py::TestAst1867BalanceHeldCounting \
+  tests/component/core/test_roster.py::TestAst897HoldStateOnBalanceRefusal \
+  tests/component/core/test_monitor.py::TestAst1867ProviderBalanceOutage \
+  tests/component/core/test_monitor.py::TestAutoRunError \
+  -q
+```
+
+Expect **23 passed** with AST-1867 product.
+
+**Bible shasum (record after publish):** `git show origin/sub/AST-1860/AST-1870-provider-balance-outage-tests:docs/test-bible/core/dispatcher.md | shasum`
+
+### AST-2010 · AST-2009 (qa-fix bug-repro — exhausted OpenRouter 429 stops the batch, ledger FAILED)
+
+**Primary manifest:** [`../external/llm_compat.md`](../external/llm_compat.md) § AST-2010. Contract: the first result satisfying `is_provider_rate_limit` sets `ctx["provider_rate_limit_outage"] = {"error"}`. This happens at all three `_run_unified` call sites (per-entity `_one`, chunk `_consult_chunk`, full-batch call). Remaining entities and chunks are then skipped, and the claim is still released. `_run_dispatch_loop` breaks after the run. `_dispatch_one_body` finishes **FAILED**, which wins over a balance outage's INTERRUPTED, and never reaches the breaker. Untagged results (DeepSeek / Kimi 429) never set the key. Red at `c08219c32`: `assert 6 == 1` (2 entities × 3 runs) and status `COMPLETED`.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| AST-2009 shape: 2-entity `meteorite_like`, `batch_call_mode=0`, warm entity exhausted → 1 consult call, claim released, ledger FAILED `1/…/1`, no balance alert, no breaker | `_dispatch_one_body` / `_run_dispatch_loop` / `_run_unified` | **`tests/component/core/test_dispatcher.py::TestAst2010ProviderRateLimitOutage::test_bug_repro_rate_limit_stops_batch_ledger_failed`** (**bug-repro**) |
+| Per-entity skip; summary carries no `failure_class` / `error`; ctx marker `{"error"}`; no balance key | `_one` | **`::TestAst2010ProviderRateLimitOutage::test_run_unified_per_entity_skips_after_rate_limit`** |
+| Chunk split: head tagged → tail chunks skipped | `_consult_chunk` | **`::…::test_run_unified_chunk_split_skips_tail_after_head_rate_limit`** |
+| Full-batch call marks ctx | full-batch branch | **`::…::test_run_unified_full_batch_marks_rate_limit`** |
+| Untagged 429 → every entity called, no marker (guard, green both) | `_one` | **`::…::test_run_unified_untagged_429_does_not_skip`** |
+| Loop stops after the outage run | `_run_dispatch_loop` | **`::…::test_run_dispatch_loop_stops_after_rate_limit_run`** |
+| FAILED alone and with a balance outage (FAILED wins); breaker skipped | `_dispatch_one_body` | **`::…::test_dispatch_one_rate_limit_outage_failed[False/True]`** |
+
+**Kept:** `TestAst1867ProviderBalanceOutage` (balance-only still INTERRUPTED + alert).
+
+**Integration:** none — do not invent.
+
+### AST-2098 · AST-2099 (failed host probe holds the batch)
+
+**Parent:** [AST-2016](https://linear.app/astralcareermatch/issue/AST-2016) (orphaned-bug mini-parent). Product: **AST-2098** (`19036ccf0` on `origin/ftr/AST-2016-probe-fail-hold`); test/bible delivery on gap sibling **AST-2099** (`origin/sub/AST-2016/AST-2099-probe-fail-hold-gaps`); plan `docs/features/foundation/ast-1959-per-batch-probe-and-host-lock-on-the-openrouter-path.md` § Bug: AST-2099. **Primary manifest (this file).** Contract: the first result satisfying `is_provider_probe_failure` (`failure_class == "provider_probe_failure"`) sets `ctx["provider_probe_outage"] = {"error", "held"}` (one WARNING; later results only add `total_held`). This happens at all three `_run_unified` call sites (per-entity `_one`, chunk `_consult_chunk`, full-batch call). Remaining entities and chunks are then skipped, and the claim is still released in `finally`. `_run_dispatch_loop` breaks after the run. `_dispatch_one_body` finishes **INTERRUPTED** with no alert (AST-2098 Boundary) and no `auto_run_error`, and never reaches the breaker. A rate-limit outage's **FAILED** wins over it. `total_held` / `failure_class` never enter the summary (ledger-safe).
+
+**Sequencing deviation (gap child, AST-1870 precedent):** product landed first. **[bug-repro]** red at pre-fix `25c7ab095` (`git restore --source 25c7ab095 -- src/` over this ticket's tests): `assert 6 == 1` (2 jobs × 3 runs), status `COMPLETED`. Green on `19036ccf0`. All 23 AST-2098 nodes across the six modules fail by assertion pre-fix (no import / setup errors — literals only, no AST-2098 symbol imports).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| AST-2016 shape: 2-job `meteorite_grade_get`, `batch_call_mode=0`, `max_runs=3`, warm job probe-held → 1 consult call, claim released, ledger INTERRUPTED `1/…/0`, no breaker / `auto_run_error` / balance alert | `_dispatch_one_body` / `_run_dispatch_loop` / `_run_unified` | **`tests/component/core/test_dispatcher.py::TestAst2098ProviderProbeOutage::test_bug_repro_probe_failure_holds_batch_interrupted`** (**bug-repro**) |
+| Per-entity skip; summary exactly the four `_SUMMARY_ZERO` keys; ctx marker `{"error", "held": 1}`; no balance / rate-limit key; claim released | `_one` + `_note_provider_probe_outage` | **`::TestAst2098ProviderProbeOutage::test_run_unified_per_entity_skips_after_probe_failure`** |
+| Chunk split: head held → tail chunks skipped | `_consult_chunk` | **`::…::test_run_unified_chunk_split_skips_tail_after_head_probe_failure`** |
+| Full-batch call marks ctx, `held == 2` from the summary's `total_held` | full-batch branch | **`::…::test_run_unified_full_batch_marks_probe_outage`** |
+| Loop stops after the outage run (`max_runs=0`; finite eligibility `[24,24,24,0]`) | `_run_dispatch_loop` | **`::…::test_run_dispatch_loop_stops_after_probe_outage_run`** |
+| Probe outage alone → INTERRUPTED; with a rate-limit outage → FAILED; no alert, no `auto_run_error`, no breaker either way | `_dispatch_one_body` | **`::…::test_dispatch_one_probe_outage_status[False-INTERRUPTED/True-FAILED]`** (`True` is a guard, green both) |
+
+Tag and hold nodes upstream: [`../external/llm_compat.md`](../external/llm_compat.md) § AST-2098, [`../external/openrouter.md`](../external/openrouter.md) § AST-2098, [`../utils/cost_calculator.md`](../utils/cost_calculator.md) § AST-2098, [`consult.md`](consult.md) § AST-2098, [`roster.md`](roster.md) § AST-2098.
+
+**Kept:** `TestAst1867ProviderBalanceOutage`, `TestAst2010ProviderRateLimitOutage` (unchanged, green).
+
+**Pre-existing drift (not AST-2098, left as-is):** the six touched modules carry the same failure set at the sub tip with and without this pass's tests (`TestCircuitBreaker::*` arity, roster `_is_verified_job_site_distinct` removed, etc.) — zero new failures; this pass fixes two (openrouter, below).
+
+**Integration:** none — do not invent.
+
+## QA test manifest (AST-2099)
+
+1. **AST-2098 nodes + regressions** (**[bug-repro]** = `TestAst2098ProviderProbeOutage::test_bug_repro_probe_failure_holds_batch_interrupted`, red at `25c7ab095`, green with AST-2098):
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_dispatcher.py::TestAst2098ProviderProbeOutage \
+  tests/component/core/test_dispatcher.py::TestAst1867ProviderBalanceOutage \
+  tests/component/core/test_dispatcher.py::TestAst2010ProviderRateLimitOutage \
+  tests/component/external/test_llm_compat.py::TestAst2098ProbeFailureTagged \
+  tests/component/external/test_llm_compat.py::TestAst1959ProbeHostLock \
+  tests/component/external/test_openrouter.py \
+  tests/component/utils/test_cost_calculator.py \
+  tests/component/core/test_consult.py::TestAst2098ProbeFailureHold \
+  tests/component/core/test_consult.py::TestAst897HoldStateOnBalanceRefusal \
+  tests/component/core/test_consult.py::TestAst2010RateLimitForwarding \
+  tests/component/core/test_roster.py::TestAst2098ProbeFailureHold \
+  tests/component/core/test_roster.py::TestAst1867BalanceHeldCounting \
+  tests/component/core/test_roster.py::TestAst897HoldStateOnBalanceRefusal \
+  -q
+```
+
+Expect **all passed** with AST-2098 product.
+
+2. **Red check (test-fix):** `git restore --source 25c7ab095 --worktree -- src/`, run the **[bug-repro]** node → fails `assert 6 == 1`; then `git restore --worktree -- src/` → passes.
+
+3. **No-regression:** the six touched test modules' failure set must not grow beyond the pre-existing drift above.
+
+**Bible shasum (after publish):** `git show origin/sub/AST-2016/AST-2099-probe-fail-hold-gaps:docs/test-bible/core/dispatcher.md | shasum`
+
+### AST-1879 · AST-1851 (skip gate on the task agent's server key)
+
+**Primary manifest:** [`agent.md`](agent.md) § QA test manifest (AST-1879). `_dispatch_one_body` checks `candidate_api_keys[task_llm_server_id_or_none(task_key)]` **only when a server id comes back** (AST-1944). A non-LLM key (`agent_id` `"telescope"` / empty / no `agent_task` row — the AST-537 invariant) has no server and skips the key check; a missing candidate is still skipped. For an LLM key with no candidate, no map, an empty key, or only another platform's key, it skips: no ledger, plus a warning naming the server ("This task is not starting").
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| No candidate → skip + server-naming warning, no ledger | `src/core/dispatcher.py` | `TestDispatchOne::test_skips_without_candidate_context` (now asserts; was assertion-free) |
+| Missing / empty / other-platform key → skip (4 params) | same | `TestDispatchOne::test_skips_without_task_servers_api_key` (replaces `test_skips_without_api_key`) |
+| Gate asks `task_llm_server_id_or_none(task_key)` which server to check | same | `TestDispatchOne::test_gate_reads_key_for_task_agents_server` |
+| Revised — candidate stubs `candidate_api_key` → `candidate_api_keys: {"anthropic": …}`; autouse `_task_server_anthropic` pins `task_llm_server_id_or_none` → `"anthropic"` (AST-1945; no seeded agent_task rows in this file). Opt-out: request the `real_server_gate` fixture (fixture, not marker — `--strict-markers`) | `test_dispatcher.py` | 13 stubs across `TestDispatchOne`, `TestAst841…`, `TestAst1847…`, `TestAst1867…`, `TestAst1829ScheduledSweep` |
+| AST-1944 — **`[bug-repro]`** non-LLM key (`telescope` / `empty_agent_id` / `no_row`) reaches `_run_dispatch_loop` with an empty key map on the **real** resolver (data layer patched: `agent_mod.get_agent_task` / `get_agent`) | same | `TestAst1944NonLlmGate::test_non_llm_key_reaches_handler_without_any_api_key` (3 params) |
+| AST-1944 — non-LLM key + missing candidate → skip, warning server slot `None`; LLM key (`deepseek-v4` / Big) with only an anthropic key → skip naming `deepseek`; unknown real agent (`ghost`) → `ValueError` out of `_dispatch_one` | same | `TestAst1944NonLlmGate::{test_non_llm_key_missing_candidate_still_skipped,test_llm_key_without_server_key_still_skipped,test_unknown_real_agent_still_raises}` |
+
+**Integration:** none.
+
+### AST-1945 · AST-1943 (non-LLM gate tests + telescope sentinel — test gap for AST-1944)
+
+**Publish:** `origin/sub/AST-1943/AST-1945-non-llm-gate-tests`. Test-only; product (`task_llm_server_id_or_none`, gated `_dispatch_one_body`, 12 `agent_task.json` rows `"n/a"` → `"telescope"`) landed by AST-1944 on `origin/ftr/AST-1943-non-llm-dispatch-key-gate`. Sentinel tuple is exactly `("", "telescope")` — no `"n/a"` transition tests. Helper unit tests: [`agent.md`](agent.md) § AST-1944.
+
+Also in this pass: `test_repo_admin_json.py` sentinel asserts (L506 / L1378 / L1423) read `"telescope"`; `docs/uat-fixtures/AST-756/expected-agent_task.json` 12 `"agent_id": "n/a"` → `"telescope"` (literal replace, otherwise byte-identical) so `TestAst1269AliasAgentTaskSeedRestore::test_alias_identity_lockstep_with_fixture` is green. L1378 / L1423 stay red on pre-existing `task_seq` drift (`assert 3 == 5`, AST-1239 wipe) — out of scope.
+
+## QA test manifest (AST-1945)
+
+1. **`[bug-repro]` (must flip):** `test_dispatcher.py::TestAst1944NonLlmGate::test_non_llm_key_reaches_handler_without_any_api_key` — 3 params red on `origin/dev` product (`Agent 'telescope' … not found` / `has no agent_id assigned` / `No agent_task row`), green on ftr.
+2. **Rest of the class + helper:** `TestAst1944NonLlmGate` (6) and `test_agent_ast1879.py::TestAst1944TaskLlmServerIdOrNone` (9) green.
+3. **Retargeted stubs:** `TestDispatchOne` green (autouse fixture no longer errors at setup).
+4. **Lockstep:** `TestAst1269AliasAgentTaskSeedRestore::test_alias_identity_lockstep_with_fixture` green; `rg -c '"n/a"' docs/uat-fixtures/AST-756/expected-agent_task.json` prints nothing.
+5. **No new reds:** full `test_dispatcher.py` = the 12 pre-existing failures (`TestRunUnified` ×2, `TestCircuitBreaker` ×3, `TestAst841…` ×2, `TestAst802…`, `TestAst814…`, `TestTaskThreadTarget`, `TestAst1259…`, `TestAst1022…`); `test_repo_admin_json.py` failure set unchanged except the lockstep node going green.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_dispatcher.py::TestAst1944NonLlmGate \
+  tests/component/core/test_dispatcher.py::TestDispatchOne \
+  tests/component/core/test_agent_ast1879.py \
+  "tests/component/core/test_repo_admin_json.py::TestAst1269AliasAgentTaskSeedRestore::test_alias_identity_lockstep_with_fixture"
+rg -c '"n/a"' docs/uat-fixtures/AST-756/expected-agent_task.json data/admin/agent_task.json
+```
+
+**Pass criterion:** narrowed run green — not the zero-arg harness / branch-lock gate (pre-existing reds above).
+
+**Bible shasum (record after publish):** `git show origin/sub/AST-1943/AST-1945-non-llm-gate-tests:docs/test-bible/core/dispatcher.md | shasum`
+
+### AST-1916 · AST-1875 (runtime AUTO-thread cap getter/setter + live tick read)
+
+**Parent:** [AST-1875](https://linear.app/astralcareermatch/issue/AST-1875). **Publish:** `origin/sub/AST-1875/AST-1916-runtime-cap-api`. In-memory `_auto_thread_cap_override` (None = `ASTRAL_CONFIG["max_auto_threads"]`); `get_auto_thread_cap()` / `set_auto_thread_cap()` (strict `type(v) is int`, bounds from `max_auto_threads_min` / `_max`, raises `ValueError`, never cancels); `_tick_loop` computes `slots` from the getter every tick (capture-once `max_auto` removed). Admin routes: [`../ui/api/api_admin.md`](../ui/api/api_admin.md) § AST-1916. Config keys: [`../utils/config.md`](../utils/config.md) § AST-1916.
+
+| AC | Source | Component tests |
+| --- | --- | --- |
+| getter default / override | `get_auto_thread_cap` | `tests/component/core/test_dispatcher.py::TestAst1916AutoThreadCap::{test_getter_falls_back_to_config_default,test_setter_accepts_in_range_and_getter_reports_it}` |
+| 3 bounds + type confusion (0, 101, -1, `"abc"`, 2.5, `True`, `None`, `"5"`, 5.0) keep prior cap | `set_auto_thread_cap` | `::TestAst1916AutoThreadCap::test_setter_rejects_and_keeps_prior_cap` |
+| 8 bounds read from config | same | `::TestAst1916AutoThreadCap::test_setter_bounds_come_from_config` |
+| 5 / 6 raised cap applies next tick, no restart | `_tick_loop` | `::TestAst1916AutoThreadCap::test_tick_honours_raised_cap_on_next_tick` |
+| 7 lowering below running: no spawn, registry intact, no cancel | `_tick_loop` | `::TestAst1916AutoThreadCap::test_lowering_below_running_spawns_none_and_cancels_none` |
+| 6 capture-once line gone · 9 override initialised `None` (restart resets) | `src/core/dispatcher.py` | shell grep (manifest item 2) |
+
+**Existing coverage (unchanged, must stay green):** `TestScheduler` tick tests set `cfg["max_auto_threads"]` with no override — getter falls through to that value. Class autouse `_reset_override` (monkeypatch) keeps setter writes from leaking into them.
+
+**Broken / obsolete:** none. **Integration:** none — no scenario exercises the tick cap or the new routes.
+
+## QA test manifest
+
+1. **New + neighbours (required, green):**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_dispatcher.py::TestAst1916AutoThreadCap \
+  tests/component/ui/api/test_api_admin.py::TestAst1916AutoThreadCapApi \
+  tests/component/core/test_dispatcher.py::TestScheduler \
+  tests/component/core/test_dispatcher.py::TestAst1022HonorAutoOffStageDispatch::test_tick_loop_calls_auto_off_debug_helper_before_spawn \
+  tests/component/core/test_dispatcher.py::TestAst1829ScheduledSweep::test_tick_passes_sweep_flag_and_logs_sweep_due \
+  tests/component/ui/api/test_api_admin.py::TestDispatchTasks::test_scheduler_and_run_controls \
+  -q
+```
+
+Expect **40 passed** (27 new).
+
+2. **AC 6 / AC 9 greps:**
+
+```bash
+grep -n 'max_auto = ASTRAL_CONFIG' src/core/dispatcher.py        # expect no output
+grep -n '^_auto_thread_cap_override: Optional\[int\] = None' src/core/dispatcher.py   # expect 1 line
+```
+
+3. **Regression (no new reds):** `tests/component/core/test_dispatcher.py` + `tests/component/ui/api/test_api_admin.py` whole-file. **Baseline at QA time: 17 failures identical with `origin/dev` product and with AST-1916 product** (incl. `TestDispatchTasks::test_list_dispatch_tasks_and_keys`); AST-1916 adds 27 passes and zero failures. Pass = same failing set.
+4. **Branch lock:** `src/core/dispatcher.py` + `src/ui/api/api_admin.py` (`LOCKED_AT_100`) — item 1 covers every new line/arc (`get_auto_thread_cap`, `set_auto_thread_cap`, `_auto_thread_cap_payload`, both routes). Zero-arg harness gate unreliable on this tip given item 3 baseline reds.
+
+**Bible shasum (publish tip):** fill after `merge-tests` —
+- `docs/test-bible/core/dispatcher.md`
+- `docs/test-bible/ui/api/api_admin.md`
+- `docs/test-bible/utils/config.md`
+
+### AST-2025 · AST-2022 (`fetch_relative_jd` claim / release — AC6)
+
+**New:** `TestRunUnified::test_ast2025_fetch_relative_jd_claims_trigger_state_and_releases_on_error` — claim by `RELATIVE_JOB_LINK` for the candidate with `states == ["RELATIVE_JOB_LINK", "RELATIVE_JOB_LINK_RETRY"]` only; `clear_job_batch(batch_id)` still runs when the runner raises; `dispatch_task_key` forwarded. Green on the pre-AST-2025 tree too (generic job path + AST-2024 config) — a regression guard, not a red-first node. Primary manifest: **`docs/test-bible/core/gazer.md`** § AST-2025.
+
+### AST-2091 · AST-2013 (`run_task` rubric gate)
+
+**New:** `TestAst2091RunTaskRubricGate` — duplicate / empty rubric → `run_task` returns `False`, no thread, AUTO row gets `auto_mode=0` (Repro 3 / 4); manual row → `False`, no write; craft / non-rubric rows still start. Existing `run_task` cases (`evaluate_jd`) need no stub — embedded QC/GC merge is never empty. Primary manifest: **`docs/test-bible/ui/api/api_admin.md`** § AST-2091.
+
+### AST-2093 · AST-2012 (claimed position → `batch_index_offset`; retry re-claims counted once; test gap AST-2095)
+
+`_run_unified` passes `batch_index_offset=ci * chunk_sz` on the chunk path and the entity's claimed index on the per-entity path (the full-batch call relies on the default 0). Each run records claimed ids in `ctx["dispatch_seen_ids"]` (falsy ids skipped). A normal return adds `repeat_processed = min(repeats, total_processed)`, which is not a `_SUMMARY_ZERO` key. `_run_dispatch_loop` subtracts it from `accumulated["total_processed"]`, but the `0 processed` stop still reads the raw per-run value. Primary block + manifest: [`agent.md`](agent.md) § AST-2093.
+
+| Area | Component tests (`tests/component/core/test_dispatcher.py::TestAst2093BatchIndexDispatch`) |
+| --- | --- |
+| **[bug-repro]** 5 jobs, `batch_size=2`, `grade_get` → chunk offsets `{0: 0, 1: 2, 2: 4}` | **`test_bug_repro_chunks_send_global_offsets`** |
+| **[bug-repro]** `batch_call_mode=0`, 3 jobs → offset = claimed index per entity | **`test_bug_repro_per_entity_sends_claimed_position`** |
+| **[bug-repro]** same ctx, claims `[A,B]` then `[B,C]` → `repeat_processed` 0 then 1; seen `{A,B,C}` | **`test_bug_repro_reclaimed_ids_are_repeat_processed`** |
+| Id-less entity never tracked (falsy-id arcs); outage-zeroed re-claim clamps to 0 (`min()`) | **`test_falsy_ids_never_tracked_and_outage_run_clamps_to_zero`** |
+| **[bug-repro]** Somerset shape 27 + retry 23 (`repeat_processed` 23) → accumulated 27 / passed 4 / errors 23 | **`test_bug_repro_loop_counts_each_entity_once`** |
+| All-repeat run (`3` processed, `3` repeat) does not trip the `0 processed` stop (guard) | **`test_all_repeat_run_does_not_trip_zero_processed_stop`** |
+
+**Kept:** the five AST-2093 qa-handoff nodes (`test_ast505…`, `test_ast502_chunked…`, the two per-entity outage nodes, `test_run_unified_candidate_claim_gate`) — not touched. Every test builds its own `ctx`; no module-level `dispatch_seen_ids`.
+
+### AST-2153 · AST-2149 (qa-fix bug-repro — `_warm_then_gather` start stagger, AST-2142)
+
+`_warm_then_gather` runs entity 0 alone, sleeps `cache_warm_delay_seconds` (when `> 0`), then gathers the rest in one `asyncio.gather` with each remaining entity *i* (0-based within `entities[1:]`) waiting `i × ASTRAL_CONFIG["gather_stagger_seconds"]` before its call — no sleep at `i = 0` or when the stagger is `0`. Calls still overlap; no in-flight cap. Primary block: `docs/features/agent/ast-1877-model-server-catalog-compat-client.md` § Bug: AST-2149 / § Bug: AST-2153.
+
+| Area | Component tests (`tests/component/core/test_dispatcher.py::TestWarmThenGather`) |
+| --- | --- |
+| **[bug-repro]** 4 entities, warm delay 0, stagger `1.0` → `sleep` awaited with exactly `[1.0, 2.0]` (never `0`), output in entity order, 4 calls | **`test_bug_repro_stagger_spaces_remaining_starts`** |
+| Guard: 4 entities, warm delay `1.0`, stagger `0` → only the warm-delay sleep `[1.0]`, same ordered output (today's behavior) | **`test_zero_stagger_adds_no_sleeps`** |
+
+**Fixture drift:** `TestAst1867ProviderBalanceOutage._edges` (shared by every `TestAst1867` / `TestAst2010` / `TestAst2098` `_run_unified` node) zeroes `gather_stagger_seconds` beside `cache_warm_delay_seconds`, so their 3-entity claims no longer really sleep. `TestAst2093BatchIndexDispatch` already patches `asyncio.sleep` and is untouched. Existing 2-entity `TestWarmThenGather` nodes and `_warm_then_gather` monkeypatch sites are unchanged.
+
+**Manifest (AST-2153):**
+
+1. `[bug-repro]` `pytest -q tests/component/core/test_dispatcher.py::TestWarmThenGather::test_bug_repro_stagger_spaces_remaining_starts` — red pre-AST-2149 (`sleep` never awaited: `[] == [1.0, 2.0]`), green with AST-2149.
+2. `pytest -q tests/component/core/test_dispatcher.py::TestWarmThenGather tests/component/core/test_dispatcher.py::TestAst1867ProviderBalanceOutage tests/component/core/test_dispatcher.py::TestAst2010ProviderRateLimitOutage tests/component/core/test_dispatcher.py::TestAst2098ProviderProbeOutage --durations=10` — no node ≈1.00s. `TestAst2098ProviderProbeOutage::test_run_unified_per_entity_skips_after_probe_failure` is pre-existing red on ftr (`repeat_processed`, § AST-2093 / AST-2141) and outside this pass bar.
+
+### AST-2222 · AST-1201 (pointer)
+
+Candidate claim expansion uses `candidate_stage_dispatch_claim_states` for every stage trigger (not only `REQUESTED_ARTIFACTS`). Primary: [`candidate.md`](candidate.md) § AST-2222 — AC 6/7 source scans on `dispatcher.py`.
+
+### AST-2218 · AST-2215 (fetch_timesheet ensure/provision/due; close → NEW)
+
+Parent AC **3** (exactly one row per candidate), **4** (due on `NEW` ledger count; historical null excluded). Ledger close stamps `timesheet_state="NEW"`. Runner routing is covered under [`timesheets.md`](timesheets.md).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| New — provision 3 candidates idempotent; null entity/trigger/freq; auto_mode off | `provision_fetch_timesheet_dispatch_tasks` | `TestAst2218FetchTimesheetProvisionAndDue::test_provision_three_candidates_idempotent` |
+| New — ensure requires candidate_id | `ensure_fetch_timesheet_dispatch_task` | `…::test_ensure_requires_candidate_id` |
+| New — AUTO due when NEW ≥ min_count; null historical ignored; other candidate isolated | `_fetch_timesheet_due_tasks` | `…::test_due_on_new_ledger_not_historical_null` |
+| New — `_persist_dispatch_ledger_close` sets timesheet_state NEW | `_persist_dispatch_ledger_close` | `…::test_persist_close_sets_timesheet_state_new` |
+
+**Primary manifest:** [`timesheets.md`](timesheets.md) § AST-2218.
+
+### AST-2229 · AST-2225 (tick → advance_candidate_readiness after stale)
+
+**Parent:** [AST-2225](https://linear.app/astralcareermatch/issue/AST-2225). **Publish:** `origin/sub/AST-2225/AST-2229-readiness-advancement`. Core advance/signal: [`candidate.md`](candidate.md) § AST-2229.
+
+`_tick_loop` late-imports and calls `advance_candidate_readiness()` immediately after `age_stale_candidate_states()`. Readiness is not a dispatch task (no `stat.logging.info.dispatcher` task-completed line).
+
+| Area | Component tests |
+| --- | --- |
+| Tick order stale → readiness | new **`TestAst972CandidateStageDispatch::test_tick_loop_invokes_readiness_after_stale`** |
+| Existing stale stub still green | **`…::test_tick_loop_invokes_stale_aging`** |
+| Unit ticks stay DB-free | revised **`_run_one_tick`** stubs `advance_candidate_readiness` (peer of AST-972 age_stale stub) |
+
+**Broken / obsolete this pass:** `_run_one_tick` without readiness stub would call real `list_candidates` on every scheduler unit tick.
+
+**Integration:** none — do not invent.
+
+## QA test manifest — AST-2229
+
+Primary command + pass criterion: [`candidate.md`](candidate.md) § QA test manifest — AST-2229.

@@ -1,47 +1,40 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react"
+import { useCallback, useEffect, useMemo, useState, type ComponentType, type ReactNode } from "react"
 import AgentAnalysisHeader from "./AgentAnalysisHeader"
 import { type AgentStoryEntry } from "./AgentStoryTab"
-import ArtifactEditor from "./ArtifactEditor"
+import CandidateActionNotesModal from "./CandidateActionNotesModal"
 import JobDiscussionPane from "./JobDiscussionPane"
+import JobArtifactEditModal, { type JobArtifactTab } from "./JobArtifactEditModal"
 import JobMeteoritePane, { type RelatedMeteorite } from "./JobMeteoritePane"
 import Modal from "./Modal"
+import PrintPreview from "./PrintPreview"
 import RecommendedJobReportHeader from "./RecommendedJobReportHeader"
 import ReportSectionList, { type ReportSectionDef } from "./ReportSectionList"
-import {
-  type Catalog,
-  type SectionRow,
-} from "./ResumeStructureEditor"
 import { TabBar } from "./TabbedTextArea"
 import Toast, { type ToastMessage } from "./Toast"
-import { useCandidate } from "../contexts/CandidateContext"
 import { useStateUi } from "../contexts/StateUiContext"
 import api from "../lib/api"
-import { copyJobSnapshotToClipboard } from "../lib/copyJobSnapshot"
+import { postCandidateAction, postSkipJob } from "../lib/candidateJobActions"
+import { fetchPrintHtml, openHtmlInNewTab } from "../lib/printHtml"
 import { parseAnalysisUpshot, type AnalysisUpshot } from "../lib/analysisUpshot"
 import {
   anyReportArtifactContent,
   artifactHasContent,
   artifactsTabPrimaryActions,
   buildPhaseSectionGradeConfidenceRow,
-  emailWithJobPlusTag,
+  formatPhaseScore,
   formatPhaseSectionScoreTitle,
   gradesForHeader,
   isArtifactsBuildInProgress,
+  jobGradablePercent,
   jobGradesForField,
   jobRubricForField,
   jobScoreBreakdownForGradesField,
+  phaseThermometerModel,
   printCoverVisible,
   printResumeVisible,
+  totalScore,
   type ReportPrimaryAction,
 } from "../lib/recommendedJobReport"
-
-function catalogFromPayload(data: { catalog?: unknown }): Catalog | null {
-  const raw = data.catalog
-  if (!raw || typeof raw !== "object") return null
-  const c = raw as Catalog
-  if (!Array.isArray(c.body_formats)) return null
-  return c
-}
 
 /** Navigable listing URL only — mirrors AST-1694 http(s) rule; non-http → null. */
 function httpListingHref(raw: string | null | undefined): string | null {
@@ -51,10 +44,35 @@ function httpListingHref(raw: string | null | undefined): string | null {
   return null
 }
 
+/** AST-2233 header contract — cast until #2 merges onto this tip (AST-2234). */
+type TriageHeaderProps = {
+  jobTitle: string
+  jobLink: string | null
+  jobLinkText?: string | null
+  companyName: string
+  companyWebsite: string | null
+  discoveredAt?: string | null
+  recommendedAt?: string | null
+  appliedAt?: string | null
+  onSkip?: () => void
+  skipBusy?: boolean
+  onApplied?: () => void
+  appliedBusy?: boolean
+  onGenerateArtifacts?: () => void
+  generateBusy?: boolean
+}
+
+const TriageHeader = RecommendedJobReportHeader as unknown as ComponentType<TriageHeaderProps>
+
 interface JobDetail {
   astral_job_id: string
   job_title: string | null
   company: string
+  company_name?: string | null
+  company_website?: string | null
+  discovered_at?: string | null
+  recommended_at?: string | null
+  applied_at?: string | null
   state: string
   state_changed_at: string | null
   job_link?: string | null
@@ -70,6 +88,8 @@ interface JobDetail {
   like_rubric?: unknown
   agent_story?: AgentStoryEntry[]
   related_meteorite?: RelatedMeteorite | null
+  can_skip?: boolean
+  can_apply?: boolean
 }
 
 interface Props {
@@ -78,41 +98,30 @@ interface Props {
   onRefresh?: () => void
 }
 
-/** Shell AST-948; Summary AST-949; Analysis AST-950; Artifacts AST-951. */
+/** Shell AST-948; panes/wiring AST-2234. */
 export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Props) {
   const { manifest } = useStateUi()
-  const { selectedId, candidates } = useCandidate()
   const [job, setJob] = useState<JobDetail | null>(null)
-  const [companyWebsite, setCompanyWebsite] = useState<string | null>(null)
-  const [companyNotes, setCompanyNotes] = useState<string | null>(null)
+  const [companyUpshot, setCompanyUpshot] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [primaryBusy, setPrimaryBusy] = useState(false)
-  const [copyFeedback, setCopyFeedback] = useState<string | null>(null)
-  const [snapshotCopied, setSnapshotCopied] = useState(false)
-  const [detailLinkCopied, setDetailLinkCopied] = useState(false)
-  const [snapshotCopying, setSnapshotCopying] = useState(false)
-  const [activeTopTab, setActiveTopTab] = useState("summary")
-  const [structureSections, setStructureSections] = useState<{ id: string; label: string }[] | null>(null)
-  const [structureError, setStructureError] = useState(false)
-  const [allSections, setAllSections] = useState<SectionRow[]>([])
-  const [catalog, setCatalog] = useState<Catalog | null>(null)
-  const [structureSaving, setStructureSaving] = useState(false)
-  const [structureSaveError, setStructureSaveError] = useState<string | null>(null)
+  const [skipBusy, setSkipBusy] = useState(false)
+  const [appliedBusy, setAppliedBusy] = useState(false)
+  const [appliedNotesOpen, setAppliedNotesOpen] = useState(false)
+  const [activeTopTab, setActiveTopTab] = useState("")
+  const [editTab, setEditTab] = useState<JobArtifactTab | null>(null)
   const [toast, setToast] = useState<ToastMessage | null>(null)
-  const clearToast = useCallback(() => setToast(null), [])
-
-  const candidate = useMemo(
-    () => candidates.find(c => c.astral_candidate_id === selectedId),
-    [candidates, selectedId],
+  const [isMobile, setIsMobile] = useState(
+    () => typeof window !== "undefined" && window.matchMedia("(max-width: 1023px)").matches,
   )
+  const clearToast = useCallback(() => setToast(null), [])
 
   const load = useCallback(async () => {
     if (!jobId) return
     setLoading(true)
     setError(null)
-    setCompanyWebsite(null)
-    setCompanyNotes(null)
+    setCompanyUpshot(null)
     try {
       const res = await api(`/api/jobs/${encodeURIComponent(jobId)}`)
       if (!res.ok) {
@@ -126,19 +135,19 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
       }
       const data = (await res.json()) as JobDetail
       setJob(data)
+      // Company upshot still comes from the company row; website is on detail (AST-2232).
       if (data.company) {
         api(`/api/companies/${encodeURIComponent(data.company)}`)
           .then(r => (r.ok ? r.json() : null))
           .then(co => {
-            const site = co?.company_website
-            setCompanyWebsite(typeof site === "string" && site.trim() ? site.trim() : null)
-            const notes = co?.prefilter_company_notes
-            setCompanyNotes(typeof notes === "string" && notes.trim() ? notes.trim() : null)
+            const companyUpshotText = co?.company_upshot
+            setCompanyUpshot(
+              typeof companyUpshotText === "string" && companyUpshotText.trim()
+                ? companyUpshotText.trim()
+                : null,
+            )
           })
-          .catch(() => {
-            setCompanyWebsite(null)
-            setCompanyNotes(null)
-          })
+          .catch(() => setCompanyUpshot(null))
       }
     } catch (e) {
       setJob(null)
@@ -150,149 +159,51 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
 
   useEffect(() => { load() }, [load])
 
-  // Resume section labels + structure authoring (candidate resume_structure as shared defaults).
   useEffect(() => {
-    if (!selectedId) {
-      setStructureSections(null)
-      setStructureError(false)
-      setAllSections([])
-      setCatalog(null)
-      return
-    }
-    setStructureSections(null)
-    setStructureError(false)
-    setAllSections([])
-    setCatalog(null)
-    api(`/api/candidates/${selectedId}/resume_structure`)
-      .then(r => r.json())
-      .then(data => {
-        const sections = Array.isArray(data.sections) ? data.sections : []
-        setStructureSections(sections.map((s: { id: string; label: string }) => ({ id: s.id, label: s.label })))
-        setAllSections(Array.isArray(data.all_sections) ? data.all_sections as SectionRow[] : [])
-        setCatalog(catalogFromPayload(data))
-      })
-      .catch(() => {
-        setStructureSections(null)
-        setStructureError(true)
-        setAllSections([])
-        setCatalog(null)
-      })
-  }, [selectedId])
+    const mq = window.matchMedia("(max-width: 1023px)")
+    const sync = () => setIsMobile(mq.matches)
+    sync()
+    mq.addEventListener("change", sync)
+    return () => mq.removeEventListener("change", sync)
+  }, [])
 
-  function handleStructureRowsChange(rows: SectionRow[]) {
-    setAllSections(rows)
-    setStructureSections(rows.map(r => ({ id: r.id, label: r.title })))
-  }
+  useEffect(() => {
+    if (isMobile) setEditTab(null)
+  }, [isMobile])
 
-  async function persistStructureRows(rows: SectionRow[]): Promise<void> {
-    if (!selectedId) throw new Error("No candidate selected")
-    const sections: Record<string, Record<string, unknown>> = {}
-    rows.forEach((row, index) => {
-      const spec: Record<string, unknown> = {
-        id: row.id,
-        title: row.title,
-        enabled: row.enabled,
-        order: index,
-        job_agent_editable: row.job_agent_editable,
-        page_break_policy: row.page_break_policy,
-      }
-      if (row.format) spec.format = row.format
-      sections[row.id] = spec
-    })
-    setStructureSaving(true)
-    setStructureSaveError(null)
-    try {
-      const r = await api(`/api/candidates/${selectedId}/data`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ artifacts: { resume_structure: { sections } } }),
-      })
-      if (!r.ok) {
-        const e = await r.json().catch(() => ({})) as { error?: string }
-        throw new Error(e.error || "Save failed")
-      }
-      await r.json()
-      const data = await api(`/api/candidates/${selectedId}/resume_structure`).then(res => res.json())
-      const sectionsList = Array.isArray(data.sections) ? data.sections : []
-      setStructureSections(sectionsList.map((s: { id: string; label: string }) => ({ id: s.id, label: s.label })))
-      setAllSections(Array.isArray(data.all_sections) ? data.all_sections as SectionRow[] : [])
-      setCatalog(catalogFromPayload(data))
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : "Save failed"
-      setStructureSaveError(msg)
-      throw e instanceof Error ? e : new Error(msg)
-    } finally {
-      setStructureSaving(false)
-    }
-  }
-
-  function saveStructure(rows: SectionRow[]) {
-    void persistStructureRows(rows)
-      .then(() => setToast({ text: "Resume sections saved", variant: "success" }))
-      .catch(e => {
-        const msg = e instanceof Error ? e.message : "Save failed"
-        setToast({ text: msg, variant: "error" })
-      })
-  }
-
-  // AST-1350: fetch-then-blob; AST-1489: auto-persist structure rows before resume GET.
   const handlePrintResume = useCallback(async () => {
     if (!jobId) return
-    try {
-      if (selectedId) {
-        await persistStructureRows(allSections)
-      }
-      const r = await api(`/candidate/resume/${encodeURIComponent(jobId)}`)
-      if (!r.ok) {
-        let msg = `HTTP ${r.status}`
-        try {
-          const data = await r.json()
-          if (typeof data.error === "string" && data.error) msg = data.error
-        } catch { /* non-JSON error body */ }
-        setToast({ text: msg, variant: "error" })
-        return
-      }
-      const html = await r.text()
-      if (!html.trim()) {
-        setToast({ text: "HTML response was empty", variant: "error" })
-        return
-      }
-      const blobUrl = URL.createObjectURL(
-        new Blob([html], { type: "text/html;charset=utf-8" }),
-      )
-      // No noopener/noreferrer features — those force a null return even on success.
-      const win = window.open(blobUrl, "_blank")
-      if (win) {
-        win.opener = null
-      } else {
-        setToast({
-          text: "Popup blocked — allow popups to open the HTML tab.",
-          variant: "error",
-        })
-      }
-      window.setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000)
-    } catch (e) {
-      setToast({
-        text: e instanceof Error ? e.message : "Print failed",
-        variant: "error",
-      })
-    }
-  }, [jobId, selectedId, allSections])
-
-  // Reset top tab when opening a different job.
-  useEffect(() => {
-    setActiveTopTab("summary")
+    const r = await fetchPrintHtml({ kind: "job_resume", id: jobId })
+    const err = r.ok ? openHtmlInNewTab(r.html) : r.error
+    if (err) setToast({ text: err, variant: "error" })
   }, [jobId])
-  useEffect(() => { setSnapshotCopied(false) }, [jobId])
-  useEffect(() => { setDetailLinkCopied(false) }, [jobId])
+
+  const handlePrintCover = useCallback(async () => {
+    if (!jobId) return
+    const r = await fetchPrintHtml({ kind: "cover", id: jobId })
+    const err = r.ok ? openHtmlInNewTab(r.html) : r.error
+    if (err) setToast({ text: err, variant: "error" })
+  }, [jobId])
+
+  useEffect(() => {
+    setActiveTopTab("")
+    setAppliedNotesOpen(false)
+  }, [jobId])
+
+  const artifactTabs: JobArtifactTab[] | undefined = manifest?.jobs.recommended.report_artifact_tabs
+  const artifacts = job?.job_data?.artifacts
+  const buildInProgress = !!(job && isArtifactsBuildInProgress(job.state))
+  const hasArtifactContent = anyReportArtifactContent(artifacts, artifactTabs)
+  const showArtifactsTab = hasArtifactContent || buildInProgress
 
   const topTabs = useMemo(() => {
     const rows = manifest?.jobs.recommended.report_top_tabs ?? []
     const hasMeteorite = job?.related_meteorite != null
     return rows
       .filter(r => r.tab_id !== "meteorite" || hasMeteorite)
+      .filter(r => r.tab_id !== "artifacts" || showArtifactsTab)
       .map(r => ({ key: r.tab_id, label: r.nav_label }))
-  }, [manifest, job?.related_meteorite])
+  }, [manifest, job?.related_meteorite, showArtifactsTab])
 
   useEffect(() => {
     if (topTabs.length === 0) return
@@ -309,22 +220,26 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
   const hasCaveats = !!(upshot?.caveats.some(c => c.text.trim()))
   const hasQuestions = !!(upshot?.candidate_questions.some(q => q.text.trim()))
 
-  // Content-aware expand overrides (AST-949 Stage 3) — emptiness is data-dependent.
   const summarySections = useMemo((): ReportSectionDef[] => {
-    return (manifest?.jobs.recommended.report_summary_sections ?? []).map(s => {
-      let default_expanded = s.default_expanded
-      if (s.section_id === "job_summary") default_expanded = true
-      else if (s.section_id === "company_upshot") default_expanded = !!companyNotes
-      else if (s.section_id === "caveats") default_expanded = hasCaveats
-      else if (s.section_id === "questions") default_expanded = hasQuestions
-      else if (s.section_id === "raw_jd") default_expanded = false
-      return {
-        section_id: s.section_id,
-        nav_label: s.nav_label,
-        default_expanded,
-      }
-    })
-  }, [manifest, companyNotes, hasCaveats, hasQuestions])
+    return (manifest?.jobs.recommended.report_summary_sections ?? [])
+      .filter(s => s.section_id !== "raw_jd")
+      .map(s => {
+        let default_expanded = s.default_expanded
+        if (s.section_id === "job_summary") default_expanded = true
+        else if (s.section_id === "company_upshot") default_expanded = !!companyUpshot
+        else if (s.section_id === "caveats") default_expanded = hasCaveats
+        else if (s.section_id === "questions") default_expanded = hasQuestions
+        return {
+          section_id: s.section_id,
+          nav_label: s.nav_label,
+          default_expanded,
+        }
+      })
+  }, [manifest, companyUpshot, hasCaveats, hasQuestions])
+
+  const jobDescriptionSections = useMemo((): ReportSectionDef[] => ([
+    { section_id: "job_description", nav_label: "Job Description", default_expanded: true },
+  ]), [])
 
   const analysisSections = useMemo((): ReportSectionDef[] => {
     const template = manifest?.jobs.recommended.phase_score_header_title_template ?? ""
@@ -335,7 +250,8 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
       if (jobRec) {
         const breakdown = jobScoreBreakdownForGradesField(jobRec, p.grades_field)
         if (breakdown) {
-          nav_label = formatPhaseSectionScoreTitle(base, breakdown, template)
+          const score = jobRec[p.grades_field.replace(/_grades$/, "_score")]
+          nav_label = formatPhaseSectionScoreTitle(base, breakdown, template, score)
         }
       }
       return {
@@ -346,7 +262,6 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
     })
   }, [manifest, job])
 
-  // AST-1551: Discussion hop slots from AST-1550 manifest (local cast — Scope omits StateUiContext).
   const discussionSections = useMemo((): ReportSectionDef[] => {
     const recommended = manifest?.jobs.recommended as
       | {
@@ -365,7 +280,6 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
     }))
   }, [manifest])
 
-  // AST-1692: Meteorite pane sections from typed manifest (AST-1691 config).
   const meteoriteSections = useMemo((): ReportSectionDef[] => {
     const rows = manifest?.jobs.recommended.report_meteorite_sections ?? []
     return rows.map(s => ({
@@ -375,64 +289,26 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
     }))
   }, [manifest])
 
-  const artifactTabs = manifest?.jobs.recommended.report_artifact_tabs
-  const artifacts = job?.job_data?.artifacts
-  const buildInProgress = !!(job && isArtifactsBuildInProgress(job.state))
-  const hasArtifactContent = anyReportArtifactContent(artifacts, artifactTabs)
-
-  const populatedArtifactSections = useMemo((): ReportSectionDef[] => {
-    if (!artifactTabs) return []
-    return artifactTabs
-      .filter(a => artifactHasContent(artifacts, a.artifact_key))
-      .map(a => ({
-        section_id: a.tab_id,
-        nav_label: a.nav_label,
-        default_expanded: false,
-      }))
-  }, [artifactTabs, artifacts])
+  const populatedArtifactThumbs = useMemo(
+    () => (artifactTabs ?? []).filter(a => a.preview_thumbnail && artifactHasContent(artifacts, a.artifact_key)),
+    [artifactTabs, artifacts],
+  )
 
   const artifactActions = useMemo((): ReportPrimaryAction[] => {
     if (!job) return []
     return artifactsTabPrimaryActions(manifest, job.state)
   }, [manifest, job])
 
-  const profile = useMemo(() => {
-    const raw = (candidate?.candidate_data as Record<string, unknown> | undefined)?.contact
-    if (!raw || typeof raw !== "object") return null
-    return raw as Record<string, unknown>
-  }, [candidate])
-
-  const applicationEmail = useMemo(() => {
-    if (!profile) return null
-    for (const key of ["contact_email", "reply_email"] as const) {
-      const v = profile[key]
-      if (typeof v === "string" && v.trim()) return v.trim()
-    }
-    return null
-  }, [profile])
-
-  const linkedInUrl = useMemo(() => {
-    const v = profile?.linkedin_url
-    return typeof v === "string" && v.trim() ? v.trim() : null
-  }, [profile])
+  const phaseScoreFields = useMemo(
+    () => (manifest?.jobs.recommended.phase_score_columns ?? []).map(c => c.field),
+    [manifest],
+  )
 
   const showPrintResume = printResumeVisible(artifacts)
   const showPrintCover = printCoverVisible(artifacts)
 
-  const emailPlusTag = useMemo(() => {
-    if (!job) return jobId ?? ""
-    const jd = job.job_data
-    const ext =
-      jd && typeof jd === "object" && !Array.isArray(jd)
-        ? (jd as Record<string, unknown>).external_job_id
-        : undefined
-    if (typeof ext === "string" && ext.trim()) return ext.trim()
-    return job.astral_job_id || jobId || ""
-  }, [job, jobId])
-
   function renderSummarySection(sectionId: string): ReactNode {
     if (!job) return null
-    const jobData = job.job_data ?? {}
 
     if (sectionId === "job_summary") {
       const body = upshot?.whole_jd_upshot?.trim() ?? ""
@@ -441,7 +317,7 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
     }
 
     if (sectionId === "company_upshot") {
-      if (companyNotes) return <p className="job-analysis-upshot-body">{companyNotes}</p>
+      if (companyUpshot) return <p className="job-analysis-upshot-body">{companyUpshot}</p>
       return <p className="recommended-report-empty">No company upshot on file.</p>
     }
 
@@ -473,13 +349,27 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
       )
     }
 
-    if (sectionId === "raw_jd") {
-      const jd = String(jobData.job_description ?? "").trim().replace(/\n{3,}/g, "\n\n")
-      if (jd) return <div className="entity-jd-content">{jd}</div>
-      return <p className="recommended-report-empty">No job description on file.</p>
-    }
-
     return null
+  }
+
+  function renderJobDescriptionSection(_sectionId: string): ReactNode {
+    if (!job) return null
+    const jd = String(job.job_data?.job_description ?? "").trim().replace(/\n{3,}/g, "\n\n")
+    if (jd) return <div className="entity-jd-content">{jd}</div>
+    return <p className="recommended-report-empty">No job description on file.</p>
+  }
+
+  function renderAnalysisTotalRow(): ReactNode {
+    if (!job) return null
+    const jobRec = job as unknown as Record<string, unknown>
+    const total = totalScore(jobRec, phaseScoreFields)
+    const gradable = jobGradablePercent(jobRec)
+    return (
+      <div className="recommended-report-total-gradable">
+        <span>{formatPhaseScore(total)}</span>
+        {gradable != null ? <span>{gradable}% gradable</span> : null}
+      </div>
+    )
   }
 
   function renderAnalysisMetadata(sectionId: string): ReactNode {
@@ -488,7 +378,24 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
     if (!phase) return null
     const jobRec = job as unknown as Record<string, unknown>
     const gradesRaw = jobGradesForField(jobRec, phase.grades_field)
-    return buildPhaseSectionGradeConfidenceRow(gradesRaw, jobRec, phase.grades_field)
+    const score = jobRec[phase.grades_field.replace(/_grades$/, "_score")]
+    const breakdown = jobScoreBreakdownForGradesField(jobRec, phase.grades_field)
+    const thermo = phaseThermometerModel(score, breakdown)
+    return (
+      <>
+        {thermo && (
+          <div className="recommended-report-thermometer" title={thermo.tooltip}>
+            <div className="recommended-report-thermometer-track">
+              <div
+                className="recommended-report-thermometer-fill"
+                style={{ width: `${thermo.fillRatio * 100}%` }}
+              />
+            </div>
+          </div>
+        )}
+        {buildPhaseSectionGradeConfidenceRow(gradesRaw, jobRec, phase.grades_field)}
+      </>
+    )
   }
 
   function renderAnalysisSection(sectionId: string): ReactNode {
@@ -519,51 +426,35 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
     )
   }
 
-  function renderArtifactSection(sectionId: string): ReactNode {
-    if (!jobId || !artifactTabs) return null
-    const artTab = artifactTabs.find(a => a.tab_id === sectionId)
-    if (!artTab) return null
-    if (artTab.use_resume_structure) {
-      if (structureError) return <p className="entity-error">Failed to load resume structure.</p>
-      if (!structureSections?.length) {
-        return <p className="recommended-report-empty">Loading resume structure…</p>
-      }
-      return (
-        <ArtifactEditor
-          title={artTab.nav_label}
-          artifactKey={artTab.artifact_key}
-          taskKey="craft_resume_base"
-          useCandidateResumeStructure
-          structureSections={structureSections}
-          structureCatalog={catalog}
-          structureRows={allSections}
-          onStructureRowsChange={handleStructureRowsChange}
-          onStructureSave={saveStructure}
-          structureSaving={structureSaving}
-          structureError={structureSaveError}
-          jobPersistence={{ jobId, artifactKey: artTab.artifact_key, onSaved: load }}
-        />
-      )
-    }
-    const taskKey =
-      artTab.artifact_key === "cover_letter"
-        ? "craft_cover_letter"
-        : "propose_application_responses"
+  function renderArtifactThumb(artTab: JobArtifactTab): ReactNode {
+    if (!jobId) return null
+    const printKind = artTab.use_resume_structure ? "job_resume" as const : "cover" as const
+    const onPrint = artTab.use_resume_structure ? handlePrintResume : handlePrintCover
     return (
-      <ArtifactEditor
-        title={artTab.nav_label}
-        artifactKey={artTab.artifact_key}
-        taskKey={taskKey}
-        shapesKey={artTab.shapes_key ?? undefined}
-        jobPersistence={{ jobId, artifactKey: artTab.artifact_key, onSaved: load }}
-      />
+      <div key={artTab.tab_id} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        <PrintPreview
+          target={{ kind: printKind, id: jobId }}
+          thumbnail
+          onClick={isMobile ? undefined : () => setEditTab(artTab)}
+        />
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <span>{artTab.nav_label}</span>
+          {!isMobile && artTab.use_resume_structure && (
+            <button type="button" className="btn secondary" onClick={() => setEditTab(artTab)}>
+              Edit
+            </button>
+          )}
+          <button type="button" className="btn secondary" onClick={() => { void onPrint() }}>
+            Print
+          </button>
+        </div>
+      </div>
     )
   }
 
   function renderArtifactsPane(): ReactNode {
     if (!job) return null
 
-    // A — in progress: Generating… + Cancel; no section panels
     if (buildInProgress) {
       const cancelActions = artifactActions.filter(a => a.action_key === "cancel_build")
       return (
@@ -586,7 +477,7 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
       )
     }
 
-    // B — empty: Generate only
+    // Empty tab is filtered out; keep a Generate fallback if the tab is somehow shown.
     if (!hasArtifactContent) {
       const generate = artifactActions.find(a => a.action_key === "generate_artifacts")
       if (!generate) return null
@@ -604,17 +495,28 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
       )
     }
 
-    // C — populated: collapsible editors; no Generate/Cancel strip
     return (
-      <ReportSectionList
-        sections={populatedArtifactSections}
-        renderSection={renderArtifactSection}
-      />
+      <div className="recommended-report-artifact-thumbs" style={{ display: "flex", alignItems: "flex-start", gap: 24, flexWrap: "wrap" }}>
+        {(showPrintResume || showPrintCover) && (
+          <div className="recommended-report-artifacts-actions" style={{ width: "100%" }}>
+            {showPrintResume && (
+              <button type="button" className="btn secondary" onClick={() => { void handlePrintResume() }}>
+                Print Resume
+              </button>
+            )}
+            {showPrintCover && (
+              <button type="button" className="btn secondary" onClick={() => { void handlePrintCover() }}>
+                Print Cover Letter
+              </button>
+            )}
+          </div>
+        )}
+        {populatedArtifactThumbs.map(renderArtifactThumb)}
+      </div>
     )
   }
 
   async function runPrimaryAction(action: ReportPrimaryAction) {
-
     if (!jobId || !job || primaryBusy) return
     setPrimaryBusy(true)
     setError(null)
@@ -631,7 +533,6 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
         throw new Error(err.error || "Action failed")
       }
       onRefresh?.()
-      // AST-591: after explicit build start/cancel, return to list.
       if (action.action_key === "generate_artifacts" || action.action_key === "cancel_build") {
         onClose()
         return
@@ -644,50 +545,52 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
     }
   }
 
-  async function handleCopySnapshot() {
-    if (!jobId || snapshotCopying) return
-    setSnapshotCopying(true)
-    const ok = await copyJobSnapshotToClipboard(jobId)
-    setSnapshotCopying(false)
-    if (!ok) return
-    setSnapshotCopied(true)
-    window.setTimeout(() => setSnapshotCopied(false), 2000)
+  async function handleSkip() {
+    if (!jobId || skipBusy) return
+    setSkipBusy(true)
+    try {
+      await postSkipJob(jobId)
+      onRefresh?.()
+      onClose()
+    } catch (e) {
+      setToast({ text: e instanceof Error ? e.message : "Skip failed", variant: "error" })
+    } finally {
+      setSkipBusy(false)
+    }
   }
 
-  function handleCopyDetailLink() {
-    if (!jobId) return
-    const url =
-      `${window.location.origin}/jobs/detail/${encodeURIComponent(jobId)}`
-    navigator.clipboard.writeText(url).then(() => {
-      setDetailLinkCopied(true)
-      window.setTimeout(() => setDetailLinkCopied(false), 2000)
-    })
+  async function handleAppliedConfirm(notes: string) {
+    if (!jobId || appliedBusy) return
+    setAppliedBusy(true)
+    try {
+      await postCandidateAction(jobId, "applied", notes)
+      setAppliedNotesOpen(false)
+      onRefresh?.()
+      onClose()
+    } catch (e) {
+      setToast({ text: e instanceof Error ? e.message : "Action failed", variant: "error" })
+    } finally {
+      setAppliedBusy(false)
+    }
   }
 
-  function handleCopyApplicationEmail() {
-    if (!applicationEmail) return
-    const text = emailWithJobPlusTag(applicationEmail, emailPlusTag)
-    navigator.clipboard.writeText(text).then(() => {
-      setCopyFeedback("Copied")
-      window.setTimeout(() => setCopyFeedback(null), 2000)
-    })
-  }
-
-  function handleCopyLinkedIn() {
-    if (!linkedInUrl) return
-    navigator.clipboard.writeText(linkedInUrl).then(() => {
-      setCopyFeedback("Copied")
-      window.setTimeout(() => setCopyFeedback(null), 2000)
-    })
+  function handleHeaderGenerate() {
+    const generate = artifactActions.find(a => a.action_key === "generate_artifacts")
+    if (generate) void runPrimaryAction(generate)
   }
 
   const jobTitleDisplay = job?.job_title?.trim() || job?.company || "Recommended Job Report"
+  const companyNameDisplay = job?.company_name?.trim() || job?.company || ""
+  const companyWebsite =
+    (typeof job?.company_website === "string" && job.company_website.trim())
+      ? job.company_website.trim()
+      : null
 
   return (
     <Modal
       open={!!jobId}
       onClose={onClose}
-      title={job?.company || "Recommended Job Report"}
+      title={companyNameDisplay || "Recommended Job Report"}
       size="wide"
       showFooter={false}
     >
@@ -696,32 +599,21 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
       {job && !loading && (
         <div className="recommended-report-shell">
           <div className="recommended-report-chrome">
-            <RecommendedJobReportHeader
+            <TriageHeader
               jobTitle={jobTitleDisplay}
               jobLink={httpListingHref(job.listing_href)}
-              companyName={job.company}
+              jobLinkText={httpListingHref(job.listing_href) ?? job.job_link ?? null}
+              companyName={companyNameDisplay}
               companyWebsite={companyWebsite}
-              applicationEmail={applicationEmail}
-              linkedInUrl={linkedInUrl}
-              copyFeedback={copyFeedback}
-              onCopyApplicationEmail={handleCopyApplicationEmail}
-              onCopyLinkedIn={handleCopyLinkedIn}
-              onCopyDetailLink={handleCopyDetailLink}
-              detailLinkCopied={detailLinkCopied}
-              onCopySnapshot={handleCopySnapshot}
-              snapshotCopied={snapshotCopied}
-              snapshotCopying={snapshotCopying}
-              showPrintResume={showPrintResume}
-              showPrintCover={showPrintCover}
-              onPrintResume={() => { void handlePrintResume() }}
-              onPrintCover={() => {
-                if (!jobId) return
-                window.open(
-                  `/candidate/cover/${encodeURIComponent(jobId)}`,
-                  "_blank",
-                  "noopener,noreferrer",
-                )
-              }}
+              discoveredAt={job.discovered_at}
+              recommendedAt={job.recommended_at}
+              appliedAt={job.applied_at}
+              onSkip={job.can_skip ? () => { void handleSkip() } : undefined}
+              skipBusy={skipBusy}
+              onApplied={job.can_apply ? () => setAppliedNotesOpen(true) : undefined}
+              appliedBusy={appliedBusy}
+              onGenerateArtifacts={!showArtifactsTab ? () => handleHeaderGenerate() : undefined}
+              generateBusy={primaryBusy}
             />
             {topTabs.length > 0 ? (
               <div className="recommended-report-tabs">
@@ -747,9 +639,16 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
                   renderSection={renderSummarySection}
                 />
               )}
+              {activeTopTab === "job_description" && (
+                <ReportSectionList
+                  sections={jobDescriptionSections}
+                  renderSection={renderJobDescriptionSection}
+                />
+              )}
               {activeTopTab === "analysis" && (
                 <ReportSectionList
                   sections={analysisSections}
+                  leading={renderAnalysisTotalRow()}
                   renderMetadata={renderAnalysisMetadata}
                   renderSection={renderAnalysisSection}
                 />
@@ -771,6 +670,16 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
           )}
         </div>
       )}
+      {jobId && (
+        <JobArtifactEditModal jobId={jobId} tab={editTab} onClose={() => { setEditTab(null); void load() }} />
+      )}
+      <CandidateActionNotesModal
+        open={appliedNotesOpen}
+        action={appliedNotesOpen ? "applied" : null}
+        busy={appliedBusy}
+        onClose={() => setAppliedNotesOpen(false)}
+        onConfirm={(notes) => { void handleAppliedConfirm(notes) }}
+      />
       <Toast message={toast} onDone={clearToast} />
     </Modal>
   )

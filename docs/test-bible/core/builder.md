@@ -416,6 +416,16 @@ Equivalent harness:
 
 `_apply_contact_to_render_dict` + `_coerce_candidate_blob` `_first`/`_last`/`_full`. Primary: **`docs/test-bible/core/candidate.md`** § AST-1014 — **`TestAst1014BuilderContact`**, revised **`TestBuilderHelpers`**.
 
+**AST-1904 revision (AST-1905, parent AST-1902):** a non-empty saved `candidate_contact_detail` wins, and the contact blob is only the fallback (missing, empty, or whitespace-only saved line). `candidate_name` is still overwritten from the name columns. New: **`TestAst1014BuilderContact::test_saved_multi_part_contact_line_survives_email_only_blob`** (bug-repro: exact-equality assert, red on the pre-fix builder) and **`::test_whitespace_saved_contact_line_falls_back_to_blob`**. Revised: the **`TestBuilderHelpers`** contact tests (`test_applies_profile_contact_and_markers`, `test_profile_uses_reply_email_and_skips_empty_name`) now pass `candidate_contact_detail=""` so they still exercise the blob-built line. `_resume_blob()` is unchanged. **Integration:** none.
+
+**QA test manifest (AST-1905):**
+
+1. **[bug-repro]** `tests/component/core/test_builder.py::TestAst1014BuilderContact::test_saved_multi_part_contact_line_survives_email_only_blob`
+2. Fallback guard + revised helpers: `tests/component/core/test_builder.py::TestAst1014BuilderContact` and `::TestBuilderHelpers` (whole class)
+3. Regression: `tests/component/core/test_builder.py` (full file, 192)
+
+**Pass criterion:** all green on the tip. With `origin/dev`'s `src/core/builder.py` (pre-fix), only item 1 fails (`'hire@example.com' == <saved line>`).
+
 ### AST-1100 · AST-1091
 
 **Parent:** [AST-1091](https://linear.app/astralcareermatch/issue/AST-1091/job-resume-artifact-cover-letter-and-suggested-responses-is-not-saved). **Publish:** `origin/sub/AST-1091/AST-1100-resolve-artifact-agent-data-id`.
@@ -944,3 +954,9 @@ cd src/ui/frontend && npx vitest run \
 **Pass criterion:** pytest + vitest green on lines 1–4 — not zero-arg harness / branch-lock gate.
 
 **Bible path shasum:** `docs/test-bible/core/builder.md` (fill after publish)
+
+### AST-2081 · AST-2046 (Line format; job resume HTML from the job's structure)
+
+`_emit_body_sections_html` gains a `line` branch: one `<p class="summary-intro">` with newlines collapsed to single spaces and emphasis kept. Whitespace-only text is skipped by the existing empty check. `build_resume_from_job` takes sections, order, titles, and accent from `tracker.get_job_effective_resume_structure(jid, cd)`. `_accent_source_label` / `_merge_effective_style` accept an optional `structure`. New debug label `_structure_source_label(jid)`. `build_base_resume` is not touched.
+
+**New:** **`TestAst2081LineFormatAndJobStructure`** (5: line paragraph AC13; whitespace-only skip; structure-source label; accent helpers given vs candidate structure; job A HTML follows its structure (rename / reorder / line / accent / job-only section, AC15/17/18) while job B renders from the candidate). The tests stub `tracker_mod.get_job_current` per key, the same way as AST-1593. New lines are fully branch-covered for `LOCKED_AT_100`. `test_builder.py` stays fully green (197). Manifest: [`tracker.md`](tracker.md) § AST-2081.

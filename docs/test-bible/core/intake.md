@@ -44,3 +44,15 @@ Persist remapped context `raw_resume` / `raw_profile` / `raw_sample`. Primary: *
   tests/component/ui/api/test_api_intake.py::TestAst1075TopicMenuRoutes \
   -q
 ```
+
+### AST-2006 · AST-2000 (bug — runtime empty-token guard)
+
+**Parent:** [AST-1986](https://linear.app/astralcareermatch/issue/AST-1986) (orphaned mini-parent). **Product:** [AST-2000](https://linear.app/astralcareermatch/issue/AST-2000); canon carve-out [AST-2005](https://linear.app/astralcareermatch/issue/AST-2005) (`patt.task.dispatch-retry`). **Publish:** `origin/sub/AST-1986/AST-2006-empty-token-guard-tests`. Both intake `do_task` failure branches write `total_errors=1` (not `total_failed`) when the result carries `empty_tokens`; ledger status stays `FAILED`.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Preamble + intake task × (empty_tokens → `total_errors`; generic control → `total_failed`) | `validate_preamble_answer` / `_run_intake_task` | **`TestAst2006IntakeEmptyTokenLedger::test_failure_ledger_column`** (4 params) |
+
+**Broken / obsolete:** none.
+
+Manifest: **`docs/test-bible/core/agent.md`** § AST-2006.

@@ -13,25 +13,35 @@ vi.mock("../../../../src/ui/frontend/src/lib/api", async (importOriginal) => {
 
 const mockedApi = vi.mocked(api)
 
+// AST-2060: production list payload (GET /api/candidates) never carries rubric rows — only the
+// hydrated detail (GET /api/candidates/<id>) does, so modal content must come via the detail fetch.
+const LIST = [{ astral_candidate_id: "c1", state: "ACTIVE", candidate_data: { artifacts: {} } }]
+
+const detailWith = (joblist_rubric: unknown[]) =>
+  ({
+    ok: true,
+    json: async () => ({ astral_candidate_id: "c1", candidate_data: { artifacts: { joblist_rubric } } }),
+  }) as Response
+
+type Detail = Response | Promise<Response> | (() => Response | Promise<Response>)
+
+// Routes the api mock by URL. Unknown paths keep the list response so providers behave as before.
+// A function `detail` is invoked per call — keeps rejections lazy (no unhandled-rejection trip).
+function mockApiRoutes({ list = LIST, detail }: { list?: unknown; detail: Detail }) {
+  const listResponse = { ok: true, json: async () => list } as Response
+  mockedApi.mockImplementation(async (path: string) => {
+    if (path === "/api/candidates/c1") return typeof detail === "function" ? detail() : detail
+    return listResponse
+  })
+}
+
 describe("AgentAnalysisHeader", () => {
   beforeEach(() => {
     localStorage.clear()
     mockedApi.mockReset()
-    mockedApi.mockResolvedValue({
-      json: async () => [
-        {
-          astral_candidate_id: "c1",
-          state: "ACTIVE",
-          candidate_data: {
-            artifacts: {
-              joblist_rubric: [
-                { label: "Fit", code: "FIT", content: "Rubric body", importance: 8 },
-              ],
-            },
-          },
-        },
-      ],
-    } as Response)
+    mockApiRoutes({
+      detail: detailWith([{ label: "Fit", code: "FIT", content: "Rubric body", importance: 8 }]),
+    })
   })
 
   it("renders grades with rubric links and opens the modal", async () => {
@@ -43,7 +53,7 @@ describe("AgentAnalysisHeader", () => {
     )
     await waitFor(() => expect(screen.getByText("because")).toBeInTheDocument())
     await userEvent.click(screen.getByRole("button", { name: "show rubric" }))
-    expect(screen.getByText("Rubric body")).toBeInTheDocument()
+    expect(await screen.findByText("Rubric body")).toBeInTheDocument()
     await userEvent.click(screen.getByRole("button", { name: "Close" }))
   })
 
@@ -64,24 +74,13 @@ describe("AgentAnalysisHeader", () => {
     )
     await waitFor(() => expect(screen.getByRole("button", { name: "show rubric" })).toBeInTheDocument())
     await userEvent.click(screen.getByRole("button", { name: "show rubric" }))
-    expect(screen.getByText("No rubric found for this vector.")).toBeInTheDocument()
+    expect(await screen.findByText("No rubric found for this vector.")).toBeInTheDocument()
     await userEvent.click(screen.getByRole("button", { name: "Close" }))
   })
 
   it("matches rubric rows by code and handles missing modal content", async () => {
-    mockedApi.mockResolvedValue({
-      json: async () => [
-        {
-          astral_candidate_id: "c1",
-          state: "ACTIVE",
-          candidate_data: {
-            artifacts: {
-              joblist_rubric: [{ code: "FIT", content: "Body", importance: 8 }],
-            },
-          },
-        },
-      ],
-    } as Response)
+    // Code-only detail row (no label) — content matched by code.
+    mockApiRoutes({ detail: detailWith([{ code: "FIT", content: "Body", importance: 8 }]) })
     renderWithProviders(
       <AgentAnalysisHeader
         grades={[{ vector: "fit", grade: "A" }]}
@@ -90,7 +89,7 @@ describe("AgentAnalysisHeader", () => {
     )
     await waitFor(() => expect(screen.getByRole("button", { name: "show rubric" })).toBeInTheDocument())
     await userEvent.click(screen.getByRole("button", { name: "show rubric" }))
-    expect(screen.getByText("Body")).toBeInTheDocument()
+    expect(await screen.findByText("Body")).toBeInTheDocument()
     await userEvent.click(screen.getByRole("button", { name: "Close" }))
   })
 
@@ -119,5 +118,43 @@ describe("AgentAnalysisHeader", () => {
     const vectors = Array.from(document.querySelectorAll(".analysis-vector")).map(el => el.textContent ?? "")
     expect(vectors[0]).toMatch(/Quality Check/)
     expect(vectors[1]).toMatch(/Embedded|Firmware/)
+  })
+
+  // AST-2060 [bug-repro]: pre-fix, content came from the (never-hydrated) list → instant not-found.
+  it("AST-2059: show rubric reads content from hydrated candidate detail, not the list payload", async () => {
+    let resolveDetail!: (r: Response) => void
+    mockApiRoutes({ detail: new Promise<Response>(r => { resolveDetail = r }) })
+    renderWithProviders(
+      <AgentAnalysisHeader grades={[{ vector: "fit", grade: "A" }]} rubricArtifact="joblist_rubric" />,
+    )
+    await waitFor(() => expect(screen.getByRole("button", { name: "show rubric" })).toBeInTheDocument())
+    await userEvent.click(screen.getByRole("button", { name: "show rubric" }))
+    // No not-found flash while the detail fetch is in flight.
+    expect(screen.getByText("Loading rubric…")).toBeInTheDocument()
+    expect(screen.queryByText("No rubric found for this vector.")).not.toBeInTheDocument()
+    resolveDetail(detailWith([{ label: "Fit", code: "FIT", content: "Hydrated body", importance: 8 }]))
+    expect(await screen.findByText("Hydrated body")).toBeInTheDocument()
+    expect(mockedApi).toHaveBeenCalledWith("/api/candidates/c1")
+  })
+
+  it("AST-2059: failed detail fetch ends on the fallback, not stuck loading", async () => {
+    let detail: Detail = { ok: false, json: async () => ({}) } as Response
+    mockApiRoutes({ detail: () => (typeof detail === "function" ? detail() : detail) })
+    renderWithProviders(
+      <AgentAnalysisHeader grades={[{ vector: "fit", grade: "A" }]} rubricArtifact="joblist_rubric" />,
+    )
+    await waitFor(() => expect(screen.getByRole("button", { name: "show rubric" })).toBeInTheDocument())
+
+    // Case 1: !r.ok
+    await userEvent.click(screen.getByRole("button", { name: "show rubric" }))
+    expect(await screen.findByText("No rubric found for this vector.")).toBeInTheDocument()
+    expect(screen.queryByText("Loading rubric…")).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole("button", { name: "Close" }))
+
+    // Case 2: rejected fetch — created lazily on the call, after the click.
+    detail = () => Promise.reject(new Error("network"))
+    await userEvent.click(screen.getByRole("button", { name: "show rubric" }))
+    expect(await screen.findByText("No rubric found for this vector.")).toBeInTheDocument()
+    expect(screen.queryByText("Loading rubric…")).not.toBeInTheDocument()
   })
 })

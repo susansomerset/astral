@@ -6,6 +6,7 @@ import asyncio
 import logging
 import re
 from contextlib import asynccontextmanager
+from types import SimpleNamespace
 from typing import Any, Dict, List
 from unittest.mock import AsyncMock, MagicMock
 
@@ -14,6 +15,43 @@ import pytest
 from src.core import gazer as gazer_mod
 
 _OK_JD = "role summary " + ("detail " * 120)
+
+
+@pytest.fixture(autouse=True)
+def _telescope_tmp_db(sqlite_in_memory):
+    """AST-2132: gazer writers keep every scrape via database.save_web_data. Pin the DB to tmp
+    so an unpatched keep never reaches the default ASTRAL_DB_DIR (data/astral.db may be a live symlink)."""
+    return sqlite_in_memory
+
+
+def _pjl_ledger(rows: list) -> list | None:
+    """AST-2134: pjl_scrape_pages rows are {url, id, links_id?} (legacy text rows pass through).
+    Assert that shape, then return roster's resolved view — today's {url, visible_text, enumerated_nav_links?}."""
+    from src.core import roster as roster_mod
+    if not rows:
+        return rows  # empty ledger stays [] (the resolver maps empty to None for fetch-on-missing)
+    for r in rows:
+        if "visible_text" not in r:
+            assert set(r) <= {"url", "id", "links_id"} and gazer_mod.is_telescope_id(r["id"]), r
+            assert "links_id" not in r or gazer_mod.is_telescope_id(r["links_id"]), r
+    return roster_mod._resolved_pjl_pages(rows)
+
+
+def _kept(db) -> list[tuple]:
+    """web_data rows in insert order: (id, candidate_id, url, data_type)."""
+    conn = db._get_connection()
+    try:
+        db._ensure_web_data_schema(conn)
+        return [tuple(r) for r in conn.execute(
+            "SELECT web_data_id, candidate_id, url, data_type FROM web_data ORDER BY rowid"
+        ).fetchall()]
+    finally:
+        conn.close()
+
+
+def _vt(text: str, final_url: str = "https://final.example/j") -> tuple[str, str]:
+    """get_visible_text(..., return_final_url=True) shape used by scrape_visible_text_and_keep."""
+    return (text, final_url)
 
 
 # Branches: skip empty needles; tail vs head pruning.
@@ -37,15 +75,39 @@ class TestPruneJd:
         assert gazer_mod._prune_jd("before marker after") == "before marker after"
 
 class TestAst1195BotBlockedErrorState:
-    """AST-1195: gazer bot classification maps to universal BOT_BLOCKED."""
+    """AST-1195 · AST-2086: JD classification is task-aware — bot / cookie name the calling task."""
 
-    def test_bot_maps_to_bot_blocked(self) -> None:
-        assert gazer_mod._JD_ERROR_STATES["bot"] == "BOT_BLOCKED"
-        assert "JD_SCRAPE_FAIL_BOT" not in gazer_mod._JD_ERROR_STATES.values()
-        # Sibling scrape-fail ids unchanged.
-        assert gazer_mod._JD_ERROR_STATES["cookie"] == "JD_SCRAPE_FAIL_COOKIE"
-        assert gazer_mod._JD_ERROR_STATES["missing"] == "JD_SCRAPE_FAIL_MISSING"
-        assert gazer_mod._JD_ERROR_STATES["closed"] == "JD_SCRAPE_FAIL_CLOSED"
+    def test_bot_maps_to_task_bot_blocked(self) -> None:
+        fj = gazer_mod.GAZER_CONFIG["fetch_jd"]["classified_states"]
+        fr = gazer_mod.GAZER_CONFIG["fetch_relative_jd"]["classified_states"]
+        assert fj == {
+            "cookie": "ERROR_FETCH_JD_COOKIE", "bot": "BOT_BLOCKED_FETCH_JD",
+            "missing": "JD_SCRAPE_FAIL_MISSING", "closed": "JD_SCRAPE_FAIL_CLOSED",
+        }
+        assert fr == {
+            "cookie": "ERROR_FETCH_RELATIVE_JD_COOKIE", "bot": "BOT_BLOCKED_FETCH_RELATIVE_JD",
+            "missing": "JD_SCRAPE_FAIL_MISSING", "closed": "JD_SCRAPE_FAIL_CLOSED",
+        }
+        # The module-level universal map is gone; callers pass their own task's map.
+        assert not hasattr(gazer_mod, "_JD_ERROR_STATES")
+
+
+class TestAst2004IsBotWall:
+    """AST-2004: shared is_bot_wall — one detector for _classify_jd and roster select."""
+
+    _WALL = "Acme | LinkedIn. New to LinkedIn? Join now. Sign in with Email."
+
+    def test_threshold_hit_and_miss(self) -> None:
+        assert gazer_mod.is_bot_wall(self._WALL) is True
+        # One signal only is below bot_threshold (2).
+        assert gazer_mod.is_bot_wall("Sign in with Email to continue") is False
+        assert gazer_mod.is_bot_wall(None) is False  # type: ignore[arg-type]
+
+    def test_classify_jd_delegates(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        assert gazer_mod._classify_jd(self._WALL) == "bot"
+        # Forcing the helper proves _classify_jd routes through it (no second copy of the loop).
+        monkeypatch.setattr(gazer_mod, "is_bot_wall", lambda _t: False)
+        assert gazer_mod._classify_jd(self._WALL) != "bot"
 
 
 class TestAst1197ChallengeBotSignals:
@@ -204,6 +266,15 @@ def _mock_batch_browser_session(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
     return session
 
 
+# fetch_job_pages_batch still opens create_browser_context (not the AST-853 batch session).
+def _mock_browser_context(monkeypatch: pytest.MonkeyPatch) -> None:
+    @asynccontextmanager
+    async def _browser():
+        yield MagicMock()
+
+    monkeypatch.setattr(gazer_mod, "create_browser_context", _browser)
+
+
 class TestFetchWebsiteBatch:
     @pytest.mark.asyncio
     async def test_aborts_without_connectivity(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -236,11 +307,11 @@ class TestFetchWebsiteBatch:
         assert out == {"passed": 0, "failed": 2, "errors": 0, "skipped": 0, "total": 2}
         assert transition.call_count == 2
         assert save.call_count == 2
-        transition.assert_any_call("co-bad", "CANNOT_READ_WEBSITE")
+        transition.assert_any_call("co-bad", "ERROR_FETCH_WEBSITE_UNREADABLE")
 
     @pytest.mark.asyncio
     async def test_success_persists_homepage_and_nav_links(
-        self, monkeypatch: pytest.MonkeyPatch,
+        self, monkeypatch: pytest.MonkeyPatch, sqlite_in_memory,
     ) -> None:
         monkeypatch.setattr(gazer_mod, "check_connectivity", AsyncMock(return_value=True))
         _mock_batch_browser_session(monkeypatch)
@@ -260,14 +331,20 @@ class TestFetchWebsiteBatch:
                 }
             ),
         )
-        companies = [{"short_name": "acme", "company_website": "https://old.example"}]
+        companies = [{"short_name": "acme", "company_website": "https://old.example", "candidate_id": "cand-1"}]
         out = await gazer_mod.fetch_website_batch("batch-1", companies, debug=True)
         assert out == {"passed": 1, "failed": 0, "errors": 0, "skipped": 0, "total": 1}
         transition.assert_called_once_with("acme", "HOMEPAGE_READY")
-        save.assert_called_once_with(
-            "acme",
-            {"homepage_text": "homepage body", "nav_links": "1. /about\n2. /jobs"},
-        )
+        # AST-2132 AC5: company_data holds row ids, not text; each id resolves to the capture.
+        saved = save.call_args.args[1]
+        assert set(saved) == {"homepage_text", "nav_links"}
+        assert gazer_mod.resolve_telescope_value(saved["homepage_text"]) == "homepage body"
+        assert gazer_mod.resolve_telescope_value(saved["nav_links"]) == "1. /about\n2. /jobs"
+        # AC3: both captures kept under the canonical URL with the company's candidate_id.
+        assert _kept(sqlite_in_memory) == [
+            (saved["homepage_text"], "cand-1", "https://canonical.example", "VISIBLE_TEXT"),
+            (saved["nav_links"], "cand-1", "https://canonical.example", "PAGE_LINKS"),
+        ]
 
     @pytest.mark.asyncio
     async def test_persists_normalized_visible_text_from_scrape_helper(
@@ -293,10 +370,10 @@ class TestFetchWebsiteBatch:
         companies = [{"short_name": "acme", "company_website": "https://acme.com"}]
         out = await gazer_mod.fetch_website_batch("batch-1", companies)
         assert out == {"passed": 1, "failed": 0, "errors": 0, "skipped": 0, "total": 1}
-        save.assert_called_once_with(
-            "acme",
-            {"homepage_text": "intro\n\nbody", "nav_links": "1. /about"},
-        )
+        save.assert_called_once()
+        saved = save.call_args.args[1]
+        assert gazer_mod.resolve_telescope_value(saved["homepage_text"]) == "intro\n\nbody"
+        assert gazer_mod.resolve_telescope_value(saved["nav_links"]) == "1. /about"
 
     @pytest.mark.asyncio
     async def test_scrape_timeout_fails_with_labeled_infra_error(
@@ -332,8 +409,8 @@ class TestFetchWebsiteFailRouting:
         cfg = gazer_mod.GAZER_CONFIG["fetch_website"]
         infra = "[playwright:channel_error] boom"
         assert gazer_mod._fetch_website_fail_destination("WEBSITE_FOUND", infra, cfg) == "WEBSITE_FOUND_RETRY"
-        assert gazer_mod._fetch_website_fail_destination("WEBSITE_FOUND_RETRY", infra, cfg) == "CANNOT_READ_WEBSITE"
-        assert gazer_mod._fetch_website_fail_destination("WEBSITE_FOUND", "site unreadable", cfg) == "CANNOT_READ_WEBSITE"
+        assert gazer_mod._fetch_website_fail_destination("WEBSITE_FOUND_RETRY", infra, cfg) == "ERROR_FETCH_WEBSITE_UNREADABLE"
+        assert gazer_mod._fetch_website_fail_destination("WEBSITE_FOUND", "site unreadable", cfg) == "ERROR_FETCH_WEBSITE_UNREADABLE"
 
     @pytest.mark.asyncio
     async def test_infra_scrape_error_retries_from_website_found(
@@ -385,7 +462,7 @@ class TestFetchWebsiteFailRouting:
         ]
         out = await gazer_mod.fetch_website_batch("batch-1", companies)
         assert out == {"passed": 0, "failed": 1, "errors": 0, "skipped": 0, "total": 1}
-        transition.assert_called_once_with("acme", "CANNOT_READ_WEBSITE")
+        transition.assert_called_once_with("acme", "ERROR_FETCH_WEBSITE_UNREADABLE")
 
     @pytest.mark.asyncio
     async def test_unhandled_gather_exception_increments_errors_and_continues(
@@ -420,18 +497,28 @@ class TestFetchWebsiteFailRouting:
 
 
 class TestAst882HomepageReadyWfrSkip:
-    """AST-882/AST-892: WFR+homepage_text skip; work-only total excludes skips; bare WFR still scrapes."""
+    """AST-882 / AST-1810: every WEBSITE_FOUND_RETRY row is scraped (AST-892 second-strike skip removed).
+    The return dict keeps its "skipped" key, always 0."""
 
     @pytest.mark.asyncio
-    async def test_skips_wfr_when_homepage_text_present(
+    async def test_scrapes_wfr_even_when_homepage_text_present(
         self, monkeypatch: pytest.MonkeyPatch,
     ) -> None:
+        # [AST-1810] Pre-fix this row was skipped (skipped=1, total=0, no scrape).
         monkeypatch.setattr(gazer_mod, "check_connectivity", AsyncMock(return_value=True))
         _mock_batch_browser_session(monkeypatch)
         transition = MagicMock()
-        scrape = AsyncMock()
+        save = MagicMock()
+        scrape = AsyncMock(
+            return_value={
+                "company_website": "https://acme.com",
+                "visible_text": "fresh homepage body",
+                "nav_links": [],
+                "error": None,
+            }
+        )
         monkeypatch.setattr(gazer_mod, "transition_company_state", transition)
-        monkeypatch.setattr(gazer_mod, "save_company_data", MagicMock())
+        monkeypatch.setattr(gazer_mod, "save_company_data", save)
         monkeypatch.setattr(gazer_mod, "scrape_company_homepage_content", scrape)
         companies = [
             {
@@ -442,9 +529,14 @@ class TestAst882HomepageReadyWfrSkip:
             },
         ]
         out = await gazer_mod.fetch_website_batch("batch-1", companies, debug=True)
-        assert out == {"passed": 0, "failed": 0, "errors": 0, "skipped": 1, "total": 0}
-        transition.assert_not_called()
-        scrape.assert_not_called()
+        assert out == {"passed": 1, "failed": 0, "errors": 0, "skipped": 0, "total": 1}
+        scrape.assert_awaited_once()
+        transition.assert_called_once_with("acme", "HOMEPAGE_READY")
+        # Re-fetch replaces homepage_text via the merge save (prefilter-owned keys untouched);
+        # AST-2132: the new value is a row id resolving to the fresh capture, no nav_links without links.
+        saved = save.call_args.args[1]
+        assert gazer_mod.resolve_telescope_value(saved["homepage_text"]) == "fresh homepage body"
+        assert "nav_links" not in saved
 
     @pytest.mark.asyncio
     async def test_infra_retry_without_homepage_text_still_routes(
@@ -476,13 +568,13 @@ class TestAst882HomepageReadyWfrSkip:
         ]
         out = await gazer_mod.fetch_website_batch("batch-1", companies)
         assert out == {"passed": 0, "failed": 1, "errors": 0, "skipped": 0, "total": 1}
-        transition.assert_called_once_with("acme", "CANNOT_READ_WEBSITE")
+        transition.assert_called_once_with("acme", "ERROR_FETCH_WEBSITE_UNREADABLE")
 
     @pytest.mark.asyncio
-    async def test_mixed_skip_and_scrape_excludes_skips_from_total(
+    async def test_mixed_second_strike_and_fresh_both_scrape(
         self, monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """AST-892: skipped second-strike rows do not inflate batch total / loop counters."""
+        """AST-1810: a second-strike row and a fresh row are both work; nothing is skipped."""
         monkeypatch.setattr(gazer_mod, "check_connectivity", AsyncMock(return_value=True))
         _mock_batch_browser_session(monkeypatch)
         transition = MagicMock()
@@ -515,8 +607,8 @@ class TestAst882HomepageReadyWfrSkip:
             },
         ]
         out = await gazer_mod.fetch_website_batch("batch-1", companies, debug=True)
-        assert out == {"passed": 1, "failed": 0, "errors": 0, "skipped": 1, "total": 1}
-        transition.assert_called_once_with("need", "HOMEPAGE_READY")
+        assert out == {"passed": 2, "failed": 0, "errors": 0, "skipped": 0, "total": 2}
+        assert {c.args for c in transition.call_args_list} == {("already", "HOMEPAGE_READY"), ("need", "HOMEPAGE_READY")}
 
 
 class TestFetchJobPagesBatch:
@@ -527,8 +619,9 @@ class TestFetchJobPagesBatch:
             await gazer_mod.fetch_job_pages_batch("batch-1", [])
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize("debug", [False, True])
     async def test_missing_possible_joblist_links_fails(
-        self, monkeypatch: pytest.MonkeyPatch,
+        self, monkeypatch: pytest.MonkeyPatch, debug: bool,
     ) -> None:
         monkeypatch.setattr(gazer_mod, "check_connectivity", AsyncMock(return_value=True))
         _mock_browser_context(monkeypatch)
@@ -536,13 +629,13 @@ class TestFetchJobPagesBatch:
         monkeypatch.setattr(gazer_mod, "transition_company_state", transition)
         monkeypatch.setattr(gazer_mod, "save_company_data", MagicMock())
         companies = [{"short_name": "co-empty", "company_data": {}}]
-        out = await gazer_mod.fetch_job_pages_batch("batch-1", companies)
+        out = await gazer_mod.fetch_job_pages_batch("batch-1", companies, debug=debug)
         assert out == {"passed": 0, "failed": 1, "total": 1}
-        transition.assert_called_once_with("co-empty", "JOBSITE_SCRAPE_ISSUE")
+        transition.assert_called_once_with("co-empty", "ERROR_FETCH_JOB_PAGES_UNREADABLE")
 
     @pytest.mark.asyncio
     async def test_success_transitions_pjl_ready_and_persists(
-        self, monkeypatch: pytest.MonkeyPatch,
+        self, monkeypatch: pytest.MonkeyPatch, sqlite_in_memory,
     ) -> None:
         monkeypatch.setattr(gazer_mod, "check_connectivity", AsyncMock(return_value=True))
         _mock_browser_context(monkeypatch)
@@ -565,59 +658,195 @@ class TestFetchJobPagesBatch:
         companies = [
             {
                 "short_name": "acme",
+                "candidate_id": "cand-1",
                 "company_data": {"possible_joblist_links": ["acme.com/careers"]},
             }
         ]
         out = await gazer_mod.fetch_job_pages_batch("batch-1", companies, debug=True)
-        assert out == {"passed": 1, "failed": 0, "total": 1, "errors": 0}
+        assert out == {"passed": 1, "failed": 0, "total": 1}
         transition.assert_called_once_with("acme", "PJL_READY")
         saved = save.call_args[0][1]
-        assert saved["pjl_scrape_pages"] == [
+        assert _pjl_ledger(saved["pjl_scrape_pages"]) == [
             {
                 "url": "https://acme.com/careers",
                 "visible_text": "open roles",
                 "enumerated_nav_links": "1: https://acme.com/about",
             }
         ]
-        assert "=== PAGE 1: https://acme.com/careers ===" in saved["pjl_assembled_content"]
-        assert "--- NAV LINKS ---" in saved["pjl_assembled_content"]
-        assert "open roles" in saved["pjl_assembled_content"]
+        # AST-2132 AC5: derived PJL fields are cleared (rebuilt on read by AST-2134).
+        assert saved["pjl_assembled_content"] is None
+        assert saved["pjl_nav_links"] is None
+        # AC3: the page's text and links are kept with the company's candidate_id.
+        assert [r[1:] for r in _kept(sqlite_in_memory)] == [
+            ("cand-1", "https://acme.com/careers", "VISIBLE_TEXT"),
+            ("cand-1", "https://acme.com/careers", "PAGE_LINKS"),
+        ]
 
-    @pytest.mark.asyncio
-    async def test_additive_skips_already_scraped_url(
-        self, monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
+    # AST-1995 refresh: every candidate URL is re-scraped; rows upsert by normalize_link.
+    @staticmethod
+    async def _run_pjl(
+        monkeypatch: pytest.MonkeyPatch,
+        company_data: Dict[str, Any],
+        records: Dict[str, Dict[str, Any]],
+        debug: bool = False,
+    ):
+        """Run one company through fetch_job_pages_batch; `records` maps candidate URL -> scrape record."""
         monkeypatch.setattr(gazer_mod, "check_connectivity", AsyncMock(return_value=True))
         _mock_browser_context(monkeypatch)
-        monkeypatch.setattr(gazer_mod, "transition_company_state", MagicMock())
-        monkeypatch.setattr(gazer_mod, "save_company_data", MagicMock())
-        scrape = AsyncMock(
-            return_value={
-                "url": "https://acme.com/jobs",
-                "visible_text": "more roles",
-                "page_links": [],
-            }
-        )
+        transition, save, log = MagicMock(), MagicMock(), MagicMock()
+        monkeypatch.setattr(gazer_mod, "transition_company_state", transition)
+        monkeypatch.setattr(gazer_mod, "save_company_data", save)
+        monkeypatch.setattr(gazer_mod, "_log", log)
+        scrape = AsyncMock(side_effect=lambda url, _ctx, debug=False: records[url])
         monkeypatch.setattr(gazer_mod, "_scrape_pjl_page", scrape)
-        companies = [
-            {
-                "short_name": "acme",
-                "company_data": {
-                    "possible_joblist_links": ["acme.com/careers", "acme.com/jobs"],
-                    "pjl_scrape_pages": [
-                        {"url": "https://acme.com/careers", "visible_text": "existing"}
-                    ],
-                },
-            }
-        ]
-        out = await gazer_mod.fetch_job_pages_batch("batch-1", companies)
-        assert out == {"passed": 1, "failed": 0, "total": 1, "errors": 0}
-        scrape.assert_awaited_once()
-        assert scrape.await_args.args[0] == "acme.com/jobs"
+        companies = [{"short_name": "acme", "company_data": company_data}]
+        out = await gazer_mod.fetch_job_pages_batch("batch-1", companies, debug=debug)
+        # First save is the PJL persist; the fail path appends a notes-only save after it.
+        return out, transition, save.call_args_list[0][0][1], scrape, log
 
     @pytest.mark.asyncio
-    async def test_all_scrapes_empty_fails_with_notes(
+    async def test_refresh_rescrapes_already_scraped_url(
         self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        out, _t, saved, scrape, log = await self._run_pjl(
+            monkeypatch,
+            {
+                "possible_joblist_links": ["acme.com/careers", "acme.com/jobs"],
+                "pjl_scrape_pages": [{"url": "https://acme.com/careers", "visible_text": "existing"}],
+            },
+            {
+                "acme.com/careers": {"url": "https://acme.com/careers", "visible_text": "fresh", "page_links": []},
+                "acme.com/jobs": {"url": "https://acme.com/jobs", "visible_text": "more roles", "page_links": []},
+            },
+            debug=True,
+        )
+        assert out == {"passed": 1, "failed": 0, "total": 1}
+        # Both URLs scraped, in candidate order — the stored careers row no longer short-circuits.
+        assert [c.args[0] for c in scrape.await_args_list] == ["acme.com/careers", "acme.com/jobs"]
+        # Replaced row keeps index 0; the new URL appends.
+        assert _pjl_ledger(saved["pjl_scrape_pages"]) == [
+            {"url": "https://acme.com/careers", "visible_text": "fresh"},
+            {"url": "https://acme.com/jobs", "visible_text": "more roles"},
+        ]
+        # Style D per-URL line for every scraped URL; no ledger skip line survives.
+        outcomes = [c.kwargs.get("outcome") or "" for c in log.debug_index.call_args_list]
+        assert not any("skipped-already-scraped" in o for o in outcomes)
+        assert any("'acme.com/careers' scraped" in o for o in outcomes)
+        assert any("'acme.com/jobs' scraped" in o for o in outcomes)
+
+    @pytest.mark.asyncio
+    async def test_ast1995_repro_rescrape_replaces_row_and_rebuilds_nav(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        # Plan fixture verbatim (docs/features/roster/ast-719-… § Bug: AST-1995 → Repro).
+        out, transition, saved, scrape, _log = await self._run_pjl(
+            monkeypatch,
+            {
+                "possible_joblist_links": ["acme.com/careers"],
+                "pjl_scrape_pages": [
+                    {"url": "https://acme.com/careers", "visible_text": "OLD BOARD: Role A",
+                     "enumerated_nav_links": "1: https://acme.com/jobs/a"},
+                ],
+                "pjl_nav_links": "1: https://acme.com/jobs/a",
+            },
+            {
+                "acme.com/careers": {"url": "https://acme.com/careers", "visible_text": "NEW BOARD: Role B",
+                                     "page_links": ["https://acme.com/jobs/b"],
+                                     "enumerated_nav_links": "1: https://acme.com/jobs/b"},
+            },
+        )
+        scrape.assert_awaited_once()
+        assert _pjl_ledger(saved["pjl_scrape_pages"]) == [
+            {"url": "https://acme.com/careers", "visible_text": "NEW BOARD: Role B",
+             "enumerated_nav_links": "1: https://acme.com/jobs/b"},
+        ]
+        # AST-2132: derived assembled / nav fields are cleared, not rebuilt here (AST-2134 derives on read).
+        assert saved["pjl_assembled_content"] is None
+        assert saved["pjl_nav_links"] is None
+        assert out == {"passed": 1, "failed": 0, "total": 1}
+        transition.assert_called_once_with("acme", "PJL_READY")
+
+    @pytest.mark.asyncio
+    async def test_ast1995_failed_rescrape_keeps_prior_row_and_carries_its_nav(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        prior = {"url": "https://acme.com/careers", "visible_text": "OLD BOARD",
+                 "enumerated_nav_links": "1: https://acme.com/jobs/a"}
+        out, transition, saved, scrape, log = await self._run_pjl(
+            monkeypatch,
+            {
+                "possible_joblist_links": ["acme.com/careers"],
+                "pjl_scrape_pages": [dict(prior)],
+                # /jobs/dead is in the stored global enum but not in the row's own links.
+                "pjl_nav_links": "1: https://acme.com/jobs/a\n2: https://acme.com/jobs/dead",
+            },
+            {"acme.com/careers": {"url": "https://acme.com/careers", "visible_text": "",
+                                  "page_links": [], "error": "Timeout 30000ms exceeded"}},
+            debug=True,
+        )
+        scrape.assert_awaited_once()
+        outcomes = [c.kwargs.get("outcome") or "" for c in log.debug_index.call_args_list]
+        assert any("'acme.com/careers' error=" in o for o in outcomes)
+        # Transient failure never deletes stored content.
+        assert _pjl_ledger(saved["pjl_scrape_pages"]) == [prior]
+        # AST-2132: nav carry-forward retired with the derived fields — both cleared.
+        assert saved["pjl_assembled_content"] is None
+        assert saved["pjl_nav_links"] is None
+        assert out == {"passed": 1, "failed": 0, "total": 1}
+        transition.assert_called_once_with("acme", "PJL_READY")
+
+    @pytest.mark.asyncio
+    async def test_ast1995_failed_scrape_without_prior_row_contributes_no_nav(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        _out, _t, saved, _scrape, _log = await self._run_pjl(
+            monkeypatch,
+            {"possible_joblist_links": ["acme.com/careers", "acme.com/jobs"]},
+            {
+                "acme.com/careers": {"url": "https://acme.com/careers", "visible_text": "roles",
+                                     "page_links": ["https://acme.com/jobs/b"]},
+                # Empty capture with links: no stored row to fall back on, so its links are ignored.
+                "acme.com/jobs": {"url": "https://acme.com/jobs", "visible_text": "  ",
+                                  "page_links": ["https://acme.com/jobs/z"]},
+            },
+        )
+        assert _pjl_ledger(saved["pjl_scrape_pages"]) == [{"url": "https://acme.com/careers", "visible_text": "roles"}]
+        # AST-2132: derived nav no longer written from this run's links.
+        assert saved["pjl_nav_links"] is None
+
+    @pytest.mark.asyncio
+    async def test_ast1995_nav_written_empty_and_non_candidate_rows_kept(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        orphan = {"url": "https://acme.com/old-careers", "visible_text": "legacy board",
+                  "enumerated_nav_links": "1: https://acme.com/jobs/x"}
+        _out, transition, saved, _scrape, _log = await self._run_pjl(
+            monkeypatch,
+            {
+                "possible_joblist_links": ["acme.com/careers"],
+                "pjl_scrape_pages": [
+                    dict(orphan),
+                    {"url": "https://acme.com/careers", "visible_text": "OLD",
+                     "enumerated_nav_links": "1: https://acme.com/jobs/a"},
+                ],
+                "pjl_nav_links": "1: https://acme.com/jobs/x\n2: https://acme.com/jobs/a",
+            },
+            {"acme.com/careers": {"url": "https://acme.com/careers", "visible_text": "NEW", "page_links": []}},
+        )
+        # Non-candidate row stays at index 0 (no pruning); careers replaced whole-row at index 1.
+        assert _pjl_ledger(saved["pjl_scrape_pages"]) == [
+            orphan,
+            {"url": "https://acme.com/careers", "visible_text": "NEW"},
+        ]
+        # AST-2132: always written as None — clears pre-AST-2130 derived copies.
+        assert saved["pjl_assembled_content"] is None
+        assert saved["pjl_nav_links"] is None
+        transition.assert_called_once_with("acme", "PJL_READY")
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("debug", [False, True])
+    async def test_all_scrapes_empty_fails_with_notes(
+        self, monkeypatch: pytest.MonkeyPatch, debug: bool,
     ) -> None:
         monkeypatch.setattr(gazer_mod, "check_connectivity", AsyncMock(return_value=True))
         _mock_browser_context(monkeypatch)
@@ -636,9 +865,9 @@ class TestFetchJobPagesBatch:
                 "company_data": {"possible_joblist_links": ["acme.com/careers"]},
             }
         ]
-        out = await gazer_mod.fetch_job_pages_batch("batch-1", companies)
+        out = await gazer_mod.fetch_job_pages_batch("batch-1", companies, debug=debug)
         assert out == {"passed": 0, "failed": 1, "total": 1}
-        transition.assert_called_once_with("acme", "JOBSITE_SCRAPE_ISSUE")
+        transition.assert_called_once_with("acme", "ERROR_FETCH_JOB_PAGES_UNREADABLE")
         assert save.call_args_list[-1][0][1]["prefilter_company_notes"] == (
             "fetch_job_pages: all PJL scrapes failed"
         )
@@ -666,35 +895,55 @@ class TestFetchJdBatch:
         assert transition.call_count == 2
 
     @pytest.mark.asyncio
-    async def test_routes_classified_failures_and_passes(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def test_routes_classified_failures_and_passes(
+        self, monkeypatch: pytest.MonkeyPatch, sqlite_in_memory,
+    ) -> None:
         monkeypatch.setattr(gazer_mod, "check_connectivity", AsyncMock(return_value=True))
         transition = MagicMock()
         save = MagicMock()
         monkeypatch.setattr(gazer_mod, "transition_job_state", transition)
         monkeypatch.setattr(gazer_mod, "save_job_data", save)
         monkeypatch.setattr(gazer_mod, "_classify_jd", MagicMock(side_effect=["cookie", "ok"]))
-        monkeypatch.setattr(gazer_mod, "get_visible_text", AsyncMock(return_value=_OK_JD))
+        monkeypatch.setattr(gazer_mod, "get_visible_text", AsyncMock(return_value=_vt(_OK_JD)))
         jobs = [
-            {"astral_job_id": "job-3", "job_link": "https://example.com/a", "job_title": "A"},
-            {"astral_job_id": "job-4", "job_link": "https://example.com/b", "job_title": "B", "job_data": None},
+            {"astral_job_id": "job-3", "job_link": "https://example.com/a", "job_title": "A", "candidate_id": "cand-1"},
+            {"astral_job_id": "job-4", "job_link": "https://example.com/b", "job_title": "B", "job_data": None,
+             "candidate_id": "cand-1"},
         ]
         out = await gazer_mod.fetch_jd_batch("batch-1", jobs, debug=True)
         assert out == {"passed": 1, "failed": 1, "total": 2}
-        save.assert_called()
-        assert jobs[1]["job_data"]["job_description"].startswith("role summary")
+        # AST-2132: classified and passed jobs both store the scraped-JD reference — never JD text.
+        kept = _kept(sqlite_in_memory)
+        assert [r[1:] for r in kept] == [
+            ("cand-1", "https://example.com/a", "VISIBLE_TEXT"),
+            ("cand-1", "https://example.com/b", "VISIBLE_TEXT"),
+        ]
+        assert [c.args for c in save.call_args_list] == [
+            ("job-3", {"jd_web_data_id": kept[0][0]}),
+            ("job-4", {"jd_web_data_id": kept[1][0]}),
+        ]
+        assert jobs[1]["job_data"] == {"jd_web_data_id": kept[1][0]}
+        assert gazer_mod.resolve_telescope_value(kept[1][0]) == _OK_JD
 
     @pytest.mark.asyncio
-    async def test_fails_empty_and_short_job_descriptions(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def test_fails_empty_and_short_job_descriptions(
+        self, monkeypatch: pytest.MonkeyPatch, sqlite_in_memory,
+    ) -> None:
         monkeypatch.setattr(gazer_mod, "check_connectivity", AsyncMock(return_value=True))
         transition = MagicMock()
         monkeypatch.setattr(gazer_mod, "transition_job_state", transition)
-        monkeypatch.setattr(gazer_mod, "get_visible_text", AsyncMock(side_effect=["   ", "short text"]))
+        monkeypatch.setattr(gazer_mod, "get_visible_text", AsyncMock(side_effect=[_vt("   "), _vt("short text")]))
         jobs = [
             {"astral_job_id": "job-5", "job_link": "https://example.com/c"},
             {"astral_job_id": "job-6", "job_link": "https://example.com/d", "job_title": "Role"},
         ]
         out = await gazer_mod.fetch_jd_batch("batch-1", jobs)
         assert out["failed"] == 2
+        # Gate failures, not scrape errors: both reach the unreadable terminal; only the non-blank capture is kept.
+        assert [c.args for c in transition.call_args_list] == [
+            (["job-5"], "ERROR_FETCH_JD_UNREADABLE"), (["job-6"], "ERROR_FETCH_JD_UNREADABLE"),
+        ]
+        assert [r[2] for r in _kept(sqlite_in_memory)] == ["https://example.com/d"]
 
     @pytest.mark.asyncio
     async def test_passes_with_existing_job_data(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -703,7 +952,7 @@ class TestFetchJdBatch:
         monkeypatch.setattr(gazer_mod, "transition_job_state", transition)
         monkeypatch.setattr(gazer_mod, "save_job_data", MagicMock())
         monkeypatch.setattr(gazer_mod, "_classify_jd", MagicMock(return_value="ok"))
-        monkeypatch.setattr(gazer_mod, "get_visible_text", AsyncMock(return_value=_OK_JD))
+        monkeypatch.setattr(gazer_mod, "get_visible_text", AsyncMock(return_value=_vt(_OK_JD)))
         job = {"astral_job_id": "job-7", "job_link": "https://example.com/z", "job_title": "Role", "job_data": {"note": "keep"}}
         out = await gazer_mod.fetch_jd_batch("batch-1", [job], debug=False)
         assert out == {"passed": 1, "failed": 0, "total": 1, "errors": 0}
@@ -719,13 +968,235 @@ class TestFetchJdBatch:
         monkeypatch.setattr(gazer_mod, "save_job_data", save)
         monkeypatch.setattr(gazer_mod, "_classify_jd", MagicMock(return_value="ok"))
         raw_jd = "role summary\n\n\n\n" + ("detail " * 120)
-        monkeypatch.setattr(gazer_mod, "get_visible_text", AsyncMock(return_value=raw_jd))
+        monkeypatch.setattr(gazer_mod, "get_visible_text", AsyncMock(return_value=_vt(raw_jd)))
         job = {"astral_job_id": "job-9", "job_link": "https://example.com/j", "job_title": "Role"}
         out = await gazer_mod.fetch_jd_batch("batch-1", [job])
         assert out == {"passed": 1, "failed": 0, "total": 1, "errors": 0}
-        saved = job["job_data"]["job_description"]
-        assert "\n\n\n" not in saved
-        assert saved.startswith("role summary\n\n")
+        # AST-2132: collapse feeds the gates only; the reference points at the raw capture as scraped.
+        assert "job_description" not in job["job_data"]
+        assert gazer_mod.resolve_telescope_value(job["job_data"]["jd_web_data_id"]) == raw_jd
+
+
+def _rel_job(aid: str, href: str, site: str = "https://co.example/careers") -> dict[str, Any]:
+    return {"astral_job_id": aid, "job_site": site, "job_link": href, "job_title": "Role", "candidate_id": "cand-1"}
+
+
+@pytest.fixture
+def rel_env(monkeypatch: pytest.MonkeyPatch):
+    """Stub connectivity / DB writes; `click` maps href → (final_url, text) or an exception."""
+    monkeypatch.setattr(gazer_mod, "check_connectivity", AsyncMock(return_value=True))
+    env = SimpleNamespace(
+        transition=MagicMock(), save=MagicMock(), persist=MagicMock(), routes={},
+    )
+
+    async def _click(list_url: str, href: str):
+        out = env.routes[href]
+        if isinstance(out, BaseException):
+            raise out
+        return out
+
+    env.click = AsyncMock(side_effect=_click)
+    monkeypatch.setattr(gazer_mod, "transition_job_state", env.transition)
+    monkeypatch.setattr(gazer_mod, "save_job_data", env.save)
+    monkeypatch.setattr(gazer_mod, "persist_http_job_link", env.persist)
+    monkeypatch.setattr(gazer_mod, "click_through_visible_text", env.click)
+    # Final state per job id, read from transition_job_state([aid], state) calls.
+    env.states = lambda: {c.args[0][0]: c.args[1] for c in env.transition.call_args_list}
+    return env
+
+
+def _miss() -> Exception:
+    return gazer_mod.PlaywrightInfraError(gazer_mod.TELESCOPE_CLICK_TARGET_MISSING, "no anchor")
+
+
+# AST-2025 · AST-2022: fetch_relative_jd_batch click-through runner.
+# Branches: AC4 ok / bot / closed / click miss (real _classify_jd on config signals); other
+# Telescope error; non-http final_url; missing job_site / job_link; short text after click;
+# no connectivity; miss = warning only vs other error = logger.exception; AC5 shared gate helper.
+class TestAst2025FetchRelativeJdBatch:
+    _CFG = gazer_mod.TRACKER_CONFIG["jd_classifier"]
+    # Signals trail the body: _prune_jd trims the page head before classification.
+    _BOT = _OK_JD + " " + " ".join(_CFG["bot_signals"][: _CFG.get("bot_threshold", 2)])
+    _CLOSED = _OK_JD + " " + _CFG["closed_signals"][0]
+
+    @pytest.mark.asyncio
+    async def test_ac4_outcomes(self, rel_env, sqlite_in_memory) -> None:
+        rel_env.routes.update({
+            "/ok": ("https://ats.example/ok", _OK_JD),
+            "/bot": ("https://ats.example/bot", self._BOT),
+            "/closed": ("https://ats.example/closed", self._CLOSED),
+            "/gone": _miss(),
+        })
+        jobs = [_rel_job("j-ok", "/ok"), _rel_job("j-bot", "/bot"), _rel_job("j-closed", "/closed"),
+                _rel_job("j-gone", "/gone")]
+        out = await gazer_mod.fetch_relative_jd_batch("b-1", jobs)
+        assert out == {"passed": 1, "failed": 3, "total": 4}
+        assert rel_env.states() == {
+            "j-ok": "JD_READY", "j-bot": "BOT_BLOCKED_FETCH_RELATIVE_JD",
+            "j-closed": "JD_SCRAPE_FAIL_CLOSED", "j-gone": "ERROR_FETCH_RELATIVE_JD_CLICK",
+        }
+        # Telescope opens the company job_site and clicks the stored relative href.
+        assert {c.args for c in rel_env.click.await_args_list} == {
+            ("https://co.example/careers", h) for h in ("/ok", "/bot", "/closed", "/gone")
+        }
+        # job_link resolved for every reached destination; click miss leaves it relative.
+        assert {c.args for c in rel_env.persist.call_args_list} == {
+            ("j-ok", "https://ats.example/ok"), ("j-bot", "https://ats.example/bot"),
+            ("j-closed", "https://ats.example/closed"),
+        }
+        # AST-2132: every reached destination is kept (bot / closed too) under its final URL; click miss keeps nothing.
+        kept = _kept(sqlite_in_memory)
+        assert [r[1:] for r in kept] == [
+            ("cand-1", f"https://ats.example/{k}", "VISIBLE_TEXT") for k in ("ok", "bot", "closed")
+        ]
+        assert jobs[0]["job_data"] == {"jd_web_data_id": kept[0][0]}
+        assert ("j-ok", {"jd_web_data_id": kept[0][0]}) in [c.args for c in rel_env.save.call_args_list]
+
+    @pytest.mark.asyncio
+    async def test_click_miss_warns_other_error_logs_exception(self, rel_env, caplog) -> None:
+        rel_env.routes.update({"/gone": _miss(), "/boom": RuntimeError("telescope down")})
+        with caplog.at_level(logging.WARNING, logger="src.core.gazer"):
+            out = await gazer_mod.fetch_relative_jd_batch(
+                "b-2", [_rel_job("j-gone", "/gone"), _rel_job("j-boom", "/boom")]
+            )
+        assert out == {"passed": 0, "failed": 2, "total": 2}
+        assert rel_env.states() == {"j-gone": "ERROR_FETCH_RELATIVE_JD_CLICK", "j-boom": "ERROR_FETCH_RELATIVE_JD_CLICK"}
+        rel_env.persist.assert_not_called()
+        gone = [r for r in caplog.records if "j-gone" in r.getMessage()]
+        boom = [r for r in caplog.records if "j-boom" in r.getMessage()]
+        # Configured miss: one warning, no traceback. Other failure: logged once with exc_info.
+        assert [r.levelname for r in gone] == ["WARNING"] and gone[0].exc_info is None
+        assert [r.levelname for r in boom] == ["ERROR"] and boom[0].exc_info is not None
+
+    @pytest.mark.asyncio
+    async def test_non_http_final_url_fails_without_persist(self, rel_env) -> None:
+        rel_env.routes["/odd"] = ("/still/relative", _OK_JD)
+        out = await gazer_mod.fetch_relative_jd_batch("b-3", [_rel_job("j-odd", "/odd")])
+        assert out["failed"] == 1
+        assert rel_env.states() == {"j-odd": "ERROR_FETCH_RELATIVE_JD_CLICK"}
+        rel_env.persist.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_missing_job_site_or_link_fails_without_click(self, rel_env) -> None:
+        jobs = [_rel_job("j-nosite", "/a", site=""), _rel_job("j-nolink", "")]
+        out = await gazer_mod.fetch_relative_jd_batch("b-4", jobs)
+        assert out == {"passed": 0, "failed": 2, "total": 2}
+        assert rel_env.states() == {"j-nosite": "ERROR_FETCH_RELATIVE_JD_CLICK", "j-nolink": "ERROR_FETCH_RELATIVE_JD_CLICK"}
+        rel_env.click.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_short_text_after_click_is_relative_unreadable_with_link_resolved(self, rel_env) -> None:
+        rel_env.routes.update({"/short": ("https://ats.example/s", "too short"),
+                               "/blank": ("https://ats.example/b", "   ")})
+        out = await gazer_mod.fetch_relative_jd_batch(
+            "b-5", [_rel_job("j-short", "/short"), _rel_job("j-blank", "/blank")]
+        )
+        assert out["failed"] == 2
+        # AST-2086: destination reached → this task's own _UNREADABLE (not _CLICK, not fetch_jd's), link resolved.
+        assert rel_env.states() == {
+            "j-short": "ERROR_FETCH_RELATIVE_JD_UNREADABLE", "j-blank": "ERROR_FETCH_RELATIVE_JD_UNREADABLE",
+        }
+        assert rel_env.persist.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_aborts_without_connectivity(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(gazer_mod, "check_connectivity", AsyncMock(return_value=False))
+        with pytest.raises(ConnectionError, match="no internet connectivity"):
+            await gazer_mod.fetch_relative_jd_batch("b-6", [])
+
+    @pytest.mark.asyncio
+    async def test_ac5_both_runners_call_shared_gate_helper(
+        self, rel_env, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        seen: list[dict[str, Any]] = []
+        real = gazer_mod._apply_jd_gates
+
+        def spy(job, text, **kw):
+            seen.append({"aid": job["astral_job_id"], **kw})
+            return real(job, text, **kw)
+
+        monkeypatch.setattr(gazer_mod, "_apply_jd_gates", spy)
+        monkeypatch.setattr(gazer_mod, "get_visible_text", AsyncMock(return_value=_vt(_OK_JD)))
+        rel_env.routes["/ok"] = ("https://ats.example/ok", _OK_JD)
+        await gazer_mod.fetch_jd_batch("b-7", [{"astral_job_id": "j-abs", "job_link": "https://x.example/j"}])
+        await gazer_mod.fetch_relative_jd_batch("b-8", [_rel_job("j-rel", "/ok")])
+        # AST-2132: both runners hand the gate the kept capture's row id.
+        assert all(gazer_mod.is_telescope_id(s.pop("web_data_id")) for s in seen)
+        # AST-2086: each runner passes its own task's unreadable terminal and classified_states map.
+        # AST-2145: fetch_jd_batch forwards transition (default True); the relative runner passes none.
+        assert seen == [
+            {"aid": "j-abs", "short_state": "ERROR_FETCH_JD_UNREADABLE", "pass_state": "JD_READY",
+             "classified_states": gazer_mod.GAZER_CONFIG["fetch_jd"]["classified_states"], "transition": True},
+            {"aid": "j-rel", "short_state": "ERROR_FETCH_RELATIVE_JD_UNREADABLE", "pass_state": "JD_READY",
+             "classified_states": gazer_mod.GAZER_CONFIG["fetch_relative_jd"]["classified_states"]},
+        ]
+
+
+# AST-2145: fetch_jd_batch(transition=False) / _apply_jd_gates(transition=False) = coat-check mode.
+# Branches: no link + scrape error; empty / short / classified (no ref); pass keeps ref; default classified order.
+class TestAst2145FetchJdBatchNoTransition:
+    @pytest.fixture
+    def env(self, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setattr(gazer_mod, "check_connectivity", AsyncMock(return_value=True))
+        env = SimpleNamespace(transition=MagicMock(), save=MagicMock())
+        monkeypatch.setattr(gazer_mod, "transition_job_state", env.transition)
+        monkeypatch.setattr(gazer_mod, "save_job_data", env.save)
+        return env
+
+    @pytest.mark.asyncio
+    async def test_no_link_and_scrape_error_skip_transition(self, env, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(gazer_mod, "get_visible_text", AsyncMock(side_effect=RuntimeError("boom")))
+        jobs = [
+            {"astral_job_id": "job-1", "job_link": ""},
+            {"astral_job_id": "job-2", "job_link": "https://example.com/j", "job_title": "Role"},
+        ]
+        out = await gazer_mod.fetch_jd_batch("batch-1", jobs, transition=False)
+        assert out == {"passed": 0, "failed": 2, "total": 2}
+        env.transition.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_empty_short_classified_skip_transition_and_ref(self, env, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            gazer_mod, "get_visible_text", AsyncMock(side_effect=[_vt("   "), _vt("short text"), _vt(_OK_JD)])
+        )
+        monkeypatch.setattr(gazer_mod, "_classify_jd", MagicMock(return_value="cookie"))
+        jobs = [{"astral_job_id": f"job-{i}", "job_link": f"https://example.com/{i}"} for i in range(3)]
+        out = await gazer_mod.fetch_jd_batch("batch-1", jobs, transition=False)
+        assert out["failed"] == 3
+        env.transition.assert_not_called()
+        # A classified page must not become the composed JD of a job that keeps its state
+        env.save.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_pass_keeps_reference_without_transition(
+        self, env, monkeypatch: pytest.MonkeyPatch, sqlite_in_memory,
+    ) -> None:
+        monkeypatch.setattr(gazer_mod, "get_visible_text", AsyncMock(return_value=_vt(_OK_JD)))
+        job = {"astral_job_id": "job-x", "job_link": "https://example.com/x", "job_data": None}
+        out = await gazer_mod.fetch_jd_batch("batch-1", [job], transition=False)
+        assert out["passed"] == 1
+        kept = _kept(sqlite_in_memory)
+        env.save.assert_called_once_with("job-x", {"jd_web_data_id": kept[0][0]})
+        assert job["job_data"] == {"jd_web_data_id": kept[0][0]}
+        env.transition.assert_not_called()
+
+    def test_apply_jd_gates_classified_default_still_saves_then_transitions(
+        self, env, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        # Regression lock: AST-2145 reordered the classified branch; default mode is still save -> transition
+        order = MagicMock()
+        order.attach_mock(env.save, "save")
+        order.attach_mock(env.transition, "transition")
+        monkeypatch.setattr(gazer_mod, "_classify_jd", MagicMock(return_value="cookie"))
+        classified = gazer_mod.GAZER_CONFIG["fetch_jd"]["classified_states"]
+        gated = gazer_mod._apply_jd_gates(
+            {"astral_job_id": "job-c"}, _OK_JD, short_state="ERROR_FETCH_JD_UNREADABLE", pass_state="JD_READY",
+            classified_states=classified, web_data_id="ref-1",
+        )
+        assert gated is False
+        assert [c[0] for c in order.mock_calls] == ["save", "transition"]
+        env.save.assert_called_once_with("job-c", {"jd_web_data_id": "ref-1"})
+        env.transition.assert_called_once_with(["job-c"], classified["cookie"])
 
 
 
@@ -770,8 +1241,8 @@ class TestFetchCulturePagesBatch:
         ]
         out = await gazer_mod.fetch_culture_pages_batch("batch-1", jobs)
         assert out == {"passed": 0, "failed": 2, "total": 2}
-        assert transition.call_args_list[0].args == (["j-empty"], "NEED_CULTURE_CONTENT")
-        assert transition.call_args_list[1].args == (["j-miss"], "NEED_CULTURE_CONTENT")
+        assert transition.call_args_list[0].args == (["j-empty"], "ERROR_FETCH_CULTURE_PAGES_UNREADABLE")
+        assert transition.call_args_list[1].args == (["j-miss"], "ERROR_FETCH_CULTURE_PAGES_UNREADABLE")
 
     @pytest.mark.asyncio
     async def test_cached_website_content_passes_without_coat_check(
@@ -809,7 +1280,7 @@ class TestFetchCulturePagesBatch:
             "batch-1", [{"astral_job_id": "j-nolink", "company": "acme"}],
         )
         assert out == {"passed": 0, "failed": 1, "total": 1}
-        transition.assert_called_once_with(["j-nolink"], "NO_CULTURE_LINKS")
+        transition.assert_called_once_with(["j-nolink"], "ERROR_FETCH_CULTURE_PAGES_NO_CULTURE_LINKS")
 
     @pytest.mark.asyncio
     async def test_coat_check_pass_and_empty_fail(
@@ -846,7 +1317,7 @@ class TestFetchCulturePagesBatch:
         out = await gazer_mod.fetch_culture_pages_batch("batch-1", jobs)
         assert out == {"passed": 1, "failed": 1, "total": 2}
         assert transition.call_args_list[0].args == (["j-ok"], "CULTURE_READY")
-        assert transition.call_args_list[1].args == (["j-bad"], "NEED_CULTURE_CONTENT")
+        assert transition.call_args_list[1].args == (["j-bad"], "ERROR_FETCH_CULTURE_PAGES_UNREADABLE")
         assert co_ok["company_data"]["website_content"][0]["content"] == "ok culture"
 
     @pytest.mark.asyncio
@@ -874,6 +1345,53 @@ class TestFetchCulturePagesBatch:
         assert transition.call_args_list[0].args == (["j1"], "CULTURE_READY")
         assert transition.call_args_list[1].args == (["j2"], "CULTURE_READY")
 
+
+
+# AST-2070 (parent AST-2054): GET_UPSHOT culture fetch — every claimed company advances to UPSHOT_READY.
+class TestAst2070FetchCompanyCulturePagesBatch:
+    @pytest.mark.asyncio
+    async def test_aborts_without_connectivity_before_any_transition(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(gazer_mod, "check_connectivity", AsyncMock(return_value=False))
+        transition = MagicMock()
+        monkeypatch.setattr(gazer_mod, "transition_company_state", transition)
+        with pytest.raises(ConnectionError, match="no internet connectivity"):
+            await gazer_mod.fetch_company_culture_pages_batch("b1", [{"short_name": "a"}])
+        transition.assert_not_called()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("debug", [True, False])
+    async def test_every_company_advances_whatever_was_found(
+        self, monkeypatch: pytest.MonkeyPatch, debug: bool,
+    ) -> None:
+        # AC4: cached / scraped / none found / coat-check ValueError / no company_data all → UPSHOT_READY
+        monkeypatch.setattr(gazer_mod, "check_connectivity", AsyncMock(return_value=True))
+        transition = MagicMock()
+        monkeypatch.setattr(gazer_mod, "transition_company_state", transition)
+
+        async def _coat(company: dict[str, Any], key: str):
+            assert key == "website_content"
+            if company["short_name"] == "boom":
+                raise ValueError("no company_website")
+            if company["short_name"] == "scraped":
+                return [{"url": "https://s.co/c", "content": "culture"}]
+            return None
+
+        coat = AsyncMock(side_effect=_coat)
+        monkeypatch.setattr(gazer_mod, "get_company_data", coat)
+        companies = [
+            {"short_name": "cached", "company_data": {"website_content": [{"url": "u", "content": "kept"}]}},
+            {"short_name": "scraped", "company_data": {"culture_links_to_explore": ["https://s.co/c"]}},
+            {"short_name": "empty", "company_data": {"culture_links_to_explore": []}},
+            {"short_name": "boom", "company_data": {}},
+            {"short_name": "nodata", "company_data": None},
+        ]
+        out = await gazer_mod.fetch_company_culture_pages_batch("b2", companies, debug=debug)
+        assert out == {"passed": 5, "failed": 0, "total": 5}
+        assert [c.args for c in transition.call_args_list] == [
+            (c["short_name"], "UPSHOT_READY") for c in companies
+        ]
+        # cached content skips the scrape; the other four go through the coat-check
+        assert [c.args[0]["short_name"] for c in coat.await_args_list] == ["scraped", "empty", "boom", "nodata"]
 
 
 class TestScrapeOne:
@@ -1040,7 +1558,7 @@ class TestFetchJdBatchDebugPaths:
         monkeypatch.setattr(
             gazer_mod,
             "get_visible_text",
-            AsyncMock(side_effect=[RuntimeError("net"), "   ", "short", _OK_JD]),
+            AsyncMock(side_effect=[RuntimeError("net"), _vt("   "), _vt("short"), _vt(_OK_JD)]),
         )
         monkeypatch.setattr(gazer_mod, "_classify_jd", MagicMock(return_value="cookie"))
         jobs = [
@@ -1253,10 +1771,13 @@ class TestFetchJdBatchDebugBranchCoverage:
         monkeypatch.setattr(gazer_mod, "transition_job_state", MagicMock())
         monkeypatch.setattr(gazer_mod, "save_job_data", MagicMock())
         monkeypatch.setattr(gazer_mod, "_classify_jd", MagicMock(return_value="cookie"))
-        monkeypatch.setattr(gazer_mod, "get_visible_text", AsyncMock(return_value=_OK_JD))
+        transition = MagicMock()
+        monkeypatch.setattr(gazer_mod, "transition_job_state", transition)
+        monkeypatch.setattr(gazer_mod, "get_visible_text", AsyncMock(return_value=_vt(_OK_JD)))
         jobs = [{"astral_job_id": "job-3", "job_link": "https://example.com/a", "job_title": "A"}]
         out = await gazer_mod.fetch_jd_batch("batch-1", jobs, debug=False)
         assert out["failed"] == 1
+        transition.assert_called_once_with(["job-3"], gazer_mod.GAZER_CONFIG["fetch_jd"]["classified_states"]["cookie"])
 
 
 
@@ -1736,3 +2257,250 @@ class TestAst1516ContactTaskGazerScrape:
         details = " ".join(c.args[0] for c in log.debug_detail.call_args_list if c.args)
         assert "visible_chars=" in details
         assert "links_count=1" in details
+
+
+# AST-2086 AC4: fetch_website / fetch_job_pages / fetch_culture_pages run the shared is_bot_wall
+# detector — a bot wall lands on BOT_BLOCKED_<TASK_KEY>; plain unreadable stays ERROR_<TASK_KEY>_UNREADABLE.
+class TestAst2086GazerBotWallSplit:
+    _JDC = gazer_mod.TRACKER_CONFIG["jd_classifier"]
+    _BOT = "Welcome. " + " ".join(_JDC["bot_signals"][: _JDC.get("bot_threshold", 2)])
+
+    def test_bot_text_trips_shared_detector(self) -> None:
+        # Guard: the fixture text must actually be a bot wall, or every test below proves nothing.
+        assert gazer_mod.is_bot_wall(self._BOT)
+        assert not gazer_mod.is_bot_wall("open roles at acme")
+
+    def test_fetch_website_fail_destination_bot_first(self) -> None:
+        cfg = gazer_mod.GAZER_CONFIG["fetch_website"]
+        dest = gazer_mod._fetch_website_fail_destination
+        assert dest("WEBSITE_FOUND", "", cfg, self._BOT) == "BOT_BLOCKED_FETCH_WEBSITE"
+        # Bot wall wins over the infra retry ladder and over a retry re-fail.
+        assert dest("WEBSITE_FOUND", "[playwright:channel_error] boom", cfg, self._BOT) == "BOT_BLOCKED_FETCH_WEBSITE"
+        assert dest("WEBSITE_FOUND_RETRY", "site unreadable", cfg, self._BOT) == "BOT_BLOCKED_FETCH_WEBSITE"
+        # No error and no wall → success path (None); plain unreadable → the _UNREADABLE failure.
+        assert dest("WEBSITE_FOUND", "", cfg, "acme homepage") is None
+        assert dest("WEBSITE_FOUND", "site unreadable", cfg, "") == "ERROR_FETCH_WEBSITE_UNREADABLE"
+
+    @pytest.mark.asyncio
+    async def test_fetch_website_bot_wall_is_bot_blocked_not_homepage(
+        self, monkeypatch: pytest.MonkeyPatch, sqlite_in_memory,
+    ) -> None:
+        monkeypatch.setattr(gazer_mod, "check_connectivity", AsyncMock(return_value=True))
+        _mock_batch_browser_session(monkeypatch)
+        transition, save = MagicMock(), MagicMock()
+        monkeypatch.setattr(gazer_mod, "transition_company_state", transition)
+        monkeypatch.setattr(gazer_mod, "save_company_data", save)
+        monkeypatch.setattr(
+            gazer_mod, "scrape_company_homepage_content",
+            AsyncMock(return_value={"company_website": "https://acme.com", "visible_text": self._BOT, "error": None}),
+        )
+        out = await gazer_mod.fetch_website_batch("b-2086", [{"short_name": "acme", "company_website": "https://acme.com"}])
+        assert out == {"passed": 0, "failed": 1, "errors": 0, "skipped": 0, "total": 1}
+        transition.assert_called_once_with("acme", "BOT_BLOCKED_FETCH_WEBSITE")
+        # Only the notes write — the wall text is never persisted as homepage_text.
+        notes_key = gazer_mod.ROSTER_CONFIG["company_data_keys"]["prefilter_company_notes"]
+        save.assert_called_once_with("acme", {notes_key: "bot wall"})
+        # AST-2132 AC3: the wall capture is still kept, before routing.
+        (row,) = _kept(sqlite_in_memory)
+        assert row[2:] == ("https://acme.com", "VISIBLE_TEXT")
+        assert gazer_mod.resolve_telescope_value(row[0]) == self._BOT
+
+    @pytest.mark.asyncio
+    async def test_fetch_job_pages_all_walled_is_bot_blocked(
+        self, monkeypatch: pytest.MonkeyPatch, sqlite_in_memory,
+    ) -> None:
+        out, transition, saved, _scrape, _log = await TestFetchJobPagesBatch._run_pjl(
+            monkeypatch,
+            {"possible_joblist_links": ["acme.com/careers", "acme.com/jobs"]},
+            {
+                "acme.com/careers": {"url": "https://acme.com/careers", "visible_text": self._BOT, "page_links": []},
+                "acme.com/jobs": {"url": "https://acme.com/jobs", "visible_text": self._BOT, "page_links": []},
+            },
+        )
+        assert out == {"passed": 0, "failed": 1, "total": 1}
+        transition.assert_called_once_with("acme", "BOT_BLOCKED_FETCH_JOB_PAGES")
+        # A wall is not page content: nothing merged into the capture.
+        assert _pjl_ledger(saved["pjl_scrape_pages"]) == []
+        # AST-2132 AC3: ...but both wall captures are kept.
+        assert [r[2:] for r in _kept(sqlite_in_memory)] == [
+            ("https://acme.com/careers", "VISIBLE_TEXT"), ("https://acme.com/jobs", "VISIBLE_TEXT"),
+        ]
+
+    @pytest.mark.asyncio
+    async def test_fetch_job_pages_walled_with_prior_capture_still_passes(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        prior = {"url": "https://acme.com/careers", "visible_text": "OLD BOARD"}
+        out, transition, saved, _scrape, _log = await TestFetchJobPagesBatch._run_pjl(
+            monkeypatch,
+            {"possible_joblist_links": ["acme.com/careers"], "pjl_scrape_pages": [prior]},
+            {"acme.com/careers": {"url": "https://acme.com/careers", "visible_text": self._BOT, "page_links": []}},
+        )
+        assert out == {"passed": 1, "failed": 0, "total": 1}
+        transition.assert_called_once_with("acme", "PJL_READY")
+        assert _pjl_ledger(saved["pjl_scrape_pages"]) == [prior]
+
+    @staticmethod
+    def _culture_env(monkeypatch: pytest.MonkeyPatch, company: Dict[str, Any], fetched: Any) -> MagicMock:
+        monkeypatch.setattr(gazer_mod, "check_connectivity", AsyncMock(return_value=True))
+        transition = MagicMock()
+        monkeypatch.setattr(gazer_mod, "transition_job_state", transition)
+        monkeypatch.setattr(gazer_mod, "get_company", MagicMock(return_value=company))
+        monkeypatch.setattr(gazer_mod, "get_company_data", AsyncMock(return_value=fetched))
+        return transition
+
+    def test_website_content_bot_walled_shapes(self) -> None:
+        walled = gazer_mod._website_content_bot_walled
+        assert walled([{"url": "a", "content": self._BOT}, {"url": "b", "content": self._BOT}])
+        assert not walled([{"url": "a", "content": self._BOT}, {"url": "b", "content": "our values"}])
+        assert walled([{"url": "a", "content": self._BOT}, "not-a-page"])  # non-dict entries are ignored
+        assert walled(self._BOT)  # legacy string capture
+        assert not walled("")
+        assert not walled([])
+        assert not walled(None)
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("debug", [False, True])
+    async def test_fetch_culture_pages_fresh_all_walled_is_bot_blocked(self, monkeypatch: pytest.MonkeyPatch, debug: bool) -> None:
+        company = {"short_name": "acme", "company_data": {"culture_links_to_explore": ["https://acme.com/c"]}}
+        transition = self._culture_env(monkeypatch, company, [{"url": "https://acme.com/c", "content": self._BOT}])
+        out = await gazer_mod.fetch_culture_pages_batch("b-2086", [{"astral_job_id": "j-wall", "company": "acme"}], debug=debug)
+        assert out == {"passed": 0, "failed": 1, "total": 1}
+        transition.assert_called_once_with(["j-wall"], "BOT_BLOCKED_FETCH_CULTURE_PAGES")
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("debug", [False, True])
+    async def test_fetch_culture_pages_cached_all_walled_is_bot_blocked(self, monkeypatch: pytest.MonkeyPatch, debug: bool) -> None:
+        company = {"short_name": "acme", "company_data": {"website_content": [{"url": "https://acme.com/c", "content": self._BOT}]}}
+        transition = self._culture_env(monkeypatch, company, None)
+        out = await gazer_mod.fetch_culture_pages_batch("b-2086", [{"astral_job_id": "j-cache", "company": "acme"}], debug=debug)
+        assert out == {"passed": 0, "failed": 1, "total": 1}
+        transition.assert_called_once_with(["j-cache"], "BOT_BLOCKED_FETCH_CULTURE_PAGES")
+
+    @pytest.mark.asyncio
+    async def test_fetch_culture_pages_one_usable_page_passes(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Only an all-walled capture is bot-blocked; one gradeable page is enough to pass.
+        company = {"short_name": "acme", "company_data": {"culture_links_to_explore": ["https://acme.com/c"]}}
+        fetched = [{"url": "https://acme.com/c", "content": self._BOT}, {"url": "https://acme.com/v", "content": "our values"}]
+        transition = self._culture_env(monkeypatch, company, fetched)
+        out = await gazer_mod.fetch_culture_pages_batch("b-2086", [{"astral_job_id": "j-mixed", "company": "acme"}])
+        assert out == {"passed": 1, "failed": 0, "total": 1}
+        transition.assert_called_once_with(["j-mixed"], "CULTURE_READY")
+
+
+# AST-2132 · AST-2130: gazer owns web_data.
+# Branches: is_telescope_id (uuid / text / non-str); keep blank vs content; keep_page_scrape with and
+# without links; scrape_visible_text_and_keep (final_url fallback, None text); scrape_page_links_and_keep
+# (urls / None); resolve_telescope_value (id hit / miss, list with id / legacy / missing entries,
+# all-missing -> None, passthrough); culture caches resolve ids (cached, bot-walled, missing row, coat-check ids).
+class TestAst2132TelescopeApi:
+    _JDC = gazer_mod.TRACKER_CONFIG["jd_classifier"]
+    _BOT = "Welcome. " + " ".join(_JDC["bot_signals"][: _JDC.get("bot_threshold", 2)])
+
+    def test_is_telescope_id(self) -> None:
+        assert gazer_mod.is_telescope_id("7dbd3eb9-7082-420b-9471-524124f3a071")
+        assert not gazer_mod.is_telescope_id("homepage body")
+        assert not gazer_mod.is_telescope_id("7DBD3EB9-7082-420B-9471-524124F3A071")  # uuid4 str() is lowercase
+        assert not gazer_mod.is_telescope_id(None)
+        assert not gazer_mod.is_telescope_id([{"id": "x"}])
+
+    def test_keep_blank_stores_nothing_content_returns_id(self, sqlite_in_memory) -> None:
+        assert gazer_mod.keep_web_data("cand-1", "https://a.test", "VISIBLE_TEXT", "  \n ") is None
+        assert gazer_mod.keep_web_data("cand-1", "https://a.test", "VISIBLE_TEXT", None) is None  # type: ignore[arg-type]
+        assert _kept(sqlite_in_memory) == []
+        # data_type passes through unchecked (free text).
+        rid = gazer_mod.keep_web_data("cand-1", "https://a.test", "JSON", '{"a": 1}')
+        assert _kept(sqlite_in_memory) == [(rid, "cand-1", "https://a.test", "JSON")]
+        assert gazer_mod.resolve_telescope_value(rid) == '{"a": 1}'
+
+    def test_keep_page_scrape_text_and_links(self, sqlite_in_memory) -> None:
+        text_id, links_id = gazer_mod.keep_page_scrape(
+            "cand-1", "https://a.test", {"visible_text": "body", "enumerated_nav_links": "1: https://a.test/x"},
+        )
+        assert gazer_mod.resolve_telescope_value(text_id) == "body"
+        assert gazer_mod.resolve_telescope_value(links_id) == "1: https://a.test/x"
+        assert [r[3] for r in _kept(sqlite_in_memory)] == ["VISIBLE_TEXT", "PAGE_LINKS"]
+        assert gazer_mod.keep_page_scrape(None, "https://b.test", {"visible_text": "only"})[1] is None
+
+    @pytest.mark.asyncio
+    async def test_scrape_visible_text_and_keep(self, monkeypatch: pytest.MonkeyPatch, sqlite_in_memory) -> None:
+        gvt = AsyncMock(side_effect=[("page text", "https://final.test"), (None, None)])
+        monkeypatch.setattr(gazer_mod, "get_visible_text", gvt)
+        text, final, rid = await gazer_mod.scrape_visible_text_and_keep("cand-1", "https://a.test", context="ctx")
+        assert (text, final) == ("page text", "https://final.test")
+        gvt.assert_any_await(url="https://a.test", context="ctx", return_final_url=True)
+        # Kept under the requested URL; the redirect target is returned, not stored.
+        assert _kept(sqlite_in_memory) == [(rid, "cand-1", "https://a.test", "VISIBLE_TEXT")]
+        # Empty scrape: "" text, final_url falls back to the request URL, nothing kept.
+        assert await gazer_mod.scrape_visible_text_and_keep("cand-1", "https://b.test") == ("", "https://b.test", None)
+
+    @pytest.mark.asyncio
+    async def test_scrape_page_links_and_keep(self, monkeypatch: pytest.MonkeyPatch, sqlite_in_memory) -> None:
+        espl = AsyncMock(side_effect=[["https://a.test/x", "https://a.test/y"], None])
+        monkeypatch.setattr(gazer_mod, "extract_site_page_list", espl)
+        urls, rid = await gazer_mod.scrape_page_links_and_keep("cand-1", "https://a.test")
+        assert urls == ["https://a.test/x", "https://a.test/y"]
+        espl.assert_any_await("https://a.test", max_depth=1, verify=False, context=None)
+        # Stored as the enumerated list readers use today.
+        assert gazer_mod.resolve_telescope_value(rid) == gazer_mod.enumerate_array("", urls)
+        assert _kept(sqlite_in_memory)[0][1:] == ("cand-1", "https://a.test", "PAGE_LINKS")
+        assert await gazer_mod.scrape_page_links_and_keep("cand-1", "https://b.test") == ([], None)
+
+    def test_resolve_shapes_and_missing_rows(self, sqlite_in_memory, caplog) -> None:
+        a = gazer_mod.keep_web_data("cand-1", "https://a.test", "VISIBLE_TEXT", "page a")
+        gone = "00000000-0000-4000-8000-000000000000"
+        resolve = gazer_mod.resolve_telescope_value
+        assert resolve(a) == "page a"
+        with caplog.at_level(logging.WARNING, logger="src.core.gazer"):
+            assert resolve(gone) is None
+        assert any(gone in r.getMessage() and r.levelname == "WARNING" for r in caplog.records)
+        legacy = {"url": "https://l.test", "content": "legacy text"}
+        assert resolve([{"url": "https://a.test", "id": a, "title": "A"}, legacy, {"url": "x", "id": gone}, "odd"]) == [
+            {"url": "https://a.test", "title": "A", "content": "page a"}, legacy, "odd",
+        ]
+        assert resolve([{"url": "x", "id": gone}]) is None  # empty -> None so fetch-on-missing re-scrapes
+        for passthrough in ("legacy homepage text", None, {"k": "v"}, ""):
+            assert resolve(passthrough) == passthrough
+
+    @pytest.mark.asyncio
+    async def test_culture_pages_cached_ids_resolve(self, monkeypatch: pytest.MonkeyPatch, sqlite_in_memory) -> None:
+        ok = gazer_mod.keep_web_data("cand-1", "https://ok.co/c", "VISIBLE_TEXT", "our values")
+        wall = gazer_mod.keep_web_data("cand-1", "https://bot.co/c", "VISIBLE_TEXT", self._BOT)
+        companies = {
+            "okco": {"short_name": "okco", "company_data": {"website_content": [{"url": "https://ok.co/c", "id": ok}]}},
+            "botco": {"short_name": "botco", "company_data": {"website_content": [{"url": "https://bot.co/c", "id": wall}]}},
+            # Row gone -> resolves to None -> not cached -> coat-check runs (returns ids too).
+            "goneco": {"short_name": "goneco", "company_data": {
+                "website_content": [{"url": "u", "id": "00000000-0000-4000-8000-000000000000"}],
+                "culture_links_to_explore": ["https://gone.co/c"]}},
+        }
+        monkeypatch.setattr(gazer_mod, "check_connectivity", AsyncMock(return_value=True))
+        transition = MagicMock()
+        monkeypatch.setattr(gazer_mod, "transition_job_state", transition)
+        monkeypatch.setattr(gazer_mod, "get_company", lambda k: companies.get(k))
+        coat = AsyncMock(return_value=[{"url": "https://gone.co/c", "id": wall}])
+        monkeypatch.setattr(gazer_mod, "get_company_data", coat)
+        jobs = [{"astral_job_id": f"j-{k}", "company": k} for k in ("okco", "botco", "goneco")]
+        out = await gazer_mod.fetch_culture_pages_batch("b-2132", jobs)
+        assert out == {"passed": 1, "failed": 2, "total": 3}
+        assert [c.args for c in transition.call_args_list] == [
+            (["j-okco"], "CULTURE_READY"),
+            (["j-botco"], "BOT_BLOCKED_FETCH_CULTURE_PAGES"),
+            # Fresh coat-check value holding ids is resolved before the bot check.
+            (["j-goneco"], "BOT_BLOCKED_FETCH_CULTURE_PAGES"),
+        ]
+        assert [c.args[0]["short_name"] for c in coat.await_args_list] == ["goneco"]
+
+    @pytest.mark.asyncio
+    async def test_company_culture_cached_ids_resolve(self, monkeypatch: pytest.MonkeyPatch, sqlite_in_memory) -> None:
+        ok = gazer_mod.keep_web_data("cand-1", "https://ok.co/c", "VISIBLE_TEXT", "our values")
+        monkeypatch.setattr(gazer_mod, "check_connectivity", AsyncMock(return_value=True))
+        monkeypatch.setattr(gazer_mod, "transition_company_state", MagicMock())
+        coat = AsyncMock(return_value=[{"url": "https://ok.co/c", "id": ok}])
+        monkeypatch.setattr(gazer_mod, "get_company_data", coat)
+        companies = [
+            {"short_name": "cached", "company_data": {"website_content": [{"url": "https://ok.co/c", "id": ok}]}},
+            {"short_name": "fresh", "company_data": {"culture_links_to_explore": ["https://ok.co/c"]}},
+        ]
+        out = await gazer_mod.fetch_company_culture_pages_batch("b-2132", companies)
+        assert out == {"passed": 2, "failed": 0, "total": 2}
+        # Cached ids count as recorded content — only the uncached company hits the coat-check.
+        assert [c.args[0]["short_name"] for c in coat.await_args_list] == ["fresh"]

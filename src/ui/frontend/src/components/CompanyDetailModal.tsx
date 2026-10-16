@@ -16,6 +16,7 @@ interface CompanyDetail {
   last_scan_at?: string | null
   state_changed_at?: string | null
   prefilter_company_notes?: string
+  company_upshot?: string
   originating_search_term?: string | null
   state_history: Array<{ to_state?: string; timestamp?: string }>
   job_state_counts?: Record<string, number>
@@ -168,6 +169,9 @@ function SummaryTab({
           <DetailRow label="State"><span>{data.state}</span></DetailRow>
           {data.last_scan_at && (
             <DetailRow label="Last Scanned"><span><Time value={data.last_scan_at} /></span></DetailRow>
+          )}
+          {data.company_upshot?.trim() && (
+            <DetailRow label="Upshot"><span>{data.company_upshot.trim()}</span></DetailRow>
           )}
           {data.prefilter_company_notes && (
             <DetailRow label="Notes"><span>{data.prefilter_company_notes}</span></DetailRow>

@@ -83,7 +83,8 @@ Scope fields on universals do not exclude them from that set. Plan consumers mat
 | `astral.ui.frontend-file-placement` | scoped | ci | `astral/ui/astral.ui.frontend-file-placement.md` |
 | `astral.ui.naming-conventions` | scoped | ci | `astral/ui/astral.ui.naming-conventions.md` |
 | `astral.ui.single-gunicorn-worker` | scoped | judgment | `astral/ui/astral.ui.single-gunicorn-worker.md` |
-| `orch.git.betty-merge-tests-one-sha` | universal | judgment | `orchestration/git/orch.git.betty-merge-tests-one-sha.md` |
+| `orch.git.betty-tests-on-sub` | universal | hook | `orchestration/git/orch.git.betty-tests-on-sub.md` |
+| `orch.git.betty-merge-tests-one-sha` | universal (retired) | judgment | `orchestration/git/orch.git.betty-merge-tests-one-sha.md` |
 | `orch.git.commit-vocabulary` | universal | judgment | `orchestration/git/orch.git.commit-vocabulary.md` |
 | `orch.git.flow-direction-inviolable` | universal | judgment | `orchestration/git/orch.git.flow-direction-inviolable.md` |
 | `orch.git.ftr-sub-topology` | universal | judgment | `orchestration/git/orch.git.ftr-sub-topology.md` |

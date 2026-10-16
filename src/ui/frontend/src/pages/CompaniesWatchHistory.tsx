@@ -44,7 +44,7 @@ export default function WatchHistory() {
             ...c,
             render: (val: unknown) => (
               <span style={{
-                color: val === "success" ? "var(--success, #4caf50)" : "var(--danger, #f44336)",
+                color: val === "success" ? "var(--success)" : "var(--danger)",
                 fontWeight: 600, fontSize: 12,
               }}>
                 {String(val || "")}

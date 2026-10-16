@@ -14,7 +14,7 @@ describe("ListPage ui_config failure (fresh module)", () => {
   it("uses empty column types when ui_config rejects", async () => {
     const api = (await import("../../../../src/ui/frontend/src/lib/api")).default
     vi.mocked(api).mockImplementation(async (url: string) => {
-      if (url === "/api/system/ui_config") throw new Error("down")
+      if (url === "/api/ui_config") throw new Error("down")
       return { json: async () => ({ column_types: {} }) } as Response
     })
     const { default: ListPage } = await import("../../../../src/ui/frontend/src/components/ListPage")

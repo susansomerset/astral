@@ -34,6 +34,8 @@ Narrow (**`test-astral`** **AST-485** / **AST-549** regression tip):
 
 ### AST-492 · AST-495 · AST-491
 
+> **AST-1880:** Historical. The global `active_provider`, `DEEPSEEK_MODEL_PRICING`, `resolve_brain_setting_to_deepseek_tier_meta`, `/agents/brain_settings`, the DeepSeek-only client, and `TestAst492ResolveAdhocApiAdmin` are retired. Each agent routes by its own model → server. Current coverage: [§ AST-1880](#ast-1880--ast-1851-admin-model-pickers--per-server-platform-keys).
+
 **`LLM_PROVIDER_CONFIG`**, **`DEEPSEEK_MODEL_PRICING`**, Ada tier helpers (**`resolve_brain_setting_to_anthropic_agent_key`**, **`resolve_brain_setting_to_deepseek_tier_meta`**, **`validate_allowed_brain_setting`**, **`infer_brain_setting_from_legacy_model_code`**); product may keep thin wrappers (**`admin_brain_setting_catalog()`**, **`anthropic_agent_key_for_brain_setting`**). **`component` tests compare admin payloads using resolve + **`get_model`** only. **`save_agent`** / **`get_agent`** / **`list_agents`** **`brain_setting`** column + migration off legacy **`model_code`**. **`do_task`** resolves tiers to **`AGENT_CONFIG`** keys and calls **`send_to_anthropic`** when **`active_provider`** is **`anthropic`**; when **`deepseek`**, **`resolve_brain_setting_to_deepseek_tier_meta`** feeds **`send_to_deepseek`** (**`vendor_model`**, **`tier_meta`**, same block assembly as Anthropic) per **AST-493**. **`GET /api/admin/agents/brain_settings`** returns tier rows (label + default temperature / max tokens from **`AGENT_CONFIG`**) for Manage Agents (**AST-495**). **`AdminAgentPrompts`** loads that catalog and posts **`brain_setting`** on create/update.
 
 | Area | Source | Component tests |
@@ -804,6 +806,38 @@ Keep AST-1780 / AST-1792 rows; do not mark them obsolete.
 
 **Integration:** none — do not invent new integration scenarios.
 
+### AST-1855 · AST-1852 (gap: hydrated candidate view for dispatch empty-render)
+
+**Parent:** [AST-1852](https://linear.app/astralcareermatch/issue/AST-1852) (orphaned-bug mini-parent). **Sibling product:** AST-1854 (`b5a72977` on `origin/sub/AST-1852/AST-1854-dispatch-gate-hydrated-candidate`). **Publish:** `origin/sub/AST-1852/AST-1855-dispatch-gate-hydrated-candidate-tests`.
+
+AST-1854 — dispatch empty-render (and `_enrich_tasks` / `_resolve_adhoc`) loads the hydrated candidate (operative artifact overlay onto `candidate_data.context`), not the raw row. Only `database.get_candidate`, `database.get_current_artifact`, and `_dispatch_empty_render_prompt_texts` are stubbed; loader, `hydrate_operative_*`, `build_candidate_token_view`, `resolve_tokens`, `empty_render_for_prompts` stay real. One `_evaluate_dispatch_empty_render` repro gates all three call sites (same one-token loader swap).
+
+**Sequencing deviation (gap child):** product not on ftr yet. `[bug-repro]` proven both ways — **RED at ftr base `3dd7f249`** (`c1` → `{"empty_render": True, "empty_tokens": ["IDEAL_DAY"]}`) and **GREEN with `b5a72977`'s `api_admin.py` overlaid** (scratch worktree, not committed).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Artifact-only Ideal Day → false `[bug-repro]` | `src/ui/api/api_admin.py` | **`TestAst1854HydratedCandidateEmptyRender::test_evaluate_artifact_only_ideal_day_empty_render_false`** |
+| No artifact, no legacy blob → true, `["IDEAL_DAY"]` | same | **`…::test_evaluate_no_ideal_day_anywhere_empty_render_true`** |
+| Legacy `context.ideal_day` only → false | same | **`…::test_evaluate_legacy_blob_ideal_day_empty_render_false`** |
+
+**Revised (hermeticity, not obsolete):** seven existing row-returning `database.get_candidate` stubs on swapped paths now also stub `database.get_current_artifact → None`, so the hydrated loader never reads the repo `data/astral.db`: `TestEnrichTasks::test_enrich_tasks_covers_agent_and_cache_branches`, `TestAdhocHelpers::test_adhoc_entities_and_resolve`, `TestAdhocHelpers::test_resolve_adhoc_job_entity_resolves_visible_jd_token`, and the four `TestAst1791NoPromptValueErrorEmptyRender` tests (via `_stub_no_agent_task_prompts`). Keep AST-1780 / AST-1792 / AST-1795 rows unchanged.
+
+Pre-existing unrelated reds in this file (same 5 as AST-1819, red at base without these edits) — not in this manifest.
+
+**Integration:** none — do not invent new integration scenarios.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_admin.py::TestAst1854HydratedCandidateEmptyRender \
+  tests/component/ui/api/test_api_admin.py::TestEnrichTasks::test_enrich_tasks_covers_agent_and_cache_branches \
+  tests/component/ui/api/test_api_admin.py::TestAdhocHelpers::test_adhoc_entities_and_resolve \
+  tests/component/ui/api/test_api_admin.py::TestAdhocHelpers::test_resolve_adhoc_job_entity_resolves_visible_jd_token \
+  tests/component/ui/api/test_api_admin.py::TestAst1791NoPromptValueErrorEmptyRender \
+  -q
+```
+
+**Pass criterion:** pytest green on these nodes with AST-1854 product on the tree under test; the `[bug-repro]` stays red until then.
+
 ## QA test manifest
 
 1. List force off: `tests/component/ui/api/test_api_admin.py::TestAst1780EmptyRenderListGatesForceOff::test_list_sets_empty_render_and_forces_auto_off`
@@ -834,3 +868,415 @@ Keep AST-1780 / AST-1792 rows; do not mark them obsolete.
 
 **Bible shasum (publish tip):** fill after `merge-tests` —
 - `docs/test-bible/ui/api/api_admin.md`
+
+
+### AST-1807 · AST-1805 (implicit _RETRY substate)
+
+**Parent:** [AST-1804](https://linear.app/astralcareermatch/issue/AST-1804). **Publish:** `origin/sub/AST-1804/AST-1807-implicit-retry-tests`. Product: **AST-1805** (`{base}_RETRY` validates through its registered base; retry priors derived by `state_prior_states`). Probe retries are never registry keys, so these stay green through **AST-1806**'s purge. Unregistered base (`NOPE_RETRY`) is still rejected everywhere.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| `_dispatch_task_key_trigger_error` general (job) + mailbox candidate branches accept `{base}_RETRY`, reject `NOPE_RETRY` | `src/ui/api/api_admin.py` | **`TestAst773UpdateDispatchTaskTaskKey::test_ast1807_trigger_error_accepts_implicit_retry`** |
+
+**Broken / obsolete:** none.
+
+**Integration:** none — do not invent.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_admin.py::TestAst773UpdateDispatchTaskTaskKey::test_ast1807_trigger_error_accepts_implicit_retry \
+  -q
+```
+
+### AST-1819 · AST-1817 (qa-fix bug-repro — list_dtasks `empty_tokens` row field)
+
+**Parent:** [AST-1817](https://linear.app/astralcareermatch/issue/AST-1817). **Publish:** `origin/sub/AST-1817/AST-1819-invalid-button-missing-token-tooltip`.
+
+`GET /api/admin/dispatch_tasks` rows carry `empty_tokens: list[str]` (from the already-computed `_evaluate_dispatch_empty_render`) for the Scheduled Actions Invalid tooltip. Additive key; AUTO force-off unchanged.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Row `empty_tokens` = token list `[bug-repro]` | `src/ui/api/api_admin.py` | **`TestAst1780EmptyRenderListGatesForceOff::test_list_sets_empty_render_and_forces_auto_off`** (revised: asserts `["FIRST_NAME"]`) |
+| Row `empty_tokens` = `[]` when valid `[bug-repro]` | same | **`…::test_list_empty_render_false_keeps_auto`** (revised) |
+
+Red on pre-fix tree: `KeyError: 'empty_tokens'`. Pre-existing unrelated reds in this file (5, also red without AST-1819 edits): AST-781 legacy board_search, `TestDispatchTasks::test_list_dispatch_tasks_and_keys`, `TestApiAdminBranchGaps::test_dispatch_task_keys_db_row_adds_orphan_key`, AST-783 repo_json revert, AST-1214 mailbox wording — not in this manifest.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_admin.py::TestAst1780EmptyRenderListGatesForceOff -q
+```
+
+### AST-1830 · AST-1824
+
+**Parent:** [AST-1824](https://linear.app/astralcareermatch/issue/AST-1824). **Publish:** `origin/sub/AST-1824/AST-1830-sweep-interval-admin-api-ui`.
+
+Admin create/update accept `sweep_hrs` via `_parse_sweep_hrs` (null / `""` / blank → NULL; negative or non-numeric → 400; `0` kept as off). PUT adds `sweep_hrs` to the allowed set; AUTO edit lock unchanged. `_DISPATCH_TASK_COLUMNS` gains `sweep_hrs` (float) after `freq_hrs`. Schema, scheduler, and DB persistence are sibling **AST-1829** (`docs/test-bible/core/dispatcher.md` § AST-1829). Page half: **`docs/test-bible/frontend/pages.md`** § AST-1830.
+
+| AC | Source | Component tests |
+| --- | --- | --- |
+| 11 POST 2.5 persists / null·empty → NULL / omitted → NULL | `create_dtask` / `_parse_sweep_hrs` | `tests/component/ui/api/test_api_admin.py::TestAst1830SweepHrsAdminApi::{test_create_passes_sweep_hrs,test_create_omitted_sweep_hrs_is_null}` |
+| 11 negative / non-numeric → 400, no save | same | `::TestAst1830SweepHrsAdminApi::test_create_rejects_bad_sweep_hrs` |
+| 11 PUT AUTO-off 4 → 4, null → NULL; bad → 400 | `update_dtask` | `::TestAst1830SweepHrsAdminApi::{test_update_sets_or_clears_sweep_hrs,test_update_rejects_bad_sweep_hrs,test_update_without_sweep_key_leaves_it_untouched}` |
+| AUTO edit lock unchanged | `update_dtask` | `::TestAst1830SweepHrsAdminApi::test_update_auto_row_edit_lock_unchanged` |
+| 11 list column metadata key | `_DISPATCH_TASK_COLUMNS` (`?req_dict=1`) | `::TestAst1830SweepHrsAdminApi::test_column_metadata_includes_sweep_hrs` |
+| 13 UI-initiated AUTO run = one batch, min 1 | `src/core/dispatcher.py` (unchanged here) | `tests/component/core/test_dispatcher.py::TestAst1829ScheduledSweep::test_sweep_one_batch_no_min_gate_and_debug[ui_sweep_contrast]` |
+
+**Broken / obsolete:** none. Existing `test_api_admin.py` and both Scheduled Actions Vitest files stay green with this product. The 5 known-red admin tests (AST-781 legacy board_search, `TestDispatchTasks::test_list_dispatch_tasks_and_keys`, `TestApiAdminBranchGaps::test_dispatch_task_keys_db_row_adds_orphan_key`, AST-783 repo_json revert, AST-1214 mailbox wording) are red on the pre-AST-1830 tip too, so they're out of this manifest. **Integration:** none.
+
+## QA test manifest
+
+1. **API (required, green):**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_admin.py::TestAst1830SweepHrsAdminApi \
+  "tests/component/core/test_dispatcher.py::TestAst1829ScheduledSweep::test_sweep_one_batch_no_min_gate_and_debug" \
+  -q
+```
+
+2. **Page Vitest (required, green — whole file, §6c routed page):**
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminScheduledActions_AST1104.test.tsx
+```
+
+3. **AC 12 build:** `cd src/ui/frontend && npm run build` succeeds.
+4. **AC 13 grep:** `grep -n "sweepDisabled" src/ui/frontend/src/pages/AdminScheduledActions.tsx` still shows `!!row.auto_mode && avail >= (row.min_count || 1)`.
+5. **Regression (no new reds):** whole `tests/component/ui/api/test_api_admin.py`. Pass means the failing set is exactly the 5 known reds above.
+6. **Branch lock:** `src/ui/api/api_admin.py` (`LOCKED_AT_100`): no missed lines or arcs in the AST-1830 hunks (`_parse_sweep_hrs`, create 400 + kwarg, update parse + `elif k == "sweep_hrs"`).
+
+**Bible shasum (publish tip):** fill after `merge-tests` —
+- `docs/test-bible/ui/api/api_admin.md`
+- `docs/test-bible/frontend/pages.md`
+
+### AST-1831 · AST-1820
+
+**Parent:** AST-1820 (UAT-batch). **Publish:** `origin/sub/AST-1820/AST-1831-recheck-no-openings-batch-size-max-runs`.
+
+Admin **`create_dtask`** (POST **`/api/admin/dispatch_tasks`**) persists **`max_runs`** through an **`update_dispatch_task(task_id, max_runs=int(...))`** follow-up (**`save_dispatch_task`** has no **`max_runs`** param; before the fix every form-created row kept column DEFAULT **1**). Absent / JSON null → no follow-up (DEFAULT 1 unchanged).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Create **`max_runs`** follow-up | `src/ui/api/api_admin.py` (**`create_dtask`**) | `tests/component/ui/api/test_api_admin.py::TestAst1831CreateMaxRuns` (**`test_create_persists_max_runs`** 0 / 5 / `"3"`; **`test_create_without_max_runs_skips_follow_up`** absent / null) |
+
+**Repro:** `test_create_persists_max_runs` red on pre-fix tip (`update_dispatch_task` not called). **Branch lock:** `api_admin.py` (`LOCKED_AT_100`) — both arms of the new `max_runs` guard covered.
+
+---
+
+### AST-1880 · AST-1851 (admin model pickers + per-server platform keys)
+
+The admin API and screens drop the global provider. **Manage Agents** gets `GET /agents/models`: a model → own-brain-size catalog, with an `order` index because jsonify sorts keys. `/agents/brain_settings` and `_agent_admin_view` are gone. Create requires `agent_id` + `model_id` + `brain_setting`; update takes `content` / `model_id` / `brain_setting` / `temperature` / `max_tokens`. A data-layer `ValueError` (for example Kimi + Medium) returns 400 and leaves the row unchanged. `_resolve_adhoc` / `_enrich_tasks` route by `resolve_model_brain`. Ad hoc: an unroutable agent → 400, and core gets `server_id` / `tier` / `candidate_api_keys`. Task manager: the row stays blank and a warning is logged. The dispatch key gate names the task agent's server label, and agentless tasks need no key. `list_dtasks` marks a missing key as Invalid with `invalid_reason` and forces AUTO off; Run returns 400 without starting. Session paste forwards `candidate_id`. `config.py` / `cost_calculator.py` lose the DeepSeek-only symbols, and `src/external/deepseek.py` is deleted. Pointers: [`api_candidate.md`](api_candidate.md), [`../../utils/config.md`](../../utils/config.md), [`../../utils/cost_calculator_deepseek.md`](../../utils/cost_calculator_deepseek.md), [`../../core/monitor.md`](../../core/monitor.md), [`../../data/database/timesheets.md`](../../data/database/timesheets.md), [`../../frontend/pages.md`](../../frontend/pages.md).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| AC 3: `/agents/models` exact shape per catalog model (label, server id/label, own sizes + defaults, `order`); Kimi Little/Big, Claude + DeepSeek Little/Medium/Big | `list_models` | `test_api_admin.py::TestAdminConfigAndAgents::test_list_models_is_per_model_brain_size_catalog` |
+| Retired: `/agents/brain_settings` now falls through to `GET /agents/<id>` → 404; `list_brain_settings` / `_agent_admin_view` absent | `api_admin.py` | `…::test_brain_settings_route_and_admin_view_retired` |
+| List / get pass through the data-layer row (no admin inference) | `list_agents`, `get_agent` | `…::test_list_agents_and_ids`, `…::test_get_agent_missing_and_found` |
+| Create requires id + model + size (six shapes including legacy `model_code`); 409; stripped kwargs to `save_agent`; `ValueError` → 400 | `create_agent` | `…::test_create_agent_requires_id_model_and_brain`, `…::test_create_agent_conflict_success_and_data_layer_rejection` |
+| Update key allowlist + strip; legacy `model_code` alone → 400; `ValueError` → 400 | `update_agent` | `…::test_update_agent_fields_strip_and_errors` |
+| AC 3 against real sqlite: Kimi + Medium on PUT and POST → 400, row unchanged / not created; Claude Medium accepted | `create_agent` / `update_agent` → `database` | `…::test_kimi_medium_rejected_on_create_and_update_row_unchanged` |
+| Delete paths (unchanged, split out of the old CRUD test) | `delete_agent` | `…::test_delete_agent_paths` |
+| Task manager SKU + cache threshold from the agent's model + size; unroutable agent (size not offered / unknown model / no model) → blank row + warning | `_enrich_tasks` | `TestEnrichTasks` (revised `test_enrich_tasks_covers_agent_and_cache_branches`; new `test_enrich_tasks_uses_catalog_pricing_for_agent_model`, `test_enrich_tasks_unroutable_agent_leaves_row_blank_and_warns`) |
+| Ad hoc resolve: catalog SKU / server / tier / defaults; agent overrides incl. 0; unroutable → 400; whole key map handed to core | `_resolve_adhoc` | `TestAst1880ResolveAdhocCatalogRoute` (replaces `TestAst492ResolveAdhocApiAdmin`), `TestAdhocHelpers::test_adhoc_entities_and_resolve`, `TestApiAdminBranchGaps::test_resolve_adhoc_candidate_and_preview_errors` |
+| Ad hoc test route forwards `model_code` / `server_id` / `tier` / temperature / max_tokens / `candidate_api_keys`; no `api_key_override` / `tier_meta` | `adhoc_test` | `TestAst1880ResolveAdhocCatalogRoute::test_adhoc_test_forwards_route_and_key_map_to_core` |
+| Key gate: exact messages (no candidate / not found / `Set this candidate's <label> API key …`), key present → None; agentless task → None | `_candidate_dispatch_api_key_error` | `TestBackfillAndCandidateKey::test_candidate_dispatch_api_key_error`, `…::test_candidate_dispatch_api_key_error_agentless_task_needs_no_key` |
+| AC 5: missing key → row Invalid + `invalid_reason` + AUTO forced off (warning carries the reason); Run 400 `started: false`, `run_task` not called; `invalid_reason` is `""` when the key is present | `list_dtasks`, `run_dtask` | `TestAst1780EmptyRenderListGatesForceOff` (new `test_list_missing_platform_key_is_invalid_with_reason_and_forces_auto_off`, `test_run_missing_platform_key_400_never_starts`; the two list tests assert `invalid_reason`) |
+| AC 8 (route half): `candidate_id` stripped and forwarded, `""` when absent | `session_resume_parse` | `TestAst986SessionResumeParseApi` (4 revised) |
+| Revised: stubs follow the two-arg key gate `(candidate_id, task_key)` and the new resolve payload (`server_id`, `tier`, `candidate_api_keys`) | `api_admin.py` routes | `TestDispatchTasks` create / update / scheduler, `TestApiAdminBranchGaps` auto_mode + adhoc_test nodes, `TestAst1394…`, `TestAst1411…`, `TestAst1780…`, `TestAst1791…`, `TestAdhocRoutes`, plus other create-dispatch stubs |
+| Retired | — | `test_list_models`, `test_list_brain_settings`, `test_agent_admin_view_branches_strip_and_infer_legacy`, `test_create_agent_validation_and_success` (split into the create / update / delete nodes above), `test_enrich_tasks_uses_deepseek_pricing_when_active_provider_deepseek`, `test_enrich_tasks_unknown_llm_provider_skips_tier_catalog_lookups`, `TestAst492ResolveAdhocApiAdmin` (3) |
+| Conftest | `tests/component/core/conftest.py`, `tests/component/ui/conftest.py` | Autouse `_core_default_anthropic_llm_provider` / `_ui_default_anthropic_llm_provider` removed: they patched the deleted `get_active_llm_provider`, which broke ~2800 tests at setup |
+| Scope deletion | `src/external/deepseek.py` | `tests/component/external/test_deepseek.py` + `docs/test-bible/external/deepseek.md` removed |
+
+**Product bug returned to the engineer:** `AdminManageCandidates.tsx` `api_key_status` now holds the joined labels (plan Stage 4), but the column renderer still tests `val === "Set"`. Every candidate therefore shows `⚠️ Not set`, even with keys stored. Red test: `test_AdminManageCandidates.test.tsx` › **AST-1880: API Key column lists the labels of servers with a key set**.
+
+**Pre-existing reds outside the manifest** (same on the base tip): `test_api_admin.py` (5: `TestDispatchTasks::test_list_dispatch_tasks_and_keys`, `TestApiAdminBranchGaps::test_dispatch_task_keys_db_row_adds_orphan_key`, `TestAst781…`, `TestAst783…::test_repo_json_revert_invalid_table_key`, `TestAst1214…::test_mailbox_trigger_null_only_and_unsupported_craft_wording`). In `test_api_candidate.py`: `test_list_candidates_and_states` (stale `PROSPECT` assert), and `test_update_merges_data_and_state` (renamed from `…_and_api_key`; `joblist_rubric` artifact → data-layer 400).
+
+**Branch lock:** no AST-1880-changed line or branch of `api_admin.py` / `api_candidate.py` is missing under `test_api_admin.py` + `test_api_candidate.py`. `monitor.py` and `cost_calculator.py` are at 100%.
+
+**Integration:** none.
+
+## QA test manifest (AST-1880)
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_cost_calculator_deepseek.py \
+  tests/component/utils/test_cost_calculator.py \
+  tests/component/data/database/test_timesheets.py::TestBackfillDeepseekAgentTimesheetCosts \
+  tests/component/core/test_monitor.py::TestAst1867ProviderBalanceOutage \
+  tests/component/utils/test_config.py::TestAst492LlmBrainTierConfig \
+  tests/component/utils/test_config.py::TestAst1391DeepseekBigMaxTokensFloor \
+  tests/component/utils/test_config.py::TestAst1072ConversationalEnvelopeConfig \
+  tests/component/utils/test_config.py::TestAst1073ContactEstelleTurnConfig \
+  tests/component/utils/test_config.py::TestAst1877LlmCatalogConfig \
+  tests/component/ui/api/test_api_candidate.py::TestSanitizeCandidate \
+  tests/component/ui/api/test_api_candidate.py::TestCandidateRoutes::test_non_admin_cannot_create_delete_or_override_state \
+  tests/component/ui/api/test_api_candidate.py::TestCandidateRoutes::test_list_rows_carry_per_server_key_flags_only \
+  tests/component/ui/api/test_api_candidate.py::TestCandidateRoutes::test_get_returns_sanitized_candidate \
+  tests/component/ui/api/test_api_candidate.py::TestCandidateRoutes::test_update_sets_and_clears_api_keys_per_server \
+  tests/component/ui/api/test_api_candidate.py::TestCandidateRoutes::test_update_rejects_malformed_api_keys \
+  tests/component/ui/api/test_api_candidate.py::TestCandidateRoutes::test_put_two_server_keys_stores_ciphertext_and_get_shows_flags_only \
+  tests/component/ui/api/test_api_admin.py::TestAdminConfigAndAgents \
+  tests/component/ui/api/test_api_admin.py::TestEnrichTasks \
+  tests/component/ui/api/test_api_admin.py::TestAdhocHelpers \
+  tests/component/ui/api/test_api_admin.py::TestAst1880ResolveAdhocCatalogRoute \
+  tests/component/ui/api/test_api_admin.py::TestAdhocRoutes \
+  tests/component/ui/api/test_api_admin.py::TestBackfillAndCandidateKey \
+  tests/component/ui/api/test_api_admin.py::TestAst986SessionResumeParseApi \
+  tests/component/ui/api/test_api_admin.py::TestAst1394AdhocTestResponseText \
+  tests/component/ui/api/test_api_admin.py::TestAst1411AdhocSevenSegment \
+  tests/component/ui/api/test_api_admin.py::TestAst1780EmptyRenderListGatesForceOff \
+  tests/component/ui/api/test_api_admin.py::TestAst1791NoPromptValueErrorEmptyRender \
+  tests/component/ui/api/test_api_admin.py::TestApiAdminBranchGaps::test_resolve_adhoc_candidate_and_preview_errors \
+  tests/component/ui/api/test_api_admin.py::TestApiAdminBranchGaps::test_adhoc_test_decodes_encoded_payload \
+  tests/component/ui/api/test_api_admin.py::TestApiAdminBranchGaps::test_adhoc_test_hydrates_encoded_payload_with_entities \
+  tests/component/ui/api/test_api_admin.py::TestApiAdminBranchGaps::test_adhoc_test_skips_decode_without_response_text \
+  tests/component/ui/api/test_api_admin.py::TestApiAdminBranchGaps::test_create_dispatch_task_auto_mode_success \
+  tests/component/ui/api/test_api_admin.py::TestApiAdminBranchGaps::test_update_dispatch_task_score_floor_and_auto_mode_error \
+  tests/component/ui/api/test_api_admin.py::TestApiAdminBranchGaps::test_update_dispatch_task_scored_score_floor_and_auto_mode_success \
+  tests/component/ui/api/test_api_admin.py::TestDispatchTasks::test_create_dispatch_task_paths \
+  tests/component/ui/api/test_api_admin.py::TestDispatchTasks::test_update_dispatch_task_paths \
+  tests/component/ui/api/test_api_admin.py::TestDispatchTasks::test_scheduler_and_run_controls
+
+# Vitest (narrow): the four changed pages
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminAgentPrompts.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminManageCandidates.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminSessionResumePaste.test.tsx
+```
+
+**Pass criterion:** narrowed pytest green (145) plus narrowed Vitest green. This is not the zero-arg harness. Vitest has exactly **one** red on the publish tip: the ManageCandidates API Key column test (the product bug above), which turns green when the renderer shows the labels. The full `tests/component` baseline diff against the pre-AST-1880 product tip shows zero new failures, apart from the renamed pre-existing `test_update_merges_data_and_state` and one timing flake (`test_intake.py::…::test_background_initiate_failure_writes_assistant_error`, green 3/3 alone and 2/2 as a file).
+
+### AST-1916 · AST-1875 (GET/POST /scheduler/auto_thread_cap)
+
+**Primary manifest:** [`../../core/dispatcher.md`](../../core/dispatcher.md) § AST-1916. Real dispatcher getter/setter behind the routes (no stubs), so GET-after-POST is end-to-end; class autouse `_reset_override` restores `src.core.dispatcher._auto_thread_cap_override`.
+
+| AC | Route | Component tests |
+| --- | --- | --- |
+| GET payload `{max_auto_threads, default, min, max}` | `GET /api/admin/scheduler/auto_thread_cap` | `tests/component/ui/api/test_api_admin.py::TestAst1916AutoThreadCapApi::test_get_reports_default_and_bounds` |
+| 3 POST 1 / 100 → 200 + payload, GET reflects | `POST` same path | `::TestAst1916AutoThreadCapApi::test_post_in_range_returns_payload_and_get_reflects` |
+| 3 POST 0 / 101 / `"abc"` / 2.5 / missing key / no body → 400 `error`, prior cap kept | same | `::TestAst1916AutoThreadCapApi::test_post_rejects_and_keeps_prior_cap` |
+| 4 no session 401, non-admin 403 (both verbs), cap untouched | both | `::TestAst1916AutoThreadCapApi::test_requires_admin` |
+
+**Broken / obsolete:** none. `TestDispatchTasks::test_scheduler_and_run_controls` (sibling `/scheduler/*` routes) unchanged.
+
+### AST-1938 · AST-1937 (OpenRouter shortlist — agent save respects model-scoped sizes)
+
+**Primary manifest:** **`docs/test-bible/utils/config.md`** § AST-1938. No `api_admin.py` change; the route already validates through the data layer against the catalog.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| AC 4 against real sqlite: PUT `qwen/qwen3-32b` + Little → 200 and re-GET returns both; `gryphe/mythomax-l2-13b` + Medium and `qwen/qwen3-32b` + Big → 400, row unchanged | `update_agent` → `database.update_agent` | `test_api_admin.py::TestAdminConfigAndAgents::test_ast1938_shortlist_model_scoped_sizes_on_put` |
+| AC 8: `GET /agents/models` lists 79 ids; shortlist slug served by openrouter; `moonshotai/kimi-k2.6` not a separate id | `list_models` | `…::test_ast1938_models_route_lists_79` |
+
+`test_list_models_is_per_model_brain_size_catalog` (AST-1880) iterates `LLM_MODEL_CONFIG`, so it covers all 79 entries unchanged.
+
+> **AST-1947 / AST-1948:** Frozen record. `test_ast1938_shortlist_model_scoped_sizes_on_put` → `test_ast1947_openrouter_one_size_by_quant_on_put`, and `test_ast1938_models_route_lists_79` → `test_ast1947_models_route_lists_98` (§ AST-1948 below).
+
+### AST-1948 · AST-1946 (admin agent routes: `mode` required, temperature retired)
+
+**Primary manifest:** **`docs/test-bible/core/agent.md`** § AST-1948.
+
+`POST /agents` requires `agent_id`, `model_id`, `brain_setting` and a non-blank string `mode`. Otherwise it returns 400 `agent_id, model_id, brain_setting and mode are required`. `PUT /agents/<id>` returns 400 `mode is required` unless the body has a non-blank string `mode`. The check runs after the 404 check and before any write. Neither route forwards `temperature` or `model_code`. The data layer rejects an unknown mode, which comes back as 400. `GET /agents/models` sizes carry only `order` + `default_max_tokens`. `_enrich_tasks` and `_resolve_adhoc` pass the agent's mode to `resolve_model_brain`, and adhoc `temperature` is `tier["temperature"]`.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| New — AC 7 against real sqlite: PUT `mode: "Creative"` round-trips (PUT body and re-GET show `mode`, with no `temperature` / `model_code` keys). PUT `"Wild"` and PUT without mode → 400, row unchanged. POST `"Wild"` → 400, nothing written | `create_agent` / `update_agent` → `database` | `TestAdminConfigAndAgents::test_ast1948_mode_round_trip_and_rejections` |
+| Revised — create needs mode (+3 params: missing, blank, non-string) with the new error string | `create_agent` | `TestAdminConfigAndAgents::test_create_agent_requires_id_model_brain_and_mode` (renamed from `…_requires_id_model_and_brain`; 9 params) |
+| Revised — create forwards a stripped `mode` and drops a stray `temperature` | `create_agent` | `…::test_create_agent_conflict_success_and_data_layer_rejection` |
+| Revised — PUT with no / blank / non-string mode → `mode is required` (five bodies), no write. A full PUT forwards `mode`, not `temperature` / `model_code` | `update_agent` | `…::test_update_agent_fields_strip_and_errors` |
+| Revised — `list_models` sizes have no `default_temperature` | `list_models` | `…::test_list_models_is_per_model_brain_size_catalog` |
+| Revised — real-DB size checks send `mode` | routes | `…::test_kimi_medium_rejected_on_create_and_update_row_unchanged` |
+| Revised (AST-1947 drift) — each OpenRouter model offers one size, chosen by host quantization: `qwen/qwen3-32b` Medium → 200; qwen Little / Big and mythomax Medium → 400, row unchanged | routes | `…::test_ast1947_openrouter_one_size_by_quant_on_put` (was `test_ast1938_shortlist_model_scoped_sizes_on_put`) |
+| Revised (AST-1947 AC 8 / parent AC 11) — `GET /agents/models` = 98 ids; `moonshotai/kimi-k2.6` on openrouter; `kimi-k2.6-openrouter` gone | `list_models` | `…::test_ast1947_models_route_lists_98` (was `test_ast1938_models_route_lists_79`) |
+| Revised — task-manager SKU resolves with the agent's mode. A mode-less / `"Wild"` agent blanks its row and warns (no 500) | `_enrich_tasks` | `TestEnrichTasks::test_enrich_tasks_covers_agent_and_cache_branches` · `::test_enrich_tasks_uses_catalog_pricing_for_agent_model` · `::test_enrich_tasks_unroutable_agent_leaves_row_blank_and_warns` (+`no_mode`, `unknown_mode`) |
+| Revised — adhoc temperature comes from the mode (Deterministic 0.2 / Creative 0.6, Kimi Big thinking follows mode), a stale row `temperature` is ignored, and the `max_tokens` override still wins. Mode-less / `"Wild"` → 400 | `_resolve_adhoc` | `TestAst1880ResolveAdhocCatalogRoute::test_deepseek_little_uses_catalog_sku_server_tier_and_defaults` · `::test_mode_sets_temperature_and_max_tokens_override_wins` (2; replaces `test_agent_overrides_win_including_zero`, since the row no longer has a temperature override) · `::test_adhoc_test_forwards_route_and_key_map_to_core` · `::test_unroutable_agent_returns_400` (+`no_mode`, `unknown_mode`) |
+| Revised — adhoc agent mocks carry `mode` | `_resolve_adhoc` | `TestAdhocHelpers::test_adhoc_entities_and_resolve` · `::test_resolve_adhoc_job_entity_resolves_visible_jd_token` · `TestApiAdminBranchGaps::test_resolve_adhoc_candidate_and_preview_errors` · `TestAst1411AdhocSevenSegment::test_resolve_preview_seven_segment_and_system_fallback` |
+
+**Known window (by design, plan Stage 2):** `AdminAgentPrompts.tsx` sends no `mode` until AST-1949. So on `ftr` between the two merges, UI edits get `400 mode is required` and UI creates get the create error. The frontend tests (`tests/component/frontend/pages/test_AdminAgentPrompts.test.tsx`) are AST-1949's.
+
+**Integration:** none.
+
+### AST-1957 · AST-1953 (admin agent routes take the plain settings; models list drops brain sizes)
+
+Supersedes the agent-route rows of § AST-1880 / § AST-1948 above. `POST /agents` requires only `agent_id` + `model_id` (400 `agent_id and model_id are required`). Create and update pass the seven settings in `AGENT_SETTING_COLUMNS` (`quantization`, `temperature`, `reasoning_effort`, `provider_allow_fallbacks`, `provider_only`, `provider_ignore`, `provider_sort`) exactly as sent: no strip, no route-side checks, and a key that is absent from the body is not passed. Only `model_id` is still stripped. `brain_setting` / `mode` / `model_code` are not read, so on their own they create nothing (create 400) and leave nothing to update (`No updatable fields provided`). `PUT` no longer requires `mode`. The data layer (AST-1955) type-checks, and its `ValueError` comes back as 400. The create response stays `{"created": id}`. `GET /agents/models` = id → `order`, `label`, `server_id`, `server_label`, `default_max_tokens`, with no `brain_sizes`. `_enrich_tasks` and `_resolve_adhoc` call `resolve_agent_settings(model_id, agent)`. The task row drops `brain_setting`. Ad hoc `temperature` = the stored value (0 stays 0, empty → None), and the tier carries `reasoning_effort` plus the OpenRouter `provider` object built from the row. Settings contract: [`../../utils/config.md`](../../utils/config.md) § AST-1955 and [`../../data/database/agents.md`](../../data/database/agents.md) § AST-1955. Page: [`../../frontend/pages.md`](../../frontend/pages.md) § AST-1957.
+
+| Area | Source | Component tests (`test_api_admin.py`) |
+| --- | --- | --- |
+| New — real sqlite: POST with settings (+ ignored `brain_setting` / `mode`) → GET shows them, fallbacks default true, no retired keys. PUT wrong types (`temperature` str, `provider_only` str, fallbacks str) and a retired `model_id` → 400, row unchanged. PUT `None`s clear and `False` / `"high"` set (PUT body and re-GET). POST `temperature: "hot"` → 400, nothing written | routes → `database` | `TestAdminConfigAndAgents::test_ast1957_settings_round_trip_and_wrong_types_rejected` (replaces `test_kimi_medium_rejected_on_create_and_update_row_unchanged`, `test_ast1947_openrouter_one_size_by_quant_on_put`, `test_ast1948_mode_round_trip_and_rejections`) |
+| Revised — `/agents/models` exact flat shape per catalog model, catalog order | `list_models` | `…::test_list_models_is_flat_catalog_with_default_output_budget` (was `…_is_per_model_brain_size_catalog`) |
+| Revised — catalog count 101: per-SKU direct ids; `claude` / `deepseek-v4` / `kimi-k2.6-openrouter` absent | `list_models` | `…::test_models_route_lists_whole_catalog` (was `test_ast1947_models_route_lists_98`) |
+| Revised — create needs id + model only (6 params, including `legacy_model_code` and `retired_keys_only`) | `create_agent` | `…::test_create_agent_requires_id_and_model` (was `…_requires_id_model_brain_and_mode`, 9 params) |
+| Revised — create passes the settings that are present as sent; absent ones not passed; retired keys dropped; 409; `ValueError` → 400 | `create_agent` | `…::test_create_agent_conflict_success_and_data_layer_rejection` |
+| Revised — PUT: retired / unknown keys alone → `No updatable fields provided`; content-only PUT goes through (no mode gate); full PUT strips `model_id` only and forwards all seven settings, `None` included; `ValueError` → 400 | `update_agent` | `…::test_update_agent_fields_strip_and_errors` |
+| Revised — list / get pass-through mocks carry settings | `list_agents` / `get_agent` | `…::test_list_agents_and_ids` · `…::test_get_agent_missing_and_found` |
+| Revised — task-manager SKU via `resolve_agent_settings`; row has no `brain_setting`; unroutable = retired direct id / unknown / no model (blank row + warning) | `_enrich_tasks` | `TestEnrichTasks::test_enrich_tasks_covers_agent_and_cache_branches` · `::test_enrich_tasks_uses_catalog_pricing_for_agent_model` · `::test_enrich_tasks_unroutable_agent_leaves_row_blank_and_warns` (3 params; `size_not_offered` / `no_mode` / `unknown_mode` retired, `retired_direct_id` new) |
+| Revised — ad hoc: `deepseek-v4-flash` defaults (temperature None, model `default_max_tokens`); temperature as stored (0 / 0.6 / None) and effort in the tier, no `thinking` key, `max_tokens` override wins; unroutable → 400 | `_resolve_adhoc` | `TestAst1880ResolveAdhocCatalogRoute::test_deepseek_flash_uses_catalog_sku_server_tier_and_defaults` (was `…_deepseek_little_…`) · `::test_temperature_as_stored_and_max_tokens_override_wins` (3; was `test_mode_sets_temperature_…`, 2) · `::test_adhoc_test_forwards_route_and_key_map_to_core` · `::test_unroutable_agent_returns_400` (4 params) |
+| New — ad hoc on OpenRouter: the row's quantization / fallbacks / only / sort become `tier["provider"]` (empty `provider_ignore` omitted) | `_resolve_adhoc` | `TestAst1880ResolveAdhocCatalogRoute::test_openrouter_agent_row_settings_become_the_provider_object` |
+| Revised — ad hoc agent mocks on `claude-haiku-4-5`, no `brain_setting` / `mode` | `_resolve_adhoc` | `TestAdhocHelpers::test_adhoc_entities_and_resolve` · `::test_resolve_adhoc_job_entity_resolves_visible_jd_token` · `TestApiAdminBranchGaps::test_resolve_adhoc_candidate_and_preview_errors` · `TestAst1411AdhocSevenSegment` `_stub_agent` |
+
+**Sequencing:** `api_admin.py` imports `src.core.agent`, which still imports `resolve_model_brain` until **AST-1956** lands on `ftr`. On this sub, `test_api_admin.py` therefore errors at collection (`ImportError`), the same as AST-1955's `tests/component/core/`. The revisions were verified locally with a throwaway stub for that one import: 227 passed, plus 5 reds that fail identically on `origin/tests` (other epics: `TestAst781ListDtasksRetiredEntityType::test_list_dtasks_legacy_board_search_row_returns_zero_available_count`, `TestDispatchTasks::test_list_dispatch_tasks_and_keys`, `TestApiAdminBranchGaps::test_dispatch_task_keys_db_row_adds_orphan_key`, `TestAst783RepoJsonApi::test_repo_json_revert_invalid_table_key`, `TestAst1214AdminCatalogAlphabeticalWritable::test_mailbox_trigger_null_only_and_unsupported_craft_wording`). They run for real on `ftr` once AST-1956 is merged.
+
+**Integration:** none. No scenario touches agent settings or `/agents/models`.
+
+### AST-1978 · AST-1977 (Manage Tasks RSC column — `response_schema_count`)
+
+**Parent:** [AST-1977 — Indicate if {$RESPONSE_SCHEMA} is used](https://linear.app/astralcareermatch/issue/AST-1977). **Publish:** `origin/sub/AST-1977/AST-1978-rsc-column`.
+
+`_enrich_tasks` serves one new integer per row, `response_schema_count`. It counts the raw (pre-`resolve_tokens`) `{$RESPONSE_SCHEMA}` occurrences across the effective system block (task `system_prompt` when non-blank after `.strip()`, otherwise agent `content`), `cache_prompt`, `cache_prompt_b`–`_d`, `nocache_prompt`, and `user_prompt`. The token is the module-level `_RESPONSE_SCHEMA_TOKEN`, which an import-time assert ties to `get_tokens()`. `AdminTaskPrompts.tsx` renders it in a right-aligned **RSC** column directly left of **System**. No other row field changes.
+
+| AC | Source | Component tests |
+| --- | --- | --- |
+| 1 int field on every row (including no task / no agent → `0`) | `_enrich_tasks` | `test_api_admin.py::TestAst1978ResponseSchemaCount::test_missing_rows_and_other_tokens` (4 params: `no_task_no_agent`, `agent_only`, `task_without_agent`, `other_tokens_only`) |
+| 2 raw count summed across seven segments (8 total); agent content ignored when `system_prompt` non-blank; `resolve_tokens` / `resolved_task_system` mocked to substitute the token away | `_enrich_tasks` | `…::test_sums_raw_token_across_all_seven_segments` |
+| 3 blank system prompt → agent content counted (`1`) | `_enrich_tasks` | `…::test_blank_system_prompt_falls_back_to_agent_content` (3 params: `empty`, `whitespace`, `none`) |
+| 4 `GET /api/admin/tasks` same count with and without `?candidate_id=` | `list_tasks` → `_enrich_tasks` | `…::test_route_serves_same_count_with_and_without_candidate` |
+| 5 header order `Model \| RSC \| System \| Base Cache`; RSC right-aligned; cells `0` and `2` (never blank) | `pages/AdminTaskPrompts.tsx` | `tests/component/frontend/pages/test_AdminTaskPrompts.test.tsx` › **`AST-1978 RSC column > header order is Model \| RSC \| System \| Base Cache and cells show served counts`** (fixtures gain `response_schema_count: 0` / `2`) |
+| 6 no client-side counting | page | grep (manifest item 3) |
+| 7 no bare literal inside `_enrich_tasks` | `api_admin.py` | grep (manifest item 3) |
+
+**Broken / obsolete:** none. There are no exact-key row assertions, `TestTaskRoutes::test_list_tasks_and_tokens` stubs `_enrich_tasks`, and `AdminAnthropicAdHoc` ignores the extra field. The five known cross-epic reds listed under § AST-1957 above still fail identically with and without this ticket. They are not in this manifest.
+
+**Integration:** none. No scenario reads `/api/admin/tasks`.
+
+## QA test manifest
+
+1. **Python (required, all green):**
+
+```bash
+.venv/bin/python -m pytest tests/component/ui/api/test_api_admin.py -q \
+  -k "Ast1978 or EnrichTasks or TaskRoutes or Ast1412 or test_enrich_tasks_agent_only_system_prompt"
+```
+
+2. **Vitest (required, all green — §6c routed page):**
+
+```bash
+cd src/ui/frontend && npm run test:component -- ../../../tests/component/frontend/pages/test_AdminTaskPrompts.test.tsx
+```
+
+3. **AC 6 / AC 7 greps:** `grep -n "RESPONSE_SCHEMA" src/ui/frontend/src/pages/AdminTaskPrompts.tsx` prints nothing. `sed -n '/^def _enrich_tasks/,/^def /p' src/ui/api/api_admin.py | grep -nE "\"\{\\\$RESPONSE_SCHEMA\}\"|\"RESPONSE_SCHEMA\""` prints nothing.
+
+4. **Build / import:** item 1 collects without error (it imports `api_admin`, so the import-time `RESPONSE_SCHEMA in get_tokens()` assert holds). In `src/ui/frontend`, `npm run build` exits 0.
+
+**Pass criterion:** items 1–4 hold. Narrowed runs, not the zero-arg harness.
+
+**Bible shasum (after publish):** `git show origin/sub/AST-1977/AST-1978-rsc-column:docs/test-bible/ui/api/api_admin.md | shasum`
+
+### AST-2006 · AST-2000 (bug — runtime empty-token guard)
+
+**Parent:** [AST-1986](https://linear.app/astralcareermatch/issue/AST-1986) (orphaned mini-parent). **Product:** [AST-2000](https://linear.app/astralcareermatch/issue/AST-2000); canon carve-out [AST-2005](https://linear.app/astralcareermatch/issue/AST-2005) (`patt.task.dispatch-retry`). **Publish:** `origin/sub/AST-1986/AST-2006-empty-token-guard-tests`. `_enrich_tasks` resolves with `warn_on_empty=False` (token-count probe, not a model call) → zero `resolved to empty` WARNINGs; counts unchanged. Admin preview keeps default warnings.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Real resolvers, candidate + no job, `source: job` tokens → zero `resolved to empty`; `system_prompt_tokens > 0` | `_enrich_tasks` | **`TestAst2006EnrichTasksProbeSilent::test_enrich_tasks_job_tokens_without_job_are_silent`** |
+| Control: preview resolution still warns (2 job tokens) | `preview_task` → `preview_task_prompt` → `agent.preview_prompt` | **`…::test_preview_resolution_still_warns`** |
+
+**Broken / obsolete:** none — existing `TestEnrichTasks` stubs the resolvers.
+
+Manifest: **`docs/test-bible/core/agent.md`** § AST-2006.
+
+### AST-2025 · AST-2022 (`fetch_relative_jd` in the Scheduled Actions picker — AC6)
+
+**New:** `TestAst2025FetchRelativeJdDispatchTaskKey::test_picker_lists_fetch_relative_jd_job_relative_job_link` — `GET /api/admin/dispatch_tasks/task_keys` lists `fetch_relative_jd` (agent_task catalog only, no dispatch row) as `entity_type: "job"`, `trigger_state: "RELATIVE_JOB_LINK"`. Green pre-AST-2025 too (binding landed in AST-2024) — regression guard. Primary manifest: **`docs/test-bible/core/gazer.md`** § AST-2025.
+
+### AST-2091 · AST-2013 (fix lane — block Auto/Run on duplicate or empty rubric)
+
+**Parent:** AST-2013 (orphaned mini-parent off `origin/dev`). **Publish:** `origin/sub/AST-2013/AST-2091-rubric-dup-dispatch-gate`. Plan: `docs/features/dispatcher/ast-1780-list-enrich-auto-run-gates-force-auto-off.md` § Bug: AST-2091. Primary manifest lives here; component pointers in `core/candidate.md` and `core/dispatcher.md`.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| New — list: duplicate / empty rubric → `empty_render` true, `invalid_reason` = rubric reason, AUTO forced off + WARNING (Repro 1 / 4) | `list_dtasks` | `TestAst2091RubricDispatchGate::test_list_bad_rubric_invalid_and_forces_auto_off` |
+| New — list precedence key → rubric → tokens; `empty_tokens` still rides | `list_dtasks` | `…::test_list_precedence_key_then_rubric_then_tokens` |
+| Guard — craft / non-rubric rows unaffected by an empty rubric | `list_dtasks` | `…::test_list_craft_and_non_rubric_rows_unaffected_by_empty_rubric` |
+| New — AUTO-on create / update → 400 with rubric reason, no write | `create_dtask`, `update_dtask` | `…::test_create_auto_on_bad_rubric_400`, `…::test_put_auto_on_bad_rubric_400` |
+| New — Run → 400 `started: false`, rubric outranks tokens (Repro 2) | `run_dtask` | `…::test_run_bad_rubric_400_never_starts` |
+| Guard — key reason still outranks rubric on Run (AST-1880 holds) | `run_dtask` | `…::test_run_key_error_outranks_rubric` |
+
+Tests run the **real** `rubric_dispatch_error` behind a stubbed `src.data.database.list_rubric_vectors` (plan Repro fixture: somerset `grade_do` = `TP,TP,SA`; `empty_cand` = `[]`).
+
+**Broken by the fix (stubbed this pass, `rubric_dispatch_error → None`, `raising=False`):** `TestAst1780EmptyRenderListGatesForceOff` (class autouse — 5 tests on `qualify_job_listings` / `c1` read an empty rubric); `TestDispatchTasks::test_scheduler_and_run_controls`; `TestApiAdminBranchGaps::test_create_dispatch_task_auto_mode_success`; `…::test_update_dispatch_task_scored_score_floor_and_auto_mode_success`. Found by running both suites against a scratch apply of the plan's Proposed change (reverted, never committed). `test_dispatcher.py` needed **no** sweep — existing `run_task` cases use `evaluate_jd`, whose embedded QC/GC merge is never empty.
+
+**Pre-existing reds (not AST-2091, not in manifest):** on the dev-based sub, 17 in `test_api_admin.py` / `test_dispatcher.py` (`TestCircuitBreaker` signature, `TestAst841DispatchTerminalLogging`, retry-state lists, repo-JSON wording, …) + 18 in `test_candidate.py` — identical set before and after the scratch fix. On the `tests` tip `test_candidate.py` fails **collection** (`RESUME_STRUCTURE_BODY_FORMAT_DETAILS` — AST-2081 tests ahead of `origin/dev`); it collects on the sub.
+
+**Integration:** none (no `tests/integration/` scenario drives Scheduled Actions gates).
+
+## QA test manifest
+
+1. **[bug-repro] admin gates:** `tests/component/ui/api/test_api_admin.py::TestAst2091RubricDispatchGate`
+2. **[bug-repro] run_task gate:** `tests/component/core/test_dispatcher.py::TestAst2091RunTaskRubricGate`
+3. **[bug-repro] helper:** `tests/component/core/test_candidate.py::TestAst2091RubricDispatchError`
+4. **Regression (swept, green pre- and post-fix):** `test_api_admin.py::TestAst1780EmptyRenderListGatesForceOff`, `…::TestDispatchTasks::test_scheduler_and_run_controls`, `…::TestApiAdminBranchGaps::test_create_dispatch_task_auto_mode_success`, `…::TestApiAdminBranchGaps::test_update_dispatch_task_scored_score_floor_and_auto_mode_success`
+5. **Branch locks:** `candidate.py`, `api_admin.py`, `dispatcher.py` stay 100% — new branches covered by items 1–3 (incl. non-dict criterion skip).
+
+**Pass criterion:** items 1–3 red on the pre-fix tree (verified on the sub base: 23 nodes — 11 admin/dispatcher red on assertion, 12 helper red on missing `rubric_dispatch_error`); all green after make-fix (verified against a scratch apply of the plan); item 4 green throughout.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_admin.py::TestAst2091RubricDispatchGate \
+  tests/component/core/test_dispatcher.py::TestAst2091RunTaskRubricGate \
+  tests/component/core/test_candidate.py::TestAst2091RubricDispatchError \
+  tests/component/ui/api/test_api_admin.py::TestAst1780EmptyRenderListGatesForceOff \
+  tests/component/ui/api/test_api_admin.py::TestDispatchTasks::test_scheduler_and_run_controls \
+  tests/component/ui/api/test_api_admin.py::TestApiAdminBranchGaps::test_create_dispatch_task_auto_mode_success \
+  tests/component/ui/api/test_api_admin.py::TestApiAdminBranchGaps::test_update_dispatch_task_scored_score_floor_and_auto_mode_success
+```
+
+### AST-2134 · AST-2130 (ad-hoc preview on web_data)
+
+`_build_adhoc_live_content` company branch resolves `WEB_DATA_CONFIG["company_data_id_keys"]` via `gazer.resolve_telescope_value` (legacy text passes through); `website_content` page text is stripped in the join. Job branch reads `tracker.compose_job_description` (single-entity falls back to `raw_job_listing`; `qualify_meteorite` CONTENT lines); LIKE's company context resolves `website_content` ids.
+
+**New:** **`TestAst2134AdhocPreviewTelescope`** (6; real `web_data` rows on ui `sqlite_in_memory`): AC6 `prefilter_company` / `select_job_page` / `gaze` byte-identical for a legacy text blob vs the same content as ids (incl. a raw unstripped fresh capture), website_content fallback, gone capture → empty, composed JD in job previews, LIKE context. Manifest: [`../../core/roster.md`](../../core/roster.md) § AST-2134.
+
+### AST-2180 · AST-2172 (adhoc test sends the forced tool)
+
+`adhoc_test` builds `grade_ctx` (with `vector_labels` from the rubric) and passes `forced_tool` to the run. It hydrates only a dict reply (a hydrate error lands in `hydrated.error`). A grader with no codes returns 400 before the run. **New:** **`TestAst2180AdhocForcedTool`** (5: job rows, company rows, non-object reply not hydrated, no-codes 400, non-grader `forced_tool=None`). **Revised:** `TestAdhocRoutes::test_adhoc_preview_and_test` stubs `_rubric_criteria_for_cfg` and asserts the hydrate-error tail. **Retired:** `test_adhoc_test_decodes_encoded_payload`, `test_adhoc_test_hydrates_encoded_payload_with_entities`, `test_adhoc_test_skips_decode_without_response_text`. Manifest: [`../../core/agent.md`](../../core/agent.md) § AST-2180.
+
+### AST-2181 · AST-2172 (requires structured output — model gate)
+
+**Primary manifest** for AST-2181. Other blocks: [`../../data/database/agents.md`](../../data/database/agents.md) § AST-2181, [`../../core/repo_admin_json.md`](../../core/repo_admin_json.md) § AST-2181, [`../../frontend/pages.md`](../../frontend/pages.md) § AST-2181.
+
+`GET /agents/models` adds `structured_output_capability` (`get_structured_output_capability`) on every model. `create_agent` / `update_agent` call `_structured_output_gate` on the post-save values: body keys win, absent keys keep the stored ones. When `requires_structured_output` is truthy and the model's capability is `None`, the response is 400 naming the model, and nothing is written. Advisory models are allowed, and an unknown model stays a 400. Only the API gates: the data layer and Revert to file do not. Tests use the real data layer (`sqlite_in_memory`); there are no provider calls.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| New — capability on every model, values within `enforced` / `advisory` / `None` | `list_models` | **`TestAst2181StructuredOutputModelGate::test_models_report_capability_for_every_model`** |
+| New — AC 10: `GET /agents/<id>` and the list carry the setting | `get_agent`, `list_agents` | **`::test_get_agent_returns_the_setting`** |
+| New — create: required + `None` model → 400, no row; advisory / off / absent → 201 (absent stores `False`) | `create_agent` | **`::test_create_refuses_incapable_model_when_required`** |
+| New — update: model change, flag on, or both → 400 with row unchanged | `update_agent` | **`::test_update_gates_on_post_put_values_row_unchanged`** (3) |
+| New — update allowed when the flag is turned off in the same PUT, or the model is capable | `update_agent` | **`::test_update_allowed_when_flag_turned_off_or_model_capable`** |
+| New — unknown model with the flag → 400, not 500 | `create_agent`, `update_agent` | **`::test_unknown_model_with_flag_is_400_not_500`** |
+| Revised — exact model dict gains `structured_output_capability` | `list_models` | `TestAdminConfigAndAgents::test_list_models_is_flat_catalog_with_default_output_budget` |
+
+The class's autouse fixture asserts that the two picks (`qwen/qwen3-235b-a22b-2507` advisory, `qwen/qwen3-32b` `None`) still sit on either side of the gate. Every Anthropic model is `None` today: the AST-2177 provider spike was not run (see config).
+
+**Broken / obsolete:** these exact-shape assertions predate the new key and were revised, not retired. `test_list_models_is_flat_catalog_with_default_output_budget`, `test_agents.py` `_agent_repo_row` (2 tests), and 2 `test_AdminAgentPrompts` exact save bodies.
+
+**Repro:** on the ftr product (`origin/ftr/AST-2172-structured-output-graders`) all new and revised Python nodes are red except `TestAst2181RequiresStructuredOutput::test_setting_never_reaches_the_call_tier`, a guard that passes there too by design. In the frontend, the two revised and three new picker / body tests are red. The 400-toast test was already green, because generic API errors reached the toast before this build; it stays as a guard.
+
+**Pre-existing, not this ticket:** Revert to file for agents already fails on dev, because `data/admin/agent.json` rows carry `brain_setting` / `mode` and int `provider_allow_fallbacks`. The plan flagged this for Susan. The real-seed tests in `test_repo_admin_json.py` (`TestAst787…`, `TestAst1878AgentSeedModels`, …) and `test_agents.py::TestAst1955AgentSettings::test_seed_round_trips_and_revert_restores_it` were red before this build and are unchanged. So at UAT, AC 10's "Lucy → true" comes from the checkbox, not the seed.
+
+**Integration:** none. No `tests/integration/` scenario touches agent settings or `/agents/models`.
+
+**AST-2181 QA test manifest:**
+
+```bash
+ASTRAL_DB_DIR=$PWD/data /home/susan/astral/.venv/bin/python -m pytest -q \
+  tests/component/ui/api/test_api_admin.py::TestAst2181StructuredOutputModelGate \
+  tests/component/ui/api/test_api_admin.py::TestAdminConfigAndAgents::test_list_models_is_flat_catalog_with_default_output_budget \
+  tests/component/data/database/test_agents.py::TestAst2181RequiresStructuredOutput \
+  tests/component/data/database/test_agents.py::TestAst782AgentRepoJsonStartup::test_apply_upserts_updates_and_deletes_absent_agents \
+  tests/component/data/database/test_agents.py::TestAst1878AgentModelField::test_repo_json_requires_known_model \
+  tests/component/core/test_repo_admin_json.py::TestAst2181RequiresStructuredOutputSeed
+git checkout -- data/
+cd src/ui/frontend && npx vitest run --config vite.config.ts ../../../tests/component/frontend/pages/test_AdminAgentPrompts.test.tsx
+```
+
+Expect 20 Python passed and 17 frontend passed.
+
+**Regression (no new reds):**
+- `tests/component --continue-on-collection-errors`: the failing-id set on the tip is a subset of the ftr product run (379 before, 363 on the tip; same 5 collection errors). `test_intake::test_background_initiate_failure_writes_assistant_error` is flaky (background-thread timing): it fails only in the full run and passes 3/3 in its own file on both trees.
+- The full vitest suite has no new failures against the ftr TSX with the original tests.
+
+**Pass criterion:** pytest and vitest green on the manifest lines, not the zero-arg harness or branch-lock gate.

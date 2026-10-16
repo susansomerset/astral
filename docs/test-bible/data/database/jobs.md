@@ -212,3 +212,11 @@ Job table reshape: nullable `company_id` (employer), repurposed `source` ∈ {`c
 One-line `get_job_batch` JOIN rename (`j.company` → `j.company_id`) after AST-1701. **fix-board** `[board-betty] TESTS: OK` — existing `get_job_batch` callers already exercise the path; **no new component test** on this ticket.
 
 **Integration:** none.
+
+---
+
+### AST-1974 · AST-1970
+
+`list_jobs` / `count_jobs` gain `exclude_states` (NOT IN, ANDs with IN). `list_meteorites_for_candidate` LEFT JOINs `job` → `job_state` (None when unlanded / job row gone; `meteorite.state` not shadowed).
+
+**New:** **`TestAst1974ExcludeStatesAndMeteoriteJobState`** in `test_jobs.py` — the meteorite join lives here because `test_meteorites.py` is collection-red on `origin/dev` (stale `METEORITE_STATES_RETENTION` import). Manifest: [`ui/api/api_jobs.md`](../../ui/api/api_jobs.md) § AST-1974 item 4.

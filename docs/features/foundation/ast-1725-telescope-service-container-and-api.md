@@ -1,3 +1,77 @@
+<!-- linear-archive: AST-1725 archived 2026-10-02 -->
+
+## Linear archive (AST-1725)
+
+**Archived:** 2026-10-02  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1725/telescope-service-container-and-api-astral-telescope-stateless  
+**Status at archive:** Archive  
+**Project:** Astral Foundation  
+**Assignee:** chuckles  
+**Priority / estimate:** None / 5  
+**Parent:** AST-1721 — Astral Telescope — stateless headless-scraping microservice (per-URL)  
+**Blocked by / blocks / related:** parent: AST-1721; blocks: AST-1726
+
+### Description
+
+## What this implements
+
+Stand up `service/telescope/` with FastAPI `/telescope` (optional `links` default true), `/telescope/html`, `/healthz`, one Firefox per replica with fresh per-request contexts, RAM semaphore, timeouts, recycle, cookie dismiss, expand default on, wait_ready default off (generic only), browser capture only (no Surfer-shared post-render fork), Dockerfile + Telescope requirements, env bearer auth, console-only logging (no DB). Does not own the platform HTTP facade (#2) or Railway replica/CI wiring (#3).
+
+## Citations
+
+`stat.logging.error`; `stat.logging.warning`; `stat.logging.info`; `stat.logging.debug`; new-pattern flag `patt.external.web-scraping-via-telescope` (pending Archie); import-rules amendment request (service↔src bidirectional ban)
+
+## Scope
+
+- [X] `service/telescope/` — **new** — FastAPI app package: lifespan browser session, `/telescope`, `/telescope/html`, `/healthz`, browser-interaction helpers only (navigate / capture / load-all / cookie-dismiss / readiness); console-only logging; no fork of post-render cull/split helpers that Surfer must share.
+- [X] `service/telescope/requirements.txt` — **new** — Telescope-only deps (Playwright pin matching the image, FastAPI, uvicorn, etc.).
+- [X] `service/telescope/Dockerfile` — **new** — Official Playwright Python image, Firefox, single uvicorn worker, non-root, `--init`, memory/`/dev/shm` sizing.
+
+## Acceptance criteria
+
+- [X] Parent AC 1 (service tree)
+- [X] Parent AC 2 (bidirectional import fence on service side — zero `src` imports under `service/telescope/`)
+- [X] Parent AC 3 (contract endpoints)
+- [X] Parent AC 4 (defaults for expand/wait_ready/links; service capture)
+- [X] Parent AC 5 (multi-match text)
+- [X] Parent AC 9 (separate host for service — own Dockerfile/process)
+- [X] Parent AC 10 (bearer env)
+- [X] Parent AC 11 (console-only logs)
+- [X] Parent AC 12 (OOM isolation for replica — semaphore + recycle + single worker)
+
+## Boundaries
+
+- [X] Does not own platform `telescope.py` drop-in (#2 / AST-1726)
+- [X] Does not own Railway/CI wiring (#3 / AST-1727)
+- [X] Does not implement Surfer-shared post-render helpers
+
+## Notes for planning
+
+`stat.logging.error`; `stat.logging.warning`; `stat.logging.info`; `stat.logging.debug`; new-pattern flag `patt.external.web-scraping-via-telescope` (pending Archie); import-rules amendment request (service↔src bidirectional ban)
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/<parent-segment>`, child `sub/<parent-id>/<child-segment>`. Created at dispatch-parent.
+
+### Comments
+
+#### ada — 2026-09-20T05:24:12.165Z
+`origin/sub/AST-1721/AST-1725-telescope-service-container-and-api` @ `4b86c263` · §9a clean
+
+#### radia — 2026-09-20T05:22:19.453Z
+[code-rubric] PROCEED (Commit: 3a1cce4b7bf91d73776616c50678082c8679ebcc) Service container canon-clean
+
+#### betty — 2026-09-20T05:19:16.744Z
+`origin/sub/AST-1721/AST-1725-telescope-service-container-and-api` @ `3a1cce4b` · telescope contract tests
+
+#### joan — 2026-09-20T05:12:46.080Z
+[plan-rubric] PROCEED (Commit: 18412e4794d31d71351f622883d9f9027a6c79a3) Service container plan sound
+
+#### ada — 2026-09-20T05:10:23.319Z
+`origin/sub/AST-1721/AST-1725-telescope-service-container-and-api` @ `18412e4794d31d71351f622883d9f9027a6c79a3` · plan ready for Joan
+
+---
+
 # Telescope service container and API
 
 **Linear:** [AST-1725](https://linear.app/astralcareermatch/issue/AST-1725)

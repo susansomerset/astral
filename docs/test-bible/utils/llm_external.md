@@ -6,6 +6,8 @@
 
 ---
 
+> **AST-1880:** `src/external/deepseek.py` and `tests/component/external/test_deepseek.py` are deleted. DeepSeek goes through `llm_compat` (see [`llm_compat.md`](../external/llm_compat.md)). Manifests below that cite `test_deepseek.py` are frozen historical records: drop those nodes when re-running.
+
 ### AST-687
 
 | Behavior | Sources | Manifest tests |
@@ -123,3 +125,18 @@
 ```
 
 **Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+### AST-2010 · AST-2009 (`classify_provider_rate_limit` / `is_provider_rate_limit`)
+
+**New:** `TestAst2010ProviderRateLimit`. It covers status 429 (`status_code` or `response.status_code`) and the substrings `error code: 429` / `rate_limit_error` on an exception **or** a string (the host-probe error is a string). It also covers unrelated / 402 / 500 → `None` and the predicate on dicts / `None` / non-dict. Primary manifest: **`docs/test-bible/external/llm_compat.md`** § AST-2010.
+
+### AST-2179 · AST-2172 (`extract_tool_input`; tool-input fallback in `extract_api_response_text`)
+
+**Primary manifest:** [`../external/anthropic.md`](../external/anthropic.md) § AST-2179.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| New — no text block: the last `tool_use` input as JSON; a text block still wins; `server_tool_use` alone still raises | `extract_api_response_text` | `TestExtractApiResponseText::test_tool_only_reply_falls_back_to_last_tool_input_json` · `::test_text_block_wins_over_tool_input` · `::test_server_tool_use_is_not_a_fallback` |
+| New — named tool's input returned (other tools / text skipped); non-object input raises; other tool / text only / empty / `None` / no `content` raise "has no … tool call" | `extract_tool_input` | `TestExtractToolInput` (7) |
+
+**Broken / obsolete:** none. **Integration:** none.

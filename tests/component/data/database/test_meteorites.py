@@ -141,13 +141,13 @@ class TestAst1557MeteoriteBatchClaim:
         db = sqlite_in_memory
         a = self._seed_new(db, 1)[0]
         b = self._seed_new(db, 1)[0]
-        # ERROR retired — SCRAPE_ERROR is a live union peer of NEW.
-        db.update_meteorite(b, state="SCRAPE_ERROR")
+        # ERROR retired — ERROR_SCRAPE_METEORITE (AST-2086) is a live union peer of NEW.
+        db.update_meteorite(b, state="ERROR_SCRAPE_METEORITE")
         n = db.claim_meteorite_batch(
             "union-batch",
             "NEW",
             10,
-            states=["NEW", "SCRAPE_ERROR"],
+            states=["NEW", "ERROR_SCRAPE_METEORITE"],
         )
         assert n == 2
         ids = {r["id"] for r in db.get_meteorite_batch("union-batch")}
@@ -191,9 +191,9 @@ class TestAst1557MeteoriteReadUpdate:
         assert after["link"] == "https://x"
         assert after["error"] == "retry"
         assert after["state_changed_at"] >= before["state_changed_at"]
-        # Data layer does not enforce prior_states — BOT_BLOCKED from NEW is allowed here
-        db.update_meteorite(mid, state="BOT_BLOCKED")
-        assert db.get_meteorite(mid)["state"] == "BOT_BLOCKED"
+        # Data layer does not enforce prior_states — BOT_BLOCKED_SCRAPE_METEORITE from NEW is allowed here
+        db.update_meteorite(mid, state="BOT_BLOCKED_SCRAPE_METEORITE")
+        assert db.get_meteorite(mid)["state"] == "BOT_BLOCKED_SCRAPE_METEORITE"
         with pytest.raises(ValueError, match="unknown meteorite state"):
             db.update_meteorite(mid, state="NOT_A_STATE")
         with pytest.raises(ValueError, match="unknown meteorite fields"):

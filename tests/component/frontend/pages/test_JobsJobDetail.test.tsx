@@ -73,7 +73,7 @@ function renderDetail(path: string) {
   renderWithProviders(
     <Routes>
       <Route path="/jobs/detail/:jobId" element={<JobsJobDetail />} />
-      <Route path="/jobs/recommended" element={<p>Recommended home</p>} />
+      <Route path="/" element={<p>Jobs home</p>} />
     </Routes>,
     { router: { initialEntries: [path] } },
   )
@@ -96,8 +96,9 @@ describe("JobsJobDetail — AST-1481 deeplink modal host", () => {
     renderDetail("/jobs/detail/j-deeplink")
     await waitForReportShell()
     const bar = document.querySelector(".recommended-report-tabs") as HTMLElement
-    expect(within(bar).getByRole("button", { name: "Summary" })).toHaveClass("active")
-    expect(screen.getByText("Job Summary")).toBeInTheDocument()
+    // AST-1874: deeplink opens on the first manifest tab (Analysis)
+    await waitFor(() => expect(within(bar).getByRole("button", { name: "Analysis" })).toHaveClass("active"))
+    expect(screen.getByText("JD Analysis")).toBeInTheDocument()
     expect(document.querySelector(".side-tab-list")).toBeNull()
   })
 
@@ -105,7 +106,7 @@ describe("JobsJobDetail — AST-1481 deeplink modal host", () => {
     installBaseApiMocks(mockedApi, jobHandler("j-skipped", { state: "SKIPPED" }))
     renderDetail("/jobs/detail/j-skipped")
     await waitForReportShell()
-    expect(screen.getByText("Job Summary")).toBeInTheDocument()
+    expect(await screen.findByText("JD Analysis")).toBeInTheDocument()
   })
 
   it("shows explicit 404 error UI with back link", async () => {
@@ -118,7 +119,7 @@ describe("JobsJobDetail — AST-1481 deeplink modal host", () => {
     renderDetail("/jobs/detail/j-missing")
     await waitFor(() => expect(screen.getByRole("heading", { name: "Job unavailable" })).toBeInTheDocument())
     expect(screen.getByText("Job not found")).toBeInTheDocument()
-    expect(screen.getByRole("link", { name: "Back to Recommended" })).toHaveAttribute("href", "/jobs/recommended")
+    expect(screen.getByRole("link", { name: "Back to Jobs" })).toHaveAttribute("href", "/")
     expect(document.querySelector(".recommended-report-tabs")).toBeNull()
   })
 
@@ -131,21 +132,21 @@ describe("JobsJobDetail — AST-1481 deeplink modal host", () => {
     })
     renderDetail("/jobs/detail/j-denied")
     await waitFor(() => expect(screen.getByText("Forbidden")).toBeInTheDocument())
-    expect(screen.getByRole("link", { name: "Back to Recommended" })).toBeInTheDocument()
+    expect(screen.getByRole("link", { name: "Back to Jobs" })).toBeInTheDocument()
   })
 
-  it("navigates to recommended when the report modal closes", async () => {
+  it("navigates to Jobs home when the report modal closes", async () => {
     installBaseApiMocks(mockedApi, jobHandler("j-close"))
     renderDetail("/jobs/detail/j-close")
     await waitForReportShell()
     await userEvent.click(screen.getByRole("button", { name: "Close" }))
-    expect(navigate).toHaveBeenCalledWith("/jobs/recommended")
+    expect(navigate).toHaveBeenCalledWith("/")
   })
 
-  it("redirects blank jobId to recommended", async () => {
+  it("redirects blank jobId to Jobs home", async () => {
     installBaseApiMocks(mockedApi, () => undefined)
     renderDetail("/jobs/detail/%20%20")
-    await waitFor(() => expect(screen.getByText("Recommended home")).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText("Jobs home")).toBeInTheDocument())
   })
 
   it("prefetches job and aligns admin candidate before opening the modal", async () => {
@@ -165,7 +166,7 @@ describe("JobsJobDetail — AST-1481 deeplink modal host", () => {
       if (url === "/api/state_ui_manifest") {
         return jsonResponse(STATE_UI_MANIFEST_FIXTURE)
       }
-      if (url === "/api/system/ui_config") {
+      if (url === "/api/ui_config") {
         return jsonResponse({ column_types: {} })
       }
       if (url === "/api/jobs/j-align" && !init) {
@@ -239,7 +240,7 @@ describe("JobsJobDetail — AST-1704 company_id align prefetch", () => {
       if (url === "/api/state_ui_manifest") {
         return jsonResponse(STATE_UI_MANIFEST_FIXTURE)
       }
-      if (url === "/api/system/ui_config") {
+      if (url === "/api/ui_config") {
         return jsonResponse({ column_types: {} })
       }
       if (url === "/api/jobs/j-coid" && !init) {
@@ -300,3 +301,44 @@ describe("JobsJobDetail — AST-1704 company_id align prefetch", () => {
   })
 })
 
+
+describe("JobsJobDetail — AST-1768 non-admin waits for candidate hydration", () => {
+  beforeEach(() => {
+    localStorage.clear()
+    navigate.mockReset()
+    mockedApi.mockReset()
+    stubAuthPublicFetches(true)
+  })
+
+  it("[bug-repro] non-admin: stays on Loading job… until /api/candidates resolves, then opens the modal", async () => {
+    let releaseCandidates: () => void = () => {}
+    const candidatesGate = new Promise<void>((resolve) => { releaseCandidates = resolve })
+    const calls: string[] = []
+    const handler = jobHandler("j-nonadmin")
+    mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
+      calls.push(url)
+      if (url === "/api/me") {
+        return jsonResponse({ user_id: "u1", name: "Test User", is_admin: false })
+      }
+      if (url === "/api/candidates") {
+        await candidatesGate
+        return jsonResponse([{ astral_candidate_id: candidateId, state: "ACTIVE", candidate_data: {} }])
+      }
+      if (url === "/api/state_ui_manifest") return jsonResponse(STATE_UI_MANIFEST_FIXTURE)
+      if (url === "/api/ui_config") return jsonResponse({ column_types: {} })
+      const res = handler(url, init)
+      if (res) return res
+      throw new Error(`unexpected api call: ${url}`)
+    })
+    renderDetail("/jobs/detail/j-nonadmin")
+    await waitFor(() => expect(calls).toContain("/api/jobs/j-nonadmin"))
+    await waitFor(() => expect(calls).toContain("/api/candidates"))
+    // Job prefetch has landed; candidate list is still pending → host must not open the modal yet.
+    await new Promise((r) => setTimeout(r, 50))
+    expect(screen.getByText("Loading job…")).toBeInTheDocument()
+    expect(document.querySelector(".recommended-report-tabs")).toBeNull()
+    releaseCandidates()
+    await waitForReportShell()
+    expect(screen.queryByText("Loading job…")).not.toBeInTheDocument()
+  })
+})

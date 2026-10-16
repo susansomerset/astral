@@ -1,3 +1,101 @@
+<!-- linear-archive: AST-1562 archived 2026-10-02 -->
+
+## Linear archive (AST-1562)
+
+**Archived:** 2026-10-02  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1562/retention-sweep-delete-meteorite-email-meteorite-ingress-staging-table  
+**Status at archive:** Archive  
+**Project:** Astral Meteorite  
+**Assignee:** katherine  
+**Priority / estimate:** None / 3  
+**Parent:** AST-1555 — Meteorite ingress: staging table + inbox/meteorite consolidation  
+**Blocked by / blocks / related:** parent: AST-1555
+
+### Description
+
+## What this implements
+
+After #3/#4/#5: scheduled retention query path; delete `meteorite_email.py` (and any leftover unbound hygiene); final seed/dispatcher cleanup; confirm source-ref synthesis, fetch_email, and bind paths are gone. Does not reopen qualify or legacy sync create.
+
+## Citations
+
+## Scope
+
+## Acceptance criteria
+
+- [X] 6. `inbox.py` has no `run_fetch_email` / `fetch_email` / From-then-To bind path; `meteorite_email.py` is gone; meteorite does not import `external/gmail`; unbound age→Trash hygiene is gone.
+- [X] 7. Retention scheduled path can purge old `LANDED` and list stale `ERROR` / `BOT_BLOCKED` / `ABANDONED` without those deletes living inside transition handlers.
+
+## Boundaries
+
+- [X] Does not own sibling slices: #1 meteorite table + claim helpers, #2 inbox candidate verbs + Manage Email filter, #3 check_inbox + monitoring log, #4 stage / scrape / land transitions, #5 BOT_BLOCKED Estelle recovery + apply_paste.
+
+## Notes for planning
+
+Citations and Scope above are authoritative for plan-child. Parent: AST-1555.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/<parent-segment>`, child `sub/AST-1555/<child-segment>`. Created at dispatch-parent.
+
+## QA test manifest
+
+**Publish: **`origin/sub/AST-1555/AST-1562-retention-sweep-delete-meteorite-email` @ `f2f9de2c` (`merge-tests(AST-1562): origin/tests d369c880`)
+
+**Bible shasums (origin/tests @ d369c880):**
+
+* `docs/test-bible/core/meteorite.md` — `25e96d0dc9086e9f9e393eb9e6141d442679a8ca725c6ad147a47c4339385946`
+* `docs/test-bible/core/dispatcher.md` — `091a6dd96765752a0a1901b408e92509736e6fe9909ecbfd78cb70f7514e6365`
+* `docs/test-bible/utils/config.md` — `8ba250cded56818924d5ceaae326e18ea2d8499abd564c111e03183078242319`
+* `docs/test-bible/core/meteorite_email.md` — `e4e08ff8ce210b21907431d3ce477b7cefc5c7691a1e21bc9e771fb0fdf1605e`
+
+1. `tests/component/core/test_meteorite.py::TestAst1562RunMeteoriteRetention`
+2. `tests/component/utils/test_config.py::TestAst1562RetentionConfig`
+3. `tests/component/core/test_dispatcher.py::TestAst1562RetentionDispatchOne`
+4. `tests/component/core/test_ast1467_gaze_email_retire.py::TestAst1467GazeEmailRetired`
+5. Revised: `TestAst1088GazeEmailConfig`, `TestAst1090GazeEmailRunnerConfig`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_meteorite.py::TestAst1562RunMeteoriteRetention \
+  tests/component/utils/test_config.py::TestAst1562RetentionConfig \
+  tests/component/core/test_dispatcher.py::TestAst1562RetentionDispatchOne \
+  tests/component/core/test_ast1467_gaze_email_retire.py::TestAst1467GazeEmailRetired \
+  tests/component/utils/test_config.py::TestAst1088GazeEmailConfig \
+  tests/component/utils/test_config.py::TestAst1090GazeEmailRunnerConfig \
+  -q
+```
+
+**Broken / obsolete revised: **`TestAst1467GazeEmailRetired` (module deleted, mailbox literals retired); `TestAst1088GazeEmailConfig`, `TestAst1090GazeEmailRunnerConfig` (unbound/selected keys gone); `test_meteorite_email.py` auto-skips (module deleted).
+
+**Pass criterion:** pytest green on manifest lines.
+
+### Comments
+
+#### katherine — 2026-08-31T23:55:32.858Z
+origin/sub/AST-1555/AST-1562-retention-sweep-delete-meteorite-email @ `82423d73b316f030a1b1c9feae96366694093339` · republished clean for merge-child
+
+#### katherine — 2026-08-31T23:55:27.720Z
+origin/sub/AST-1555/AST-1562-retention-sweep-delete-meteorite-email @ `82423d73a8c8e8e8e8e8e8e8e8e8e8e8e8e8e8` · republished clean
+82423d73b316f030a1b1c9feae96366694093339
+
+#### katherine — 2026-08-31T23:54:57.903Z
+origin/sub/AST-1555/AST-1562-retention-sweep-delete-meteorite-email @ `b3303cc466e839780b8cc29893ad82f9e11e0338` · republished clean for merge-child
+
+#### radia — 2026-08-31T23:53:20.870Z
+[code-rubric] REVIEW (Commit: f2f9de2c) retention faithful; test collect discuss
+
+#### betty — 2026-08-31T23:50:54.856Z
+origin/sub/AST-1555/AST-1562-retention-sweep-delete-meteorite-email @ f2f9de2c · retention manifest ready
+
+#### joan — 2026-08-31T23:45:54.267Z
+[plan-rubric] PROCEED (Commit: 4fe81774e094081d1154d685a18ba9368cfb9a94) retention cleanup ready
+
+#### katherine — 2026-08-31T23:44:40.067Z
+origin/sub/AST-1555/AST-1562-retention-sweep-delete-meteorite-email @ `4fe81774e094081d1154d685a18ba9368cfb9a94` · four-stage retention plan
+
+---
+
 # AST-1562 — Retention sweep + delete meteorite_email
 
 **Linear:** [AST-1562](https://linear.app/astralcareermatch/issue/AST-1562/retention-sweep-delete-meteorite-email-meteorite-ingress-staging-table-inboxmeteorite-consolidation)  

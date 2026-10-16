@@ -6,6 +6,10 @@ import { sumCalcCostComponents } from "../lib/timesheetCost"
 
 // Block types in canonical display order (matches BLOCK_TYPES in config.py)
 const BLOCK_TYPE_ORDER = ["SYSTEM", "CACHE_A", "CACHE_B", "CACHE_C", "CACHE_D", "NO_CACHE", "TASK", "RESPONSE", "FEEDBACK"]
+// AST-2075: entity-scoped run always shows one Each-mode call's tabs; CACHE stands in for CACHE_A–D when the prompt rows are gone
+const ENTITY_CALL_TYPES = ["SYSTEM", "CACHE", "NO_CACHE", "TASK", "RESPONSE"]
+const TAB_ORDER = [...BLOCK_TYPE_ORDER.slice(0, 5), "CACHE", ...BLOCK_TYPE_ORDER.slice(5)]
+const MISSING_AGENT_DATA = "No agent_data found for this part of the call — it has aged out or was never stored."
 
 interface AgentDataBlock {
   agent_data_id: string
@@ -107,10 +111,12 @@ interface Props {
 interface PanesProps {
   batchId: string
   candidateId?: string
+  /** When set, agent data is requested sliced to this entity (`entity_id` query); timesheets / ledger stay batch-wide. */
+  entityId?: string
   className?: string
 }
 
-export function BatchAgentDataPanes({ batchId, candidateId, className }: PanesProps) {
+export function BatchAgentDataPanes({ batchId, candidateId, entityId, className }: PanesProps) {
   const [blocks, setBlocks] = useState<AgentDataBlock[]>([])
   const [totals, setTotals] = useState<Totals | null>(null)
   const [timesheetRows, setTimesheetRows] = useState<TimesheetRow[]>([])
@@ -130,7 +136,8 @@ export function BatchAgentDataPanes({ batchId, candidateId, className }: PanesPr
     setHydratedRows(null)
     setResolvedCandidateId(candidateId?.trim() || "")
     Promise.all([
-      api(`/api/agent_data/${encodeURIComponent(batchId)}`).then(r => r.json()),
+      // Entity-scoped only when a caller names the entity; batch-wide views pass none
+      api(`/api/agent_data/${encodeURIComponent(batchId)}${entityId ? `?entity_id=${encodeURIComponent(entityId)}` : ""}`).then(r => r.json()),
       api(`/api/admin/timesheets?batch_id=${encodeURIComponent(batchId)}`).then(r => r.json()),
       api(`/api/admin/dispatch_ledger/${encodeURIComponent(batchId)}`).then(r => r.ok ? r.json() : null).catch(() => null),
     ]).then(([blockData, tsData, ledgerData]) => {
@@ -141,9 +148,9 @@ export function BatchAgentDataPanes({ batchId, candidateId, className }: PanesPr
       setTotals(sumTimesheets(ts))
       setLedger(ledgerData && typeof ledgerData === "object" ? ledgerData as LedgerRow : null)
       const present = BLOCK_TYPE_ORDER.filter(t => b.some(x => x.block_type === t))
-      setActiveType(present[0] ?? b[0]?.block_type ?? "")
+      setActiveType(entityId ? "SYSTEM" : (present[0] ?? b[0]?.block_type ?? ""))
     }).catch(() => {}).finally(() => setLoading(false))
-  }, [batchId, candidateId])
+  }, [batchId, candidateId, entityId])
 
   useEffect(() => {
     const fromLedger = (ledger?.candidate_id || "").trim()
@@ -197,13 +204,20 @@ export function BatchAgentDataPanes({ batchId, candidateId, className }: PanesPr
   for (const b of blocks) {
     ;(byType[b.block_type] ??= []).push(b)
   }
+  // CACHE placeholder only when SYSTEM is gone too — present SYSTEM + no CACHE_* means the caches were empty (AST-2052 skips those)
+  const missingTypes = entityId
+    ? ENTITY_CALL_TYPES.filter(t => t === "CACHE"
+        ? !byType.SYSTEM && !Object.keys(byType).some(k => k.startsWith("CACHE_"))
+        : !byType[t])
+    : []
+  const tabTypes = [...Object.keys(byType), ...missingTypes]
   const orderedTypes = [
-    ...BLOCK_TYPE_ORDER.filter(t => byType[t]),
-    ...Object.keys(byType).filter(t => !BLOCK_TYPE_ORDER.includes(t)),
+    ...TAB_ORDER.filter(t => tabTypes.includes(t)),
+    ...tabTypes.filter(t => !TAB_ORDER.includes(t)),
   ]
   const tabBarTabs = orderedTypes.map(t => ({
     key: t,
-    label: byType[t].length > 1 ? `${t} ×${byType[t].length}` : t,
+    label: (byType[t]?.length ?? 0) > 1 ? `${t} ×${byType[t].length}` : t,
   }))
 
   const totalCost = timesheetRows.reduce(
@@ -269,13 +283,13 @@ export function BatchAgentDataPanes({ batchId, candidateId, className }: PanesPr
               <textarea
                 className="entity-story-content batch-agent-data-textarea"
                 readOnly
-                value={activeType && byType[activeType] ? blockContent(byType[activeType]) : ""}
+                value={activeType && byType[activeType] ? blockContent(byType[activeType]) : missingTypes.includes(activeType) ? MISSING_AGENT_DATA : ""}
               />
             )}
           </div>
         )}
 
-        {!loading && blocks.length === 0 && (
+        {!loading && orderedTypes.length === 0 && (
           <p className="entity-empty">No agent data blocks recorded for this batch.</p>
         )}
       </div>

@@ -697,3 +697,134 @@ Primary numbered list: **`docs/test-bible/utils/config.md`** § AST-1773 (includ
 
 **Bible path shasums (record after publish):**
 - `docs/test-bible/core/repo_admin_json.md`
+
+### AST-1796 · AST-1783 (bug-repro)
+
+**Parent:** [AST-1783](https://linear.app/astralcareermatch/issue/AST-1783/parsing-emails-with-linked-job-titles). **Bug:** [AST-1796](https://linear.app/astralcareermatch/issue/AST-1796). **Publish:** `origin/sub/AST-1783/AST-1796-combo-email-mixed-jd-job-link-array`.
+
+**qa-fix:** `stage_meteorite` gains `## COMBO (inline JD + separate job links)` under existing `multi_jd_inline` (no seventh outcome); fixture surgical lockstep. Map skip-blob: **`docs/test-bible/core/meteorite.md`** § AST-1796.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Combo prompts + no `$RESPONSE_SCHEMA` + field lockstep | `data/admin/agent_task.json`, AST-756 fixture | **`TestAst1796StageMeteoriteComboPrompts`** (bug-repro) |
+
+**Broken / obsolete this pass:** none — prior TITLE-AS-HREF / job_title asserts remain.
+
+## QA test manifest
+
+Primary: **`docs/test-bible/core/meteorite.md`** § AST-1796 (includes this module’s node id).
+
+### AST-1878 · AST-1851 (agent seed models + contact-Estelle agent)
+
+**Primary manifest:** **`docs/test-bible/data/database/candidates.md`** § AST-1878.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| New — AC 3 catalog model + valid size on every row; AC 4 exact model/size per agent; contact-Estelle copies analysis content with null temperature/max_tokens; startup apply stores model ids | `data/admin/agent.json` | `TestAst1878AgentSeedModels` |
+| Revised — seven agents (adds `contact_recruiter_estelle`); repo columns include `model_id` | `data/admin/agent.json` | `TestAst787AgentRepoJsonSeed::test_repo_json_has_seven_sorted_persona_ids` · `::test_repo_rows_use_repo_columns_only` · `::test_startup_apply_loads_all_seven_agents` |
+| Revised — `contact_estelle_turn` → `contact_recruiter_estelle` | `data/admin/agent_task.json` | `TestAst1072ContactEstelleTurnCatalogRow::test_contact_estelle_turn_envelope_prompts` |
+| Revised — revert fixture agent names a model (repo JSON requires it) | fixture | `TestAst783RepoAdminJsonDivergence::test_revert_restores_db_from_repo_file` |
+
+### AST-1911 · AST-1898 (gap — evaluate_jd QC never-X prompt; pins AST-1910)
+
+**Parent:** [AST-1898](https://linear.app/astralcareermatch/issue/AST-1898). **Bug:** [AST-1911](https://linear.app/astralcareermatch/issue/AST-1911) (pins [AST-1910](https://linear.app/astralcareermatch/issue/AST-1910)). **Publish:** `origin/sub/AST-1898/AST-1911-pin-qc-never-x-tests`.
+
+The `evaluate_jd` `cache_prompt` keeps X0-when-silent and names QC as the one never-X exception in STEP 3 and GRADE SET COMPLETENESS; the AST-756 fixture `evaluate_jd` row is locked per key to the catalog. Config SSOT: **`docs/test-bible/utils/config.md`** § AST-1084.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Prompt QC exception + per-key fixture lockstep | `data/admin/agent_task.json`, `docs/uat-fixtures/AST-756/expected-agent_task.json` | **`TestAst1910EvaluateJdQcNeverXPrompt`** (bug-repro) |
+
+**Broken / obsolete:** none. Whole-file AST-756 twin tests (`TestAst1494…::test_fixture_byte_identical_to_catalog`, `TestAst1773…::test_fixture_catalog_byte_lockstep`) are already red on `origin/dev` from four drifted rows — not revised here, not made worse.
+
+**Integration:** none.
+
+**Repro-first (stacked — AST-1910 already on ftr):** with `origin/dev`'s `src/utils/config.py` + `data/admin/agent_task.json` swapped in, all three new functions red for the root-cause reason (QC line 2 is the A row; catalog lacks both exception strings → lockstep `fix == cat` fails); restored tip → 8 passed.
+
+## QA test manifest
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1084EvaluateJdCriteria \
+  tests/component/core/test_repo_admin_json.py::TestAst1910EvaluateJdQcNeverXPrompt \
+  tests/component/core/test_repo_admin_json.py::TestAst1154GradedTaskCompletenessPrompts \
+  -q
+```
+
+Repro node ids: `test_config.py::TestAst1084EvaluateJdCriteria::test_qc_content_forbids_x_and_grade_table_stays_abcf`, `test_repo_admin_json.py::TestAst1910EvaluateJdQcNeverXPrompt::test_catalog_evaluate_jd_cache_prompt_qc_exception`, `::test_fixture_evaluate_jd_row_lockstep_with_catalog`.
+
+### AST-1948 · AST-1946 (agent repo JSON: `temperature` → `mode`)
+
+**Primary manifest:** **`docs/test-bible/core/agent.md`** § AST-1948. The repo-JSON agent columns and seed modes themselves are pinned in [`../utils/config.md`](../utils/config.md) § AST-1947 (`test_agent_repo_json_columns_and_seed_modes`).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| New — AC 7: a repo file row with `mode: "Wild"` fails revert with `Invalid mode 'Wild'`, and the DB row is unchanged | `revert_repo_admin_json_table` → `apply_agent_repo_json_startup` | `TestAst783RepoAdminJsonDivergence::test_revert_rejects_bad_mode_in_repo_file` |
+| Revised — `save_agent` fixtures pass `mode`. Revert restores `mode` along with content and size (local edit Creative → file Deterministic) | `src/data/database.py` | `TestAst783RepoAdminJsonDivergence` (3 revised) |
+| Revised — seed rows have `mode`, with no `temperature` / `model_code` | `data/admin/agent.json` | `TestAst787AgentRepoJsonSeed::test_repo_rows_use_repo_columns_only` · `TestAst1878AgentSeedModels::test_contact_estelle_copies_analysis_content_with_catalog_defaults` |
+| Revised — export fixture row shape (`mode`) | fixture | `TestExportRepoAdminJsonToFiles::test_writes_utf8_arrays_for_both_tables` |
+| Revised (still pre-existing red) — the `temperature == 0` pin is now `"temperature" not in estelle`. The test still fails later on the AST-1399 craft-pin lengths, as on `ae494c618` | seed | `TestAst1400EstelleCraftSeedPins::test_estelle_and_craft_match_ast1399_export` |
+
+`TestAst787AgentRepoJsonSeed::test_repo_rows_match_fixture_repo_column_mapping` is left alone. `AST787_AGENT_REPO_COLUMNS` still names `temperature` for the AST-756 UAT fixture mapping, and that test is already red on `ae494c618`. Schema-ensure (`PRAGMA table_info`) and repo-row mode validation at the data layer: [`../data/database/agents.md`](../data/database/agents.md) § AST-1948.
+
+**Integration:** none.
+
+### AST-1955 · AST-1953 (agent repo JSON: `brain_setting` / `mode` → plain settings)
+
+**Primary manifest:** [`../utils/config.md`](../utils/config.md) § AST-1955 (repo columns + seed values pinned there; seed round-trip + revert-from-seed in [`../data/database/agents.md`](../data/database/agents.md) § AST-1955, because this file cannot collect on the sub until AST-1956 lands).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| New (replaces bad-mode test) — a repo file row with `temperature: "warm"` fails revert with `temperature must be int/float`; DB row unchanged | `revert_repo_admin_json_table` → `apply_agent_repo_json_startup` | `TestAst783RepoAdminJsonDivergence::test_revert_rejects_bad_setting_type_in_repo_file` |
+| Revised — `save_agent` fixtures drop `mode` / `brain_setting`; per-SKU `claude-haiku-4-5`; revert restores `temperature` + clears `provider_sort` | `src/data/database.py` | `TestAst783RepoAdminJsonDivergence` (3 revised) |
+| Revised — seed rows carry exactly the repo columns; spot check `model_id` (not size); Grace on `deepseek-v4-pro` | `data/admin/agent.json` | `TestAst787AgentRepoJsonSeed::test_repo_rows_use_repo_columns_only` · `::test_spot_check_personas_have_content_and_model` · `::test_startup_apply_loads_all_seven_agents` |
+| Revised — AC 4 map is per-SKU `model_id` only; contact Estelle `temperature 0.2` / effort `none` / no `max_tokens` | seed | `TestAst1878AgentSeedModels::test_ac3_every_row_is_catalog_model` · `::test_ac4_seed_models` · `::test_contact_estelle_copies_analysis_content_with_catalog_defaults` · `::test_startup_apply_stores_model_ids` |
+| Revised — export fixture row shape | fixture | `TestExportRepoAdminJsonToFiles::test_writes_utf8_arrays_for_both_tables` |
+| Revised (still pre-existing red) — Estelle `temperature is None`; still fails later on the AST-1399 craft-pin lengths | seed | `TestAst1400EstelleCraftSeedPins::test_estelle_and_craft_match_ast1399_export` |
+
+`TestAst787AgentRepoJsonSeed::test_repo_rows_match_fixture_repo_column_mapping` stays a pre-existing red (6-row fixture vs 7-row seed). **On `ftr` after AST-1956:** run the whole file — reds must match the `origin/dev` baseline (18 today), none new.
+
+**Integration:** none.
+
+### AST-2024 · AST-2022 (`fetch_relative_jd` catalog row)
+
+**New:** `TestAst2024FetchRelativeJdCatalogRow::test_row_shape_and_sequence` — row current; `agent_id` / Job Review group mirror `fetch_jd`; `task_seq` 3.5 sits directly after `fetch_jd`; unique `task_key_uuid`. Red pre-AST-2024 (no row).
+
+**Masked, not revised:** `TestAst786AgentTaskRepoJsonSeed` (`== 57` rows + `AST786_EXPECTED_TASK_KEYS`) was already red before this ticket (catalog grew past 57 on `origin/dev`). Whoever re-pins it must add `fetch_relative_jd`. Primary manifest: **`docs/test-bible/utils/config.md`** § AST-2024.
+
+### AST-2177 · AST-2172 (grader `cache_prompt` rows lose encoded-line text)
+
+**Primary manifest:** [`../utils/config.md`](../utils/config.md) § AST-2177.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| New — AC 7: all 11 grader tasks (`meteorite_grade_do/get` via `master_task_key`), resolved catalog prompt has none of `{pos}` / `exactly 4 characters` / `GRADE SET COMPLETENESS` / `agent_payload` / `processing failure`, keeps `5: The source explicitly states it.` | `data/admin/agent_task.json` + `resolve_tokens` | `TestAst2177GraderPromptsSemanticsOnly::test_ac7_resolved_grader_prompts` |
+| New — vet row: `## A-F LINK-TYPE VET`; `## Response` is `{$OUTPUT_INSTRUCTIONS}` | catalog | `TestAst2177GraderPromptsSemanticsOnly::test_vet_row_uses_output_instructions_token` |
+| Revised — `## GRADE SET COMPLETENESS` absent on the seven graded rows; never-omit wording per row (`Silent vectors get grade X with confidence 0.`, qualify `… never omit a vector.`) | catalog | `TestAst1154GradedTaskCompletenessPrompts::test_marker_and_tighten_lines_on_graded_cache_prompts` |
+| Revised — AST-2120 bug-repro retargeted: no `7 codes` / `segment`; metadata-only omit rule; salary/employment still X with confidence 0 | catalog | `TestAst1154GradedTaskCompletenessPrompts::test_qualify_cache_prompt_grade_count_and_metadata_omit_scope` |
+| Revised — QC rule moved to `## QUALITY CHECK (QC)`; STEP 3 `(never X, never confidence 0)`; no `QCX0` | catalog | `TestAst1910EvaluateJdQcNeverXPrompt::test_catalog_evaluate_jd_cache_prompt_qc_exception` (new `_CATALOG_*` constants; fixture constants untouched) |
+
+**Masked, not revised:** `TestAst1154GradedTaskCompletenessPrompts::test_fixture_graded_keys_carry_completeness_marker` stays green but pins the stale `GRADE SET COMPLETENESS (AST-1154)` sentinel in `docs/uat-fixtures/AST-756/expected-agent_task.json`. That fixture already differs from the catalog (`TestAst1910…::test_fixture_evaluate_jd_row_lockstep_with_catalog` and the other AST-756 lockstep tests were red before this ticket). Whoever re-syncs the fixture must drop that assertion.
+
+**Integration:** none.
+
+### AST-2181 · AST-2172 (seed: requires_structured_output)
+
+**New:** **`TestAst2181RequiresStructuredOutputSeed`** (3):
+- AC 10a: every `data/admin/agent.json` row has a bool `requires_structured_output`, `true` for exactly `antagonist_kent`, `job_analyst_grace`, `job_filter_lucy`.
+- The column is in `REPO_ADMIN_JSON_CONFIG` agent columns and `AGENT_SETTING_COLUMNS`.
+- Seeded-true rows sit on capable models, since Revert to file does not gate.
+
+These read the JSON directly, independent of the pre-existing seed defects (`brain_setting` / `mode` / int fallbacks) that keep the `TestAst787…` apply tests red. Manifest: [`../ui/api/api_admin.md`](../ui/api/api_admin.md) § AST-2181.
+
+### AST-2210 · AST-2206 (Estelle `draft_context_*` + `contact_draft_revise` rows)
+
+**New:** `TestAst2210ContextDraftCatalogRows::test_draft_and_revise_rows` — each of the six `CONTACT_CONTEXT_COMMAND_CONFIG` draft tasks is a current `principal_recruiter_estelle` row in group **Contact Estelle** with `## Good examples` + `## Bad examples` (ticket AC 3), `{$SELECTED_AGENT}`, and no unfilled `<TITLE>`/`<LABEL>`/`<GUIDANCE>`/`<GOOD>`/`<BAD>` skeleton token; the `CONTACT_DRAFT_THREAD_CONFIG["revise_task_key"]` row is `contact_recruiter_estelle` in the same group. Unchanged and green: `TestAst1072ContactEstelleTurnCatalogRow`.
+
+**Masked, not revised:** `TestAst786AgentTaskRepoJsonSeed` (pinned row count / key set) stays pre-existing red; whoever re-pins it must add the seven AST-2210 keys. Primary manifest: **`docs/test-bible/utils/config.md`** § AST-2210.
+
+### AST-2221 · AST-1201 (nine base-resume chain `agent_task` rows)
+
+**New:** `TestAst2221BaseResumeChainCatalogRows::test_run_next_chain_order_prompts_and_agents` — walk `run_next` from `shape_the_story` (current rows) yields exactly `BASE_RESUME_CHAIN_TASK_KEYS` and empty terminal; each row is `Candidate Artifacts` / group order `2000` / seq `20`–`28`; agents Estelle (story + title patterns) / Judith (middle seven); exact seed `user_prompt`s; empty system/cache prompts; unique `task_key_uuid`s. Config half: **`docs/test-bible/utils/config.md`** § AST-2221.
+
+**Masked, not revised:** `TestAst786AgentTaskRepoJsonSeed` — add the nine AST-2221 keys when that lock is re-pinned.

@@ -94,7 +94,7 @@ class TestExportRepoAdminJsonToFiles:
             {
                 "agent_id": "estelle",
                 "content": "prompt",
-                "brain_setting": "Medium",
+                "model_id": "claude-sonnet-4-6",
                 "temperature": 0.2,
                 "max_tokens": 100,
                 "updated_at": "2026-06-24 00:00:00",
@@ -152,7 +152,7 @@ class TestAst783RepoAdminJsonDivergence:
     ) -> None:
         agent_path, task_path = self._patch_repo_paths(monkeypatch, tmp_path)
         db = sqlite_in_memory
-        db.save_agent("agent_a", "prompt-body", brain_setting="Medium")
+        db.save_agent("agent_a", "prompt-body")
         conn = db._get_connection()
         try:
             file_row = db.fetch_agent_repo_json_export_rows(conn)[0]
@@ -171,7 +171,7 @@ class TestAst783RepoAdminJsonDivergence:
     ) -> None:
         agent_path, task_path = self._patch_repo_paths(monkeypatch, tmp_path)
         db = sqlite_in_memory
-        db.save_agent("agent_a", "on-disk", brain_setting="Medium")
+        db.save_agent("agent_a", "on-disk")
         conn = db._get_connection()
         try:
             file_row = db.fetch_agent_repo_json_export_rows(conn)[0]
@@ -179,7 +179,7 @@ class TestAst783RepoAdminJsonDivergence:
             conn.close()
         _write_json(agent_path, [file_row])
         _write_json(task_path, [])
-        db.save_agent("agent_a", "edited-in-db", brain_setting="Medium")
+        db.save_agent("agent_a", "edited-in-db")
 
         status = repo_json_mod.get_repo_admin_json_divergence_status()
 
@@ -190,7 +190,7 @@ class TestAst783RepoAdminJsonDivergence:
     ) -> None:
         agent_path, task_path = self._patch_repo_paths(monkeypatch, tmp_path)
         db = sqlite_in_memory
-        db.save_agent("agent_a", "repo-copy", brain_setting="Little")
+        db.save_agent("agent_a", "repo-copy", model_id="claude-haiku-4-5", temperature=0.2)
         conn = db._get_connection()
         try:
             file_row = db.fetch_agent_repo_json_export_rows(conn)[0]
@@ -198,7 +198,7 @@ class TestAst783RepoAdminJsonDivergence:
             conn.close()
         _write_json(agent_path, [file_row])
         _write_json(task_path, [])
-        db.save_agent("agent_a", "local-edit", brain_setting="Big")
+        db.save_agent("agent_a", "local-edit", temperature=0.6, provider_sort="price")
         assert repo_json_mod.get_repo_admin_json_divergence_status()["agent"]["diverged"] is True
 
         count = repo_json_mod.revert_repo_admin_json_table("agent")
@@ -207,8 +207,30 @@ class TestAst783RepoAdminJsonDivergence:
         row = db.get_agent("agent_a")
         assert row is not None
         assert row["content"] == "repo-copy"
-        assert row["brain_setting"] == "Little"
+        # AST-1955: the plain settings are repo columns — revert restores them too.
+        assert (row["temperature"], row["provider_sort"]) == (0.2, None)
         assert repo_json_mod.get_repo_admin_json_divergence_status()["agent"]["diverged"] is False
+
+    def test_revert_rejects_bad_setting_type_in_repo_file(
+        self, sqlite_in_memory, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        # AST-1955: a repo file with a wrong-typed setting fails validation; DB row untouched.
+        agent_path, task_path = self._patch_repo_paths(monkeypatch, tmp_path)
+        db = sqlite_in_memory
+        db.save_agent("agent_a", "db-copy", model_id="claude-haiku-4-5", temperature=0.6)
+        conn = db._get_connection()
+        try:
+            file_row = db.fetch_agent_repo_json_export_rows(conn)[0]
+        finally:
+            conn.close()
+        _write_json(agent_path, [{**file_row, "content": "repo-copy", "temperature": "warm"}])
+        _write_json(task_path, [])
+
+        with pytest.raises(ValueError, match="temperature must be int/float"):
+            repo_json_mod.revert_repo_admin_json_table("agent")
+
+        row = db.get_agent("agent_a")
+        assert (row["content"], row["temperature"]) == ("db-copy", 0.6)
 
     def test_revert_unknown_table_raises(self) -> None:
         with pytest.raises(ValueError, match="unknown repo admin JSON table"):
@@ -277,6 +299,26 @@ AST786_EXPECTED_TASK_KEYS = frozenset(
     },
 )
 
+
+
+# AST-2024 · AST-2022: fetch_relative_jd catalog row (Scheduled Actions picker).
+# Branches: row present + current; mirrors fetch_jd agent / group; sequenced right after fetch_jd;
+# task_key_uuid unique across the catalog.
+class TestAst2024FetchRelativeJdCatalogRow:
+    def test_row_shape_and_sequence(self) -> None:
+        rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
+        by = {row["task_key"]: row for row in rows}
+        row, fj = by["fetch_relative_jd"], by["fetch_jd"]
+        assert row["current"] == 1
+        assert row["task_name"] == "fetch_relative_jd"
+        assert row["agent_id"] == fj["agent_id"] == "telescope"
+        assert (row["task_group_name"], row["task_group_order"]) == (fj["task_group_name"], fj["task_group_order"])
+        assert row["task_seq"] == 3.5
+        # Next after fetch_jd within Job Review — no sibling sits between them.
+        group_seqs = sorted(r["task_seq"] for r in rows if r["task_group_name"] == "Job Review")
+        assert group_seqs[group_seqs.index(fj["task_seq"]) + 1] == row["task_seq"]
+        uuids = [r["task_key_uuid"] for r in rows]
+        assert uuids.count(row["task_key_uuid"]) == 1
 
 
 class TestAst1252RetiredWrapperTaskKeysAbsent:
@@ -503,7 +545,7 @@ class TestAst878FetchCulturePagesCatalogRow:
         row = by["fetch_culture_pages"]
         assert row["task_seq"] == 7
         assert row["task_group_name"] == "Gaze Review"
-        assert row["agent_id"] == "n/a"
+        assert row["agent_id"] == "telescope"
         assert row["task_name"] == row["task_key"] == "fetch_culture_pages"
         assert by["grade_get"]["task_seq"] == 6
         assert by["grade_like"]["task_seq"] == 8
@@ -570,6 +612,8 @@ AST787_EXPECTED_AGENT_IDS = frozenset(
         "web_scraper_laslo",
     },
 )
+# AST-1878: separate contact-Estelle agent (Kimi K2.6 direct, Little).
+AST1878_EXPECTED_AGENT_IDS = AST787_EXPECTED_AGENT_IDS | {"contact_recruiter_estelle"}
 
 AST787_AGENT_REPO_COLUMNS = (
     "agent_id",
@@ -588,11 +632,11 @@ def _ast787_fixture_repo_row(fixture_row: dict[str, object]) -> dict[str, object
 class TestAst787AgentRepoJsonSeed:
     """AST-787 UAT: six persona rows in agent repo JSON mapped from UAT fixture."""
 
-    def test_repo_json_has_six_sorted_persona_ids(self) -> None:
+    def test_repo_json_has_seven_sorted_persona_ids(self) -> None:
         rows = json.loads(Path("data/admin/agent.json").read_text(encoding="utf-8"))
-        assert len(rows) == 6
-        assert frozenset(row["agent_id"] for row in rows) == AST787_EXPECTED_AGENT_IDS
-        assert [row["agent_id"] for row in rows] == sorted(AST787_EXPECTED_AGENT_IDS)
+        assert len(rows) == 7
+        assert frozenset(row["agent_id"] for row in rows) == AST1878_EXPECTED_AGENT_IDS
+        assert [row["agent_id"] for row in rows] == sorted(AST1878_EXPECTED_AGENT_IDS)
 
     def test_repo_rows_match_fixture_repo_column_mapping(self) -> None:
         repo_rows = json.loads(Path("data/admin/agent.json").read_text(encoding="utf-8"))
@@ -607,12 +651,15 @@ class TestAst787AgentRepoJsonSeed:
             assert repo_row == expected
 
     def test_repo_rows_use_repo_columns_only(self) -> None:
-        expected_cols = set(AST787_AGENT_REPO_COLUMNS)
+        # AST-1955: rows carry exactly the repo columns (plain settings in; brain_setting / mode / model_code out).
+        from src.utils.config import REPO_ADMIN_JSON_CONFIG
+
+        expected_cols = set(REPO_ADMIN_JSON_CONFIG["tables"]["agent"]["columns"])
         for row in json.loads(Path("data/admin/agent.json").read_text(encoding="utf-8")):
             assert set(row.keys()) == expected_cols
-            assert "model_code" not in row
+            assert not {"model_code", "brain_setting", "mode"} & set(row)
 
-    def test_spot_check_personas_have_content_and_brain_setting(self) -> None:
+    def test_spot_check_personas_have_content_and_model(self) -> None:
         by_id = {
             row["agent_id"]: row
             for row in json.loads(Path("data/admin/agent.json").read_text(encoding="utf-8"))
@@ -624,9 +671,9 @@ class TestAst787AgentRepoJsonSeed:
         ):
             row = by_id[agent_id]
             assert str(row["content"]).strip()
-            assert str(row["brain_setting"]).strip()
+            assert str(row["model_id"]).strip()
 
-    def test_startup_apply_loads_all_six_agents(
+    def test_startup_apply_loads_all_seven_agents(
         self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         rows = repo_json_mod.load_repo_admin_json_file("agent")
@@ -635,10 +682,10 @@ class TestAst787AgentRepoJsonSeed:
             sqlite_in_memory.apply_agent_repo_json_startup(conn, rows)
             conn.commit()
             listed = {row["agent_id"] for row in sqlite_in_memory.list_agents()}
-            assert listed == AST787_EXPECTED_AGENT_IDS
+            assert listed == AST1878_EXPECTED_AGENT_IDS
             grace = sqlite_in_memory.get_agent("job_analyst_grace")
             assert grace is not None
-            assert grace["brain_setting"] == "Medium"
+            assert grace["model_id"] == "deepseek-v4-pro"
             assert grace["content"]
         finally:
             conn.close()
@@ -733,7 +780,8 @@ class TestAst1072ContactEstelleTurnCatalogRow:
         rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
         by = {row["task_key"]: row for row in rows if row.get("current") == 1}
         row = by["contact_estelle_turn"]
-        assert row["agent_id"] == "principal_recruiter_estelle"
+        # AST-1878: contact turns run on the separate contact-Estelle agent.
+        assert row["agent_id"] == "contact_recruiter_estelle"
         assert row["task_group_name"] == "Contact Estelle"
         assert row["task_name"] == row["task_key"] == "contact_estelle_turn"
         assert row["task_seq"] == 1
@@ -746,6 +794,120 @@ class TestAst1072ContactEstelleTurnCatalogRow:
         user = row["user_prompt"]
         assert "{$SELECTED_AGENT}" in user
         assert "live_content" in user.lower() or "Slack" in user or "JSON" in user
+
+
+class TestAst2210ContextDraftCatalogRows:
+    """AST-2210: six principal-Estelle draft_context_* rows + contact-Estelle contact_draft_revise row."""
+
+    def test_draft_and_revise_rows(self) -> None:
+        from src.utils.config import (
+            CONTACT_CONTEXT_COMMAND_CONFIG,
+            CONTACT_DRAFT_THREAD_CONFIG,
+        )
+
+        rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
+        by = {row["task_key"]: row for row in rows if row.get("current") == 1}
+        for ctx in CONTACT_CONTEXT_COMMAND_CONFIG.values():
+            row = by[ctx["draft_task"]]
+            assert row["agent_id"] == "principal_recruiter_estelle"
+            assert row["task_group_name"] == "Contact Estelle"
+            user = row["user_prompt"]
+            # AC 3: both example sections present on every draft row.
+            assert "## Good examples" in user and "## Bad examples" in user
+            assert "{$SELECTED_AGENT}" in user
+            # Skeleton placeholders all filled in.
+            assert not any(f"<{t}>" in user for t in ("TITLE", "LABEL", "GUIDANCE", "GOOD", "BAD"))
+            assert "draft" in row["system_prompt"] and "admin_aside" in row["system_prompt"]
+        revise = by[CONTACT_DRAFT_THREAD_CONFIG["revise_task_key"]]
+        assert revise["agent_id"] == "contact_recruiter_estelle"
+        assert revise["task_group_name"] == "Contact Estelle"
+        assert "revised_draft" in revise["system_prompt"] and "{$SELECTED_AGENT}" in revise["user_prompt"]
+
+
+class TestAst2221BaseResumeChainCatalogRows:
+    """AST-2221: nine Candidate Artifacts seed rows linked by run_next (AC 3)."""
+
+    _AGENTS = {
+        "shape_the_story": "principal_recruiter_estelle",
+        "draft_resume_experiences": "content_writer_judith",
+        "draft_supporting_sections": "content_writer_judith",
+        "draft_highlights": "content_writer_judith",
+        "draft_core_competencies": "content_writer_judith",
+        "draft_professional_summary": "content_writer_judith",
+        "draft_keywords": "content_writer_judith",
+        "draft_resume_base": "content_writer_judith",
+        "draft_title_patterns": "principal_recruiter_estelle",
+    }
+    _PROMPTS = {
+        "shape_the_story": (
+            "Think about this candidate and the story their resume should tell that differentiates them."
+        ),
+        "draft_resume_experiences": (
+            "Review existing content and revise experience elements bullet points to emphasize the story."
+        ),
+        "draft_supporting_sections": (
+            "Create supporting sections for the candidate, such as education, technical skills, "
+            "publications, whatever is relevant and factual about the candidate from the provided information."
+        ),
+        "draft_highlights": (
+            "Generate a set of 5-7 bullet points of notable achievements and successes. "
+            "Where possible, use facts from the existing resume."
+        ),
+        "draft_core_competencies": (
+            "Define a set of distinctive core competencies that may use commonly expected "
+            "keywords for this type of role."
+        ),
+        "draft_professional_summary": (
+            "A declarative description of the candidate, predicate only, that describes "
+            "what the candidate does well and why."
+        ),
+        "draft_keywords": "SHORT list of keywords to be embedded in the pdf metadata.",
+        "draft_resume_base": (
+            "Taking ALL of the pieces together, smooth out the wrinkles of the story, clarify "
+            "where needed, and assemble all the pieces for the candidate to review and revise."
+        ),
+        "draft_title_patterns": (
+            "LONG list of possible title pattern matches for this candidate that this resume would suit."
+        ),
+    }
+
+    def test_run_next_chain_order_prompts_and_agents(self) -> None:
+        from src.utils.config import BASE_RESUME_CHAIN_TASK_KEYS
+
+        rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
+        by = {row["task_key"]: row for row in rows if row.get("current") == 1}
+        agent_ids = {
+            row["agent_id"]
+            for row in json.loads(Path("data/admin/agent.json").read_text(encoding="utf-8"))
+        }
+        # Walk run_next from entry hop — exact Functional-scope order, empty terminal.
+        walked: list[str] = []
+        key = "shape_the_story"
+        seen: set[str] = set()
+        while key:
+            assert key not in seen, f"cycle at {key}"
+            seen.add(key)
+            walked.append(key)
+            key = (by[key].get("run_next") or "").strip()
+        assert walked == list(BASE_RESUME_CHAIN_TASK_KEYS)
+        for i, tk in enumerate(BASE_RESUME_CHAIN_TASK_KEYS):
+            row = by[tk]
+            assert row["task_name"] == tk
+            assert row["task_group_name"] == "Candidate Artifacts"
+            assert row["task_group_order"] == "2000"
+            assert row["task_seq"] == 20 + i
+            assert row["agent_id"] == self._AGENTS[tk]
+            assert row["agent_id"] in agent_ids
+            assert row["user_prompt"] == self._PROMPTS[tk]
+            assert str(row["user_prompt"]).strip()
+            # Basic seed: empty cache/system prompts (Fable polish is later).
+            assert row["system_prompt"] == ""
+            assert row["cache_prompt"] == ""
+        assert by["draft_title_patterns"]["run_next"] == ""
+        # Fresh UUIDs — unique across the whole catalog.
+        uuids = [r["task_key_uuid"] for r in rows]
+        for tk in BASE_RESUME_CHAIN_TASK_KEYS:
+            assert uuids.count(by[tk]["task_key_uuid"]) == 1, tk
 
 
 class TestAst1515ContactEstelleTurnMarkupPrompt:
@@ -987,6 +1149,42 @@ class TestAst1784StageMeteoriteLinkedTitlePrompts:
         assert len(STAGE_METEORITE_CONFIG["outcomes"]) == 6
 
 
+
+class TestAst1796StageMeteoriteComboPrompts:
+    """AST-1796 bug-repro: combo (inline JD + separate links) taught under multi_jd_inline."""
+
+    def test_cache_and_user_prompt_combo_section(self) -> None:
+        rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
+        row = next(r for r in rows if r.get("task_key") == "stage_meteorite")
+        cache = row["cache_prompt"] or ""
+        user = row["user_prompt"] or ""
+        nocache = row.get("nocache_prompt") or ""
+        assert "## COMBO (inline JD + separate job links)" in cache
+        assert "multi_jd_inline" in cache
+        assert "separate job-page URL" in cache or "separate job-page URLs" in cache
+        assert "do not collapse" in cache.lower() or "Do not collapse" in cache
+        # multi_jd_inline must allow job_link on combo landables (not forbid it).
+        assert "one jobs item per" in cache.lower() or "one jobs item per landable" in cache.lower()
+        assert "mixes inline JD" in user or "separate job-page URLs" in user
+        assert "multi_jd_inline" in user
+        for field in (cache, user, nocache):
+            assert "$RESPONSE_SCHEMA" not in field
+        from src.utils.config import STAGE_METEORITE_CONFIG
+        assert len(STAGE_METEORITE_CONFIG["outcomes"]) == 6
+
+    def test_fixture_stage_meteorite_combo_lockstep(self) -> None:
+        cat = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
+        fix = json.loads(
+            Path("docs/uat-fixtures/AST-756/expected-agent_task.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        cat_row = next(r for r in cat if r.get("task_key") == "stage_meteorite")
+        fix_row = next(r for r in fix if r.get("task_key") == "stage_meteorite")
+        assert fix_row["cache_prompt"] == cat_row["cache_prompt"]
+        assert fix_row["user_prompt"] == cat_row["user_prompt"]
+
+
 class TestAst1773StageEmployerNameAndReviewDuplicateCatalog:
     """AST-1773: stage employer_name prompts + review_duplicate_meteorite Ruth row + fixture twin."""
 
@@ -1084,7 +1282,9 @@ class TestAst1144ParseMeteoriteEmailMetadataPrompt:
 class TestAst1154GradedTaskCompletenessPrompts:
     """AST-1154: seven multi-vector graded agent_task cache_prompts require full grade-set."""
 
+    # Fixture rows still carry the ticket-id sentinel; catalog prompts are ticket-free (c06eaefdf).
     _MARKER = "GRADE SET COMPLETENESS (AST-1154)"
+    _CATALOG_MARKER = "## GRADE SET COMPLETENESS"
     _KEYS = (
         "prefilter_company",
         "qualify_job_listings",
@@ -1096,24 +1296,40 @@ class TestAst1154GradedTaskCompletenessPrompts:
     )
 
     def test_marker_and_tighten_lines_on_graded_cache_prompts(self) -> None:
+        # AST-2177: the encoded-line GRADE SET COMPLETENESS section is gone from the catalog;
+        # the never-omit-a-vector rule survives in each prompt's own VALIDATE / Rules text.
         rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
         by = {row["task_key"]: row for row in rows if row.get("current") == 1}
         for key in self._KEYS:
-            cache = by[key]["cache_prompt"]
-            assert self._MARKER in cache, key
-            assert "Omitting a code is invalid" in cache or (
-                "never omit a code" in cache
-            ), key
-        # Plan VALIDATE/Rules tighteners (exact phrases).
+            assert self._CATALOG_MARKER not in by[key]["cache_prompt"], key
         assert "Confirm every rubric vector code appears exactly once" in by["evaluate_jd"][
             "cache_prompt"
         ]
-        assert "Every rubric vector code must appear exactly once per job line" in by[
-            "qualify_job_listings"
-        ]["cache_prompt"]
+        assert (
+            "Every rubric vector must be graded once per job; use X with confidence 0 when silent — never omit a vector."
+            in by["qualify_job_listings"]["cache_prompt"]
+        )
         for key in ("grade_do", "grade_get", "grade_like", "meteorite_like"):
-            assert "silent vectors must be {code}X0." in by[key]["cache_prompt"], key
+            assert "Silent vectors get grade X with confidence 0." in by[key]["cache_prompt"], key
         assert "silent vectors must be X0." in by["prefilter_company"]["cache_prompt"]
+
+    def test_qualify_cache_prompt_grade_count_and_metadata_omit_scope(self) -> None:
+        # Bug-repro (AST-2120), retargeted by AST-2177: no segment-count template survives, and the
+        # metadata "omit unstated" rule must not leak into salary / employment-type grades.
+        rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
+        by = {row["task_key"]: row for row in rows if row.get("current") == 1}
+        cache = by["qualify_job_listings"]["cache_prompt"]
+        assert "7 codes" not in cache
+        assert "segment" not in cache
+        assert "Every rubric vector must be graded once per job" in cache
+        assert "Omit any metadata key/value pair whose value is not stated" in cache
+        assert "never to grades" in cache
+        assert "as X with confidence 0 when the listing does not state it" in cache
+        assert "Omit any data whose value is not stated" not in cache
+        # names-not-ticket-ids guard (regression only).
+        assert "AST-" not in cache
+        # names-not-ticket-ids guard (regression only; true before and after the fix).
+        assert "AST-" not in cache
 
     def test_fixture_graded_keys_carry_completeness_marker(self) -> None:
         # AST-1196: per-key fixture lockstep (not whole-file catalog↔fixture bytes).
@@ -1125,6 +1341,85 @@ class TestAst1154GradedTaskCompletenessPrompts:
         by = {row["task_key"]: row for row in rows if row.get("current") == 1}
         for key in self._KEYS:
             assert self._MARKER in by[key]["cache_prompt"], key
+
+
+class TestAst1910EvaluateJdQcNeverXPrompt:
+    """AST-1910 / AST-1911: evaluate_jd keeps X0-when-silent but names QC as the one never-X exception."""
+
+    # Each string pins the general X0 rule and the QC exception appended right after it.
+    _STEP3 = (
+        "use X0 when silent — never omit a code. Exception: QC (Quality Check) is never X — "
+        "if the job description is too thin to analyze, grade QC F with confidence 1–5 "
+        "(never QCX0, never QCF0)."
+    )
+    _COMPLETENESS = (
+        "When the source is silent, emit {code}X0 — never skip the segment. "
+        "The one exception is QC (Quality Check): never emit QCX — grade it F when there is "
+        "not enough to analyze."
+    )
+
+    def _current_by_key(self, path: str) -> dict:
+        rows = json.loads(Path(path).read_text(encoding="utf-8"))
+        return {r["task_key"]: r for r in rows if r.get("current") == 1}
+
+    # AST-2177: catalog STEP 3 drops the encoded QCX0 / QCF0 codes; the QC rule moves to its own section.
+    # The AST-756 fixture still carries the pre-2177 strings above (fixture test below is untouched).
+    _CATALOG_STEP3 = (
+        "use X0 when silent — never omit a code. Exception: QC (Quality Check) is never X — "
+        "if the job description is too thin to analyze, grade QC F with confidence 1–5 "
+        "(never X, never confidence 0)."
+    )
+    _CATALOG_QC = (
+        "## QUALITY CHECK (QC)\n"
+        "QC (Quality Check) is never X — grade it F when there is not enough to analyze."
+    )
+
+    def test_catalog_evaluate_jd_cache_prompt_qc_exception(self) -> None:
+        cache = self._current_by_key("data/admin/agent_task.json")["evaluate_jd"]["cache_prompt"]
+        assert cache.count(self._CATALOG_STEP3) == 1
+        assert cache.count(self._CATALOG_QC) == 1
+        assert "QCX0" not in cache
+
+    def test_fixture_evaluate_jd_row_lockstep_with_catalog(self) -> None:
+        # Per-key lockstep (AST-1196 / AST-1211 style) — whole-file AST-756 twin is already red on dev, not ours.
+        cat = self._current_by_key("data/admin/agent_task.json")["evaluate_jd"]
+        fix = self._current_by_key("docs/uat-fixtures/AST-756/expected-agent_task.json")["evaluate_jd"]
+        assert self._STEP3 in fix["cache_prompt"]
+        assert self._COMPLETENESS in fix["cache_prompt"]
+        assert fix == cat
+
+
+class TestAst2177GraderPromptsSemanticsOnly:
+    """AST-2177 AC 7: every grader task's resolved catalog prompt drops the encoded-line block, keeps the confidence scale."""
+
+    _BANNED = ("{pos}", "exactly 4 characters", "GRADE SET COMPLETENESS", "agent_payload", "processing failure")
+
+    def test_ac7_resolved_grader_prompts(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from src.utils.config import ASTRAL_CONFIG, TASK_CONFIG, resolve_tokens
+
+        # {$RUBRIC_VECTORS} reads the DB; the rubric body is not under test here.
+        monkeypatch.setattr("src.core.candidate.rubric_criteria_for_token", lambda cid, owner: [])
+        rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
+        by = {r["task_key"]: r for r in rows if r.get("current") == 1}
+        graders = [
+            k for k, c in TASK_CONFIG.items()
+            if ASTRAL_CONFIG["output_types"].get(c.get("output_type", ""), {}).get("structured_output")
+        ]
+        # Nine edited rows + meteorite_grade_do / meteorite_grade_get resolving through grade_do / grade_get.
+        assert len(graders) == 11, graders
+        for key in graders:
+            row = by[TASK_CONFIG[key].get("master_task_key") or key]
+            text = resolve_tokens(row["cache_prompt"], {}, key, warn_on_empty=False)
+            assert [b for b in self._BANNED if b in text] == [], key
+            assert "5: The source explicitly states it." in text, key
+
+    def test_vet_row_uses_output_instructions_token(self) -> None:
+        # vet_inflow_discovery's hand-typed ## Response block becomes the output-type token.
+        rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
+        cache = next(r for r in rows if r["task_key"] == "vet_inflow_discovery" and r.get("current") == 1)["cache_prompt"]
+        assert cache.endswith("## Response\n\n{$OUTPUT_INSTRUCTIONS}")
+        assert "## A-F LINK-TYPE VET" in cache
+        assert "ENCODED A-F" not in cache
 
 
 @pytest.mark.skip(reason=_AST1269_SEED_WIPE_SKIP)
@@ -1303,7 +1598,7 @@ class TestAst1222MeteoriteGradeAliasCatalogRows:
                 assert row["task_group_name"] == "Meteorite Review"
                 assert row["task_group_order"] == "4500"
                 assert row["task_seq"] == seq
-                assert row["agent_id"] == "n/a"
+                assert row["agent_id"] == "telescope"
                 assert row["task_name"] == key
                 assert row["task_key_uuid"] == self._UUID[key]
                 assert (row.get("run_next") or "") == ""
@@ -1348,7 +1643,7 @@ class TestAst1269AliasAgentTaskSeedRestore:
             assert row["task_key_uuid"] == self._UUID[key]
             assert row["task_group_order"] == "4500"
             assert row["task_seq"] == seq
-            assert row["agent_id"] == "n/a"
+            assert row["agent_id"] == "telescope"
             assert (row.get("run_next") or "") == ""
             assert all((row.get(f) or "") == "" for f in self._PROMPT_FIELDS)
 
@@ -1443,8 +1738,8 @@ class TestAst1400EstelleCraftSeedPins:
     def test_estelle_and_craft_match_ast1399_export(self) -> None:
         """[bug-repro] Red on origin/dev seed; green after AST-1399 catalog."""
         estelle = self._estelle()
-        assert "model_code" not in estelle
-        assert estelle["temperature"] == 0
+        # AST-1955: temperature is back as a plain setting — empty on Estelle (kimi Big Creative could think).
+        assert "model_code" not in estelle and estelle["temperature"] is None
         assert estelle["max_tokens"] == 384000
         content = estelle["content"]
         assert content.startswith(self._ESTELLE_CONTENT_PREFIX)
@@ -1478,3 +1773,73 @@ class TestAst1712MailboxCatalogKey:
         assert not (mailbox.get("user_prompt") or "").strip()
         ruth = by_uuid["3bbd54c2-60a7-494e-b79a-e68aca7c2d77"]
         assert ruth["task_key"] == ruth["task_name"] == "stage_meteorite"
+
+
+class TestAst1878AgentSeedModels:
+    """AST-1878 AC 3 / AC 4: every seed agent names a catalog model. AST-1955: per-SKU ids, no brain size."""
+
+    AC4 = {
+        "ats_expert_atlas": "deepseek-v4-pro",
+        "college_intern_ruth": "deepseek-v4-flash",
+        "contact_recruiter_estelle": "kimi-k2.6",
+        "content_writer_judith": "kimi-k2.6",
+        "job_analyst_grace": "deepseek-v4-pro",
+        "principal_recruiter_estelle": "kimi-k2.6",
+        "web_scraper_laslo": "deepseek-v4-pro",
+    }
+
+    @staticmethod
+    def _rows() -> list[dict]:
+        return json.loads(Path("data/admin/agent.json").read_text(encoding="utf-8"))
+
+    def test_ac3_every_row_is_catalog_model(self) -> None:
+        from src.utils.config import LLM_MODEL_CONFIG
+
+        assert [r["agent_id"] for r in self._rows() if r.get("model_id") not in LLM_MODEL_CONFIG] == []
+
+    def test_ac4_seed_models(self) -> None:
+        assert {r["agent_id"]: r["model_id"] for r in self._rows()} == self.AC4
+
+    def test_contact_estelle_copies_analysis_content_with_catalog_defaults(self) -> None:
+        by = {r["agent_id"]: r for r in self._rows()}
+        contact = by["contact_recruiter_estelle"]
+        assert contact["content"] == by["principal_recruiter_estelle"]["content"]
+        # AST-1955: kimi Little Deterministic sent thinking-off at 0.2 → effort "none", temperature 0.2.
+        assert (contact["temperature"], contact["reasoning_effort"], contact["max_tokens"]) == (0.2, "none", None)
+
+    def test_startup_apply_stores_model_ids(self, sqlite_in_memory) -> None:
+        rows = repo_json_mod.load_repo_admin_json_file("agent")
+        conn = sqlite_in_memory._get_connection()
+        try:
+            sqlite_in_memory.apply_agent_repo_json_startup(conn, rows)
+            conn.commit()
+        finally:
+            conn.close()
+        got = {a["agent_id"]: a["model_id"] for a in sqlite_in_memory.list_agents()}
+        assert got == self.AC4
+
+
+class TestAst2181RequiresStructuredOutputSeed:
+    """AST-2181 AC 10a: the agent seed carries requires_structured_output (bool) on every row — true for exactly
+    Grace, Lucy and Kent — and the column is in the export / Revert to file tuple."""
+
+    def test_ac10a_seeded_true_for_exactly_the_three_graders(self) -> None:
+        rows = json.loads(Path("data/admin/agent.json").read_text(encoding="utf-8"))
+        assert rows and all(type(r.get("requires_structured_output")) is bool for r in rows)
+        assert sorted(r["agent_id"] for r in rows if r["requires_structured_output"]) == [
+            "antagonist_kent", "job_analyst_grace", "job_filter_lucy",
+        ]
+
+    def test_column_in_repo_tuple_and_data_layer_settings(self) -> None:
+        from src.data.database import AGENT_SETTING_COLUMNS
+        from src.utils.config import REPO_ADMIN_JSON_CONFIG
+
+        assert "requires_structured_output" in REPO_ADMIN_JSON_CONFIG["tables"]["agent"]["columns"]
+        assert "requires_structured_output" in AGENT_SETTING_COLUMNS
+
+    def test_seeded_true_agents_sit_on_capable_models(self) -> None:
+        # Revert to file does not gate (API-only gate), so a seeded true row on a None model would load unguarded.
+        from src.utils.config import get_structured_output_capability
+
+        rows = json.loads(Path("data/admin/agent.json").read_text(encoding="utf-8"))
+        assert all(get_structured_output_capability(r["model_id"]) is not None for r in rows if r["requires_structured_output"])

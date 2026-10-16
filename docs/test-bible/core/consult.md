@@ -10,6 +10,10 @@
 
 ---
 
+### AST-2086 · AST-2073 (pointer)
+
+`_consult_batch_fail_dest(state, error_state, task_key)`: out of the holding → bare `ERROR_<TASK_KEY>` (**`TestConsultBatchFailDest`**); `_empty_token_fail_dest(task_key, error_state)` and chain hop errors / refused edge warns (**`TestAst2006EmptyTokenRouting`**); missing website content → `ERROR_<TASK>_NO_WEBSITE_CONTENT` (**`TestPrepLiveContent`**). Manifest item 9: dead `else` arm in `_prep_live_content`. Primary manifest: **`docs/test-bible/utils/config.md`** § AST-2086.
+
 ### AST-429 · AST-358
 
 **`_render_score`** uses AST-358 three-knob math (`RUBRIC_TOTAL / V`, `grade_value` × confidence, `importance_multiplier` per rubric row). **`_rubric_to_weights`** and **`GRADE_QUALITY_LEGACY`** removed. Depends on **AST-428** config on the same sub branch stack.
@@ -98,13 +102,13 @@ Manifest default ( **`test-astral`** on publish tip — consult/config scope): `
 | --- | --- | --- |
 | Bracket **link_set** decode + prefix precedence | `src/core/consult.py` (`_apply_prefilter_encoded_link_meta`) | `tests/component/core/test_agent.py::TestAst697PrefilterBracketLinkDecode`; `tests/component/core/test_agent.py::TestAst603RubricNormalize::test_lovable_encoded_line_with_bracket_tails` |
 | **`_decode_payload`** wiring | `src/core/agent.py` | `tests/component/core/test_agent.py::TestAst697PrefilterBracketLinkDecode` |
-| **`stringify_response_schema`** bracket example | `src/utils/config.py` | `tests/component/utils/test_config.py::TestStringifyResponseSchema::test_prefilter_company_schema_shows_bracket_link_set_tails` |
+| **`stringify_response_schema`** bracket example (retired **AST-2177** — grader envelope is `agent_performance` only) | `src/utils/config.py` | `tests/component/utils/test_config.py::TestStringifyResponseSchema::test_prefilter_company_schema_has_no_encoded_link_tails` |
 
 **AST-697** narrowed run (includes **AST-603** prefix-tail regression):
 
 ```bash
 ./scripts/testing/run_component_tests.sh \
-  tests/component/utils/test_config.py::TestStringifyResponseSchema::test_prefilter_company_schema_shows_bracket_link_set_tails \
+  tests/component/utils/test_config.py::TestStringifyResponseSchema::test_prefilter_company_schema_has_no_encoded_link_tails \
   tests/component/core/test_agent.py::TestAst697PrefilterBracketLinkDecode \
   tests/component/core/test_agent.py::TestAst603RubricNormalize \
   tests/component/core/test_roster.py::TestAst603ConsultParityHydration \
@@ -133,6 +137,25 @@ Manifest default ( **`test-astral`** on publish tip — consult/config scope): `
   tests/component/core/test_agent.py::TestAst603RubricNormalize::test_lovable_encoded_line_with_bracket_tails \
   tests/component/core/test_agent.py::TestAst603RubricNormalize::test_letter_pipe_parses_grades_and_link_indices \
   -q
+```
+
+---
+
+### AST-2138 · AST-2136 (bug-repro — JOB:/CULT: link fields never decode as grades; tests via gap AST-2139)
+
+AST-483's colon strip turned a single-digit link field into a grade token (`JOB:3` → `JOB3` → vector **`JO`**, grade `B`), so **`possible_job_links`** was lost and hydrate raised on the unknown **`JO`** vector. Fix: **`_LINK_PREFIX_RE`** moves into `agent.py` and **`_grade_segment`** returns `None` for any **`JOB:`** / **`CULT:`** field; **`_decode_payload`** and **`_should_decode_as_encoded_line`** share that classifier. Prior **`JOB:`** fixtures used **`JOB:16`** only (never matched **`_GRADE_SEG`**). Fixture is company-shaped (`company_id`, `["companies"]`, **AST-1723**), not **`TestAst697PrefilterBracketLinkDecode._prefilter_decode_ctx`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Link-prefix guard: `JOB:0`–`JOB:5` stay meta, no **`JO`** grade (**[bug-repro]** `n=3`) | `src/core/agent.py` (`_LINK_PREFIX_RE`, `_grade_segment`, `_decode_payload`) | `tests/component/core/test_agent.py::TestAst2138JobLinkPrefixNotGrade::test_single_digit_job_link_is_meta_not_grade` |
+| `JOB:1\|CULT:[]` → `[1]`, no culture key | `src/core/agent.py`, `src/core/consult.py` (`_apply_prefilter_encoded_link_meta`) | `tests/component/core/test_agent.py::TestAst2138JobLinkPrefixNotGrade::test_job_link_with_empty_culture_tail` |
+| Routing guard: link-only line is not encoded | `src/core/consult.py` (`_should_decode_as_encoded_line`) | `tests/component/core/test_agent.py::TestAst2138JobLinkPrefixNotGrade::test_link_only_line_does_not_route_as_encoded` |
+
+**AST-2138** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestAst2138JobLinkPrefixNotGrade
 ```
 
 ---
@@ -1393,7 +1416,7 @@ Scored Analysis apply: complete grade set of all literal `X` raises `AllLiteralX
 4. Partial-X still scores (AC4): `tests/component/core/test_consult.py::TestAst1760AllLiteralXRetry::test_apply_scored_partial_x_still_scores`
 5. Binary all-X fail (AC5): `tests/component/core/test_consult.py::TestAst1760AllLiteralXRetry::test_render_pass_fail_all_x_still_fail_state`
 6. First strike holding (AC1): `tests/component/core/test_consult.py::TestAst1760AllLiteralXRetry::test_render_verdict_meteorite_like_all_x_first_strike`
-7. Second strike technical (AC2): `tests/component/core/test_consult.py::TestAst1760AllLiteralXRetry::test_render_verdict_meteorite_like_all_x_second_strike`
+7. Second strike (AC2 — **superseded by AST-2096**; test rewritten to `_ALL_X`, see § AST-2096): `tests/component/core/test_consult.py::TestAst1760AllLiteralXRetry::test_render_verdict_meteorite_like_all_x_second_strike`
 8. Mixed batch sibling pass (AC1): `tests/component/core/test_consult.py::TestAst1760AllLiteralXRetry::test_batch_mixed_all_x_sibling_still_passes`
 
 ```bash
@@ -1405,3 +1428,297 @@ Scored Analysis apply: complete grade set of all literal `X` raises `AllLiteralX
 **Pass criterion:** pytest green on the class — not zero-arg harness / branch-lock gate.
 
 **Bible path shasum (record after publish):** `git show origin/sub/AST-1759/AST-1760-all-x-scored-grades-retry-holding:docs/test-bible/core/consult.md | shasum`
+
+### AST-2096 · AST-2011 (bug-repro — all-X second strike → `{fail_state}_ALL_X`)
+
+**Publish:** `origin/sub/AST-2011/AST-2096-all-x-fail-state`. Plan: `docs/features/consult/ast-1760-all-x-scored-grades-retry-holding.md` § Bug: AST-2096.
+
+Second all-literal-`X` strike (entity already on `*_RETRY`) lands `{fail_state}_ALL_X` via `_all_x_fail_dest` as a **fail verdict**: WARNING, `render_verdict` returns `success: True`, batch counts it in `failed` (not `bad_grades` / error string). First strike → `retry_state` holding unchanged; plain `IncompleteGradeSetError` keeps → `error_state` (AST-1155). Config side: six explicit `JOB_STATES` rows derived from scored `fail_state`s (`all_x_of`, `ALL_X_FAIL_STATES`), base priors copied, on `SKIPPED_STATES`.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Single-entity second strike | `src/core/consult.py` `render_verdict` | **`TestAst1760AllLiteralXRetry::test_render_verdict_meteorite_like_all_x_second_strike`** (rewritten) |
+| Batch second strike + first strike + sibling pass | `src/core/consult.py` `_run_batch_consult` | **`TestAst1760AllLiteralXRetry::test_batch_all_x_second_strike_counts_failed`** |
+| `_ALL_X` registration / priors / Skipped | `src/utils/config.py` | **`tests/component/utils/test_config.py::TestAst2096AllXFailStates`** |
+
+**Broken / obsolete:** AST-1760 AC2 second-strike assertion (`success False` / `METEORITE_FAILED_TECHNICAL_LIKE`) — rewritten in place, not annotated.
+
+**Integration:** none.
+
+## QA test manifest
+
+`[bug-repro]` — all five red on pre-fix tree (right reason: `success False`, `failed == 0` with job-x2 → `METEORITE_FAILED_TECHNICAL_LIKE` at ERROR, `_ALL_X` rows / `ALL_X_SUFFIX` absent); must flip green after make-fix.
+
+1. `tests/component/core/test_consult.py::TestAst1760AllLiteralXRetry::test_render_verdict_meteorite_like_all_x_second_strike`
+2. `tests/component/core/test_consult.py::TestAst1760AllLiteralXRetry::test_batch_all_x_second_strike_counts_failed`
+3. `tests/component/utils/test_config.py::TestAst2096AllXFailStates` (3 tests)
+4. Regression: rest of `TestAst1760AllLiteralXRetry` (7 tests, green pre- and post-fix).
+5. Zero-arg harness: `consult.py` + `config.py` are `LOCKED_AT_100` — new `_all_x_fail_dest` / terminal all-X branches must be covered by 1–3.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_consult.py::TestAst1760AllLiteralXRetry \
+  tests/component/utils/test_config.py::TestAst2096AllXFailStates \
+  -q
+./scripts/testing/run_component_tests.sh
+```
+
+### AST-1846 · AST-1828 (bug-repro — per-entity retry WARNING, uncounted)
+
+**Primary manifest:** **`docs/test-bible/core/roster.md`** § AST-1846. AST-1839 contract here: `run_consult_task` subtracts **`retried`** from `total_errors`; `_log_fail_dest` logs WARNING into a `retry_base` holding, ERROR otherwise (terminal or no dest); upshot `PASSED_LIKE_RETRY` → `FAILED_TECHNICAL` counts.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Primary hydrate fail → `NEW_RETRY`, WARNING, `total_errors == 0` | `src/core/consult.py` | **`TestAst1846ConsultRetryWarnThenError::test_hydrate_fail_from_primary_warns_into_holding`** (**bug-repro**) |
+| Holding hydrate fail → `ERROR_QUALIFY_JOB_LISTINGS`, ERROR, counted | same | **`…::test_hydrate_fail_from_holding_errors_into_error_state`** (**bug-repro**) |
+| Single-entity grade: holding uncounted, held/terminal counted | `grade_get` batch | **`…::test_single_entity_grade_counts_holding_not_held_or_terminal`** (**bug-repro**) |
+| Upshot terminal + no-dest sites log ERROR (4 sites × 2) | `analysis_upshot` batch | **`…::test_upshot_terminal_and_no_dest_sites_log_error`** (branch lock) |
+| Flipped (`total_errors` 0 into holding; parametrized primary/holding) | same | `TestAnalysisUpshotPrepAndBatch480::test_batch_company_missing_moves_to_retry` · `TestAnalysisUpshotPrepAndBatch480ExtraBranches::{test_batch_missing_company_transitions_and_counts_error,test_batch_do_task_failure_transitions_error}` · `TestAst642PerEntityBatchRetry::test_analysis_upshot_primary_failure_to_retry_holding` |
+
+**Integration:** none.
+
+### AST-1895 · AST-1888 (bug-repro — InvalidJobLinkError reason + _run_batch_consult debug scope)
+
+Regression lock for `c86d8b5ce` (fixed by **AST-1893**): `InvalidJobLinkError` is a real `ValueError` subclass (no decorator on the class); an empty/relative `job_link` on a passing `qualify_job_listings` job → same `_consult_batch_fail_dest` as today, `_log_fail_dest` reason `process_fn InvalidJobLinkError: {empty|relative} job_link: …` (never `no signature found`); `_run_batch_consult` is `@_with_log_debug` again — `debug=True` sets `log_debug` in-frame, `debug=False` inherits ambient, token reset on exit. ~~Routing-only check stays in `TestQualifyJobListings::test_fails_short_title_and_relative_link`~~ — **AST-2025** retired the relative half (relative links now route to `RELATIVE_JOB_LINK`); node renamed, see § AST-2025.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Empty `job_link` → fail dest, exact reason names `InvalidJobLinkError` (relative half retargeted by AST-2025) | `src/core/consult.py` | **`TestAst1895InvalidJobLinkError::test_empty_job_link_fail_reason_names_error_relative_routes`** (**bug-repro**; was `test_empty_and_relative_job_link_fail_reason_names_error`) |
+| `InvalidJobLinkError` is a class, subclasses `ValueError` | same | **`…::test_invalid_job_link_error_is_value_error_class`** (**bug-repro**) |
+| `_run_batch_consult` `debug=` scope (`True` sets; `False` inherits ambient; reset on exit) | same | **`…::test_run_batch_consult_debug_scope[True]`** (**bug-repro**) · **`…[False]`** (guard) |
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_consult.py::TestAst1895InvalidJobLinkError \
+  -q
+```
+
+### AST-2001 · AST-1884 (bug-repro — AST-1996 decode-line isolation, consult side)
+
+Test gap for **AST-1996** (`96bc0471d`). `_should_decode_as_encoded_line` scans **every** non-empty line (true on the first `_GRADE_SEG` match anywhere) — a fully malformed first line no longer misroutes the payload to `_job_from_letter_pipe`; single-line routing (**AST-699** rows above) unchanged. `_run_batch_consult` routes each `decode_failures` entity separately through `_transition_batch_consult_failures` → `_consult_batch_fail_dest` (first strike → `*_RETRY` holding, already-in-holding → `error_state`); decode-failed ids are removed from `missing`; a clean row for the same id wins (failure ignored). Return: `decode_failed` (sorted ids or `None`), `success` false when non-empty, `error` carries `decode failed on N IDs: [...]`. Decoder side: **`core/agent.md`** (**AST-2001**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Repro B — later-line routing + end-to-end `_normalize_rubric_task_response` (`jobs` J1, `decode_failures` J0) | `src/core/consult.py` (`_should_decode_as_encoded_line`) | **`TestEncodedDecodeIsolation::test_routing_scans_past_fully_malformed_first_line`** (**bug-repro**) |
+| First strike → `METEORITE_QUALIFIED_RETRY`, second → `METEORITE_ERROR_EVALUATE_JD`, clean J2 passes; `missing is None`; `decode_failed` / `success` / `error` shape | `src/core/consult.py` (`_run_batch_consult`) | **`…::test_decode_failures_route_first_and_second_strike`** (**bug-repro**, branch lock) |
+| Clean row wins over a decode failure for the same id | same | **`…::test_clean_row_wins_over_decode_failure`** (guard) |
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestDecodePayload \
+  tests/component/core/test_consult.py::TestEncodedDecodeIsolation \
+  -q
+```
+
+`TestAst699LetterPipePositionPrefix::{test_position_prefixed_letter_pipe_bracket_tails,test_bare_letter_pipe_bracket_tails}` fail with `KeyError: 'jobs'` identically on pre-fix `57ed90983` — pre-existing, not AST-1996.
+
+### AST-2090 · AST-2015 (bug-repro — AST-2089 salvaged-batch split, consult side)
+
+Test gap for **AST-2089** (`f3897829d`). `_run_batch_consult`: when `do_task` fails with a truthy `salvaged_response`, the whole-batch failure branch is skipped and the salvaged `jobs` run the normal reconciliation + `process_fn` path. Entities with no salvaged line are `missing` and go through `_transition_batch_consult_failures` → `_consult_batch_fail_dest` (first strike → `NEW_RETRY`, already-`NEW_RETRY` → `ERROR_QUALIFY_JOB_LISTINGS`), logged with the `do_task` `error` (`Agent failure: <note>`) instead of `omitted from response`. Return: `success False`, `agent_failure True`, `error` starts with the agent failure text. With `salvaged_response None` the existing whole-batch branch runs unchanged (no `agent_failure` key). Producer: **`core/agent.md`** (**AST-2090**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Salvaged pass + fail lines processed; only the gap fails (first strike `NEW_RETRY`, second `ERROR_QUALIFY_JOB_LISTINGS`); `Agent failure` reason; `passed` / `failed` / `retried` / `missing` / `success` / `agent_failure` / `error` shape | `src/core/consult.py` (`_run_batch_consult`) | **`TestAst2089SalvagedBatchSplit::test_salvaged_lines_process_and_only_the_gap_fails`** (**bug-repro**, 2 params) |
+| `salvaged_response None` → whole batch to fail dest, nothing processed, no `agent_failure` key | same | **`…::test_no_salvage_fails_whole_batch`** (guard) |
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestAst2089DoTaskSalvagedResponse \
+  tests/component/core/test_consult.py::TestAst2089SalvagedBatchSplit \
+  -q
+```
+
+**Red/green record (qa-fix, test-gap sibling — product fix already on ftr):** with pre-fix `22ff5e47a` `src/core/agent.py` + `src/core/consult.py` overlaid (scratch worktree), **3 failed / 6 passed**: the 3 bug-repro nodes fail on assertions (`salvaged_response` absent; `processed == []`, all three jobs to fail dest), guards pass. On ftr tip `e8119b1da`, **9 passed**, plus guards `TestAst1846DoTaskAgentFailureFlag`, `TestEncodedDecodeIsolation`, `TestRunBatchConsult::test_routes_envelope_failure_to_error_state`, `TestAst2010RateLimitForwarding::test_batch_consult_envelope_failure_forwards_tag` (10 passed, unedited). `test_consult.py` needs `nh3` (astral `.venv` python).
+
+### AST-2006 · AST-2000 (bug — runtime empty-token guard)
+
+**Parent:** [AST-1986](https://linear.app/astralcareermatch/issue/AST-1986) (orphaned mini-parent). **Product:** [AST-2000](https://linear.app/astralcareermatch/issue/AST-2000); canon carve-out [AST-2005](https://linear.app/astralcareermatch/issue/AST-2005) (`patt.task.dispatch-retry`). **Publish:** `origin/sub/AST-1986/AST-2006-empty-token-guard-tests`. `_empty_token_fail_dest(*error_states)` → first configured non-retry state, else `FAILED_TECHNICAL`. Four call sites route a `do_task` result carrying `empty_tokens` there — never `_RETRY`, never left at input / hop label; generic failures keep `_consult_batch_fail_dest`.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Helper: first wins (hop before entry); retry holding skipped; retry-only / unset → `FAILED_TECHNICAL` | `_empty_token_fail_dest` | **`TestAst2006EmptyTokenRouting::test_empty_token_fail_dest`** (4 params) |
+| AST-2000 Repro 3: `grade_do` @ `PASSED_JD` → `FAILED_TECHNICAL_DO`, `retried == 0` (control: generic failure → `PASSED_JD_RETRY`) | `_run_batch_consult` | **`…::test_run_batch_consult_goes_to_error_state_not_retry`** · **`…::test_run_batch_consult_generic_failure_still_retries`** |
+| `analysis_upshot` (`error_state` = retry holding) → bare `ERROR_ANALYSIS_UPSHOT` (**AST-2086**; was `FAILED_TECHNICAL`), counted error | `_run_analysis_upshot_batch` | **`…::test_analysis_upshot_retry_error_state_falls_to_bare_task_error`** |
+| `to_state` = orchestration `error_state`, transitioned | `render_verdict` | **`…::test_render_verdict_transitions_to_error_state`** |
+| **AST-2086:** mid-chain hop label → the failing hop's own `ERROR_<HOP>`; every hop has one, so it wins over the entry's; refused edge (`ValueError`) → WARNING, label kept, no `FAILED_TECHNICAL`; claim released, error counted | `_run_dispatch_chain_job_batch` | **`…::test_dispatch_chain_mid_hop_goes_to_hop_error_state`** · **`…::test_dispatch_chain_failing_hop_error_wins_over_entry`** · **`…::test_dispatch_chain_invalid_edge_warns_without_fallback`** |
+
+**Broken / obsolete:** none — existing routing tests stub generic `success: False` (no `empty_tokens`). `render_verdict` case is green on dev too (`grade_do`'s `error_state` is not a retry holding); kept as the AST-2000 contract pin.
+
+Manifest: **`docs/test-bible/core/agent.md`** § AST-2006.
+
+### AST-2008 · AST-2007 (render_verdict provider_call_timeout → retry hop)
+
+`render_verdict`: `failure_class == PROVIDER_CALL_BUDGET["failure_class"]` routes via `_consult_batch_fail_dest` (AST-642 one hop) instead of `_fail`. **New:** `TestAst2008RenderVerdictTimeoutRetry` — primary `METEORITE_PASSED_JD` → `METEORITE_PASSED_JD_RETRY` (WARNING), `_RETRY` → `METEORITE_FAILED_TECHNICAL_DO` (ERROR), no dest → no transition; `failure_class` on the return. Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-2008.
+
+### AST-2010 · AST-2009 (exhausted-429 `failure_class` forwarded)
+
+**New:** `TestAst2010RateLimitForwarding`. `provider_rate_limit` reaches the caller on `render_verdict`'s generic failure, the `run_consult_task` single-entity grade/LIKE path (the AST-2009 `meteorite_like` repro), the `_run_batch_consult` envelope failure, the batch normalizer (`meteorite_like_batch`), the `prefilter_company` normalizer, and the `_run_analysis_upshot_batch` summary. Routing and counts are unchanged (no hold). An untagged failure stays untagged. Primary manifest: **`docs/test-bible/external/llm_compat.md`** § AST-2010.
+
+**AST-2140 · AST-2141 (outage tag carries the provider `error`):** `_outage_tag` now forwards `error` with `failure_class`, so the dispatcher's batch-stop WARNING prints the provider text instead of `()`. Repro and manifest: [`roster.md`](roster.md) § AST-2010 (`[bug-repro]`). Plan: `docs/features/agent/ast-1877-model-server-catalog-compat-client.md` § Bug: AST-2141.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| New (AST-2141) — `prefilter_company` normalizer: tagged batch with `error` → summary `error` = provider text; `(processed, errors)` `(1, 1)` unchanged | consult `_outage_tag` | `TestAst2010RateLimitForwarding::test_run_consult_task_prefilter_company_forwards_error` |
+| Guard (AST-2141, green both) — untagged batch with `error` → no `error`, no `failure_class` on the summary (`_outage_tag` stays `{}`) | consult `_outage_tag` | `…::test_run_consult_task_untagged_failure_forwards_no_error` |
+
+### AST-2098 · AST-2099 (failed host probe holds job state, counted held)
+
+**Primary manifest:** [`dispatcher.md`](dispatcher.md) § AST-2098. Contract: a `provider_probe_failure` result goes through the shared `is_provider_state_hold` branches (no `error_state` / `_RETRY` transition) and is counted `total_held`, not `total_errors`; `_outage_tag` carries `failure_class` + `total_held` up. Balance refusal on job paths is unchanged (AST-2098 Decision D3: still `total_errors`, no new keys).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| New — `render_verdict` probe failure → `state_held`, `to_state` = current state, class kept, no transition | `render_verdict` | `TestAst2098ProbeFailureHold::test_render_verdict_holds_state` |
+| New — AST-2016 incident path: one-job `meteorite_grade_get` → exactly `{processed 1, passed 0, failed 0, errors 0, held 1, failure_class, error}` (`error` added by AST-2141 for AST-2140; this node also covers AST-2140 Repro 3) | `run_consult_task` single-entity | `…::test_run_consult_task_single_entity_counts_held` |
+| New — `_run_batch_consult` envelope probe failure on 3 jobs → held, `total_held 3`, no transition; batch normalizer → `errors 0`, `held 3`, class | `_run_batch_consult` + normalizer | `…::test_batch_consult_envelope_holds_and_counts` |
+| New — `_run_analysis_upshot_batch` 2 jobs → `errors 0`, `held 2`, class, no transition, `_warn_job` "host probe failed — state held" | `_run_analysis_upshot_batch` | `…::test_analysis_upshot_batch_counts_held` |
+| Guard (green both) — balance hold on the single-entity job path still `total_errors 1`, no `total_held` / `failure_class` | `run_consult_task` | `…::test_balance_hold_on_job_path_still_counts_error` |
+
+**Kept:** `TestAst897HoldStateOnBalanceRefusal`, `TestAst2010RateLimitForwarding` (unchanged, green).
+
+### AST-2025 · AST-2022 (qualify keeps relative links + `fetch_relative_jd` router branch)
+
+**Scope:** `qualify_job_listings.process()` — non-empty non-`http` `job_link` → `initialize_job` as-is, transition to `TASK_CONFIG["qualify_job_listings"]["relative_link_state"]` (`RELATIVE_JOB_LINK`); only an empty link raises `InvalidJobLinkError`. `run_consult_task` routes `fetch_relative_jd` → `gazer.fetch_relative_jd_batch(batch_id, entities)`.
+
+| Area | Component tests |
+| --- | --- |
+| AC2 `/jobs/123` → `RELATIVE_JOB_LINK`, stored verbatim; absolute sibling → `PASSED_JOBLIST`; no bad grade | **`TestQualifyJobListings::test_relative_link_routes_to_relative_job_link`** (revised; was `test_fails_short_title_and_relative_link`) |
+| AC2 empty link still `InvalidJobLinkError` → fail dest, never `RELATIVE_JOB_LINK`; relative: no fail log | **`TestAst1895InvalidJobLinkError::test_empty_job_link_fail_reason_names_error_relative_routes`** (revised; was `test_empty_and_relative_job_link_fail_reason_names_error`) |
+| Router branch passes exactly the claimed entities + batch id | **`TestRunConsultTaskRoutes::test_ast2025_routes_fetch_relative_jd_batch`** |
+
+AC3 is an `rg` check in the manifest. Primary manifest: **`docs/test-bible/core/gazer.md`** § AST-2025.
+
+### AST-2070 · AST-2054 (upshot consult routes)
+
+**Parent:** [AST-2054](https://linear.app/astralcareermatch/issue/AST-2054). **Publish:** `origin/sub/AST-2054/AST-2070-upshot-hops`. Primary block + manifest: [`roster.md`](roster.md) § AST-2070.
+
+`run_consult_task` routes `fetch_company_culture_pages` → `gazer.fetch_company_culture_pages_batch` and `company_upshot` → `roster.company_upshot_batch`; retry-routed companies are not counted as errors; rate-limit `failure_class` carried.
+
+| Router branch | Component tests |
+| --- | --- |
+| both keys, summary dict + error accounting | new **`TestAst2070UpshotConsultRoutes`** (2) in `test_consult.py` |
+
+### AST-2093 · AST-2012 (batch-unique `[index=NNN]` + index map to decode; test gap AST-2095)
+
+`_consult_scored_dispatch_batch_encoded` stamps each row `[index=offset+claimed pos]` once. A skipped row leaves its gap. `assemble` adds no `NNN: ` prefix, and `row_indexes` (parallel to eligible) goes to `_run_batch_consult`, which sets `task_ctx["batch_index_map"]` only when `row_indexes` is supplied. `render_verdict(batch_index=)` stamps that position and a one-entry map. `run_consult_task` forwards `batch_index_offset` on N==1 (`render_verdict` `batch_index`), N>1 (`grade_*_batch` / `meteorite_like_batch`) and the alias path. Primary block + manifest: [`agent.md`](agent.md) § AST-2093.
+
+| Area | Component tests (`tests/component/core/test_consult.py::TestAst2093EncodedDispatchIndex`) |
+| --- | --- |
+| **[bug-repro]** one label per row, no `000: ` prefix; offset 20 → positions `[20,21,22]`, `row_indexes` passed | **`test_bug_repro_rows_carry_one_global_label`** |
+| Skipped row keeps its gap → `row_indexes == [0, 2]` (prep-skip branch) | **`test_skipped_row_keeps_its_index_gap`** |
+| `_run_batch_consult` `row_indexes` → map in `do_task` ctx; omitted → no key (both arcs) | **`test_run_batch_consult_puts_index_map_in_do_task_ctx`** |
+| `render_verdict` `batch_index=24` → position 24 + `{24: job}`; default → 0 + `{0: job}` | **`test_render_verdict_stamps_and_maps_batch_index`** |
+| `run_consult_task` forwards offset: `grade_do` N>1, `grade_get` N==1, alias `meteorite_grade_get` N>1 | **`test_run_consult_task_forwards_batch_index_offset`** |
+| Wrappers forward offset (4 params) | **`test_batch_wrappers_forward_offset[grade_do/grade_get/grade_like/meteorite_like]`** |
+
+**Kept:** `TestPrepLiveContentBranches::test_returns_jd_when_website_pages_have_no_content` (`[index=000]: jd text`, default position) — green unchanged.
+
+### AST-2159 · AST-2158 (bug-repro — lone render_verdict no-row → retry fail-dest; test gap AST-2161)
+
+**AST-2159** (`a18695932`): in `render_verdict`, a reply that binds no row and carries no `decode_failures` entry for this job is an omitted entity. It routes like the batch path: `_consult_batch_fail_dest` (primary → retry holding, holding → `error_state`, one hop) → `_log_fail_dest`, reason `omitted from response`, instead of the hard `_fail` (`decoded payload has no job row …`). The job's own decode failure keeps its reason. This is how AST-2093's unknown-index skip shows up on a lone call (`{"jobs": []}`; decode half pinned in [`agent.md`](agent.md) § AST-2093). Plan: `docs/features/agent/response-validation-layers.md` § Bug: AST-2159.
+
+| Area | Component tests (`tests/component/core/test_consult.py::TestRenderVerdict`) |
+| --- | --- |
+| **[bug-repro]** `meteorite_grade_get` J24 `METEORITE_PASSED_DO`, `{"jobs": []}` → `METEORITE_PASSED_DO_RETRY`, `omitted from response`, one transition + one `_log_fail_dest` | **`test_bug_repro_lone_no_row_primary_goes_to_retry_holding`** |
+| **[bug-repro]** same from `METEORITE_PASSED_DO_RETRY` → `ERROR_METEORITE_GRADE_GET` (one hop), reason + log asserted | **`test_bug_repro_lone_no_row_retry_holding_goes_to_error`** |
+| `decode_failures` for another id (`J99`/`r99`) is not this job's → still `omitted from response` (branch `1587->1586`) | **`test_lone_no_row_other_id_decode_failure_is_omitted`** |
+
+**Kept:** `TestRenderVerdict::test_fails_when_job_row_is_missing`, `TestRenderVerdict::test_fails_when_grades_are_missing` (stateless jobs → `error_state` on either tree), `TestAst1155IncompleteGradeRetry::test_render_verdict_bad_confidence_first_strike_to_retry` — green unchanged.
+
+**Integration:** none.
+
+**QA test manifest (test-fix):**
+
+1. **[bug-repro]** `tests/component/core/test_consult.py::TestRenderVerdict::test_bug_repro_lone_no_row_primary_goes_to_retry_holding`, `tests/component/core/test_consult.py::TestRenderVerdict::test_bug_repro_lone_no_row_retry_holding_goes_to_error`.
+2. `pytest tests/component/core/test_consult.py::TestRenderVerdict tests/component/core/test_consult.py::TestAst1155IncompleteGradeRetry` → **28 passed**, 0 new failed vs `origin/ftr/AST-2158-lone-grade-unknown-index-retry`.
+3. Hunk coverage: #2 with `--cov=src.core.consult --cov-branch` → no missing line inside `git diff -U0 66b158c6c a18695932 -- src/core/consult.py`; `1587->1586` not partial. `1585->1590` (non-dict `parsed`) and `1593->1595` (`dest` None) stay partial — both predate AST-2159.
+4. `git diff origin/ftr/AST-2158-lone-grade-unknown-index-retry -- src/ data/` empty (test-tree only).
+
+**Red/green record (qa-fix, test-gap sibling — product fix already on ftr):**
+
+- **Red** — `src/core/consult.py` from pre-fix `66b158c6c` swapped in temporarily (restored after): 3 new fail, 18 existing `TestRenderVerdict` pass. Repro: `{'to_state': 'ERROR_METEORITE_GRADE_GET'} != {'to_state': 'METEORITE_PASSED_DO_RETRY'}`, `{'error': 'decoded payload has no job row for this astral_job_id'} != {'error': 'omitted from response'}`; holding case red on the reason (`'decoded payl…' == 'omitted from response'`).
+- **Green** — sub tip (src identical to ftr `1f71039ed`): 3 new passed; manifest #2 28 passed; hunk coverage (#3) clean.
+
+### AST-2125 · AST-2116 (bug-repro — missing rubric grade description fails only that job; X never fails hydrate)
+
+**AST-2124** (`0d01e20d2`): `_lookup_rubric_reason_for_grade` returns the rubric's X text or the fixed `_X_NO_SIGNAL_REASON` (`"No signal"`) for `X`, never raising. A letter grade with no description raises `MissingRubricDescriptionError` (a `ValueError` subclass, same message). An unknown vector or an empty rubric stays a plain `ValueError`, so the batch-wide AST-1839 route still applies. `_hydrate_response_jobs_grade_reasons` returns `{astral_job_id: reason}` for misses and runs after id binding. `_run_batch_consult` sends each miss to `cfg["fail_state"]` with one WARNING `<id> -> <fail_state> [hydrate: …]`, with no retry and no `bad_grades`; siblings go through `process_fn`. `_apply_render_verdict_decoded_job` does the same for a single row, with no grade save. Roster side: **`core/roster.md`** (AST-2125). Decode side: **`core/agent.md`** (AST-2125).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Batch: J0 (PS F3, no F row) → `METEORITE_FAILED_DO` WARNING only; J1 applies, its CF `X0` reason `"No signal"`; passed 1 / failed 1 / retried 0 | `src/core/consult.py` (`_run_batch_consult`) | **`TestAst2125MissingRubricDescription::test_batch_miss_fails_only_that_job`** (**bug-repro**) |
+| Single row: miss → `("METEORITE_FAILED_DO", None, grades)`, transition once, no `save_job_data` | `_apply_render_verdict_decoded_job` | **`…::test_single_row_miss_fails_without_save`** |
+| `X` → `"No signal"` with no X row and on an unknown vector; X row text when present | `_lookup_rubric_reason_for_grade` | **`…::test_x_without_x_row_is_no_signal`**, **`…::test_x_with_x_row_uses_rubric_text`** |
+| Letter miss → `MissingRubricDescriptionError` (is a `ValueError`); unknown vector → plain `ValueError` | same | **`…::test_missing_letter_vs_unknown_vector`** |
+| Blank matching row falls through to trailing table past a non-matching row | same | **`…::test_blank_row_falls_through_to_trailing_table`** |
+| Batch helper returns `{J0: reason}`, hydrates J1; empty rubric still raises | `_hydrate_response_jobs_grade_reasons` | **`…::test_batch_hydrate_returns_misses_structural_still_raises`** |
+
+**Integration:** none.
+
+**QA test manifest (test-fix):**
+
+1. **[bug-repro]** `tests/component/core/test_consult.py::TestAst2125MissingRubricDescription::test_batch_miss_fails_only_that_job`.
+2. `pytest tests/component/core/test_consult.py::TestAst2125MissingRubricDescription tests/component/core/test_roster.py::TestAst2125PrefilterMissingDescription` → **9 passed**.
+3. `pytest tests/component/core/test_agent.py -k "TestDecodePayload or TestDecodeAndAuditBranches"` → **0 failed**.
+4. Hunk coverage: #2, #3, `test_consult.py::TestRubricLookup`, `test_consult.py::TestAst1076QualifyMeteoritePlaceholderId` with `--cov=src/core --cov-branch` → no missing line / partial branch inside `git diff -U0 0d01e20d2^ 0d01e20d2 -- src/core/` hunks.
+5. `git diff origin/ftr/AST-2116-missing-grade-fail -- src/ canon/` empty (test-tree only).
+
+**Red/green record (qa-fix, test-gap sibling — product fix already on ftr):**
+
+- **Red** — `src/core/{consult,roster,agent}.py` from pre-fix `01606b791` swapped into a `/tmp` `git archive` copy: 10 of 12 fail (9 new + 3 decode rewrites). Repro: `Actual: mock('meteorite_grade_do', ['J0', 'J1'], 'METEORITE_PASSED_JD_RETRY')` (whole batch to retry); roster batch `retried 2, failed 0`. Guards `test_x_with_x_row_uses_rubric_text` / `test_blank_row_falls_through_to_trailing_table` pass on both trees.
+- **Green** — sub tip (src identical to `0d01e20d2` / ftr `8726a8be0`): 9 new + 12 decode-class passed; `TestRubricLookup`, `TestAst1846*` (consult + roster), `TestEncodedDecodeIsolation`, `TestAst1076QualifyMeteoritePlaceholderId` green; hunk coverage (#4) clean in agent / consult / roster.
+
+### AST-2127 · AST-2112 (bug-repro — AST-2126 undecodable Do rubric codes / zero-grade replies)
+
+Test gap for **AST-2126** (`4e9731267`, on `origin/ftr/AST-2112-do-rubric-undecodable-codes` @ `f83f8d71f`; pre-fix base `54e186b79`). A `grades_encoded_notes` reply with no `_GRADE_SEG` match (Somerset's `V01A3`-style codes, or prose) fell to `_job_from_letter_pipe` and returned a silent `grades: []` row, which `_require_complete_grade_set` then reported as every label missing. Now every batch entity becomes one `decode_failures` entry carrying the raw reply (AST-1996 route); `_require_complete_grade_set` reports missing **and** unknown in one reason. Primary manifest lives here; pointers in **`core/agent.md`**, **`core/candidate.md`**, **`data/database/rubric_vectors.md`**, **`ui/api/api_candidate.md`** (each § AST-2127).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| 1-job `grade_do`, payload `000\|V01A3\|V02B4` or prose → `{"jobs": [], "decode_failures": [{J0, pos 0, raw-reply reason}]}` | `src/core/consult.py` (`_normalize_rubric_task_response`) | **`TestAst2126ZeroGradeRepliesAreDecodeFailures::test_bug_repro_one_job_zero_grades_is_decode_failure`** (2 params, **bug-repro**) |
+| 2 entities, prose → one failure per entity, `pos` 0/1 | same | **`…::test_every_entity_gets_one_failure`** |
+| Letter-pipe reply that yields grades → row unchanged, no `decode_failures` | same | **`…::test_letter_pipe_with_grades_unchanged`** (guard) |
+| Company task (`prefilter_company`) zero grades → `companies` row, no `decode_failures` | same | **`…::test_company_task_zero_grades_keeps_row`** (guard) |
+| Missing + unknown → `_render_score: missing vectors ['A', 'B']; unknown vectors ['ZZ']` | `src/core/consult.py` (`_require_complete_grade_set`) | **`…::test_require_complete_grade_set_reports_missing_and_unknown`** |
+
+Single-side `missing vectors` / `unknown vectors` tests (`TestRenderScore::test_rejects_unknown_or_missing_vectors`, AST-1155 rows) are untouched and stay byte-identical.
+
+**Broken / obsolete (rewritten this pass, 31 nodes):** the 2 candidate tests (see **`core/candidate.md`** § AST-2127); 27 fixtures that seeded `rubric_vector` through `sync_rubric_vectors_from_criteria` with codes that aren't `[A-Z]{2}` — `test_agent.py` (13: `TestAst1486FeedbackEntityIdStamp`, `TestAst724VectorFeedbackCapture`, `TestAst809VectorFeedbackBatchMetadata`, `TestAst816VectorFeedbackCapture`, `TestAst820VectorFeedbackDebugTrace`, `TestAst862CleanParseFeedbackBlock`) and `test_rubric_vectors.py` (14: `TestAst723SyncRubricVectors` ×2, `TestAst724VectorFeedbackRows` ×2, `TestAst725ListVectorFeedback` ×2, `TestAst725AggregateVectorFeedback`, `TestAst808ListVectorFeedbackContent`, `TestAst809VectorFeedbackBatchMetadata` ×2, `TestAst2066RubricCriterionVersions` ×4); and `test_api_candidate.py::TestAst2067CandidateVersionRoutes` (2, scope-amended). Codes renamed only — `G1`→`GA`, `G2`→`GB`, `V01`→`VA`, `V02`→`VB`, `CLR`→`CL`, `DOR`→`DO`, `A`→`AA`, `B`→`BB` (lowercase case-insensitivity inputs `g1`/`v01` → `ga`/`va`; vector-review strings `G1RACOVK` → `GARACOVK`). No assertion weakened, skipped, or xfailed.
+
+**Integration:** none (no `tests/integration/` scenario saves rubrics or decodes grade replies).
+
+## QA test manifest
+
+1. **[bug-repro] flip:** `tests/component/core/test_consult.py::TestAst2126ZeroGradeRepliesAreDecodeFailures::test_bug_repro_one_job_zero_grades_is_decode_failure` (2 params).
+2. **AST-2126 steps 1–4 + rewrites:** `test_consult.py::TestAst2126ZeroGradeRepliesAreDecodeFailures`, `test_agent.py::TestDecodePayload::test_ast2126_notes_line_without_segments_is_decode_failure`, `test_candidate.py::TestAst2126RubricCodeFill`, `test_candidate.py::TestAst2008RubricCodeUptick`, `test_candidate.py::TestAst2091RubricDispatchError`, `test_rubric_vectors.py::TestAst2126SyncRejectsUndecodableCodes`.
+
+```bash
+/home/susan/astral/.venv/bin/python -m pytest \
+  tests/component/core/test_consult.py::TestAst2126ZeroGradeRepliesAreDecodeFailures \
+  tests/component/core/test_agent.py::TestDecodePayload::test_ast2126_notes_line_without_segments_is_decode_failure \
+  tests/component/core/test_candidate.py::TestAst2126RubricCodeFill \
+  tests/component/core/test_candidate.py::TestAst2008RubricCodeUptick \
+  tests/component/core/test_candidate.py::TestAst2091RubricDispatchError \
+  tests/component/data/database/test_rubric_vectors.py::TestAst2126SyncRejectsUndecodableCodes \
+  -q
+```
+
+**Red/green proof (Betty, qa-fix 2026-10-10):** with `src/core/{agent,candidate,consult}.py` + `src/data/database.py` checked out from `54e186b79` (restored after; never committed) → **22 failed / 20 passed**; every red is an assertion on the AST-2126 contract (silent `grades: []` row; single-side reason; `['', 'V02', ' tp', 'TX']` codes; `DID NOT RAISE ValueError` in sync; `None` dispatch reason; `['tp']` stored). The 20 passing are unchanged-contract AST-2008/AST-2091 nodes (incl. the split `test_duplicates_strip_and_sorted`) plus the two consult guards. On the publish tip → **42 passed**.
+
+3. **No-regression (required):** `/home/susan/astral/.venv/bin/python -m pytest tests/component/core/test_agent.py tests/component/core/test_candidate.py tests/component/core/test_consult.py tests/component/data/database/test_rubric_vectors.py tests/component/scripts/test_backfill_rubric_vectors.py tests/component/ui/api/test_api_candidate.py -q`. Recorded: pre-fix product (`54e186b79` src) **94 failed / 1393 passed**; tip before this pass **125 failed** (94 + 31 AST-2126); tip with this pass **94 failed / 1416 passed / 7 skipped** — failing-id set identical to the pre-fix environment baseline (`no such table: job`, seed state `NEW`, host probes, etc.). Pass = same 94 ids, no `TestAst2126*` / renamed node failing.
+4. **Scope gate:** `git diff origin/ftr/AST-2112-do-rubric-undecodable-codes...origin/sub/AST-2112/AST-2127-do-rubric-code-tests -- src/ data/` is empty.
+
+### AST-2133 · AST-2130 (consult reads the composed JD)
+
+`build_job_token_context` (VISIBLE_JD), `qualify_meteorite` (length / CONTENT / input JD), `_jd_ready_for_evaluate`, and `evaluate_jd_batch` (not-ready skip + assemble) read `tracker.compose_job_description(job)` instead of `job_data.job_description`. **New:** **`TestAst2133ConsultReadsComposedJd`** (2; reference-only job on core `sqlite_in_memory` → composed VISIBLE_JD; readiness counts the capture). No-reference paths stay covered by existing tests. Manifest: [`tracker.md`](tracker.md) § AST-2133.
+
+### AST-2180 · AST-2172 (normalize cluster retired)
+
+The consult letter-pipe / zero-grade normalize cluster is deleted. A missing code is now the hydrate's per-entity light-check failure. **New:** **`TestEncodedDecodeIsolation::test_ast2180_missing_code_row_retries_entity_sibling_scores`** (AC 5 end to end): real `hydrate_grade_tool_input` output → `_run_batch_consult`; J1 → `METEORITE_QUALIFIED_RETRY`, J0 passes, `decode_failed == ["J1"]`. It is green before the build too, by design, because hydrate and routing predate it. **Retired:** `TestEncodedDecodeIsolation::test_routing_scans_past_fully_malformed_first_line`, `TestAst1062QualifyMeteorite::test_not_strict_encoded_batch_key`, `TestAst2126ZeroGradeRepliesAreDecodeFailures` `_normalize` cases (`test_bug_repro_one_job_zero_grades_is_decode_failure`, `test_every_entity_gets_one_failure`, `test_letter_pipe_with_grades_unchanged`, `test_company_task_zero_grades_keeps_row`). `test_require_complete_grade_set_reports_missing_and_unknown` stays. The older manifests above that list these nodes (AST-1996, AST-2126/2127, AST-2093) are historical and are superseded here. Manifest: [`agent.md`](agent.md) § AST-2180.
+
+### AST-2222 · AST-1201 (pointer)
+
+Stage-generic candidate consult routing (`REQUESTED_RESUME` / mid-hop resume → shared `run_requested_artifacts_dispatch`; persistable gate admits base-resume hops). Primary: [`candidate.md`](candidate.md) § AST-2222 — **`TestAst2222ConsultRoutesResumeStage`** + AC 6/7 source scans.

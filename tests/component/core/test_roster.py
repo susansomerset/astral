@@ -4,14 +4,35 @@ from __future__ import annotations
 
 import asyncio
 import json
+import threading
 from contextlib import asynccontextmanager
 from typing import Any, Dict, List, Optional
 from unittest.mock import AsyncMock, MagicMock, call
 
 import pytest
 
+from src.core import gazer as gazer_mod
 from src.core import roster as roster_mod
-from src.utils.config import COMPANY_STATES, ROSTER_CONFIG, TASK_CONFIG
+from src.utils.config import COMPANY_STATES, PROVIDER_CALL_BUDGET, ROSTER_CONFIG, TASK_CONFIG
+
+
+@pytest.fixture(autouse=True)
+def _telescope_tmp_db(sqlite_in_memory):
+    """AST-2134: roster writers keep scrapes via gazer -> database.save_web_data. Pin the DB to tmp
+    so an unpatched keep never reaches the default ASTRAL_DB_DIR (data/astral.db may be a live symlink)."""
+    return sqlite_in_memory
+
+
+
+def _cse_result(hits: Optional[List[Dict[str, str]]] = None) -> Dict[str, Any]:
+    """AST-2219: search_google_cse returns GoogleCseSearchResult, not a bare hit list."""
+    hits = list(hits or [])
+    return {
+        "hits": hits,
+        "call_start": "2020-01-01T00:00:00+00:00",
+        "call_stop": "2020-01-01T00:00:01+00:00",
+        "hit_count": len(hits),
+    }
 
 
 def _prefilter_rubric_ctx(*, multi_vector: bool = False) -> Dict[str, Any]:
@@ -247,6 +268,18 @@ class TestTransitionCompanyState:
         with pytest.raises(ValueError, match="Company not found"):
             roster_mod.transition_company_state("acme", "TO_WATCH")
 
+    def test_ast1807_accepts_implicit_retry_of_registered_base(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # AST-1807 / AST-1805: PREFILTER_FAILED_RETRY is not a registry key; validates via base.
+        monkeypatch.setattr(roster_mod, "get_company", MagicMock(return_value=_company()))
+        update = MagicMock()
+        monkeypatch.setattr(roster_mod, "update_company", update)
+        roster_mod.transition_company_state("acme", "PREFILTER_FAILED_RETRY")
+        assert update.call_args.kwargs["state"] == "PREFILTER_FAILED_RETRY"
+
+    def test_ast1807_rejects_unregistered_base_retry(self) -> None:
+        with pytest.raises(ValueError, match="not in allowed list"):
+            roster_mod.transition_company_state("acme", "NOPE_RETRY")
+
 
 class TestBatchApi:
     def test_get_new_company_batch_requires_batch_id_or_context(self) -> None:
@@ -256,6 +289,38 @@ class TestBatchApi:
     def test_get_new_company_batch_rejects_unknown_state(self) -> None:
         with pytest.raises(ValueError, match="state must be one of"):
             roster_mod.get_new_company_batch("NOT_A_STATE", context="ctx")
+
+    def test_get_new_company_batch_states_allows_registry_absent_companion(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # AST-1802 / AST-1801: multi-state claim must not registry-gate companions.
+        assert "HOMEPAGE_READY_RETRY" not in COMPANY_STATES
+        claim = MagicMock()
+        monkeypatch.setattr(roster_mod, "claim_company_batch", claim)
+        monkeypatch.setattr(roster_mod, "get_company_batch", MagicMock(return_value=[]))
+        states = ["HOMEPAGE_READY", "HOMEPAGE_READY_RETRY"]
+        bid, companies = roster_mod.get_new_company_batch(
+            "HOMEPAGE_READY",
+            batch_id="ast-1802",
+            states=states,
+        )
+        assert bid == "ast-1802"
+        assert companies == []
+        assert claim.call_args.kwargs["states"] == states
+
+    def test_ast1808_single_state_retry_claims_with_base_criteria(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # AST-1808 / AST-1806: WEBSITE_FOUND_RETRY is not a key; gate + batch_criteria resolve via the base.
+        assert "WEBSITE_FOUND_RETRY" not in COMPANY_STATES
+        claim = MagicMock()
+        monkeypatch.setattr(roster_mod, "claim_company_batch", claim)
+        monkeypatch.setattr(roster_mod, "get_company_batch", MagicMock(return_value=[]))
+        roster_mod.get_new_company_batch("WEBSITE_FOUND_RETRY", context="roster")
+        crit = COMPANY_STATES["WEBSITE_FOUND"].get("batch_criteria", {})
+        assert claim.call_args.args[1] == "WEBSITE_FOUND_RETRY"
+        assert claim.call_args.args[2] == crit.get("limit", 10)
+        assert claim.call_args.kwargs["sort_by"] == crit.get("sort_by", "updated_at")
+        with pytest.raises(ValueError, match="state must be one of"):
+            roster_mod.get_new_company_batch("NOPE_RETRY", context="roster")
 
     def test_get_new_company_batch_claims_and_returns_rows(self, monkeypatch: pytest.MonkeyPatch) -> None:
         claim = MagicMock()
@@ -282,7 +347,6 @@ class TestBatchApi:
             require_empty_website=False,
             score_floor=None,
             states=None,
-            exclude_prefilter_second_strike=False,
         )
     def test_get_new_company_batch_generates_batch_id(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(roster_mod, "claim_company_batch", MagicMock())
@@ -368,7 +432,8 @@ class TestRunCompanyTask:
     @pytest.mark.asyncio
     async def test_jobs_found_dispatch_pass_fail_ast469(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """AST-469: locate_job_page batch includes JOBS_FOUND → jobs_found_process_job_site."""
-        jf_ok = AsyncMock(return_value={"state": "WATCH"})
+        # AST-2069: locate pass_states is GET_UPSHOT (was WATCH)
+        jf_ok = AsyncMock(return_value={"state": "GET_UPSHOT"})
         jf_err = AsyncMock(return_value={"error": "boom"})
         monkeypatch.setattr(roster_mod, "jobs_found_process_job_site", jf_ok)
 
@@ -447,7 +512,7 @@ class TestAst721ParseDispatchRouting:
 
     @pytest.mark.asyncio
     async def test_parse_job_list_dispatch_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        parse = AsyncMock(return_value={"state": "WATCH"})
+        parse = AsyncMock(return_value={"state": "GET_UPSHOT"})  # AST-2069: parse pass_state
         monkeypatch.setattr(roster_mod, "run_parse_job_list_dispatch", parse)
         entity = _company(state="JOBLIST_IDENTIFIED")
         out = await roster_mod.run_company_task(
@@ -495,7 +560,11 @@ class TestAst721ParseDispatchRouting:
 
 
 class TestProcessRecheckNoOpenings:
-    """AST-463 NO_OPENINGS Playwright-only recheck; JOBS_FOUND when no_jobs_message absent from visible text."""
+    """AST-463 NO_OPENINGS Playwright-only recheck; JOBS_FOUND when no_jobs_message absent from visible text.
+
+    AST-1821: failed attempts (missing job_site / no_jobs_message / Playwright error) stamp last_scan_at;
+    missing short_name does not.
+    """
 
     @staticmethod
     def _browser_cm():
@@ -507,22 +576,33 @@ class TestProcessRecheckNoOpenings:
 
     @pytest.mark.asyncio
     async def test_guards_missing_fields(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        bump = MagicMock()
+        monkeypatch.setattr(roster_mod, "update_company_last_scan_at", bump)
         base: Dict[str, Any] = {"short_name": "", "job_site": "https://x", "company_data": {"no_jobs_message": "no"}}
         r = await roster_mod.process_recheck_no_openings(base, "b")
         assert r["success"] is False and "short_name" in r["message"]
+        # No row key → nothing to stamp.
+        bump.assert_not_called()
 
         base["short_name"] = "co"
         base["job_site"] = ""
         r2 = await roster_mod.process_recheck_no_openings(base, "b")
         assert r2["success"] is False and "job_site" in r2["message"]
+        bump.assert_called_once_with("co")
 
         entity = {"short_name": "co", "job_site": "https://j", "company_data": {}}
         r3 = await roster_mod.process_recheck_no_openings(entity, "b")
         assert r3["success"] is False and r3["message"] == "no_jobs_message missing"
+        assert bump.call_count == 2
+        assert bump.call_args == call("co")
 
     @pytest.mark.asyncio
     async def test_playwright_failure_no_state_change(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(roster_mod, "create_browser_context", TestProcessRecheckNoOpenings._browser_cm())
+        bump = MagicMock()
+        tran = MagicMock()
+        monkeypatch.setattr(roster_mod, "update_company_last_scan_at", bump)
+        monkeypatch.setattr(roster_mod, "transition_company_state", tran)
 
         async def boom(*_a, **_k):
             raise RuntimeError("net down")
@@ -537,6 +617,8 @@ class TestProcessRecheckNoOpenings:
         out = await roster_mod.process_recheck_no_openings(ent, "bid")
         assert out["success"] is False
         assert "playwright scrape" in out["message"]
+        bump.assert_called_once_with("acme")
+        tran.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_message_present_updates_scan_only(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -671,33 +753,70 @@ class TestAst826DedupeSelectJobPageNav:
 class TestAst719PjlRosterHelpers:
     """AST-719: additive PJL scrape ledger helpers."""
 
-    def test_merge_pjl_scrape_record_skips_duplicate_and_empty(self) -> None:
-        existing = [{"url": "https://acme.com/careers", "visible_text": "keep"}]
+    def test_merge_pjl_scrape_record_replaces_duplicate_and_skips_empty(self) -> None:
+        # AST-2134 revision: ledger rows hold the telescope row id gazer kept the page under.
+        existing = [{"url": "https://acme.com/careers", "id": "t-keep"}]
+        # AST-1995: same URL is an upsert (refresh), not a skip.
         assert roster_mod._merge_pjl_scrape_record(
             existing,
-            {"url": "https://acme.com/careers", "visible_text": "dup"},
-        ) == existing
+            {"url": "https://acme.com/careers", "visible_text": "dup", "visible_text_id": "t-dup"},
+        ) == [{"url": "https://acme.com/careers", "id": "t-dup"}]
         assert roster_mod._merge_pjl_scrape_record(
             existing,
-            {"url": "https://acme.com/jobs", "visible_text": "  "},
+            {"url": "https://acme.com/jobs", "visible_text": "  ", "visible_text_id": None},
         ) == existing
         merged = roster_mod._merge_pjl_scrape_record(
             existing,
-            {"url": "https://acme.com/jobs", "visible_text": "new page"},
+            {"url": "https://acme.com/jobs", "visible_text": "new page", "visible_text_id": "t-new"},
         )
-        assert len(merged) == 2
-        assert merged[1]["visible_text"] == "new page"
+        assert merged == [existing[0], {"url": "https://acme.com/jobs", "id": "t-new"}]
+
+    def test_ast1995_upsert_replaces_matching_row_in_place(self) -> None:
+        existing = [
+            {"url": "https://acme.com/careers", "id": "t-a"},
+            {"url": "https://acme.com/jobs", "id": "t-b"},
+            {"url": "https://acme.com/team", "id": "t-c"},
+        ]
+        snapshot = [dict(r) for r in existing]
+        # Scheme / case / trailing slash differ — still the same normalize_link key.
+        merged = roster_mod._merge_pjl_scrape_record(
+            existing, {"url": "http://ACME.com/jobs/", "visible_text": " fresh ", "visible_text_id": "t-fresh"},
+        )
+        assert merged == [
+            snapshot[0],
+            {"url": "http://ACME.com/jobs/", "id": "t-fresh"},
+            snapshot[2],
+        ]
+        assert existing == snapshot  # caller's list not mutated
+
+    def test_ast1995_error_record_discarded_even_with_text(self) -> None:
+        existing = [{"url": "https://acme.com/careers", "visible_text": "keep"}]
+        for url in ("https://acme.com/careers", "https://acme.com/jobs"):
+            assert roster_mod._merge_pjl_scrape_record(
+                existing, {"url": url, "visible_text": "partial", "error": "boom"},
+            ) == existing
+
+    def test_ast1995_whole_row_replace_drops_enumerated_nav_links(self) -> None:
+        # AST-2134 revision: a re-scrape without links drops the prior row's links_id with the row.
+        existing = [{"url": "https://acme.com/careers", "id": "t-old", "links_id": "l-old"}]
+        merged = roster_mod._merge_pjl_scrape_record(
+            existing, {"url": "https://acme.com/careers", "visible_text": "new", "visible_text_id": "t-new"},
+        )
+        assert merged == [{"url": "https://acme.com/careers", "id": "t-new"}]
 
     def test_merge_pjl_scrape_record_persists_enumerated_nav_links(self) -> None:
+        # AST-2134 revision: links ride as links_id; page text / links never land in the ledger.
         merged = roster_mod._merge_pjl_scrape_record(
             [],
             {
                 "url": "https://acme.com/careers",
                 "visible_text": "roles",
                 "enumerated_nav_links": "1: /jobs",
+                "visible_text_id": "t-1",
+                "page_links_id": "l-1",
             },
         )
-        assert merged[0]["enumerated_nav_links"] == "1: /jobs"
+        assert merged == [{"url": "https://acme.com/careers", "id": "t-1", "links_id": "l-1"}]
 
     def test_assemble_pjl_content_sections(self) -> None:
         pages = [
@@ -948,7 +1067,7 @@ class TestAst720PjlReadySelectDispatch:
             ),
         )
         out = await roster_mod.run_select_job_page_dispatch(company, "batch-720")
-        assert out["state"] == "NO_PJL_SELECTED"
+        assert out["state"] == "ERROR_SELECT_JOB_PAGE_NO_SELECTION"
         assert out["job_site"] == ""
 
     @pytest.mark.asyncio
@@ -974,8 +1093,45 @@ class TestAst720PjlReadySelectDispatch:
             ),
         )
         out = await roster_mod.run_select_job_page_dispatch(company, "batch-720")
-        assert out["state"] == "JOBSITE_SCRAPE_ISSUE"
+        assert out["state"] == "ERROR_SELECT_JOB_PAGE_UNREADABLE"
         assert out["job_site"] == ""
+
+    @pytest.mark.asyncio
+    async def test_joblist_no_jobs_persists_selected_job_site(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        # [bug-repro] AST-1892 pre-fix: decomposed JOBLIST_NO_JOBS writes job_site="" (suppress_job_site)
+        company = self._pjl_ready_company()
+        monkeypatch.setattr(roster_mod, "get_company", MagicMock(return_value=company))
+        update = MagicMock()
+        save = MagicMock()
+        transition = MagicMock()
+        monkeypatch.setattr(roster_mod, "update_company", update)
+        monkeypatch.setattr(roster_mod, "save_company_data", save)
+        monkeypatch.setattr(roster_mod, "transition_company_state", transition)
+        monkeypatch.setattr(
+            roster_mod,
+            "do_task",
+            AsyncMock(
+                return_value={
+                    "success": True,
+                    "parsed_response": {
+                        "response_type": "JOBLIST_NO_JOBS",
+                        "selected_page": 1,
+                        "no_jobs_message": "No open positions",
+                    },
+                }
+            ),
+        )
+        out = await roster_mod.run_select_job_page_dispatch(company, "batch-1892")
+        assert out["state"] == "NO_OPENINGS"
+        assert out["response_type"] == "JOBLIST_NO_JOBS"
+        # NO_OPENINGS is terminal: recheck_no_openings needs the selected page URL on the column
+        assert out["job_site"] == "https://acme.com/careers"
+        update.assert_called_once()
+        assert update.call_args.kwargs["job_site"] == "https://acme.com/careers"
+        transition.assert_called_once_with("acme", "NO_OPENINGS")
+        assert save.call_args[0][1]["no_jobs_message"] == "No open positions"
 
     @pytest.mark.asyncio
     async def test_empty_assembled_routes_no_pjl_selected(
@@ -989,7 +1145,7 @@ class TestAst720PjlReadySelectDispatch:
         monkeypatch.setattr(roster_mod, "get_company", MagicMock(return_value=company))
         monkeypatch.setattr(roster_mod, "do_task", AsyncMock())
         out = await roster_mod.run_select_job_page_dispatch(company, "batch-720")
-        assert out["state"] == "NO_PJL_SELECTED"
+        assert out["state"] == "ERROR_SELECT_JOB_PAGE_NO_SELECTION"
         assert out["response_type"] == "NO_PJL_ASSEMBLED"
         roster_mod.do_task.assert_not_called()
 
@@ -1060,8 +1216,8 @@ class TestAst721ParseDispatchHelpers:
 
     def test_parse_dispatch_failure_state_ladder(self) -> None:
         assert roster_mod._parse_dispatch_failure_state("JOBLIST_IDENTIFIED") == "JOBLIST_IDENTIFIED_RETRY"
-        assert roster_mod._parse_dispatch_failure_state("JOBLIST_IDENTIFIED_RETRY") == "COULD_NOT_PARSE_JOBLIST"
-        assert roster_mod._parse_dispatch_failure_state("UNKNOWN") == "COULD_NOT_PARSE_JOBLIST"
+        assert roster_mod._parse_dispatch_failure_state("JOBLIST_IDENTIFIED_RETRY") == "ERROR_PARSE_JOB_LIST_UNPARSEABLE"
+        assert roster_mod._parse_dispatch_failure_state("UNKNOWN") == "ERROR_PARSE_JOB_LIST_UNPARSEABLE"
 
 
 class TestAst721ParseJobListDispatch:
@@ -1110,14 +1266,14 @@ class TestAst721ParseJobListDispatch:
         )
         monkeypatch.setattr(roster_mod, "_validate_parse_job_list_raw_job_listings", MagicMock(return_value=(None, [], [])))
         out = await roster_mod.run_parse_job_list_dispatch(company, "batch-721", debug=True)
-        assert out["state"] == "WATCH"
+        assert out["state"] == "GET_UPSHOT"  # AST-2070 AC3: parse success lands in GET_UPSHOT
         assert out["job_site"] == "https://acme.com/jobs"
         assert out["response_type"] == "PARSE_DISPATCH_OK"
         save_data.assert_called()
         saved = save_data.call_args[0][1]
         assert saved["parse_instructions"]["container"] == "div"
         save_co.assert_called_once()
-        assert save_co.call_args.kwargs.get("state") == "WATCH"
+        assert save_co.call_args.kwargs.get("state") == "GET_UPSHOT"
 
     @pytest.mark.asyncio
     async def test_first_fail_retries(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1145,8 +1301,8 @@ class TestAst721ParseJobListDispatch:
         monkeypatch.setattr(roster_mod, "create_browser_context", self._browser_cm())
         monkeypatch.setattr(roster_mod, "_scrape_list_page_dom_for_parse", AsyncMock(return_value=""))
         out = await roster_mod.run_parse_job_list_dispatch(company, "batch-721")
-        assert out["state"] == "COULD_NOT_PARSE_JOBLIST"
-        assert save_co.call_args.kwargs.get("state") == "COULD_NOT_PARSE_JOBLIST"
+        assert out["state"] == "ERROR_PARSE_JOB_LIST_UNPARSEABLE"
+        assert save_co.call_args.kwargs.get("state") == "ERROR_PARSE_JOB_LIST_UNPARSEABLE"
 
     @pytest.mark.asyncio
     async def test_missing_url_or_titles(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1177,7 +1333,7 @@ class TestAst721ParseJobListDispatch:
     async def test_run_company_task_routes_identified_and_retry(
         self, monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        parse = AsyncMock(return_value={"state": "WATCH"})
+        parse = AsyncMock(return_value={"state": "GET_UPSHOT"})  # AST-2069: parse pass_state
         monkeypatch.setattr(roster_mod, "run_parse_job_list_dispatch", parse)
         entity = self._identified_company()
         ok = await roster_mod.run_company_task(
@@ -1185,7 +1341,7 @@ class TestAst721ParseJobListDispatch:
         )
         assert ok["total_passed"] == 1
         retry_entity = self._identified_company(state="JOBLIST_IDENTIFIED_RETRY")
-        retry = AsyncMock(return_value={"state": "COULD_NOT_PARSE_JOBLIST"})
+        retry = AsyncMock(return_value={"state": "ERROR_PARSE_JOB_LIST_UNPARSEABLE"})
         monkeypatch.setattr(roster_mod, "run_parse_job_list_dispatch", retry)
         bad = await roster_mod.run_company_task(
             "JOBLIST_IDENTIFIED_RETRY", retry_entity, "batch-721b", dispatch_task_key="parse_job_list",
@@ -1301,7 +1457,7 @@ class TestAst827TitleHandoffDomCull:
             MagicMock(return_value=(None, [], [])),
         )
         out = await roster_mod.run_parse_job_list_dispatch(company, "batch-827")
-        assert out["state"] == "WATCH"
+        assert out["state"] == "GET_UPSHOT"  # AST-2070: parse pass_state
         dom = captured.get("dom_joined") or ""
         assert "Policy Analyst" in dom
         assert "Client Services Associate" in dom
@@ -1333,6 +1489,91 @@ class TestAst827TitleHandoffDomCull:
         assert out["state"] == "JOBLIST_IDENTIFIED_RETRY"
         assert out["response_type"] == "PARSE_DISPATCH_NO_CONTAINERS"
         assert save_co.call_args.kwargs.get("state") == "JOBLIST_IDENTIFIED_RETRY"
+
+
+class TestAst1840CullOffEventLoop:
+    """AST-1840 bug-repro — _culled_dom_for_parse runs off the event loop at all three async sites."""
+
+    @pytest.mark.asyncio
+    async def test_parse_dispatch_culls_off_event_loop(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        t827 = TestAst827TitleHandoffDomCull
+        company = _company(
+            state="JOBLIST_IDENTIFIED",
+            company_website="https://acme.com",
+            company_data={
+                "selected_pjl_url": "https://acme.com/jobs",
+                "job_titles": t827._TWO_TITLES,
+            },
+        )
+        seen: Dict[str, int] = {}
+        real_cull = roster_mod._culled_dom_for_parse
+
+        def spy_cull(dom_html: str, job_titles: List[str]) -> Any:
+            # Records the calling thread, keeps the real cull result
+            seen["tid"] = threading.get_ident()
+            return real_cull(dom_html, job_titles)
+
+        monkeypatch.setattr(roster_mod, "_culled_dom_for_parse", spy_cull)
+        monkeypatch.setattr(roster_mod, "get_company", MagicMock(return_value=company))
+        monkeypatch.setattr(roster_mod, "save_company_data", MagicMock())
+        monkeypatch.setattr(roster_mod, "_save_company", MagicMock())
+        monkeypatch.setattr(roster_mod, "create_browser_context", t827._browser_cm())
+        monkeypatch.setattr(
+            roster_mod, "_scrape_list_page_dom_for_parse",
+            AsyncMock(return_value=t827._SIBLING_DOM),
+        )
+        monkeypatch.setattr(
+            roster_mod, "_fetch_parse_job_list",
+            AsyncMock(return_value={"job_container": "a", "job_tag": "a", "job_ids": ["j1", "j2"]}),
+        )
+        monkeypatch.setattr(
+            roster_mod, "_validate_parse_job_list_raw_job_listings",
+            MagicMock(return_value=(None, [], [])),
+        )
+        out = await roster_mod.run_parse_job_list_dispatch(company, "batch-1840")
+        assert out["state"] == "GET_UPSHOT"  # AST-2070: parse pass_state
+        assert seen["tid"] != threading.get_ident()
+
+    @staticmethod
+    def _miss_spy(monkeypatch: pytest.MonkeyPatch, seen: Dict[str, int]) -> None:
+        # Finalize paths: stub saves, force cull_miss, record the cull's thread
+        def spy_cull(dom_html: str, job_titles: List[str]) -> Any:
+            seen["tid"] = threading.get_ident()
+            return ("", [], "cull_miss")
+
+        monkeypatch.setattr(roster_mod, "_culled_dom_for_parse", spy_cull)
+        monkeypatch.setattr(roster_mod, "save_company_data", MagicMock())
+        monkeypatch.setattr(roster_mod, "_save_company", MagicMock())
+
+    @pytest.mark.asyncio
+    async def test_finalize_after_chain_culls_off_event_loop(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        seen: Dict[str, int] = {}
+        self._miss_spy(monkeypatch, seen)
+        out = await roster_mod._finalize_joblist_titles_after_chain(
+            {"job_titles": ["A", "B"], "selected_page": 0}, {"parsed_response": {}},
+            "acme", "https://acme.com", "https://acme.com/jobs",
+            {0: "<div>A B</div>"}, {0: "A B"}, 0, "JOBLIST_TITLES", False, None,
+        )
+        assert out["state"] == "ERROR_SELECT_JOB_PAGE_UNPARSEABLE"
+        assert seen["tid"] != threading.get_ident()
+
+    @pytest.mark.asyncio
+    async def test_finalize_select_only_culls_off_event_loop(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        seen: Dict[str, int] = {}
+        self._miss_spy(monkeypatch, seen)
+        out = await roster_mod._finalize_joblist_titles_select_only(
+            {"job_titles": ["A", "B"], "selected_page": 0},
+            "acme", "https://acme.com", "https://acme.com/jobs",
+            {0: "<div>A B</div>"}, 0, "JOBLIST_TITLES", False, None, {0: "A B"},
+        )
+        assert out["state"] == "ERROR_SELECT_JOB_PAGE_UNPARSEABLE"
+        assert seen["tid"] != threading.get_ident()
 
 
 class TestAst701ScrapeCompanyHomepageContent:
@@ -1472,8 +1713,8 @@ class TestPrefilterCompany:
         monkeypatch.setattr(roster_mod, "transition_company_state", transition)
         monkeypatch.setattr(roster_mod, "save_company_data", save)
         out = await roster_mod.prefilter_company("acme", "https://acme.com")
-        assert out["state"] == "CANNOT_READ_WEBSITE"
-        transition.assert_called_once_with("acme", "CANNOT_READ_WEBSITE")
+        assert out["state"] == "ERROR_PREFILTER_COMPANY_UNREADABLE"
+        transition.assert_called_once_with("acme", "ERROR_PREFILTER_COMPANY_UNREADABLE")
         save.assert_called_once()
 
     @pytest.mark.asyncio
@@ -1509,7 +1750,7 @@ class TestPrefilterCompany:
         update.assert_called_once_with("acme", company_website="https://canonical.example")
 
         empty = await roster_mod.prefilter_company("acme", "https://acme.com")
-        assert empty["state"] == "CANNOT_READ_WEBSITE"
+        assert empty["state"] == "ERROR_PREFILTER_COMPANY_UNREADABLE"
 
     @pytest.mark.asyncio
     async def test_api_failure_and_missing_parsed_response(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1552,7 +1793,7 @@ class TestPrefilterCompany:
 
     @pytest.mark.asyncio
     async def test_pass_and_fail_grades_persist_data(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """AST-507/718: encoded jobs[0] shape; decomposed monolithic path uses PREFILTER_* / NO_PREFILTER_JOBLISTS."""
+        """AST-507/718: encoded jobs[0] shape; decomposed monolithic path uses PREFILTER_* / ERROR_PREFILTER_COMPANY_NO_JOBLIST_LINKS."""
         _patch_prefilter_scrape_with_nav(monkeypatch)
         monkeypatch.setattr(roster_mod, "get_company", MagicMock(return_value=_company(state_history=[])))
         save = MagicMock()
@@ -1738,7 +1979,7 @@ class TestAst718PrefilterPjlRouting:
             ),
         )
         out = await roster_mod.prefilter_company("acme", "https://acme.com", ctx=_prefilter_rubric_ctx())
-        assert out["state"] == "NO_PREFILTER_JOBLISTS"
+        assert out["state"] == "ERROR_PREFILTER_COMPANY_NO_JOBLIST_LINKS"
         assert out["decision"] == "IGNORE"
         saved = save.call_args[0][1]
         assert saved["possible_joblist_links"] == []
@@ -1791,7 +2032,7 @@ class TestAst718PrefilterPjlRouting:
             ),
         )
         out = await roster_mod.prefilter_company("acme", "https://acme.com", ctx=_prefilter_rubric_ctx())
-        assert out["state"] == "NO_PREFILTER_JOBLISTS"
+        assert out["state"] == "ERROR_PREFILTER_COMPANY_NO_JOBLIST_LINKS"
 
     @pytest.mark.asyncio
     async def test_batch_homepage_ready_pass_requires_hydrated_pjl(
@@ -2003,7 +2244,8 @@ class TestAst702PrefilterCompanyBatch:
             {"short_name": "blank", "state": "HOMEPAGE_READY", "company_data": {"homepage_text": "  "}},
         ]
         out = await roster_mod.prefilter_company_batch("batch-skip", companies, debug=False)
-        assert out == {"passed": 0, "failed": 0, "total": 2, "skipped": 2}
+        # AST-1839: the not-ready early return carries retried=0.
+        assert out == {"passed": 0, "failed": 0, "total": 2, "skipped": 2, "retried": 0}
         do_task.assert_not_called()
         assert transition.call_count == 2
         save.assert_called()
@@ -2093,8 +2335,9 @@ class TestAst702PrefilterCompanyBatch:
             },
         ]
         out = await roster_mod.prefilter_company_batch("batch-fail", companies, debug=False)
-        assert out == {"passed": 0, "failed": 0, "total": 1}
-        transition.assert_called_once_with("acme", "WEBSITE_FOUND_RETRY")
+        # AST-1839: parsing-class first strike from HR → HOMEPAGE_READY_RETRY (no re-scrape), counted as retried.
+        assert out == {"passed": 0, "failed": 0, "total": 1, "retried": 1}
+        transition.assert_called_once_with("acme", "HOMEPAGE_READY_RETRY")
 
 
 class TestAst702PrefilterBatchHelpers:
@@ -2105,12 +2348,14 @@ class TestAst702PrefilterBatchHelpers:
 
     def test_prefilter_batch_fail_dest_from_homepage_ready(self) -> None:
         cfg = ROSTER_CONFIG["prefilter"]
-        assert roster_mod._prefilter_batch_fail_dest("HOMEPAGE_READY", cfg) == "WEBSITE_FOUND_RETRY"
-        assert roster_mod._prefilter_batch_fail_dest("WEBSITE_FOUND_RETRY", cfg) == "ERROR_PREFILTER"
+        # AST-1839: parsing first strike → HOMEPAGE_READY_RETRY; anything out of a holding → error_state.
+        assert roster_mod._prefilter_batch_fail_dest("HOMEPAGE_READY", cfg) == "HOMEPAGE_READY_RETRY"
+        assert roster_mod._prefilter_batch_fail_dest("HOMEPAGE_READY_RETRY", cfg) == "ERROR_PREFILTER_COMPANY"
+        assert roster_mod._prefilter_batch_fail_dest("WEBSITE_FOUND_RETRY", cfg) == "ERROR_PREFILTER_COMPANY"
 
 
 class TestAst882PrefilterOneRetryThenError:
-    """AST-882: one-retry then ERROR_PREFILTER; leave not-ready WFR for fetch_website."""
+    """AST-882: one-retry then ERROR_PREFILTER_COMPANY; leave not-ready WFR for fetch_website."""
 
     def test_prefilter_fail_first_strike_retries(self, monkeypatch: pytest.MonkeyPatch) -> None:
         cfg = ROSTER_CONFIG["prefilter"]
@@ -2122,9 +2367,10 @@ class TestAst882PrefilterOneRetryThenError:
             MagicMock(return_value=_company(state="HOMEPAGE_READY")),
         )
         out = roster_mod._prefilter_fail("acme", cfg, {}, "decode boom")
+        # AST-1839: first strike lands in the prefilter-owned HOMEPAGE_READY_RETRY holding.
         assert out["decision"] == "RETRY"
-        assert out["state"] == "WEBSITE_FOUND_RETRY"
-        transition.assert_called_once_with("acme", "WEBSITE_FOUND_RETRY")
+        assert out["state"] == "HOMEPAGE_READY_RETRY"
+        transition.assert_called_once_with("acme", "HOMEPAGE_READY_RETRY")
 
     def test_prefilter_fail_second_strike_errors(self, monkeypatch: pytest.MonkeyPatch) -> None:
         cfg = ROSTER_CONFIG["prefilter"]
@@ -2137,8 +2383,8 @@ class TestAst882PrefilterOneRetryThenError:
         )
         out = roster_mod._prefilter_fail("acme", cfg, {}, "decode boom again")
         assert out["decision"] == "ERROR"
-        assert out["state"] == "ERROR_PREFILTER"
-        transition.assert_called_once_with("acme", "ERROR_PREFILTER")
+        assert out["state"] == "ERROR_PREFILTER_COMPANY"
+        transition.assert_called_once_with("acme", "ERROR_PREFILTER_COMPANY")
 
     @pytest.mark.asyncio
     async def test_batch_do_task_failure_second_strike_to_error(
@@ -2151,16 +2397,17 @@ class TestAst882PrefilterOneRetryThenError:
             "do_task",
             AsyncMock(return_value={"success": False, "error": "api down"}),
         )
+        # AST-1839: second strike now comes out of HOMEPAGE_READY_RETRY (prefilter's own holding).
         companies = [
             {
                 "short_name": "acme",
-                "state": "WEBSITE_FOUND_RETRY",
+                "state": "HOMEPAGE_READY_RETRY",
                 "company_data": {"homepage_text": "hello"},
             },
         ]
         out = await roster_mod.prefilter_company_batch("batch-882-err", companies, debug=False)
-        assert out == {"passed": 0, "failed": 0, "total": 1}
-        transition.assert_called_once_with("acme", "ERROR_PREFILTER")
+        assert out == {"passed": 0, "failed": 0, "total": 1, "retried": 0}
+        transition.assert_called_once_with("acme", "ERROR_PREFILTER_COMPANY")
 
     @pytest.mark.asyncio
     async def test_not_ready_wfr_left_alone_for_fetch_website(
@@ -2185,9 +2432,9 @@ class TestAst882PrefilterOneRetryThenError:
             },
         ]
         out = await roster_mod.prefilter_company_batch("batch-882-skip", companies, debug=False)
-        assert out == {"passed": 0, "failed": 0, "total": 2, "skipped": 2}
+        assert out == {"passed": 0, "failed": 0, "total": 2, "skipped": 2, "retried": 0}
         do_task.assert_not_called()
-        transition.assert_called_once_with("hr-empty", "CANNOT_READ_WEBSITE")
+        transition.assert_called_once_with("hr-empty", "ERROR_PREFILTER_COMPANY_UNREADABLE")
         save.assert_called_once()
 
 
@@ -2385,7 +2632,7 @@ class TestFindJobPage:
 
         monkeypatch.setattr(roster_mod, "create_browser_context", _browser)
         out = await roster_mod.find_job_page("https://acme.com", debug=True)
-        assert out["state"] == "NO_JOBLIST"
+        assert out["state"] == "ERROR_SELECT_JOB_PAGE_NO_JOBLIST"
         save.assert_called_once()
 
     @pytest.mark.asyncio
@@ -2454,7 +2701,7 @@ class TestFindJobPage:
 
         monkeypatch.setattr(roster_mod, "create_browser_context", _browser)
         failed = await roster_mod.find_job_page("https://acme.com", short_name="acme", debug=True)
-        assert failed["state"] == "NO_JOBLIST"
+        assert failed["state"] == "ERROR_SELECT_JOB_PAGE_NO_JOBLIST"
 
     @pytest.mark.asyncio
     async def test_try_links_without_suggestions_and_empty_scrape(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -2479,7 +2726,7 @@ class TestFindJobPage:
 
         monkeypatch.setattr(roster_mod, "create_browser_context", _browser)
         empty_scrape = await roster_mod.find_job_page("https://acme.com", short_name="acme", debug=True)
-        assert empty_scrape["state"] == "NO_JOBLIST"
+        assert empty_scrape["state"] == "ERROR_SELECT_JOB_PAGE_NO_JOBLIST"
         save.assert_called()
 
 
@@ -2542,7 +2789,7 @@ class TestCheckParseResults:
         )
         assert no_jobs["state"] == "NO_OPENINGS"
         unknown = await roster_mod._check_parse_results({}, "OTHER", "acme", "https://acme.com", "https://acme.com/jobs", {})
-        assert unknown["state"] == "NO_JOBLIST"
+        assert unknown["state"] == "ERROR_SELECT_JOB_PAGE_NO_JOBLIST"
 
     @pytest.mark.asyncio
     async def test_joblist_titles_paths(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -2561,7 +2808,7 @@ class TestCheckParseResults:
             selected_page=1,
             debug=True,
         )
-        assert no_dom["state"] == "NO_JOBLIST"
+        assert no_dom["state"] == "ERROR_SELECT_JOB_PAGE_NO_JOBLIST"
 
         monkeypatch.setattr(roster_mod, "find_job_containers", MagicMock(return_value=["<div>Role</div>"]))
         monkeypatch.setattr(roster_mod, "_fetch_parse_job_list", AsyncMock(return_value={}))
@@ -2574,7 +2821,7 @@ class TestCheckParseResults:
             {1: "<div>Role</motion>"},
             selected_page=1,
         )
-        assert no_parse["state"] == "CANNOT_PARSE_JOB_SITE"
+        assert no_parse["state"] == "ERROR_SELECT_JOB_PAGE_UNPARSEABLE"
 
         monkeypatch.setattr(
             roster_mod,
@@ -2595,7 +2842,7 @@ class TestCheckParseResults:
             {1: "<div class='jobs'><a>Role id-1</a></div>"},
             selected_page=1,
         )
-        assert invalid["state"] == "CANNOT_PARSE_JOB_SITE"
+        assert invalid["state"] == "ERROR_SELECT_JOB_PAGE_UNPARSEABLE"
 
         monkeypatch.setattr(
             roster_mod,
@@ -2612,33 +2859,34 @@ class TestCheckParseResults:
             {1: "<motion class='jobs'><a>Role id-1</a></motion>"},
             selected_page=1,
         )
-        assert success["state"] == "WATCH"
+        assert success["state"] == "GET_UPSHOT"  # AST-2070: locate pass_states
         assert success["parse_instructions"]["container"] == ".jobs"
 
 
 class TestJobSiteForPersist673:
     def test_watch_writes_page_option_url(self) -> None:
+        # AST-2070: locate/parse success now persists at GET_UPSHOT; WATCH is reached later by transition only
         assert roster_mod._job_site_for_persist(
-            terminal_state="WATCH",
+            terminal_state="GET_UPSHOT",
             page_option_url="https://confirmed.example/jobs",
             pre_run_job_site="https://careers.example/jobs",
         ) == "https://confirmed.example/jobs"
 
     def test_no_joblist_preserves_pre_run_job_site(self) -> None:
         assert roster_mod._job_site_for_persist(
-            terminal_state="NO_JOBLIST",
+            terminal_state="ERROR_SELECT_JOB_PAGE_NO_JOBLIST",
             page_option_url="https://example.com",
             pre_run_job_site="https://careers.example/jobs",
         ) == "https://careers.example/jobs"
 
     def test_no_joblist_empty_baseline_stays_empty(self) -> None:
         assert roster_mod._job_site_for_persist(
-            terminal_state="NO_JOBLIST",
+            terminal_state="ERROR_SELECT_JOB_PAGE_NO_JOBLIST",
             page_option_url="https://example.com",
             pre_run_job_site="",
         ) == ""
 
-    @pytest.mark.parametrize("terminal_state", ["NO_OPENINGS", "CANNOT_PARSE_JOB_SITE"])
+    @pytest.mark.parametrize("terminal_state", ["NO_OPENINGS", "ERROR_SELECT_JOB_PAGE_UNPARSEABLE"])
     def test_success_states_write_page_option_url(self, terminal_state: str) -> None:
         assert roster_mod._job_site_for_persist(
             terminal_state=terminal_state,
@@ -2683,7 +2931,7 @@ class TestFindJobPageAst673:
         monkeypatch.setattr(roster_mod, "update_company", update)
         monkeypatch.setattr(roster_mod, "save_company_data", MagicMock())
         monkeypatch.setattr(roster_mod, "transition_company_state", MagicMock())
-        roster_mod._save_company("acme", "https://example.com", "NO_JOBLIST", "https://example.com")
+        roster_mod._save_company("acme", "https://example.com", "ERROR_SELECT_JOB_PAGE_NO_JOBLIST", "https://example.com")
         assert update.call_args.kwargs["job_site"] == "https://careers.example/jobs"
 
     @pytest.mark.asyncio
@@ -2703,7 +2951,7 @@ class TestFindJobPageAst673:
 
         monkeypatch.setattr(roster_mod, "create_browser_context", _browser)
         out = await roster_mod.find_job_page("https://example.com", short_name="acme", debug=True)
-        assert out["state"] == "NO_JOBLIST"
+        assert out["state"] == "ERROR_SELECT_JOB_PAGE_NO_JOBLIST"
         update.assert_called_once()
         assert update.call_args.kwargs["job_site"] == ""
 
@@ -2805,7 +3053,7 @@ class TestFindJobPageAst674:
         )
         jf.assert_not_awaited()
         save.assert_called_once()
-        assert out["state"] == "NO_JOBLIST"
+        assert out["state"] == "ERROR_SELECT_JOB_PAGE_NO_JOBLIST"
 
     @pytest.mark.asyncio
     async def test_no_pjl_emits_no_llm_log(self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
@@ -2942,14 +3190,18 @@ class TestCoatCheckHandlers:
         async def _browser():
             yield AsyncMock()
 
+        # AST-2134 revision: scrape + keep via gazer; blob gets the row id, caller gets the enumerated links.
         monkeypatch.setattr(roster_mod, "create_browser_context", _browser)
-        monkeypatch.setattr(roster_mod, "extract_site_page_list", AsyncMock(return_value=["https://acme.com/about"]))
-        monkeypatch.setattr(roster_mod, "enumerate_array", MagicMock(return_value="1. /about"))
+        monkeypatch.setattr(gazer_mod, "extract_site_page_list", AsyncMock(return_value=["https://acme.com/about"]))
         save = MagicMock()
         monkeypatch.setattr(roster_mod, "save_company_data", save)
         out = await roster_mod._fetch_nav_links(_company())
-        assert out == "1. /about"
+        assert out == roster_mod.enumerate_array("", ["https://acme.com/about"])
         save.assert_called_once()
+        name, patch = save.call_args.args
+        assert name == "acme" and set(patch) == {"nav_links"}
+        assert gazer_mod.is_telescope_id(patch["nav_links"])
+        assert gazer_mod.resolve_telescope_value(patch["nav_links"]) == out
 
     @pytest.mark.asyncio
     async def test_nav_links_returns_none_on_empty_or_failure(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -2958,18 +3210,18 @@ class TestCoatCheckHandlers:
             yield AsyncMock()
 
         monkeypatch.setattr(roster_mod, "create_browser_context", _browser)
-        monkeypatch.setattr(roster_mod, "extract_site_page_list", AsyncMock(return_value=[]))
+        monkeypatch.setattr(gazer_mod, "extract_site_page_list", AsyncMock(return_value=[]))
         assert await roster_mod._fetch_nav_links(_company()) is None
-        monkeypatch.setattr(roster_mod, "extract_site_page_list", AsyncMock(side_effect=RuntimeError("boom")))
+        monkeypatch.setattr(gazer_mod, "extract_site_page_list", AsyncMock(side_effect=RuntimeError("boom")))
         assert await roster_mod._fetch_nav_links(_company()) is None
 
     @pytest.mark.asyncio
     async def test_prefilter_notes_paths(self, monkeypatch: pytest.MonkeyPatch) -> None:
         assert await roster_mod._fetch_prefilter_notes({"short_name": "", "company_website": ""}) is None
-        monkeypatch.setattr(roster_mod, "get_visible_text", AsyncMock(return_value=""))
+        monkeypatch.setattr(gazer_mod, "get_visible_text", AsyncMock(return_value=("", "")))
         assert await roster_mod._fetch_prefilter_notes(_company()) is None
-        monkeypatch.setattr(roster_mod, "get_visible_text", AsyncMock(return_value="hello"))
-        monkeypatch.setattr(roster_mod, "extract_site_page_list", AsyncMock(side_effect=RuntimeError("nav")))
+        monkeypatch.setattr(gazer_mod, "get_visible_text", AsyncMock(return_value=("hello", "")))
+        monkeypatch.setattr(gazer_mod, "extract_site_page_list", AsyncMock(side_effect=RuntimeError("nav")))
         monkeypatch.setattr(roster_mod, "do_task", AsyncMock(return_value={"success": False}))
         assert await roster_mod._fetch_prefilter_notes(_company()) is None
         monkeypatch.setattr(
@@ -3006,13 +3258,19 @@ class TestCoatCheckHandlers:
         async def _browser():
             yield AsyncMock()
 
+        # AST-2134 revision: blob gets [{url, id}] of the raw capture; caller still gets stripped [{url, content}].
         monkeypatch.setattr(roster_mod, "create_browser_context", _browser)
-        monkeypatch.setattr(roster_mod, "get_visible_text", AsyncMock(return_value="culture text"))
+        monkeypatch.setattr(gazer_mod, "get_visible_text", AsyncMock(return_value=("  culture text \n", "")))
         save = MagicMock()
         monkeypatch.setattr(roster_mod, "save_company_data", save)
         out = await roster_mod._fetch_website_content(company)
         assert out == [{"url": "https://acme.com/culture", "content": "culture text"}]
         save.assert_called_once()
+        refs = save.call_args.args[1]["website_content"]
+        assert [r["url"] for r in refs] == ["https://acme.com/culture"] and set(refs[0]) == {"url", "id"}
+        assert gazer_mod.resolve_telescope_value(refs[0]["id"]) == "  culture text \n"
+        # Reader parity: resolving the stored refs gives exactly what the handler returned
+        assert roster_mod._resolve_company_value("website_content", refs) == out
 
 
 class TestGetCompanyData:
@@ -3273,8 +3531,8 @@ class TestSaveCompanyBranches:
 class TestFetchPrefilterNotesBranches:
     @pytest.mark.asyncio
     async def test_persists_optional_fields_and_handles_failures(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(roster_mod, "get_visible_text", AsyncMock(return_value="hello"))
-        monkeypatch.setattr(roster_mod, "extract_site_page_list", AsyncMock(return_value=["https://acme.com/about"]))
+        monkeypatch.setattr(gazer_mod, "get_visible_text", AsyncMock(return_value=("hello", "")))
+        monkeypatch.setattr(gazer_mod, "extract_site_page_list", AsyncMock(return_value=["https://acme.com/about"]))
         monkeypatch.setattr(roster_mod, "enumerate_array", MagicMock(return_value="1. /about"))
         _patch_prefilter_candidate_rubric(monkeypatch)
         monkeypatch.setattr(
@@ -3305,7 +3563,7 @@ class TestFetchPrefilterNotesBranches:
         )
         save.assert_called_once()
 
-        monkeypatch.setattr(roster_mod, "get_visible_text", AsyncMock(side_effect=RuntimeError("boom")))
+        monkeypatch.setattr(gazer_mod, "get_visible_text", AsyncMock(side_effect=RuntimeError("boom")))
         assert await roster_mod._fetch_prefilter_notes(_company()) is None
 
 
@@ -3329,10 +3587,10 @@ class TestWebsiteContentBranches:
 
         monkeypatch.setattr(roster_mod, "create_browser_context", _browser)
         monkeypatch.setattr(roster_mod, "parse_enumerate_array", MagicMock(return_value={1: "https://acme.com/culture"}))
-        monkeypatch.setattr(roster_mod, "get_visible_text", AsyncMock(side_effect=RuntimeError("blocked")))
+        monkeypatch.setattr(gazer_mod, "get_visible_text", AsyncMock(side_effect=RuntimeError("blocked")))
         assert await roster_mod._fetch_website_content(company) is None
 
-        monkeypatch.setattr(roster_mod, "get_visible_text", AsyncMock(return_value="   "))
+        monkeypatch.setattr(gazer_mod, "get_visible_text", AsyncMock(return_value=("   ", "")))
         assert await roster_mod._fetch_website_content(company) is None
 
     @pytest.mark.asyncio
@@ -3427,7 +3685,7 @@ class TestFindJobPageTryLinksBranches:
 
         monkeypatch.setattr(roster_mod, "create_browser_context", _browser)
         out = await roster_mod.find_job_page("https://acme.com", short_name="acme", debug=False)
-        assert out["state"] == "NO_JOBLIST"
+        assert out["state"] == "ERROR_SELECT_JOB_PAGE_NO_JOBLIST"
 
     @pytest.mark.asyncio
     async def test_try_links_retry_still_not_joblist(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -3462,7 +3720,7 @@ class TestFindJobPageTryLinksBranches:
 
         monkeypatch.setattr(roster_mod, "create_browser_context", _browser)
         out = await roster_mod.find_job_page("https://acme.com", short_name="acme", debug=True)
-        assert out["state"] == "NO_JOBLIST"
+        assert out["state"] == "ERROR_SELECT_JOB_PAGE_NO_JOBLIST"
 
 
 class TestFetchJobLinksContentBranches:
@@ -3529,7 +3787,7 @@ class TestCheckParseResultsBranches:
             selected_page=1,
             debug=False,
         )
-        assert out["state"] == "CANNOT_PARSE_JOB_SITE"
+        assert out["state"] == "ERROR_SELECT_JOB_PAGE_UNPARSEABLE"
 
     @pytest.mark.asyncio
     async def test_missing_containers_with_debug(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -3546,7 +3804,7 @@ class TestCheckParseResultsBranches:
             selected_page=1,
             debug=True,
         )
-        assert out["state"] == "CANNOT_PARSE_JOB_SITE"
+        assert out["state"] == "ERROR_SELECT_JOB_PAGE_UNPARSEABLE"
 
 
 class TestDeriveShortnameBranches:
@@ -3557,8 +3815,8 @@ class TestDeriveShortnameBranches:
 class TestFetchPrefilterNotesMoreBranches:
     @pytest.mark.asyncio
     async def test_returns_none_without_reasons_or_nav_links(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(roster_mod, "get_visible_text", AsyncMock(return_value="hello"))
-        monkeypatch.setattr(roster_mod, "extract_site_page_list", AsyncMock(return_value=[]))
+        monkeypatch.setattr(gazer_mod, "get_visible_text", AsyncMock(return_value=("hello", "")))
+        monkeypatch.setattr(gazer_mod, "extract_site_page_list", AsyncMock(return_value=[]))
         monkeypatch.setattr(
             roster_mod,
             "do_task",
@@ -3634,7 +3892,7 @@ class TestRosterCoverageGaps:
             selected_page=1,
             debug=True,
         )
-        assert out["state"] == "CANNOT_PARSE_JOB_SITE"
+        assert out["state"] == "ERROR_SELECT_JOB_PAGE_UNPARSEABLE"
 
     @pytest.mark.asyncio
     async def test_check_parse_results_logs_no_jobs(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -3658,9 +3916,9 @@ class TestRosterCoverageGaps:
 
     @pytest.mark.asyncio
     async def test_prefilter_notes_returns_saved_notes_with_nav_links(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(roster_mod, "get_visible_text", AsyncMock(return_value="homepage"))
+        monkeypatch.setattr(gazer_mod, "get_visible_text", AsyncMock(return_value=("homepage", "")))
         monkeypatch.setattr(
-            roster_mod,
+            gazer_mod,
             "extract_site_page_list",
             AsyncMock(return_value=["https://Acme.com/careers/"]),
         )
@@ -3711,7 +3969,7 @@ class TestRosterCoverageGaps:
 
         monkeypatch.setattr(roster_mod, "create_browser_context", _browser)
         out = await roster_mod.find_job_page("https://acme.com", short_name="acme", debug=True)
-        assert out["state"] == "NO_JOBLIST"
+        assert out["state"] == "ERROR_SELECT_JOB_PAGE_NO_JOBLIST"
         save.assert_called_once()
 
     @pytest.mark.asyncio
@@ -3741,7 +3999,7 @@ class TestRosterCoverageGaps:
 
         monkeypatch.setattr(roster_mod, "create_browser_context", _browser)
         out = await roster_mod.find_job_page("https://acme.com", short_name="acme", debug=False)
-        assert out["state"] == "NO_JOBLIST"
+        assert out["state"] == "ERROR_SELECT_JOB_PAGE_NO_JOBLIST"
 
     @pytest.mark.asyncio
     async def test_watch_failure_transitions_configured_error_state(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -3760,8 +4018,8 @@ class TestRosterCoverageGaps:
 
     @pytest.mark.asyncio
     async def test_prefilter_notes_returns_none_without_reasons(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(roster_mod, "get_visible_text", AsyncMock(return_value="homepage"))
-        monkeypatch.setattr(roster_mod, "extract_site_page_list", AsyncMock(return_value=["https://acme.com/about"]))
+        monkeypatch.setattr(gazer_mod, "get_visible_text", AsyncMock(return_value=("homepage", "")))
+        monkeypatch.setattr(gazer_mod, "extract_site_page_list", AsyncMock(return_value=["https://acme.com/about"]))
         monkeypatch.setattr(roster_mod, "enumerate_array", MagicMock(return_value="1. /about"))
         monkeypatch.setattr(
             roster_mod,
@@ -3848,7 +4106,7 @@ async def test_run_company_task_jobs_found_watch_counts_passed(monkeypatch: pyte
     monkeypatch.setattr(
         roster_mod,
         "jobs_found_process_job_site",
-        AsyncMock(return_value={"state": "WATCH"}),
+        AsyncMock(return_value={"state": "GET_UPSHOT"}),  # AST-2069: locate pass_states
     )
     out = await roster_mod.run_company_task("JOBS_FOUND", ent, "b1")
     assert out["total_passed"] == 1
@@ -3860,7 +4118,7 @@ async def test_run_company_task_jobs_found_other_state_counts_failed(monkeypatch
     monkeypatch.setattr(
         roster_mod,
         "jobs_found_process_job_site",
-        AsyncMock(return_value={"state": "NO_JOBLIST"}),
+        AsyncMock(return_value={"state": "ERROR_SELECT_JOB_PAGE_NO_JOBLIST"}),
     )
     out = await roster_mod.run_company_task("JOBS_FOUND", ent, "b1")
     assert out["total_failed"] == 1
@@ -3872,7 +4130,7 @@ async def test_run_company_task_jobs_found_error_moves_locate_error_state(monkey
     monkeypatch.setattr(
         roster_mod,
         "jobs_found_process_job_site",
-        AsyncMock(return_value={"error": "boom", "state": "NO_JOBLIST"}),
+        AsyncMock(return_value={"error": "boom", "state": "ERROR_SELECT_JOB_PAGE_NO_JOBLIST"}),
     )
     transition = MagicMock()
     monkeypatch.setattr(roster_mod, "transition_company_state", transition)
@@ -3939,20 +4197,19 @@ class TestJobsFoundProcessJobSite469:
         assert update.call_args.kwargs["job_site"] == "https://careers.example/jobs"
 
     @pytest.mark.asyncio
-    async def test_scrape_error_without_transition_when_no_error_state(
+    async def test_scrape_error_transitions_to_select_error(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        # AST-2086 AC3: error_state is required config — the no-error_state / literal fallback is gone.
         monkeypatch.setattr(roster_mod, "_strip_company_data_keys", MagicMock())
-        loc = dict(ROSTER_CONFIG["locate_job_page"])
-        loc["error_state"] = None
-        monkeypatch.setitem(roster_mod.ROSTER_CONFIG, "locate_job_page", loc)
         monkeypatch.setattr(roster_mod, "get_visible_text", AsyncMock(side_effect=IOError()))
         transition = MagicMock()
         monkeypatch.setattr(roster_mod, "transition_company_state", transition)
-        await roster_mod.jobs_found_process_job_site(
+        out = await roster_mod.jobs_found_process_job_site(
             "acme", "https://corp", "https://jobs", debug=False,
         )
-        transition.assert_not_called()
+        transition.assert_called_once_with("acme", "ERROR_SELECT_JOB_PAGE")
+        assert (out["state"], out["response_type"]) == ("ERROR_SELECT_JOB_PAGE", "SCRAPE_FAIL")
 
     @pytest.mark.asyncio
     async def test_scrape_error_transition_when_error_state_present(
@@ -4193,7 +4450,7 @@ class TestFinalize469BranchCoverage:
             False,
             {},
         )
-        assert out["state"] == "CANNOT_PARSE_JOB_SITE"
+        assert out["state"] == "ERROR_SELECT_JOB_PAGE_UNPARSEABLE"
 
     @pytest.mark.asyncio
     async def test_after_chain_whitespace_only_container_notes(
@@ -4215,7 +4472,7 @@ class TestFinalize469BranchCoverage:
             False,
             {},
         )
-        assert out["state"] == "CANNOT_PARSE_JOB_SITE"
+        assert out["state"] == "ERROR_SELECT_JOB_PAGE_UNPARSEABLE"
 
     @pytest.mark.asyncio
     async def test_after_chain_value_error_vis_empty_still_watch(
@@ -4243,7 +4500,7 @@ class TestFinalize469BranchCoverage:
             False,
             {},
         )
-        assert out["state"] == "WATCH"
+        assert out["state"] == "GET_UPSHOT"  # AST-2070: locate pass_states, not hard-coded WATCH
 
     @pytest.mark.asyncio
     async def test_after_chain_persists_job_list_visible_strip(
@@ -4271,7 +4528,7 @@ class TestFinalize469BranchCoverage:
             False,
             {},
         )
-        assert out["state"] == "WATCH"
+        assert out["state"] == "GET_UPSHOT"  # AST-2070: locate pass_states, not hard-coded WATCH
 
     @pytest.mark.asyncio
     async def test_select_only_string_page_int_error_yields_watch(
@@ -4306,7 +4563,7 @@ class TestFinalize469BranchCoverage:
             {},
             {},
         )
-        assert out["state"] == "WATCH"
+        assert out["state"] == "GET_UPSHOT"  # AST-2070: locate pass_states, not hard-coded WATCH
 
     @pytest.mark.asyncio
     async def test_select_only_persist_visible_on_int_coercion_success(
@@ -4341,7 +4598,7 @@ class TestFinalize469BranchCoverage:
             {},
             {9: " hello "},
         )
-        assert out["state"] == "WATCH"
+        assert out["state"] == "GET_UPSHOT"  # AST-2070: locate pass_states
 
     @pytest.mark.asyncio
     async def test_after_chain_no_dom_for_selected_page(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -4361,7 +4618,7 @@ class TestFinalize469BranchCoverage:
             False,
             {},
         )
-        assert out["state"] == "NO_JOBLIST"
+        assert out["state"] == "ERROR_SELECT_JOB_PAGE_NO_JOBLIST"
         saver.assert_called_once()
 
     @pytest.mark.asyncio
@@ -4416,7 +4673,7 @@ class TestFinalize469BranchCoverage:
             False,
             {},
         )
-        assert out["state"] == "CANNOT_PARSE_JOB_SITE"
+        assert out["state"] == "ERROR_SELECT_JOB_PAGE_UNPARSEABLE"
         saver.assert_called_once()
 
 
@@ -4504,7 +4761,7 @@ class TestAst505InflowDiscovery:
         db.save_candidate("c1", state="ACTIVE_SEARCH", candidate_data={})
         db.sync_company_search_terms("c1", ["fintech"])
         hits = [{"title": "Co", "url": "https://co.example", "snippet": "snip"}]
-        monkeypatch.setattr(roster_mod, "search_google_cse", MagicMock(return_value=hits))
+        monkeypatch.setattr(roster_mod, "search_google_cse", MagicMock(return_value=_cse_result(hits)))
         cand = {"astral_candidate_id": "c1", "candidate_data": {}}
         out = await roster_mod.run_inflow_discovery_batch(cand, "batch-505", cand, False)
         assert out["total_passed"] == 1
@@ -4512,7 +4769,8 @@ class TestAst505InflowDiscovery:
         assert out["total_errors"] == 0
         row = db.get_company("co_example")
         assert row is not None
-        assert row["state"] == "NEW"
+        # land_state is DISCOVERED (AST-775); CSE return shape is AST-2219
+        assert row["state"] == "DISCOVERED"
         term_row = next(r for r in db.list_company_search_terms("c1") if r["search_term"] == "fintech")
         assert term_row["last_scan_at"] is not None
 
@@ -4524,10 +4782,10 @@ class TestAst505InflowDiscovery:
         db.save_candidate("c1", state="ACTIVE_SEARCH", candidate_data={})
         db.sync_company_search_terms("c1", ["bad", "good"])
 
-        def _cse(query: str, **kwargs: Any) -> List[Dict[str, str]]:
+        def _cse(query: str, **kwargs: Any) -> Dict[str, Any]:
             if query == "bad":
                 raise RuntimeError("quota")
-            return [{"title": "Ok", "url": "https://ok.example", "snippet": ""}]
+            return _cse_result([{"title": "Ok", "url": "https://ok.example", "snippet": ""}])
 
         monkeypatch.setattr(roster_mod, "search_google_cse", _cse)
         cand = {"astral_candidate_id": "c1", "candidate_data": {}}
@@ -4539,8 +4797,9 @@ class TestAst505InflowDiscovery:
         assert rows["bad"] is None
         assert db.get_company("ok_example") is not None
         combined = "\n".join(r.message for r in caplog.records)
-        assert "CSE failed for term 'bad'" in combined
-        assert "1 CSE term error(s) for candidate c1" in combined
+        # warn_exc format (AST-2219-era product); obsolete "CSE failed for term" string retired
+        assert "candidate CSE search term 'bad'" in combined
+        assert "RuntimeError" in combined and "quota" in combined
 
     @pytest.mark.asyncio
     async def test_run_batch_searches_only_stale_terms(self, seeded_db, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -4550,9 +4809,9 @@ class TestAst505InflowDiscovery:
         db.update_company_search_term_last_scan_at("c1", "fresh")
         searched: list[str] = []
 
-        def _cse(query: str, **kwargs: Any) -> List[Dict[str, str]]:
+        def _cse(query: str, **kwargs: Any) -> Dict[str, Any]:
             searched.append(query)
-            return []
+            return _cse_result([])
 
         monkeypatch.setattr(roster_mod, "search_google_cse", _cse)
         monkeypatch.setattr(
@@ -4576,9 +4835,9 @@ class TestAst505InflowDiscovery:
         db.update_company_search_term_last_scan_at("c814", "fresh")
         searched: list[str] = []
 
-        def _cse(query: str, **kwargs: Any) -> List[Dict[str, str]]:
+        def _cse(query: str, **kwargs: Any) -> Dict[str, Any]:
             searched.append(query)
-            return []
+            return _cse_result([])
 
         monkeypatch.setattr(roster_mod, "search_google_cse", _cse)
         cand = {"astral_candidate_id": "c814", "candidate_data": {}}
@@ -4604,79 +4863,146 @@ class TestAst505InflowDiscovery:
         proc.assert_awaited_once_with(cand, "batch-505", cand, False)
 
 
-class TestAst837CsePaceDebug:
-    """AST-837 / AST-839: roster passes log.debug_detail as pace_detail when debug=True."""
+class TestAst2219SearchTimesheetRecording:
+    """AST-2219 AC10: each CSE query inside a batch writes one DISPATCH_SEARCH row."""
 
     @pytest.mark.asyncio
-    async def test_discovery_debug_streams_pace_detail_during_search(
+    async def test_ac10_discovery_seven_hits_records_dispatch_search(
+        self, seeded_db, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        db = seeded_db
+        db.save_candidate("c2219", state="ACTIVE_SEARCH", candidate_data={})
+        db.sync_company_search_terms("c2219", ["fintech"])
+        hits = [
+            {"title": f"Co{i}", "url": f"https://co{i}.example", "snippet": ""}
+            for i in range(7)
+        ]
+        monkeypatch.setattr(
+            roster_mod, "search_google_cse", MagicMock(return_value=_cse_result(hits))
+        )
+        cand = {"astral_candidate_id": "c2219", "candidate_data": {}}
+        await roster_mod.run_inflow_discovery_batch(cand, "batch-2219", cand, False)
+        rows = [r for r in db.list_timesheets() if r.get("request_type") == "DISPATCH_SEARCH"]
+        assert len(rows) == 1
+        row = rows[0]
+        assert row["candidate_id"] == "c2219"
+        assert row["batch_id"] == "batch-2219"
+        assert row["response_item_count"] == 7
+        assert row["provider"] == "google_cse"
+        assert row["entity_type"] == "candidate"
+        assert row["entity_id"] == "c2219"
+        for tok in (
+            "total_output_tokens",
+            "total_no_cache_input_tokens",
+            "cache_write_tokens",
+            "cache_read_tokens",
+            "no_cache_prompt_tokens",
+            "no_cache_live_tokens",
+        ):
+            assert int(row.get(tok) or 0) == 0
+
+    @pytest.mark.asyncio
+    async def test_resolve_records_when_log_batch_id_set(
+        self, seeded_db, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from src.utils.logging import log_batch_id
+
+        db = seeded_db
+        hits = [{"title": "Acme", "url": "https://acme2219.example", "snippet": "official"}]
+        monkeypatch.setattr(
+            roster_mod, "search_google_cse", MagicMock(return_value=_cse_result(hits))
+        )
+        monkeypatch.setattr(roster_mod, "save_company_data", MagicMock())
+        monkeypatch.setattr(roster_mod, "transition_company_state", MagicMock())
+        entity = {
+            "company_name": "Acme Corp",
+            "company_website": "",
+            "candidate_id": "c2219r",
+        }
+        token = log_batch_id.set("batch-2219-resolve")
+        try:
+            await roster_mod.resolve_company_website("acme2219", entity, {}, False)
+        finally:
+            log_batch_id.reset(token)
+        rows = [r for r in db.list_timesheets() if r.get("request_type") == "DISPATCH_SEARCH"]
+        assert len(rows) == 1
+        assert rows[0]["batch_id"] == "batch-2219-resolve"
+        assert rows[0]["entity_type"] == "company"
+        assert rows[0]["entity_id"] == "acme2219"
+        assert rows[0]["response_item_count"] == 1
+
+    @pytest.mark.asyncio
+    async def test_resolve_skips_record_without_batch(
+        self, seeded_db, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        db = seeded_db
+        monkeypatch.setattr(
+            roster_mod, "search_google_cse", MagicMock(return_value=_cse_result([]))
+        )
+        monkeypatch.setattr(roster_mod, "transition_company_state", MagicMock())
+        entity = {"company_name": "Acme", "company_website": "", "candidate_id": "c2219s"}
+        await roster_mod.resolve_company_website("acme2219s", entity, {}, False)
+        assert db.list_timesheets() == []
+
+
+class TestAst837CsePaceDebug:
+    """AST-837 (revised AST-2219): discovery always passes `_pace_debug` as pace_detail → logger.debug."""
+
+    @pytest.mark.asyncio
+    async def test_discovery_wires_pace_detail_to_logger_debug(
         self, seeded_db, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         db = seeded_db
         db.save_candidate("c1", state="ACTIVE_SEARCH", candidate_data={})
         db.sync_company_search_terms("c1", ["fintech"])
-        events: list[str] = []
+        debug_lines: list[str] = []
+        real_debug = roster_mod.logger.debug
 
-        def _debug_index(**kwargs: Any) -> None:
-            events.append(f"index:{kwargs.get('outcome')}")
+        def _debug(msg: str, *args: Any, **kwargs: Any) -> None:
+            line = msg % args if args else str(msg)
+            debug_lines.append(line)
+            return real_debug(msg, *args, **kwargs)
 
-        def _debug_detail(msg: str) -> None:
-            events.append(f"detail:{msg}")
-
-        def _cse(query: str, **kwargs: Any) -> List[Dict[str, str]]:
+        def _cse(query: str, **kwargs: Any) -> Dict[str, Any]:
             pace_detail = kwargs.get("pace_detail")
-            if pace_detail is not None:
-                pace_detail("CSE HTTP start=1 status=200 items=1")
-            return [{"title": "Co", "url": "https://co.example", "snippet": "snip"}]
+            assert pace_detail is not None
+            pace_detail("CSE HTTP start=1 status=200 items=1")
+            return _cse_result([{"title": "Co", "url": "https://co.example", "snippet": "snip"}])
 
         monkeypatch.setattr(roster_mod, "search_google_cse", _cse)
-        monkeypatch.setattr(roster_mod.logger, "debug_index", _debug_index)
-        monkeypatch.setattr(roster_mod.logger, "debug_detail", _debug_detail)
+        monkeypatch.setattr(roster_mod.logger, "debug", _debug)
         cand = {"astral_candidate_id": "c1", "candidate_data": {}}
         await roster_mod.run_inflow_discovery_batch(cand, "batch-839", cand, True)
-        assert events[0] == "index:CSE search"
-        http_idx = next(i for i, e in enumerate(events) if "CSE HTTP start=" in e)
-        complete_idx = next(i for i, e in enumerate(events) if e.startswith("detail:search complete:"))
-        assert http_idx < complete_idx
+        assert any("CSE HTTP start=1 status=200 items=1" in line for line in debug_lines)
 
 
 class TestAst839CseDebugStreaming:
-    """AST-839: pre-search index header + search complete detail (no pace_lines buffer)."""
+    """AST-839 (revised AST-2219): resolve passes `_pace_debug` as pace_detail → logger.debug."""
 
     @pytest.mark.asyncio
-    async def test_resolve_debug_streams_pre_search_index_and_complete_detail(
+    async def test_resolve_wires_pace_detail_to_logger_debug(
         self, seeded_db, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        db = seeded_db
-        db.save_company("acme", state="NEW", company_name="Acme Corp")
-        events: list[str] = []
+        debug_lines: list[str] = []
+        real_debug = roster_mod.logger.debug
 
-        monkeypatch.setattr(
-            roster_mod.logger,
-            "debug_index",
-            lambda **kwargs: events.append(f"index:{kwargs.get('outcome')}"),
-        )
-        monkeypatch.setattr(
-            roster_mod.logger,
-            "debug_detail",
-            lambda msg: events.append(f"detail:{msg}"),
-        )
-        def _cse(**kwargs: Any) -> List[Dict[str, str]]:
+        def _debug(msg: str, *args: Any, **kwargs: Any) -> None:
+            line = msg % args if args else str(msg)
+            debug_lines.append(line)
+            return real_debug(msg, *args, **kwargs)
+
+        def _cse(**kwargs: Any) -> Dict[str, Any]:
             pace_detail = kwargs.get("pace_detail")
-            if pace_detail is not None:
-                pace_detail("CSE HTTP start=1 status=200 items=0")
-            return []
+            assert pace_detail is not None
+            pace_detail("CSE HTTP start=1 status=200 items=0")
+            return _cse_result([])
 
         monkeypatch.setattr(roster_mod, "search_google_cse", _cse)
-        monkeypatch.setattr(
-            roster_mod,
-            "do_task",
-            AsyncMock(return_value={"success": False, "error": "skip vet"}),
-        )
+        monkeypatch.setattr(roster_mod.logger, "debug", _debug)
+        monkeypatch.setattr(roster_mod, "transition_company_state", MagicMock())
         entity = {"company_name": "Acme Corp", "company_website": ""}
         await roster_mod.resolve_company_website("acme", entity, {}, True)
-        assert events[0] == "index:CSE search"
-        assert any("CSE HTTP start=" in e for e in events)
-        assert any(e.startswith("detail:search complete:") for e in events)
+        assert any("CSE HTTP start=1 status=200 items=0" in line for line in debug_lines)
 
 
 class TestAst775InflowDiscoveryRecordNew:
@@ -4772,7 +5098,7 @@ class TestAst775InflowDiscoveryRecordNew:
         db = seeded_db
         db.save_candidate("c1", state="ACTIVE_SEARCH", candidate_data={})
         db.sync_company_search_terms("c1", ["empty"])
-        monkeypatch.setattr(roster_mod, "search_google_cse", MagicMock(return_value=[]))
+        monkeypatch.setattr(roster_mod, "search_google_cse", MagicMock(return_value=_cse_result([])))
         cand = {"astral_candidate_id": "c1", "candidate_data": {}}
         out = await roster_mod.run_inflow_discovery_batch(cand, "batch-775", cand, False)
         assert out == {"total_processed": 1, "total_passed": 0, "total_failed": 0, "total_errors": 0}
@@ -4888,7 +5214,7 @@ class TestAst776VetInflowDiscoveryCompany:
     @pytest.mark.asyncio
     async def test_run_company_task_routes_resolve_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
         vet = AsyncMock()
-        resolve = AsyncMock(return_value={"success": True, "state": "NO_WEBSITE", "error": None})
+        resolve = AsyncMock(return_value={"success": True, "state": "ERROR_INFLOW_RESOLVE_WEBSITE_NOT_FOUND", "error": None})
         monkeypatch.setattr(roster_mod, "vet_inflow_discovery_company", vet)
         monkeypatch.setattr(roster_mod, "resolve_company_website", resolve)
         entity = _company(state="DISCOVERED", company_website="")
@@ -5042,7 +5368,7 @@ class TestAst880VetInflowEncoded:
 
 
 class TestAst506InflowResolve:
-    """AST-506/1673: CSE-only inflow_resolve_website → WEBSITE_REVIEW | NO_WEBSITE (no do_task)."""
+    """AST-506/1673: CSE-only inflow_resolve_website → WEBSITE_REVIEW | ERROR_INFLOW_RESOLVE_WEBSITE_NOT_FOUND (no do_task)."""
 
     @pytest.mark.asyncio
     async def test_resolve_skips_when_website_present(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -5055,22 +5381,22 @@ class TestAst506InflowResolve:
 
     @pytest.mark.asyncio
     async def test_resolve_empty_hits_no_website(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(roster_mod, "search_google_cse", MagicMock(return_value=[]))
+        monkeypatch.setattr(roster_mod, "search_google_cse", MagicMock(return_value=_cse_result([])))
         transition = MagicMock()
         monkeypatch.setattr(roster_mod, "transition_company_state", transition)
         do_task = AsyncMock()
         monkeypatch.setattr(roster_mod, "do_task", do_task)
         entity = _company(state="DISCOVERED", company_website="")
         out = await roster_mod.resolve_company_website("acme", entity, {}, False)
-        assert out["state"] == "NO_WEBSITE"
-        transition.assert_called_once_with("acme", "NO_WEBSITE")
+        assert out["state"] == "ERROR_INFLOW_RESOLVE_WEBSITE_NOT_FOUND"
+        transition.assert_called_once_with("acme", "ERROR_INFLOW_RESOLVE_WEBSITE_NOT_FOUND")
         do_task.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_resolve_hits_persist_website_review(self, monkeypatch: pytest.MonkeyPatch) -> None:
         # AST-1673 AC4: ≥1 hit → persist hit list + WEBSITE_REVIEW; never do_task.
         hits = [{"title": "Acme", "url": "https://acme.example", "snippet": "official"}]
-        monkeypatch.setattr(roster_mod, "search_google_cse", MagicMock(return_value=hits))
+        monkeypatch.setattr(roster_mod, "search_google_cse", MagicMock(return_value=_cse_result(hits)))
         do_task = AsyncMock()
         monkeypatch.setattr(roster_mod, "do_task", do_task)
         save_data = MagicMock()
@@ -5107,7 +5433,7 @@ class TestAst506InflowResolve:
             "resolve_company_website",
             AsyncMock(side_effect=[
                 {"success": True, "state": "WEBSITE_REVIEW", "error": None},
-                {"success": True, "state": "NO_WEBSITE", "error": None},
+                {"success": True, "state": "ERROR_INFLOW_RESOLVE_WEBSITE_NOT_FOUND", "error": None},
                 {"success": False, "state": None, "error": "boom"},
             ]),
         )
@@ -5127,7 +5453,7 @@ class TestAst506InflowResolve:
 
 
 class TestAst1673ConsultResolveFetchHop:
-    """AST-1673: consult routes inflow_resolve_website like fetch hop; NO_WEBSITE counts passed."""
+    """AST-1673: consult routes inflow_resolve_website like fetch hop; ERROR_INFLOW_RESOLVE_WEBSITE_NOT_FOUND counts passed."""
 
     @pytest.mark.asyncio
     async def test_consult_resolve_counts_website_review_and_no_website_as_passed(
@@ -5138,7 +5464,7 @@ class TestAst1673ConsultResolveFetchHop:
         resolve = AsyncMock(
             side_effect=[
                 {"success": True, "state": "WEBSITE_REVIEW", "error": None},
-                {"success": True, "state": "NO_WEBSITE", "error": None},
+                {"success": True, "state": "ERROR_INFLOW_RESOLVE_WEBSITE_NOT_FOUND", "error": None},
                 {"success": False, "state": None, "error": "cse boom"},
             ],
         )
@@ -5167,7 +5493,7 @@ class TestAst1673ConsultResolveFetchHop:
 
 
 class TestAst1674ResolveWebsiteApply:
-    """AST-1674: resolve_website AI apply on WEBSITE_REVIEW → WEBSITE_FOUND | NO_WEBSITE."""
+    """AST-1674: resolve_website AI apply on WEBSITE_REVIEW → WEBSITE_FOUND | ERROR_RESOLVE_WEBSITE_NOT_FOUND."""
 
     def _review_entity(self, hits=None, **extra):
         data = {"inflow_resolve_website_hits": hits if hits is not None else [
@@ -5235,8 +5561,8 @@ class TestAst1674ResolveWebsiteApply:
         monkeypatch.setattr(roster_mod, "transition_company_state", transition)
         monkeypatch.setattr(roster_mod, "update_company", update)
         out = await roster_mod.resolve_website_company("acme", self._review_entity(), {}, False)
-        assert out == {"success": True, "state": "NO_WEBSITE", "error": None}
-        transition.assert_called_once_with("acme", "NO_WEBSITE")
+        assert out == {"success": True, "state": "ERROR_RESOLVE_WEBSITE_NOT_FOUND", "error": None}
+        transition.assert_called_once_with("acme", "ERROR_RESOLVE_WEBSITE_NOT_FOUND")
         update.assert_not_called()
 
     @pytest.mark.asyncio
@@ -5275,7 +5601,7 @@ class TestAst1674ResolveWebsiteApply:
         apply_hop = AsyncMock(
             side_effect=[
                 {"success": True, "state": "WEBSITE_FOUND", "error": None},
-                {"success": True, "state": "NO_WEBSITE", "error": None},
+                {"success": True, "state": "ERROR_RESOLVE_WEBSITE_NOT_FOUND", "error": None},
                 {"success": False, "state": None, "error": "missing hits"},
             ],
         )
@@ -5413,13 +5739,13 @@ class TestAst692JobsiteScrapeIssue:
             {},
             debug=True,
         )
-        assert out["state"] == "JOBSITE_SCRAPE_ISSUE"
+        assert out["state"] == "ERROR_SELECT_JOB_PAGE_UNREADABLE"
         assert out["job_site"] == "https://acme.com/jobs"
         assert out["response_type"] == "JOBSITE_SCRAPE_ISSUE"
         strip.assert_called_once_with("acme", ("job_list_visible",))
         save.assert_called_once()
         kwargs = save.call_args.kwargs
-        assert kwargs["state"] == "JOBSITE_SCRAPE_ISSUE"
+        assert kwargs["state"] == "ERROR_SELECT_JOB_PAGE_UNREADABLE"
         assert kwargs["page_option_url"] == "https://acme.com/jobs"
         assert kwargs["jobsite_scrape_issue_summary"] == "Listing region empty"
         assert kwargs["raw_response"]["scrape_issue_summary"] == "Listing region empty"
@@ -5441,7 +5767,7 @@ class TestAst692JobsiteScrapeIssue:
         check = AsyncMock(
             return_value={
                 "short_name": "acme",
-                "state": "JOBSITE_SCRAPE_ISSUE",
+                "state": "ERROR_SELECT_JOB_PAGE_UNREADABLE",
                 "job_site": "https://acme.com/jobs",
                 "response_type": "JOBSITE_SCRAPE_ISSUE",
             }
@@ -5469,7 +5795,7 @@ class TestAst692JobsiteScrapeIssue:
         assert do_task.await_args.args[0] == "select_job_page"
         check.assert_awaited_once()
         fin_chain.assert_not_awaited()
-        assert out["state"] == "JOBSITE_SCRAPE_ISSUE"
+        assert out["state"] == "ERROR_SELECT_JOB_PAGE_UNREADABLE"
         assert out["response_type"] == "JOBSITE_SCRAPE_ISSUE"
 
     @pytest.mark.asyncio
@@ -5484,7 +5810,7 @@ class TestAst692JobsiteScrapeIssue:
             "https://acme.com/jobs",
             {},
         )
-        assert out["state"] == "NO_JOBLIST"
+        assert out["state"] == "ERROR_SELECT_JOB_PAGE_NO_JOBLIST"
         assert out["response_type"] == "OTHER"
 
 
@@ -5592,7 +5918,7 @@ class TestAst877OriginatingSearchTerm:
         db.save_candidate("c877", state="ACTIVE_SEARCH", candidate_data={})
         db.sync_company_search_terms("c877", ["fintech"])
         hits = [{"title": "Co", "url": "https://co877.example", "snippet": "snip"}]
-        monkeypatch.setattr(roster_mod, "search_google_cse", MagicMock(return_value=hits))
+        monkeypatch.setattr(roster_mod, "search_google_cse", MagicMock(return_value=_cse_result(hits)))
         cand = {"astral_candidate_id": "c877", "candidate_data": {}}
         out = await roster_mod.run_inflow_discovery_batch(cand, "batch-877", cand, False)
         assert out["total_passed"] == 1
@@ -5604,24 +5930,20 @@ class TestAst877OriginatingSearchTerm:
     async def test_run_batch_debug_emits_originating_search_term(
         self, seeded_db, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        # Name kept; assertion is company row stamp (debug_detail streaming retired on this tip).
         db = seeded_db
         db.save_candidate("c877", state="ACTIVE_SEARCH", candidate_data={})
         db.sync_company_search_terms("c877", ["fintech"])
-        details: list[str] = []
-
-        monkeypatch.setattr(
-            roster_mod.logger,
-            "debug_detail",
-            lambda msg: details.append(msg),
-        )
         monkeypatch.setattr(
             roster_mod,
             "search_google_cse",
-            MagicMock(return_value=[{"title": "Co", "url": "https://dbg877.example", "snippet": ""}]),
+            MagicMock(return_value=_cse_result([{"title": "Co", "url": "https://dbg877.example", "snippet": ""}])),
         )
         cand = {"astral_candidate_id": "c877", "candidate_data": {}}
         await roster_mod.run_inflow_discovery_batch(cand, "batch-877-dbg", cand, True)
-        assert any("originating_search_term='fintech'" in d for d in details)
+        row = db.get_company("dbg877_example")
+        assert row is not None
+        assert row["originating_search_term"] == "fintech"
 
 
 def _mock_parse_batch_browser_session(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
@@ -5736,9 +6058,9 @@ class TestAst891ParseDispatchInfraAndBatchSession:
         out = await roster_mod.run_parse_job_list_dispatch(
             company, "batch-891", batch_session=MagicMock(),
         )
-        assert out["state"] == "COULD_NOT_PARSE_JOBLIST"
+        assert out["state"] == "ERROR_PARSE_JOB_LIST_UNPARSEABLE"
         assert out["response_type"] == "PARSE_DISPATCH_INFRA"
-        assert save_co.call_args.kwargs.get("state") == "COULD_NOT_PARSE_JOBLIST"
+        assert save_co.call_args.kwargs.get("state") == "ERROR_PARSE_JOB_LIST_UNPARSEABLE"
 
 
 class TestAst891ParseJobListBatch:
@@ -5762,14 +6084,21 @@ class TestAst891ParseJobListBatch:
         async def _dispatch(company, batch_id, ctx, debug, batch_session=None):
             seen.append(batch_session)
             if company["short_name"] == "co-ok":
-                return {"state": "WATCH", "response_type": "PARSE_DISPATCH_OK"}
-            return {"state": "JOBLIST_IDENTIFIED_RETRY", "response_type": "PARSE_DISPATCH_INFRA"}
+                return {"state": "GET_UPSHOT", "response_type": "PARSE_DISPATCH_OK"}
+            if company["short_name"] == "co-retry":
+                return {"state": "JOBLIST_IDENTIFIED_RETRY", "response_type": "PARSE_DISPATCH_INFRA"}
+            return {"state": "ERROR_PARSE_JOB_LIST_UNPARSEABLE", "response_type": "PARSE_DISPATCH_INFRA"}
 
         monkeypatch.setattr(roster_mod, "run_parse_job_list_dispatch", _dispatch)
-        companies = [self._co("co-ok"), self._co("co-retry")]
+        companies = [
+            self._co("co-ok"),
+            self._co("co-retry"),
+            self._co("co-terminal", state="JOBLIST_IDENTIFIED_RETRY"),
+        ]
         out = await roster_mod.parse_job_list_batch("batch-891", companies)
-        assert out == {"passed": 2, "failed": 0, "total": 2, "errors": 0}
-        assert seen == [batch_session, batch_session]
+        # AST-1839: retry holding → retried (not passed); terminal out of the holding → errors.
+        assert out == {"passed": 1, "failed": 0, "total": 3, "errors": 1, "retried": 1}
+        assert seen == [batch_session, batch_session, batch_session]
 
     @pytest.mark.asyncio
     async def test_scrape_timeout_labeled_infra_and_counts_passed(
@@ -5785,7 +6114,7 @@ class TestAst891ParseJobListBatch:
 
         async def _slow(*_a, **_k):
             await asyncio.sleep(5)
-            return {"state": "WATCH", "response_type": "PARSE_DISPATCH_OK"}
+            return {"state": "GET_UPSHOT", "response_type": "PARSE_DISPATCH_OK"}
 
         monkeypatch.setattr(roster_mod, "run_parse_job_list_dispatch", _slow)
         monkeypatch.setitem(roster_mod.PLAYWRIGHT_CONFIG, "company_scrape_timeout_seconds", 0.05)
@@ -5803,7 +6132,7 @@ class TestAst891ParseJobListBatch:
         async def _dispatch(company, *_a, **_k):
             if company["short_name"] == "co-boom":
                 raise RuntimeError("unexpected parse boom")
-            return {"state": "WATCH", "response_type": "PARSE_DISPATCH_OK"}
+            return {"state": "GET_UPSHOT", "response_type": "PARSE_DISPATCH_OK"}
 
         monkeypatch.setattr(roster_mod, "run_parse_job_list_dispatch", _dispatch)
         companies = [self._co("co-ok"), self._co("co-boom"), self._co("co-also")]
@@ -5833,7 +6162,7 @@ class TestAst891ParseJobListBatch:
         monkeypatch.setattr(
             roster_mod,
             "run_parse_job_list_dispatch",
-            AsyncMock(return_value={"state": "WATCH", "response_type": "PARSE_DISPATCH_OK"}),
+            AsyncMock(return_value={"state": "GET_UPSHOT", "response_type": "PARSE_DISPATCH_OK"}),
         )
         await roster_mod.parse_job_list_batch("batch-891", [self._co("acme")], debug=True)
         assert indexes
@@ -5841,8 +6170,106 @@ class TestAst891ParseJobListBatch:
         assert indexes[0]["identifier"] == "acme"
 
 
+class TestAst1847ParseJobListBatchPartialTally:
+    """AST-1847 / AST-1848: per-company outcomes tally into ctx["dispatch_partial"] in place."""
+
+    _co = staticmethod(TestAst891ParseJobListBatch._co)
+
+    @staticmethod
+    def _partial_ctx() -> Dict[str, Any]:
+        return {"dispatch_partial": dict(total_processed=0, total_passed=0, total_failed=0, total_errors=0)}
+
+    @pytest.mark.asyncio
+    async def test_tallies_every_outcome_into_ctx_dispatch_partial(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        # All four _one branches: error / pass (_tally key) / retry (_tally None) / terminal.
+        _mock_parse_batch_browser_session(monkeypatch)
+        results = {
+            "co-ok": {"state": "GET_UPSHOT"},  # AST-2069: parse pass_state
+            "co-retry": {"state": "JOBLIST_IDENTIFIED_RETRY"},
+            "co-err": {"error": "boom", "state": "JOBLIST_IDENTIFIED_RETRY"},
+            "co-term": {"state": "ERROR_PARSE_JOB_LIST_UNPARSEABLE"},
+        }
+
+        async def _dispatch(company, *_a, **_k):
+            return results[company["short_name"]]
+
+        monkeypatch.setattr(roster_mod, "run_parse_job_list_dispatch", _dispatch)
+        ctx = self._partial_ctx()
+        partial = ctx["dispatch_partial"]
+        companies = [
+            self._co("co-ok"),
+            self._co("co-retry"),
+            self._co("co-err"),
+            self._co("co-term", state="JOBLIST_IDENTIFIED_RETRY"),
+        ]
+        out = await roster_mod.parse_job_list_batch("batch-1847", companies, ctx=ctx)
+        assert partial == {"total_processed": 4, "total_passed": 1, "total_failed": 0, "total_errors": 2}
+        assert ctx["dispatch_partial"] is partial
+        # Normal-return shape unchanged.
+        assert out == {"passed": 1, "failed": 0, "total": 4, "errors": 2, "retried": 1}
+
+    @pytest.mark.asyncio
+    async def test_counted_tallies_escaping_exception_once(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        _mock_parse_batch_browser_session(monkeypatch)
+
+        async def _dispatch(company, *_a, **_k):
+            if company["short_name"] == "co-boom":
+                raise RuntimeError("boom")
+            return {"state": "GET_UPSHOT"}
+
+        monkeypatch.setattr(roster_mod, "run_parse_job_list_dispatch", _dispatch)
+        ctx = self._partial_ctx()
+        out = await roster_mod.parse_job_list_batch(
+            "batch-1847", [self._co("co-ok"), self._co("co-boom")], ctx=ctx,
+        )
+        assert ctx["dispatch_partial"] == {"total_processed": 2, "total_passed": 1, "total_failed": 0, "total_errors": 1}
+        # Post-gather exception count unchanged, not doubled.
+        assert (out["passed"], out["errors"]) == (1, 1)
+
+    @pytest.mark.asyncio
+    async def test_cancelled_company_is_not_tallied(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        # _counted catches Exception only; CancelledError (BaseException) leaves no tally.
+        _mock_parse_batch_browser_session(monkeypatch)
+
+        async def _dispatch(company, *_a, **_k):
+            if company["short_name"] == "co-hang":
+                await asyncio.sleep(3600)
+            return {"state": "GET_UPSHOT"}
+
+        monkeypatch.setattr(roster_mod, "run_parse_job_list_dispatch", _dispatch)
+        ctx = self._partial_ctx()
+        with pytest.raises(asyncio.TimeoutError):
+            await asyncio.wait_for(
+                roster_mod.parse_job_list_batch(
+                    "batch-1847", [self._co("co-ok"), self._co("co-hang")], ctx=ctx,
+                ),
+                0.1,
+            )
+        assert ctx["dispatch_partial"] == {"total_processed": 1, "total_passed": 1, "total_failed": 0, "total_errors": 0}
+
+    @pytest.mark.asyncio
+    async def test_ctx_without_dispatch_partial_is_noop(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        # Branch lock: real ctx lacking the key → partial is None; no key invented.
+        _mock_parse_batch_browser_session(monkeypatch)
+        monkeypatch.setattr(
+            roster_mod, "run_parse_job_list_dispatch", AsyncMock(return_value={"state": "GET_UPSHOT"}),
+        )
+        ctx = {"entity_batch_id": "batch-1847"}
+        out = await roster_mod.parse_job_list_batch("batch-1847", [self._co("co-ok")], ctx=ctx)
+        assert out == {"passed": 1, "failed": 0, "total": 1, "errors": 0, "retried": 0}
+        assert ctx == {"entity_batch_id": "batch-1847"}
+
+
 class TestAst897HoldStateOnBalanceRefusal:
-    """AST-897: provider balance refusal holds company state (no error/retry / NO_JOBLIST)."""
+    """AST-897: provider balance refusal holds company state (no error/retry / ERROR_SELECT_JOB_PAGE_NO_JOBLIST)."""
 
     _FC = "provider_balance_refusal"
 
@@ -5881,10 +6308,11 @@ class TestAst897HoldStateOnBalanceRefusal:
         # Decode/validation failure (has api_response) stays on one-retry ladder — not a hold.
         api_result = {"success": False, "error": "decode boom", "api_response": object()}
         out = roster_mod._prefilter_fail("acme", cfg, {}, "decode boom", api_result=api_result)
+        # AST-1839: parsing-class first strike → HOMEPAGE_READY_RETRY.
         assert out["decision"] == "RETRY"
-        assert out["state"] == "WEBSITE_FOUND_RETRY"
+        assert out["state"] == "HOMEPAGE_READY_RETRY"
         assert out.get("state_held") is not True
-        transition.assert_called_once_with("acme", "WEBSITE_FOUND_RETRY")
+        transition.assert_called_once_with("acme", "HOMEPAGE_READY_RETRY")
 
     @pytest.mark.asyncio
     async def test_batch_prefilter_holds_state(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -5958,7 +6386,8 @@ class TestAst897HoldStateOnBalanceRefusal:
     async def test_run_company_task_jobs_found_balance_hold_skips_error_state(
         self, monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """Outer JOBS_FOUND wrapper must not undo an inner balance hold with locate error_state."""
+        """Outer JOBS_FOUND wrapper must not undo an inner balance hold with locate error_state.
+        AST-1867: counted held, not an error."""
         ent = _company(state="JOBS_FOUND", job_site="https://jobs")
         monkeypatch.setattr(
             roster_mod,
@@ -5975,14 +6404,17 @@ class TestAst897HoldStateOnBalanceRefusal:
         transition = MagicMock()
         monkeypatch.setattr(roster_mod, "transition_company_state", transition)
         out = await roster_mod.run_company_task("JOBS_FOUND", ent, "b897-hold")
-        assert out["total_errors"] == 1
+        assert out["total_errors"] == 0
+        assert out["total_held"] == 1
+        assert out["failure_class"] == self._FC
         transition.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_run_company_task_jobs_found_balance_failure_class_skips_error_state(
         self, monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """Hold also when failure_class is set without state_held (predicate path)."""
+        """Hold also when failure_class is set without state_held (predicate path).
+        AST-1867: counted held, not an error."""
         ent = _company(state="JOBS_FOUND", job_site="https://jobs")
         monkeypatch.setattr(
             roster_mod,
@@ -5998,8 +6430,405 @@ class TestAst897HoldStateOnBalanceRefusal:
         transition = MagicMock()
         monkeypatch.setattr(roster_mod, "transition_company_state", transition)
         out = await roster_mod.run_company_task("JOBS_FOUND", ent, "b897-fc")
-        assert out["total_errors"] == 1
+        assert out["total_errors"] == 0
+        assert out["total_held"] == 1
+        assert out["failure_class"] == self._FC
         transition.assert_not_called()
+
+
+# AST-2010 — exhausted-429 failure_class travels up the company paths the dispatcher reads;
+# routing / counts unchanged (no hold): select failure still ERROR_SELECT_JOB_PAGE_NO_JOBLIST, JOBS_FOUND error still
+# error_state + total_errors, prefilter batch still on the ordinary failure ladder.
+class TestAst2010RateLimitForwarding:
+    FC = "provider_rate_limit"
+    ERR = "Error code: 429 - {'type': 'error', 'error': {'type': 'rate_limit_error'}}"
+
+    def _tagged(self) -> Dict[str, Any]:
+        return {"success": False, "error": self.ERR, "failure_class": self.FC}
+
+    @pytest.mark.asyncio
+    async def test_find_job_page_select_failure_forwards_tag(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(roster_mod, "do_task", AsyncMock(return_value=self._tagged()))
+        saver = MagicMock()
+        monkeypatch.setattr(roster_mod, "_save_company", saver)
+        out = await roster_mod._find_job_page_from_assembled(
+            short_name="acme", company_website="https://cw", assembled_content="asm",
+            page_url_map={1: "https://jobs"}, page_dom_map={1: "<motion/>"}, visible_map={1: ""},
+            nav_links="", browser_context=MagicMock(), debug=False, ctx=None,
+        )
+        assert (out["state"], out["response_type"]) == ("ERROR_SELECT_JOB_PAGE_NO_JOBLIST", "SELECT_FAILED")
+        assert out["failure_class"] == self.FC
+        assert out.get("state_held") is not True
+        saver.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_run_company_task_select_job_page_forwards_tag(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        inner = {"short_name": "acme", "state": "ERROR_SELECT_JOB_PAGE_NO_JOBLIST", "response_type": "SELECT_FAILED", "failure_class": self.FC}
+        monkeypatch.setattr(roster_mod, "run_select_job_page_dispatch", AsyncMock(return_value=inner))
+        out = await roster_mod.run_company_task(
+            "PJL_READY", {"short_name": "acme", "state": "PJL_READY"}, "b2010", dispatch_task_key="select_job_page",
+        )
+        # ERROR_SELECT_JOB_PAGE_NO_JOBLIST is terminal_ok today — count unchanged, tag rides along
+        assert (out["total_processed"], out["total_passed"], out["total_errors"]) == (1, 1, 0)
+        assert out["failure_class"] == self.FC
+        assert "total_held" not in out
+
+    @pytest.mark.asyncio
+    async def test_run_company_task_jobs_found_error_forwards_tag(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        ent = _company(state="JOBS_FOUND", job_site="https://jobs")
+        inner = {"error": self.ERR, "state": "JOBS_FOUND", "failure_class": self.FC}
+        monkeypatch.setattr(roster_mod, "jobs_found_process_job_site", AsyncMock(return_value=inner))
+        transition = MagicMock()
+        monkeypatch.setattr(roster_mod, "transition_company_state", transition)
+        out = await roster_mod.run_company_task("JOBS_FOUND", ent, "b2010")
+        assert out["total_errors"] == 1
+        assert out["failure_class"] == self.FC
+        assert "total_held" not in out
+        # still the ordinary error route (locate error_state), not a hold
+        transition.assert_called_once_with(ent["short_name"], ROSTER_CONFIG["locate_job_page"]["error_state"])
+
+    @pytest.mark.asyncio
+    async def test_batch_prefilter_generic_failure_forwards_tag(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        transition = MagicMock()
+        monkeypatch.setattr(roster_mod, "transition_company_state", transition)
+        monkeypatch.setattr(roster_mod, "do_task", AsyncMock(return_value=self._tagged()))
+        companies = [{"short_name": "acme", "state": "HOMEPAGE_READY", "company_data": {"homepage_text": "hello"}}]
+        out = await roster_mod.prefilter_company_batch("batch-2010", companies, debug=False)
+        assert (out["passed"], out["failed"], out["total"]) == (0, 0, 1)
+        assert out["failure_class"] == self.FC
+        assert out.get("state_held") is not True
+        transition.assert_called()
+
+    @pytest.mark.asyncio
+    async def test_untagged_failure_has_no_failure_class(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # DeepSeek / Kimi 429 arrives untagged — nothing invents a tag on the way up
+        monkeypatch.setattr(roster_mod, "do_task", AsyncMock(return_value={"success": False, "error": self.ERR}))
+        monkeypatch.setattr(roster_mod, "transition_company_state", MagicMock())
+        companies = [{"short_name": "acme", "state": "HOMEPAGE_READY", "company_data": {"homepage_text": "hello"}}]
+        out = await roster_mod.prefilter_company_batch("batch-2010", companies, debug=False)
+        assert "failure_class" not in out
+
+    @pytest.mark.asyncio
+    async def test_prefilter_429_error_reaches_dispatcher_warning(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        # [bug-repro] AST-2140 / AST-2137: exhausted prefilter 429 → roster → consult → dispatcher batch-stop
+        # WARNING must print the provider text, not "()". Local imports keep the module header untouched.
+        from src.core import consult as consult_mod
+        from src.core import dispatcher as dispatcher_mod
+
+        monkeypatch.setattr(roster_mod, "do_task", AsyncMock(return_value=self._tagged()))
+        monkeypatch.setattr(roster_mod, "transition_company_state", MagicMock())
+        companies = [{"short_name": "acme", "state": "HOMEPAGE_READY", "company_data": {"homepage_text": "hello"}}]
+        out = await roster_mod.prefilter_company_batch("batch-2140", companies, debug=False)
+        assert out.get("error") == self.ERR  # roster hop
+        monkeypatch.setattr(roster_mod, "prefilter_company_batch", AsyncMock(return_value=out))
+        summary = await consult_mod.run_consult_task(
+            "company", "HOMEPAGE_READY", companies, "b2140", dispatch_task_key="prefilter_company",
+        )
+        assert summary.get("error") == self.ERR  # consult hop
+        # real chain: the company lands on HOMEPAGE_READY_RETRY (retried, not a run error) — same counts pre-fix
+        assert (summary["total_processed"], summary["total_errors"]) == (1, 0)
+        ctx: Dict[str, Any] = {}
+        with caplog.at_level("WARNING", logger="src.core.dispatcher"):
+            dispatcher_mod._note_provider_rate_limit_outage(
+                ctx, {"entity_type": "company", "task_key": "prefilter_company"}, summary,
+            )
+        assert ctx["provider_rate_limit_outage"]["error"] == self.ERR
+        msgs = [r.getMessage() for r in caplog.records]
+        assert any(f"still 429 after retries ({self.ERR})" in m for m in msgs)
+        assert not any("still 429 after retries ()" in m for m in msgs)
+
+    @pytest.mark.asyncio
+    async def test_find_job_page_select_failure_carries_outage_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # AST-2140 Option B: run_company_task routes on "error", so the entity result carries the text as outage_error
+        monkeypatch.setattr(roster_mod, "do_task", AsyncMock(return_value=self._tagged()))
+        monkeypatch.setattr(roster_mod, "_save_company", MagicMock())
+        out = await roster_mod._find_job_page_from_assembled(
+            short_name="acme", company_website="https://cw", assembled_content="asm",
+            page_url_map={1: "https://jobs"}, page_dom_map={1: "<motion/>"}, visible_map={1: ""},
+            nav_links="", browser_context=MagicMock(), debug=False, ctx=None,
+        )
+        assert (out["state"], out["response_type"]) == ("ERROR_SELECT_JOB_PAGE_NO_JOBLIST", "SELECT_FAILED")
+        assert "error" not in out
+        assert out.get("outage_error") == self.ERR
+        assert out["failure_class"] == self.FC
+
+    @pytest.mark.asyncio
+    async def test_run_company_task_select_job_page_forwards_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # AST-2140 Option B: outage_error is lifted back to "error" on the summary; routing/counts unchanged
+        inner = {"short_name": "acme", "state": "ERROR_SELECT_JOB_PAGE_NO_JOBLIST", "response_type": "SELECT_FAILED",
+                 "failure_class": self.FC, "outage_error": self.ERR}
+        monkeypatch.setattr(roster_mod, "run_select_job_page_dispatch", AsyncMock(return_value=inner))
+        warn = MagicMock()
+        monkeypatch.setattr(roster_mod, "_warn_company", warn)
+        out = await roster_mod.run_company_task(
+            "PJL_READY", {"short_name": "acme", "state": "PJL_READY"}, "b2140", dispatch_task_key="select_job_page",
+        )
+        assert (out["total_processed"], out["total_passed"], out["total_errors"]) == (1, 1, 0)
+        assert out.get("error") == self.ERR
+        assert out["failure_class"] == self.FC
+        warn.assert_not_called()
+
+
+# Branches: select_job_page balance hold → held (no _warn_company); AST-1189 call-budget
+# state_held (no balance failure_class) still an error on select_job_page + JOBS_FOUND.
+class TestAst1867BalanceHeldCounting:
+    """AST-1867 / AST-1870: provider balance refusal counts as held, not an entity error."""
+
+    _FC = "provider_balance_refusal"
+    _REFUSAL_ERR = "Error code: 402 - Insufficient Balance"
+
+    @pytest.mark.asyncio
+    async def test_select_job_page_balance_hold_counts_held_not_error(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(
+            roster_mod,
+            "run_select_job_page_dispatch",
+            AsyncMock(
+                return_value={
+                    "short_name": "acme",
+                    "state": "PJL_READY",
+                    "response_type": "SELECT_FAILED",
+                    "error": self._REFUSAL_ERR,
+                    "failure_class": self._FC,
+                    "state_held": True,
+                }
+            ),
+        )
+        warn = MagicMock()
+        monkeypatch.setattr(roster_mod, "_warn_company", warn)
+        out = await roster_mod.run_company_task(
+            "PJL_READY", {"short_name": "acme", "state": "PJL_READY"}, "b1867",
+            dispatch_task_key="select_job_page",
+        )
+        assert (out["total_processed"], out["total_passed"], out["total_failed"], out["total_errors"]) == (1, 0, 0, 0)
+        assert out["total_held"] == 1
+        assert out["failure_class"] == self._FC
+        assert out["error"] == self._REFUSAL_ERR
+        # the provider already logged the 402 — no second per-company WARNING
+        warn.assert_not_called()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("branch", ["select_job_page", "jobs_found"])
+    async def test_call_budget_hold_still_counts_error(
+        self, monkeypatch: pytest.MonkeyPatch, branch: str,
+    ) -> None:
+        # D1 guard: AST-1189 timeout holds state too, but is not a balance refusal → stays an error
+        # local import: sub/ftr test trees can drop the module-level PROVIDER_CALL_BUDGET import on merge
+        from src.utils.config import PROVIDER_CALL_BUDGET
+
+        state = "PJL_READY" if branch == "select_job_page" else "JOBS_FOUND"
+        inner = {
+            "error": "provider call budget exceeded",
+            "failure_class": PROVIDER_CALL_BUDGET["failure_class"],
+            "state_held": True,
+            "state": state,
+        }
+        transition = MagicMock()
+        monkeypatch.setattr(roster_mod, "transition_company_state", transition)
+        if branch == "select_job_page":
+            monkeypatch.setattr(roster_mod, "run_select_job_page_dispatch", AsyncMock(return_value=inner))
+            out = await roster_mod.run_company_task(
+                "PJL_READY", {"short_name": "acme", "state": "PJL_READY"}, "b1189",
+                dispatch_task_key="select_job_page",
+            )
+        else:
+            monkeypatch.setattr(roster_mod, "jobs_found_process_job_site", AsyncMock(return_value=inner))
+            out = await roster_mod.run_company_task(
+                "JOBS_FOUND", {"short_name": "acme", "job_site": "https://j"}, "b1189",
+            )
+        assert out["total_errors"] == 1
+        assert "total_held" not in out
+        # AST-897 guard: state_held still blocks the JOBS_FOUND error_state transition
+        transition.assert_not_called()
+
+
+# AST-2098 — a failed host probe holds company state on every roster hold branch (select_job_page,
+# JOBS_FOUND, batch prefilter, company upshot, find-job-page select, single-company prefilter) and is
+# counted held, not errored. Literals only (no AST-2098 imports) so these fail by assertion pre-fix.
+class TestAst2098ProbeFailureHold:
+    _FC = "provider_probe_failure"
+    _ERR = "Host probe failed: Probe response named no provider: {'message': 'No endpoints found'}"
+
+    def _tagged(self) -> Dict[str, Any]:
+        return {"success": False, "error": self._ERR, "failure_class": self._FC}
+
+    @pytest.mark.asyncio
+    async def test_select_job_page_probe_hold_counts_held(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        inner = {"short_name": "acme", "state": "PJL_READY", "response_type": "SELECT_FAILED",
+                 "error": self._ERR, "failure_class": self._FC, "state_held": True}
+        monkeypatch.setattr(roster_mod, "run_select_job_page_dispatch", AsyncMock(return_value=inner))
+        warn = MagicMock()
+        monkeypatch.setattr(roster_mod, "_warn_company", warn)
+        out = await roster_mod.run_company_task(
+            "PJL_READY", {"short_name": "acme", "state": "PJL_READY"}, "b2098", dispatch_task_key="select_job_page",
+        )
+        assert (out["total_processed"], out["total_passed"], out["total_failed"], out["total_errors"]) == (1, 0, 0, 0)
+        assert out["total_held"] == 1
+        assert out["failure_class"] == self._FC
+        warn.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_jobs_found_probe_hold_skips_error_state(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        ent = _company(state="JOBS_FOUND", job_site="https://jobs")
+        inner = {"error": self._ERR, "state": "JOBS_FOUND", "failure_class": self._FC}
+        monkeypatch.setattr(roster_mod, "jobs_found_process_job_site", AsyncMock(return_value=inner))
+        transition = MagicMock()
+        monkeypatch.setattr(roster_mod, "transition_company_state", transition)
+        out = await roster_mod.run_company_task("JOBS_FOUND", ent, "b2098")
+        assert out["total_held"] == 1
+        assert out["total_errors"] == 0
+        transition.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_prefilter_batch_probe_hold_counts_held(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        transition = MagicMock()
+        monkeypatch.setattr(roster_mod, "transition_company_state", transition)
+        monkeypatch.setattr(roster_mod, "do_task", AsyncMock(return_value=self._tagged()))
+        companies = [
+            {"short_name": n, "state": "HOMEPAGE_READY", "company_data": {"homepage_text": "hello"}} for n in ("acme", "beta")
+        ]
+        out = await roster_mod.prefilter_company_batch("batch-2098", companies, debug=False)
+        assert out["state_held"] is True
+        assert out["total_held"] == 2
+        transition.assert_not_called()
+        # Through run_consult_task: held companies are not run errors; the class reaches the dispatcher.
+        from src.core import consult as consult_mod
+
+        monkeypatch.setattr(roster_mod, "prefilter_company_batch", AsyncMock(return_value=out))
+        summary = await consult_mod.run_consult_task(
+            "company", "HOMEPAGE_READY", companies, "b2098", dispatch_task_key="prefilter_company",
+        )
+        assert summary["total_errors"] == 0
+        assert summary["total_held"] == 2
+        assert summary["failure_class"] == self._FC
+
+    @pytest.mark.asyncio
+    async def test_company_upshot_probe_hold_counts_held(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        transition = MagicMock()
+        monkeypatch.setattr(roster_mod, "transition_company_state", transition)
+        monkeypatch.setattr(roster_mod, "do_task", AsyncMock(return_value=self._tagged()))
+        companies = [{"short_name": n, "state": "UPSHOT_READY"} for n in ("acme", "beta")]
+        out = await roster_mod.company_upshot_batch("b2098", companies)
+        assert out["state_held"] is True
+        assert out["total_held"] == 2
+        transition.assert_not_called()
+        from src.core import consult as consult_mod
+
+        monkeypatch.setattr(roster_mod, "company_upshot_batch", AsyncMock(return_value=out))
+        summary = await consult_mod.run_consult_task(
+            "company", "UPSHOT_READY", companies, "b2098", dispatch_task_key="company_upshot",
+        )
+        assert summary["total_errors"] == 0
+        assert summary["total_held"] == 2
+        assert summary["failure_class"] == self._FC
+
+    async def _hold_error_hops(
+        self, monkeypatch: pytest.MonkeyPatch, batch_fn: str, state: str, task_key: str, companies: list,
+    ) -> None:
+        # AST-2140: the hand-built hold dict carries the probe text; consult's normalizer forwards it to the summary
+        from src.core import consult as consult_mod
+
+        monkeypatch.setattr(roster_mod, "transition_company_state", MagicMock())
+        monkeypatch.setattr(roster_mod, "do_task", AsyncMock(return_value=self._tagged()))
+        # real batch fn first (both take batch_id, companies), then stubbed with its own output for the consult hop
+        out = await getattr(roster_mod, batch_fn)("b2140", companies)
+        assert out.get("error") == self._ERR  # roster hop
+        monkeypatch.setattr(roster_mod, batch_fn, AsyncMock(return_value=out))
+        summary = await consult_mod.run_consult_task("company", state, companies, "b2140", dispatch_task_key=task_key)
+        assert summary.get("error") == self._ERR  # consult hop
+        assert summary["total_held"] == 2
+
+    @pytest.mark.asyncio
+    async def test_prefilter_batch_probe_hold_forwards_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        companies = [
+            {"short_name": n, "state": "HOMEPAGE_READY", "company_data": {"homepage_text": "hello"}} for n in ("acme", "beta")
+        ]
+        await self._hold_error_hops(monkeypatch, "prefilter_company_batch", "HOMEPAGE_READY", "prefilter_company", companies)
+
+    @pytest.mark.asyncio
+    async def test_company_upshot_probe_hold_forwards_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        companies = [{"short_name": n, "state": "UPSHOT_READY"} for n in ("acme", "beta")]
+        await self._hold_error_hops(monkeypatch, "company_upshot_batch", "UPSHOT_READY", "company_upshot", companies)
+
+    @pytest.mark.asyncio
+    async def test_find_job_page_probe_hold_keeps_state(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(roster_mod, "do_task", AsyncMock(return_value=self._tagged()))
+        saver = MagicMock()
+        monkeypatch.setattr(roster_mod, "_save_company", saver)
+        monkeypatch.setattr(roster_mod, "get_company", MagicMock(return_value=_company(state="PJL_READY")))
+        out = await roster_mod._find_job_page_from_assembled(
+            short_name="acme", company_website="https://cw", assembled_content="asm",
+            page_url_map={1: "https://jobs"}, page_dom_map={1: "<motion/>"}, visible_map={1: ""},
+            nav_links="", browser_context=MagicMock(), debug=False, ctx=None,
+        )
+        assert out["state_held"] is True
+        assert out["state"] == "PJL_READY"
+        assert out["failure_class"] == self._FC
+        saver.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_prefilter_company_probe_hold_keeps_state(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Single-company prefilter → _prefilter_fail hold branch (AST-2098 step 7d).
+        monkeypatch.setattr(
+            roster_mod, "scrape_company_homepage_content",
+            AsyncMock(return_value={"company_website": "https://www.acme.com", "visible_text": "hello",
+                                    "enumerated_nav_links": ""}),
+        )
+        monkeypatch.setattr(roster_mod, "do_task", AsyncMock(return_value=self._tagged()))
+        monkeypatch.setattr(roster_mod, "get_company", MagicMock(return_value=_company(state="HOMEPAGE_READY")))
+        transition = MagicMock()
+        monkeypatch.setattr(roster_mod, "transition_company_state", transition)
+        out = await roster_mod.prefilter_company("acme", "https://www.acme.com")
+        assert out["decision"] == "HOLD"
+        assert out["state"] == "HOMEPAGE_READY"
+        assert out["state_held"] is True
+        assert out["failure_class"] == self._FC
+        transition.assert_not_called()
+
+
+class TestAst1842SelectJobPageTimeoutHold:
+    """AST-1842: provider_call_timeout on select_job_page holds loop-eligible state (no ERROR_SELECT_JOB_PAGE_NO_JOBLIST)."""
+
+    @pytest.mark.asyncio
+    async def test_find_job_page_provider_call_timeout_holds_pjl_ready(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # [bug-repro] pre-fix: timeout falls through to _save_company(state="ERROR_SELECT_JOB_PAGE_NO_JOBLIST") like a model verdict
+        monkeypatch.setattr(
+            roster_mod,
+            "do_task",
+            AsyncMock(
+                return_value={
+                    "success": False,
+                    "error": "Provider call exceeded per-call time budget (600s)",
+                    "failure_class": PROVIDER_CALL_BUDGET["failure_class"],
+                }
+            ),
+        )
+        saver = MagicMock()
+        monkeypatch.setattr(roster_mod, "_save_company", saver)
+        monkeypatch.setattr(roster_mod, "get_company", MagicMock(return_value=_company(state="PJL_READY")))
+        out = await roster_mod._find_job_page_from_assembled(
+            short_name="acme",
+            company_website="https://cw",
+            assembled_content="asm",
+            page_url_map={1: "https://jobs"},
+            page_dom_map={},
+            visible_map={1: ""},
+            nav_links="",
+            browser_context=None,
+            debug=False,
+            ctx=None,
+            chain_parse=False,  # select-only dispatch entry, as run_select_job_page_dispatch calls it
+            decomposed=True,
+        )
+        assert out["response_type"] == "SELECT_FAILED"
+        assert out["state"] == "PJL_READY"
+        assert out.get("state_held") is True
+        assert out.get("failure_class") == PROVIDER_CALL_BUDGET["failure_class"]
+        assert out.get("error")
+        saver.assert_not_called()
 
 
 class TestAst1155PrefilterIncompleteRetry:
@@ -6049,7 +6878,7 @@ class TestAst1155PrefilterIncompleteRetry:
             )
 
     @pytest.mark.asyncio
-    async def test_prefilter_company_incomplete_routes_to_website_found_retry(
+    async def test_prefilter_company_incomplete_routes_to_homepage_ready_retry(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         transition = MagicMock()
@@ -6101,5 +6930,912 @@ class TestAst1155PrefilterIncompleteRetry:
             "https://acme.com",
             ctx={**_prefilter_rubric_ctx(multi_vector=True), "astral_candidate_id": "c1155"},
         )
-        assert out["state"] == "WEBSITE_FOUND_RETRY"
-        transition.assert_called_with("acme", "WEBSITE_FOUND_RETRY")
+        # AST-1839: incomplete grades are a parsing failure → HOMEPAGE_READY_RETRY (no re-scrape).
+        assert out["state"] == "HOMEPAGE_READY_RETRY"
+        transition.assert_called_with("acme", "HOMEPAGE_READY_RETRY")
+
+
+def _ast1846_company(state: str = "HOMEPAGE_READY", short_name: str = "acme_com") -> Dict[str, Any]:
+    """AST-1839 Repro fixture: HOMEPAGE_READY company with homepage text + nav links."""
+    return {
+        "short_name": short_name,
+        "state": state,
+        "company_data": {"homepage_text": "Acme builds rockets.", "nav_links": "[001] https://acme.com/careers"},
+    }
+
+
+def _ast1846_prefilter_env(
+    monkeypatch: pytest.MonkeyPatch,
+    do_task_result: Dict[str, Any],
+    *,
+    history: Optional[List[Dict[str, str]]] = None,
+) -> MagicMock:
+    """Mock prefilter I/O only (do_task, company row, transition, saves); routing + counting stay real."""
+    transition = MagicMock()
+    monkeypatch.setattr(roster_mod, "transition_company_state", transition)
+    monkeypatch.setattr(roster_mod, "save_company_data", MagicMock())
+    monkeypatch.setattr(roster_mod, "get_company", MagicMock(return_value={"state_history": history or []}))
+    monkeypatch.setattr(roster_mod, "do_task", AsyncMock(return_value=do_task_result))
+    return transition
+
+
+def _ast1846_levels(caplog: pytest.LogCaptureFixture, needle: str) -> List[str]:
+    return [r.levelname for r in caplog.records if needle in r.getMessage()]
+
+
+_AST1846_HYDRATE_ERR = "No rubric criterion matching vector 'JO'"
+_AST1846_OK_PARSE = {
+    "success": True,
+    "parsed_response": {"companies": [{"company_id": "acme_com", "grades": [{"vector": "JO", "grade": "A"}]}]},
+}
+_AST1846_ENVELOPE_FAIL = {"success": False, "agent_failure": True, "error": "Agent failure: page is a parked domain"}
+
+
+class TestAst1846PrefilterRetryWarnThenError:
+    """AST-1846 bug-repro (AST-1839): prefilter retry holding → WARNING/uncounted; out of holding → WARNING/counted.
+
+    Red at ftr base 31846c28 (HR → WFR, retries counted, logger.exception), green at 2eac54b5.
+    """
+
+    async def _run_hydrate_fail(self, monkeypatch: pytest.MonkeyPatch, state: str) -> tuple:
+        from src.core import consult as consult_mod
+
+        transition = _ast1846_prefilter_env(monkeypatch, _AST1846_OK_PARSE)
+        monkeypatch.setattr(
+            consult_mod, "_hydrate_response_jobs_grade_reasons", MagicMock(side_effect=ValueError(_AST1846_HYDRATE_ERR)),
+        )
+        out = await consult_mod.run_consult_task(
+            "company", "HOMEPAGE_READY", [_ast1846_company(state)], "b1", dispatch_task_key="prefilter_company",
+        )
+        return out, transition
+
+    @pytest.mark.asyncio
+    async def test_hydrate_fail_from_homepage_ready_warns_into_hr_retry(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        caplog.set_level("DEBUG")
+        out, transition = await self._run_hydrate_fail(monkeypatch, "HOMEPAGE_READY")
+        transition.assert_called_once_with("acme_com", "HOMEPAGE_READY_RETRY")
+        assert out["total_errors"] == 0
+        assert _ast1846_levels(caplog, "acme_com -> HOMEPAGE_READY_RETRY [hydrate:") == ["WARNING"]
+        assert not [r for r in caplog.records if r.levelno >= 40]
+
+    @pytest.mark.asyncio
+    async def test_hydrate_fail_from_hr_retry_errors_into_error_prefilter(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        caplog.set_level("DEBUG")
+        out, transition = await self._run_hydrate_fail(monkeypatch, "HOMEPAGE_READY_RETRY")
+        transition.assert_called_once_with("acme_com", "ERROR_PREFILTER_COMPANY")
+        assert out["total_errors"] == 1
+        # One per-company who -> dest [why] WARNING line (counted as an error, but not ours to fix → no ERROR log).
+        assert _ast1846_levels(caplog, "acme_com -> ERROR_PREFILTER_COMPANY [hydrate:") == ["WARNING"]
+        assert not [r for r in caplog.records if r.levelno >= 40]
+
+    @pytest.mark.asyncio
+    async def test_envelope_fail_first_strike_warns_into_wfr(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        from src.core import consult as consult_mod
+
+        caplog.set_level("DEBUG")
+        transition = _ast1846_prefilter_env(monkeypatch, _AST1846_ENVELOPE_FAIL, history=[])
+        out = await consult_mod.run_consult_task(
+            "company", "HOMEPAGE_READY", [_ast1846_company()], "b1", dispatch_task_key="prefilter_company",
+        )
+        transition.assert_called_once_with("acme_com", "WEBSITE_FOUND_RETRY")
+        assert out["total_errors"] == 0
+        assert _ast1846_levels(caplog, "acme_com -> WEBSITE_FOUND_RETRY [do_task:") == ["WARNING"]
+        assert not [r for r in caplog.records if r.levelno >= 40]
+
+    @pytest.mark.asyncio
+    async def test_envelope_fail_after_rescrape_errors_loop_bound(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        from src.core import consult as consult_mod
+
+        caplog.set_level("DEBUG")
+        history = [{"from_state": "HOMEPAGE_READY", "to_state": "WEBSITE_FOUND_RETRY"}]
+        transition = _ast1846_prefilter_env(monkeypatch, _AST1846_ENVELOPE_FAIL, history=history)
+        out = await consult_mod.run_consult_task(
+            "company", "HOMEPAGE_READY", [_ast1846_company()], "b1", dispatch_task_key="prefilter_company",
+        )
+        # One re-scrape per company: prior HR → WFR edge means the second envelope failure is terminal.
+        transition.assert_called_once_with("acme_com", "ERROR_PREFILTER_COMPANY")
+        assert out["total_errors"] == 1
+        assert _ast1846_levels(caplog, "acme_com -> ERROR_PREFILTER_COMPANY [do_task:") == ["WARNING"]
+
+    @pytest.mark.asyncio
+    async def test_mixed_batch_counts_retried_and_errors(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from src.core import consult as consult_mod
+
+        parse = {
+            "success": True,
+            "parsed_response": {"companies": [
+                {"company_id": "decco", "grades": []},
+                {"company_id": "passco", "grades": []},
+            ]},
+        }
+        transition = _ast1846_prefilter_env(monkeypatch, parse)
+        monkeypatch.setattr(consult_mod, "_hydrate_response_jobs_grade_reasons", MagicMock())
+
+        def _outcome(cid, *_a, **_k):
+            if cid == "decco":
+                raise ValueError("decode boom")
+            return "PREFILTER_PASSED"
+
+        monkeypatch.setattr(roster_mod, "_apply_prefilter_decoded_company_outcome", _outcome)
+        # decco: decode fail from HR (retry); missco: omitted from HR_RETRY (terminal); passco: clean pass.
+        rows = [
+            _ast1846_company("HOMEPAGE_READY", "decco"),
+            _ast1846_company("HOMEPAGE_READY_RETRY", "missco"),
+            _ast1846_company("HOMEPAGE_READY", "passco"),
+        ]
+        out = await roster_mod.prefilter_company_batch("b-mix", [dict(r) for r in rows])
+        assert out.get("retried") == 1
+        assert out["passed"] == 1
+        assert call("decco", "HOMEPAGE_READY_RETRY") in transition.call_args_list
+        assert call("missco", "ERROR_PREFILTER_COMPANY") in transition.call_args_list
+        summary = await consult_mod.run_consult_task(
+            "company", "HOMEPAGE_READY", [dict(r) for r in rows], "b-mix", dispatch_task_key="prefilter_company",
+        )
+        assert summary["total_errors"] == 1
+
+    @pytest.mark.asyncio
+    async def test_parse_job_list_batch_retry_vs_terminal(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        caplog.set_level("DEBUG")
+        _mock_parse_batch_browser_session(monkeypatch)
+        # Real dispatch: no selected_pjl_url → _save_parse_dispatch_failure routes on input_state.
+        monkeypatch.setattr(roster_mod, "get_company", MagicMock(return_value={"company_data": {}}))
+        monkeypatch.setattr(roster_mod, "_save_company", MagicMock())
+        monkeypatch.setattr(roster_mod, "save_company_data", MagicMock())
+        companies = [
+            {"short_name": "co-first", "company_website": "https://first.example", "state": "JOBLIST_IDENTIFIED"},
+            {"short_name": "co-second", "company_website": "https://second.example", "state": "JOBLIST_IDENTIFIED_RETRY"},
+        ]
+        out = await roster_mod.parse_job_list_batch("b-pjl", companies)
+        assert out.get("retried") == 1
+        assert out["errors"] == 1
+        assert out["passed"] == 0
+        assert _ast1846_levels(caplog, "co-first -> JOBLIST_IDENTIFIED_RETRY [") == ["WARNING"]
+        assert _ast1846_levels(caplog, "co-second -> ERROR_PARSE_JOB_LIST_UNPARSEABLE [") == ["WARNING"]
+
+    @pytest.mark.asyncio
+    async def test_parse_job_list_batch_error_result_and_generic_exception(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        # Branch lock (AST-1839 lines): result["error"] → errors; generic scrape exception → holding at WARNING.
+        caplog.set_level("DEBUG")
+        _mock_parse_batch_browser_session(monkeypatch)
+        url_key = ROSTER_CONFIG["parse_job_list"]["selected_pjl_url_key"]
+        monkeypatch.setattr(
+            roster_mod,
+            "get_company",
+            MagicMock(return_value={"company_data": {url_key: "https://acme.com/jobs", "job_titles": ["Engineer"]}}),
+        )
+        monkeypatch.setattr(roster_mod, "_save_company", MagicMock())
+        monkeypatch.setattr(roster_mod, "save_company_data", MagicMock())
+        monkeypatch.setattr(
+            roster_mod, "_scrape_list_page_dom_for_parse", AsyncMock(side_effect=RuntimeError("socket reset")),
+        )
+        companies = [
+            {"short_name": "co-watch", "company_website": "https://w.example", "state": "WATCH"},
+            {"short_name": "co-raise", "company_website": "https://r.example", "state": "JOBLIST_IDENTIFIED"},
+        ]
+        out = await roster_mod.parse_job_list_batch("b-pjl-err", companies)
+        assert out["errors"] == 1
+        assert out.get("retried") == 1
+        assert _ast1846_levels(caplog, "co-raise -> JOBLIST_IDENTIFIED_RETRY [socket reset]") == ["WARNING"]
+
+    @pytest.mark.asyncio
+    async def test_fetch_website_scrape_failure_logs_warning(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        caplog.set_level("DEBUG")
+        monkeypatch.setattr(roster_mod, "scrape_page", AsyncMock(side_effect=RuntimeError("dns fail")))
+        out = await roster_mod.scrape_company_homepage_content("acme_com", "https://acme.com")
+        assert out["error"]
+        # fetch_website owns the destination (WFR / ERROR_FETCH_WEBSITE_UNREADABLE); this scrape helper only warns.
+        assert _ast1846_levels(caplog, "company homepage scrape") == ["WARNING"]
+        assert not [r for r in caplog.records if r.levelno >= 40]
+
+
+# AST-2004 · AST-1998: decomposed select ERROR_SELECT_JOB_PAGE_NO_JOBLIST fall-through → BOT_BLOCKED_SELECT_JOB_PAGE when a shown page is a bot wall.
+# Branches: _first_bot_walled_page hit / miss (full loop); _check_parse_results walled_url true / false;
+# decomposed=False never runs the check (legacy locate path unchanged).
+
+
+class TestAst2125PrefilterMissingDescription:
+    """AST-2124: prefilter letter grade with no rubric description → that company alone to PREFILTER_FAILED (WARNING)."""
+
+    _MISS = "No rubric description for vector 'fit' grade B"
+
+    @staticmethod
+    def _env(monkeypatch: pytest.MonkeyPatch) -> tuple:
+        # fit has A/F rows only, so B is a missing description.
+        rubric = [{"label": "fit", "code": "fit", "importance": 5, "content": "body",
+                   "grade_descriptions": [{"grade": "A", "description": "one"}, {"grade": "F", "description": "fail"}]}]
+        transition = MagicMock()
+        save = MagicMock()
+        monkeypatch.setattr(roster_mod, "transition_company_state", transition)
+        monkeypatch.setattr(roster_mod, "save_company_data", save)
+        monkeypatch.setattr(roster_mod, "get_company", MagicMock(return_value={"state_history": []}))
+        monkeypatch.setattr("src.core.candidate.rubric_criteria_for_task", lambda *_a, **_k: rubric)
+        monkeypatch.setattr("src.core.consult._dispatch_score_floor_for_task", lambda *_a, **_k: 0.0)
+        return transition, save
+
+    def test_apply_outcome_miss_to_prefilter_failed(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        from src.utils.config import ROSTER_CONFIG
+
+        caplog.set_level("DEBUG")
+        transition, save = self._env(monkeypatch)
+        out = roster_mod._apply_prefilter_decoded_company_outcome(
+            "acme_com",
+            {"grades": [{"vector": "fit", "grade": "B", "confidence": 3}], "possible_job_links": []},
+            {**ROSTER_CONFIG["prefilter"]},
+            {"astral_candidate_id": "c1"},
+        )
+        assert out == "PREFILTER_FAILED"
+        transition.assert_called_once_with("acme_com", "PREFILTER_FAILED")
+        save.assert_not_called()
+        assert [(r.levelname, r.getMessage()) for r in caplog.records if "acme_com -> " in r.getMessage()] == [
+            ("WARNING", f"acme_com -> PREFILTER_FAILED [hydrate: {self._MISS}]"),
+        ]
+
+    @pytest.mark.asyncio
+    async def test_batch_miss_fails_only_that_company(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        caplog.set_level("DEBUG")
+        transition, save = self._env(monkeypatch)
+        monkeypatch.setattr(roster_mod, "do_task", AsyncMock(return_value={
+            "success": True,
+            "parsed_response": {"companies": [
+                {"company_id": "acme_com", "grades": [{"vector": "fit", "grade": "B", "confidence": 3}]},
+                {"company_id": "beta_com", "grades": [{"vector": "fit", "grade": "F", "confidence": 5}]},
+            ]},
+        }))
+        companies = [{"short_name": s, "state": "HOMEPAGE_READY", "company_data": {"homepage_text": "x"}}
+                     for s in ("acme_com", "beta_com")]
+        out = await roster_mod._run_batch_company_prefilter("b-2116", companies, ctx={"astral_candidate_id": "c1"})
+        # Pre-fix: both companies → HOMEPAGE_READY_RETRY (retried 2). Now: no retry, sibling applies its own verdict.
+        assert out == {"passed": 0, "failed": 2, "total": 2, "retried": 0}
+        assert [c.args for c in transition.call_args_list] == [
+            ("acme_com", "PREFILTER_FAILED"), ("beta_com", "PREFILTER_FAILED"),
+        ]
+        # The sibling went through the normal verdict path (F5 dealbreaker → saved with reason); the miss saved nothing.
+        assert [c.args[0] for c in save.call_args_list] == ["beta_com"]
+        assert save.call_args.args[1]["prefilter_grades"][0]["reason"] == "fail"
+        assert not [r for r in caplog.records if r.levelno >= 40]
+
+
+class TestAst2004BotWalledSelect:
+    _HOME = ("https://acme.com", "Welcome to Acme. We build widgets. About us. Contact.")
+    # Two jd_classifier bot signals ("New to LinkedIn? Join now" + "Sign in with Email") = threshold 2.
+    _WALL_TEXT = "Acme | LinkedIn. New to LinkedIn? Join now. Sign in with Email. Agree & Join LinkedIn."
+    _WALL_1 = "https://www.linkedin.com/company/acme/jobs"
+    _WALL_2 = "https://www.linkedin.com/company/acme/life"
+    _PRE_RUN_JOB_SITE = "https://old.acme.com/jobs"
+
+    def _company(self, pages: List[tuple]) -> Dict[str, Any]:
+        assembled = "\n".join(f"=== PAGE {i}: {u} ===\n{t}" for i, (u, t) in enumerate(pages, 1))
+        return _company(
+            state="PJL_READY",
+            company_website="https://acme.com",
+            job_site=self._PRE_RUN_JOB_SITE,
+            company_data={
+                "pjl_assembled_content": assembled,
+                "pjl_scrape_pages": [{"url": u, "visible_text": t} for u, t in pages],
+                "possible_joblist_links": [u for u, _ in pages],
+                "nav_links": "",
+            },
+        )
+
+    def _wire(self, monkeypatch: pytest.MonkeyPatch, company: Dict[str, Any], parsed: Dict[str, Any]) -> Dict[str, MagicMock]:
+        mocks = {"update": MagicMock(), "transition": MagicMock()}
+        monkeypatch.setattr(roster_mod, "get_company", MagicMock(return_value=company))
+        monkeypatch.setattr(roster_mod, "update_company", mocks["update"])
+        monkeypatch.setattr(roster_mod, "save_company_data", MagicMock())
+        monkeypatch.setattr(roster_mod, "transition_company_state", mocks["transition"])
+        monkeypatch.setattr(roster_mod, "do_task", AsyncMock(return_value={"success": True, "parsed_response": parsed}))
+        return mocks
+
+    _NO_JOBLIST = {"response_type": "NO_JOBLIST_FOUND", "selected_page": 0}
+
+    @pytest.mark.asyncio
+    async def test_bot_wall_routes_bot_blocked_with_job_site(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # AC2: page 2 is a LinkedIn auth wall → BOT_BLOCKED_SELECT_JOB_PAGE, job_site = walled URL (not website, not pre-run).
+        company = self._company([self._HOME, (self._WALL_1, self._WALL_TEXT)])
+        mocks = self._wire(monkeypatch, company, self._NO_JOBLIST)
+        out = await roster_mod.run_select_job_page_dispatch(company, "batch-2004")
+        assert out["state"] == "BOT_BLOCKED_SELECT_JOB_PAGE"
+        assert out["job_site"] == self._WALL_1
+        mocks["transition"].assert_called_once_with("acme", "BOT_BLOCKED_SELECT_JOB_PAGE")
+        assert mocks["update"].call_args.kwargs["job_site"] == self._WALL_1
+
+    @pytest.mark.asyncio
+    async def test_no_bot_wall_stays_no_joblist_job_site_unchanged(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # AC3: no page reaches the threshold → ERROR_SELECT_JOB_PAGE_NO_JOBLIST, job_site keeps its pre-run value.
+        company = self._company([self._HOME, ("https://acme.com/about", "Our team and mission.")])
+        mocks = self._wire(monkeypatch, company, self._NO_JOBLIST)
+        out = await roster_mod.run_select_job_page_dispatch(company, "batch-2004")
+        assert out["state"] == "ERROR_SELECT_JOB_PAGE_NO_JOBLIST"
+        mocks["transition"].assert_called_once_with("acme", "ERROR_SELECT_JOB_PAGE_NO_JOBLIST")
+        assert mocks["update"].call_args.kwargs["job_site"] == self._PRE_RUN_JOB_SITE
+
+    @pytest.mark.asyncio
+    async def test_found_job_list_wins_over_bot_wall(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # AC4: same walled pages, Grace found titles on page 1 → JOBLIST_IDENTIFIED.
+        company = self._company([self._HOME, (self._WALL_1, self._WALL_TEXT)])
+        parsed = {"response_type": "JOBLIST_TITLES", "selected_page": 1, "job_titles": ["Engineer"]}
+        mocks = self._wire(monkeypatch, company, parsed)
+        out = await roster_mod.run_select_job_page_dispatch(company, "batch-2004")
+        assert out["state"] == "JOBLIST_IDENTIFIED"
+        mocks["transition"].assert_called_once_with("acme", "JOBLIST_IDENTIFIED")
+
+    @pytest.mark.asyncio
+    async def test_first_walled_page_wins(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # AC5: pages 2 and 3 both walled → job_site is page 2's URL.
+        company = self._company([self._HOME, (self._WALL_1, self._WALL_TEXT), (self._WALL_2, self._WALL_TEXT)])
+        self._wire(monkeypatch, company, self._NO_JOBLIST)
+        out = await roster_mod.run_select_job_page_dispatch(company, "batch-2004")
+        assert out["state"] == "BOT_BLOCKED_SELECT_JOB_PAGE"
+        assert out["job_site"] == self._WALL_1
+
+    @pytest.mark.asyncio
+    async def test_rollup_counts_bot_blocked_as_fail(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # AC6: run_company_task on the AC2 fixture → 1 fail, 0 pass, 0 error.
+        company = self._company([self._HOME, (self._WALL_1, self._WALL_TEXT)])
+        self._wire(monkeypatch, company, self._NO_JOBLIST)
+        out = await roster_mod.run_company_task(
+            "PJL_READY", company, "batch-2004", dispatch_task_key="select_job_page",
+        )
+        assert (out["total_failed"], out["total_passed"], out["total_errors"]) == (1, 0, 0)
+
+    @pytest.mark.asyncio
+    async def test_legacy_locate_path_not_rerouted(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Plan decision: decomposed=False (legacy TO_WATCH/JOBS_FOUND/PREFILTER_PASSED) stays ERROR_SELECT_JOB_PAGE_NO_JOBLIST.
+        save = MagicMock()
+        monkeypatch.setattr(roster_mod, "_save_company", save)
+        out = await roster_mod._check_parse_results(
+            {"response_type": "NO_JOBLIST_FOUND"}, "NO_JOBLIST_FOUND", "acme", "https://acme.com", "",
+            page_dom_map={}, decomposed=False, page_url_map={1: self._WALL_1}, visible_map={1: self._WALL_TEXT},
+        )
+        assert out["state"] == "ERROR_SELECT_JOB_PAGE_NO_JOBLIST"
+        assert save.call_args.kwargs["state"] == "ERROR_SELECT_JOB_PAGE_NO_JOBLIST"
+
+
+class TestAst2006EmptyTokenCompanyTerminals:
+    """AST-2006 / AST-2000: empty_tokens on a company flow → that flow's terminal error state, no retry, no save."""
+
+    _EMPTY = {"success": False, "error": "Empty tokens: X (task=t)", "empty_tokens": ["X"], "empty_token_task": "t"}
+
+    @pytest.mark.asyncio
+    async def test_prefilter_batch_goes_to_error_prefilter(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        trans = MagicMock()
+        monkeypatch.setattr(roster_mod, "transition_company_state", trans)
+        monkeypatch.setattr(roster_mod, "do_task", AsyncMock(return_value=dict(self._EMPTY)))
+        companies = [{"short_name": sn, "state": "HOMEPAGE_READY", "company_data": {}} for sn in ("a", "b")]
+        out = await roster_mod._run_batch_company_prefilter("b-2006", companies)
+        assert ROSTER_CONFIG["prefilter"]["error_state"] == "ERROR_PREFILTER_COMPANY"
+        assert trans.call_args_list == [call("a", "ERROR_PREFILTER_COMPANY"), call("b", "ERROR_PREFILTER_COMPANY")]
+        assert out == {"passed": 0, "failed": 0, "total": 2, "retried": 0}
+
+    @pytest.mark.asyncio
+    async def test_select_job_page_goes_to_error_locate_without_no_joblist(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        trans, saver = MagicMock(), MagicMock()
+        monkeypatch.setattr(roster_mod, "transition_company_state", trans)
+        monkeypatch.setattr(roster_mod, "_save_company", saver)
+        monkeypatch.setattr(roster_mod, "do_task", AsyncMock(return_value=dict(self._EMPTY)))
+        out = await roster_mod._find_job_page_from_assembled(
+            short_name="acme", company_website="https://cw", assembled_content="asm",
+            page_url_map={1: "https://jobs"}, page_dom_map={1: "<motion/>"}, visible_map={1: ""},
+            nav_links="", browser_context=MagicMock(), debug=False, ctx=None,
+        )
+        assert ROSTER_CONFIG["locate_job_page"]["error_state"] == "ERROR_SELECT_JOB_PAGE"
+        trans.assert_called_once_with("acme", "ERROR_SELECT_JOB_PAGE")
+        assert out["state"] == "ERROR_SELECT_JOB_PAGE" and out["error"] == self._EMPTY["error"]
+        assert "state_held" not in out
+        saver.assert_not_called()  # no ERROR_SELECT_JOB_PAGE_NO_JOBLIST save
+
+    @pytest.mark.asyncio
+    async def test_fetch_parse_job_list_surfaces_empty_tokens_without_notes(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        save = MagicMock()
+        monkeypatch.setattr(roster_mod, "save_company_data", save)
+        monkeypatch.setattr(roster_mod, "do_task", AsyncMock(return_value=dict(self._EMPTY)))
+        out = await roster_mod._fetch_parse_job_list("<html/>", "acme")
+        assert out == {"empty_tokens": ["X"], "error": self._EMPTY["error"]}
+        save.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_select_only_parse_goes_to_parse_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # AST-2086: the in-chain parse hop owns its empty-token error (writing task = parse_job_list).
+        trans, save_data = MagicMock(), MagicMock()
+        monkeypatch.setattr(roster_mod, "transition_company_state", trans)
+        monkeypatch.setattr(roster_mod, "save_company_data", save_data)
+        monkeypatch.setattr(roster_mod, "_save_company", MagicMock())
+        monkeypatch.setattr(roster_mod, "find_job_containers", MagicMock(return_value=["s"]))
+        monkeypatch.setattr(roster_mod, "_fetch_parse_job_list", AsyncMock(return_value={"empty_tokens": ["X"], "error": "e"}))
+        out = await roster_mod._finalize_joblist_titles_select_only(
+            {"job_titles": ["Dev"], "response_type": "JOBLIST_TITLES"}, "acme", "https://cw", "https://js",
+            {"blob": "<div><a>H</a></div>"}, "blob", "JOBLIST_TITLES", False, {}, {},
+        )
+        trans.assert_called_once_with("acme", "ERROR_PARSE_JOB_LIST")
+        assert out["state"] == "ERROR_PARSE_JOB_LIST" and out["error"] == "e"
+        # job_titles persist before the parse hop; the empty-token branch adds no parse notes.
+        assert not any("parse_job_list_notes" in c.args[1] for c in save_data.call_args_list)
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("state", ["JOBLIST_IDENTIFIED", "JOBLIST_IDENTIFIED_RETRY"])
+    async def test_parse_dispatch_goes_to_terminal_from_either_trigger(
+        self, monkeypatch: pytest.MonkeyPatch, state: str,
+    ) -> None:
+        # AST-721 harness; the parse hop reports empty tokens → ERROR_PARSE_JOB_LIST (AST-2086: bare task error,
+        # not the _UNPARSEABLE verdict terminal), never JOBLIST_IDENTIFIED_RETRY.
+        company = TestAst721ParseJobListDispatch._identified_company(state=state)
+        trans, save_co = MagicMock(), MagicMock()
+        monkeypatch.setattr(roster_mod, "get_company", MagicMock(return_value=company))
+        monkeypatch.setattr(roster_mod, "save_company_data", MagicMock())
+        monkeypatch.setattr(roster_mod, "_save_company", save_co)
+        monkeypatch.setattr(roster_mod, "transition_company_state", trans)
+        monkeypatch.setattr(roster_mod, "create_browser_context", TestAst721ParseJobListDispatch._browser_cm())
+        monkeypatch.setattr(roster_mod, "_scrape_list_page_dom_for_parse", AsyncMock(return_value="<html>dom</html>"))
+        monkeypatch.setattr(roster_mod, "find_job_containers", MagicMock(return_value=["<div>Engineer</div>"]))
+        monkeypatch.setattr(roster_mod, "_fetch_parse_job_list", AsyncMock(return_value={"empty_tokens": ["X"], "error": "e"}))
+        out = await roster_mod.run_parse_job_list_dispatch(company, "b-2006")
+        assert ROSTER_CONFIG["parse_job_list"]["error_state"] == "ERROR_PARSE_JOB_LIST"
+        trans.assert_called_once_with(company["short_name"], "ERROR_PARSE_JOB_LIST")
+        assert out["state"] == "ERROR_PARSE_JOB_LIST" and out["error"] == "e"
+        save_co.assert_not_called()
+
+
+# AST-2070 (parent AST-2054): UPSHOT_READY Estelle batch — one do_task, decode by company_id,
+# save company_data.company_upshot, transition WATCH; technical failures → retry once, then ERROR_COMPANY_UPSHOT.
+class TestAst2070CompanyUpshotBatch:
+    @staticmethod
+    def _patch(monkeypatch: pytest.MonkeyPatch, result: dict[str, Any], save: Any = None) -> dict[str, Any]:
+        mocks = {
+            "do_task": AsyncMock(return_value=result),
+            "save_company_data": save or MagicMock(),
+            "transition_company_state": MagicMock(),
+            "ensure_batch_response_entity_ids": MagicMock(),
+        }
+        for name, m in mocks.items():
+            monkeypatch.setattr(roster_mod, name, m)
+        return mocks
+
+    @staticmethod
+    def _dests(trans: MagicMock) -> dict[str, str]:
+        return {c.args[0]: c.args[1] for c in trans.call_args_list}
+
+    @pytest.mark.asyncio
+    async def test_one_call_saves_upshots_and_routes_failures(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        companies = [
+            {"short_name": "a", "state": "UPSHOT_READY", "company_data": {
+                "homepage_text": " Acme home ",
+                "website_content": [{"url": "https://a.co/c", "content": " values "}, {"url": "x", "content": " "}, "junk"],
+                "prefilter_grades": [{"vector": "PG", "grade": "A", "reason": "fit"}, "not-a-dict"],
+            }},
+            {"short_name": "b", "state": "UPSHOT_READY", "company_data": {"website_content": " b culture "}},
+            {"short_name": "c", "state": "UPSHOT_READY_RETRY", "company_data": None},
+            {"short_name": "d", "state": "UPSHOT_READY", "company_data": {"website_content": [{"url": "y", "content": ""}]}},
+        ]
+        result = {"success": True, "agent_ref": "ref-1", "parsed_response": {"companies": [
+            {"company_id": "a", "upshot": " Solid team. "},
+            {"company_id": "a", "upshot": "duplicate ignored"},
+            {"company_id": "ghost", "upshot": "fabricated"},
+            {"company_id": "c", "upshot": "   "},
+            {"company_id": "d", "upshot": "save fails"},
+        ]}}
+        def _save(cid: str, data: dict[str, Any]) -> None:
+            if cid == "d":
+                raise ValueError("bad")
+
+        save = MagicMock(side_effect=_save)
+        m = self._patch(monkeypatch, result, save)
+        out = await roster_mod.company_upshot_batch("b1", companies, ctx={"run_id": "r"})
+        # AC6: exactly one Estelle call for the batch
+        m["do_task"].assert_awaited_once()
+        kw = m["do_task"].await_args.kwargs
+        assert kw["task_key"] == "company_upshot" and kw["ctx"]["batch_size"] == 4 and kw["ctx"]["run_id"] == "r"
+        live = kw["live_content"]
+        assert "[company_id=a]" in live and "Acme home" in live and "### https://a.co/c\nvalues" in live
+        assert "- PG=A: fit" in live and "b culture" in live
+        assert live.count("## Culture Pages") == 2 and live.count("## Prefilter Grades") == 1
+        # AC5 save + WATCH; AC7 missing → retry, failure from retry → ERROR_COMPANY_UPSHOT; fabricated id untouched
+        save.assert_any_call("a", {"company_upshot": "Solid team."})
+        assert self._dests(m["transition_company_state"]) == {
+            "a": "WATCH", "b": "UPSHOT_READY_RETRY", "c": "ERROR_COMPANY_UPSHOT", "d": "UPSHOT_READY_RETRY",
+        }
+        assert out == {"passed": 1, "failed": 0, "total": 4, "retried": 2}
+        m["ensure_batch_response_entity_ids"].assert_called_once_with("company", ["a"], "ref-1")
+
+    @pytest.mark.asyncio
+    async def test_stamp_failure_does_not_fail_batch(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        result = {"success": True, "agent_ref": "ref", "parsed_response": {"companies": [{"company_id": "a", "upshot": "ok"}]}}
+        m = self._patch(monkeypatch, result)
+        m["ensure_batch_response_entity_ids"].side_effect = RuntimeError("stamp")
+        out = await roster_mod.company_upshot_batch("b2", [{"short_name": "a", "state": "UPSHOT_READY"}])
+        assert out["passed"] == 1
+        m["transition_company_state"].assert_called_once_with("a", "WATCH")
+
+    @pytest.mark.asyncio
+    async def test_no_agent_ref_skips_stamp_and_empty_response_retries_all(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        m = self._patch(monkeypatch, {"success": True, "parsed_response": None})
+        out = await roster_mod.company_upshot_batch("b3", [{"short_name": "a"}])
+        assert out == {"passed": 0, "failed": 0, "total": 1, "retried": 1}
+        m["transition_company_state"].assert_called_once_with("a", "UPSHOT_READY_RETRY")
+        m["ensure_batch_response_entity_ids"].assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_balance_refusal_holds_state(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        m = self._patch(monkeypatch, {"success": False, "failure_class": "provider_balance_refusal"})
+        out = await roster_mod.company_upshot_batch("b4", [{"short_name": "a", "state": "UPSHOT_READY"}])
+        assert out["state_held"] is True and out["failure_class"] == "provider_balance_refusal"
+        m["transition_company_state"].assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_empty_tokens_go_straight_to_error(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        m = self._patch(monkeypatch, {"success": False, "empty_tokens": ["BIO_SUMMARY"]})
+        out = await roster_mod.company_upshot_batch("b5", [{"short_name": "a", "state": "UPSHOT_READY"}])
+        assert out == {"passed": 0, "failed": 0, "total": 1, "retried": 0}
+        m["transition_company_state"].assert_called_once_with("a", "ERROR_COMPANY_UPSHOT")
+        # We control the prompt token content: empty tokens log ERROR, not WARNING.
+        assert [r.levelname for r in caplog.records if "a -> ERROR_COMPANY_UPSHOT [empty prompt tokens]" in r.getMessage()] == ["ERROR"]
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("result", [
+        {"success": False, "error": "429", "failure_class": "provider_rate_limit"},
+        {"success": False},
+    ])
+    async def test_do_task_failure_routes_retry_then_error(
+        self, monkeypatch: pytest.MonkeyPatch, result: dict[str, Any],
+    ) -> None:
+        m = self._patch(monkeypatch, result)
+        companies = [{"short_name": "a", "state": "UPSHOT_READY"}, {"short_name": "b", "state": "UPSHOT_READY_RETRY"}]
+        out = await roster_mod.company_upshot_batch("b6", companies)
+        assert self._dests(m["transition_company_state"]) == {"a": "UPSHOT_READY_RETRY", "b": "ERROR_COMPANY_UPSHOT"}
+        assert out["retried"] == 1 and out["passed"] == 0
+        assert out.get("failure_class") == result.get("failure_class")
+
+
+# AST-2088 (bug, parent AST-2054): the upshot response's optional company_name rewrites the root
+# company_name column (stripped); blank/missing leaves it alone and is not a failure. short_name never written.
+class TestAst2088UpshotReadableCompanyName:
+    @pytest.mark.asyncio
+    async def test_readable_name_saved_and_blank_or_missing_skipped(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        result = {"success": True, "parsed_response": {"companies": [
+            {"company_id": "a", "upshot": "Acme builds robots.", "company_name": " Acme Robotics "},
+            {"company_id": "b", "upshot": "Beta does things."},
+            {"company_id": "c", "upshot": "Gamma ships.", "company_name": "   "},
+        ]}}
+        m = TestAst2070CompanyUpshotBatch._patch(monkeypatch, result)
+        upd = MagicMock()
+        monkeypatch.setattr(roster_mod, "update_company", upd)
+        companies = [
+            {"short_name": "a", "company_name": "Acmerobotics", "state": "UPSHOT_READY", "company_data": {"homepage_text": "hi"}},
+            {"short_name": "b", "state": "UPSHOT_READY", "company_data": {}},
+            {"short_name": "c", "company_name": "gamma_io", "state": "UPSHOT_READY_RETRY", "company_data": {}},
+        ]
+        out = await roster_mod.company_upshot_batch("b2088", companies)
+        # Only the non-blank name is written, stripped, to company_name; never short_name
+        upd.assert_called_once_with("a", company_name="Acme Robotics")
+        # Name on file is handed to Estelle so she can keep a name that is already right
+        assert "## Name On File\nAcmerobotics" in m["do_task"].await_args.kwargs["live_content"]
+        # Missing/blank name is not a failure: all three still pass to WATCH
+        assert TestAst2070CompanyUpshotBatch._dests(m["transition_company_state"]) == {"a": "WATCH", "b": "WATCH", "c": "WATCH"}
+        assert out == {"passed": 3, "failed": 0, "total": 3, "retried": 0}
+
+
+# AST-2134: roster company writers keep scrapes via gazer (blob holds row ids); readers resolve via gazer.
+# Real web_data rows in the autouse tmp DB; only scrapers / agent calls are stubbed.
+class TestAst2134RosterTelescope:
+    def _keep(self, text: str, url: str = "https://acme.com/p", data_type: str = "VISIBLE_TEXT") -> str:
+        return gazer_mod.keep_web_data(None, url, data_type, text)
+
+    def _drop(self, db, row_id: str) -> None:
+        conn = db._get_connection()
+        try:
+            conn.execute("DELETE FROM web_data WHERE web_data_id = ?", (row_id,))
+            conn.commit()
+        finally:
+            conn.close()
+
+    def test_resolve_company_value_shapes(self, sqlite_in_memory) -> None:
+        rid = self._keep("Homepage body")
+        assert roster_mod._resolve_company_value("homepage_text", rid) == "Homepage body"
+        assert roster_mod._resolve_company_value("homepage_text", "legacy text") == "legacy text"
+        assert roster_mod._resolve_company_value("nav_links", None) is None
+        # website_content: raw captures resolve stripped, like the pre-AST-2130 blob stored them
+        refs = [{"url": "https://a/1", "id": self._keep("  one \n")}, {"url": "https://a/2", "id": self._keep("two")}]
+        assert roster_mod._resolve_company_value("website_content", refs) == [
+            {"url": "https://a/1", "content": "one"}, {"url": "https://a/2", "content": "two"},
+        ]
+        legacy = [{"url": "https://a/1", "content": "kept"}]
+        assert roster_mod._resolve_company_value("website_content", legacy) == legacy
+        # Gone capture -> None so get_company_data falls through to fetch-on-missing
+        self._drop(sqlite_in_memory, rid)
+        assert roster_mod._resolve_company_value("homepage_text", rid) is None
+
+    def test_resolved_pjl_pages_row_shapes(self, sqlite_in_memory) -> None:
+        gone = self._keep("will be deleted")
+        gone_links = self._keep("1: https://x", data_type="PAGE_LINKS")
+        rows = [
+            {"url": "https://a/careers", "id": self._keep("  roles \n"),
+             "links_id": self._keep(" 1: https://a/jobs/1 ", data_type="PAGE_LINKS")},
+            {"url": "https://a/team", "id": self._keep("team")},
+            {"url": "https://a/old", "visible_text": "legacy row"},
+            {"url": "https://a/gone", "id": gone},
+            {"url": "https://a/nolinks", "id": self._keep("body"), "links_id": gone_links},
+        ]
+        self._drop(sqlite_in_memory, gone)
+        self._drop(sqlite_in_memory, gone_links)
+        assert roster_mod._resolved_pjl_pages(rows) == [
+            {"url": "https://a/careers", "visible_text": "roles", "enumerated_nav_links": "1: https://a/jobs/1"},
+            {"url": "https://a/team", "visible_text": "team"},
+            {"url": "https://a/old", "visible_text": "legacy row"},
+            {"url": "https://a/nolinks", "visible_text": "body"},
+        ]
+        assert roster_mod._resolved_pjl_pages([{"url": "https://a/x", "id": gone}]) is None
+        assert roster_mod._resolved_pjl_pages(None) is None
+
+    def test_resolved_company_data_rebuilds_pjl_nav_links_in_candidate_order(self) -> None:
+        key = ROSTER_CONFIG["select_job_page"]["pjl_url_data_key"]
+        cdata = {
+            "pjl_scrape_pages": [
+                {"url": "https://acme.com/careers", "id": self._keep("c"),
+                 "links_id": self._keep("1: https://acme.com/a\n2: https://acme.com/b", data_type="PAGE_LINKS")},
+                {"url": "https://acme.com/jobs", "id": self._keep("j"),
+                 "links_id": self._keep("1: https://acme.com/b\n2: https://acme.com/c", data_type="PAGE_LINKS")},
+                {"url": "https://acme.com/stale", "id": self._keep("s"),
+                 "links_id": self._keep("1: https://acme.com/zzz", data_type="PAGE_LINKS")},
+            ],
+            # Candidate order (jobs before careers); stale ledger row is not a current candidate; /none has no row
+            key: ["http://ACME.com/jobs/", "https://acme.com/careers", "https://acme.com/none"],
+            "pjl_nav_links": None,
+            "other": {"k": 1},
+        }
+        snapshot = json.dumps(cdata, sort_keys=True)
+        out = roster_mod._resolved_company_data(cdata)
+        assert out["pjl_nav_links"] == roster_mod._merge_pjl_nav_links(
+            "", ["https://acme.com/b", "https://acme.com/c", "https://acme.com/a", "https://acme.com/b"]
+        )
+        assert out["pjl_scrape_pages"][0] == {
+            "url": "https://acme.com/careers", "visible_text": "c",
+            "enumerated_nav_links": "1: https://acme.com/a\n2: https://acme.com/b",
+        }
+        assert out["other"] == {"k": 1}
+        assert json.dumps(cdata, sort_keys=True) == snapshot  # stored blob copy untouched
+        # A stored pjl_nav_links (pre-AST-2130 company) is kept, not rebuilt
+        assert roster_mod._resolved_company_data({**cdata, "pjl_nav_links": "1: kept"})["pjl_nav_links"] == "1: kept"
+
+    def test_company_homepage_ready_resolves_id(self, sqlite_in_memory) -> None:
+        rid = self._keep("Homepage")
+        assert roster_mod._company_homepage_ready({"company_data": {"homepage_text": rid}}) is True
+        assert roster_mod._company_homepage_ready({"company_data": {"homepage_text": "legacy"}}) is True
+        assert roster_mod._company_homepage_ready({"company_data": {}}) is False
+        self._drop(sqlite_in_memory, rid)
+        assert roster_mod._company_homepage_ready({"company_data": {"homepage_text": rid}}) is False
+
+    @pytest.mark.asyncio
+    async def test_get_company_data_resolves_id_without_fetch(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        handler = AsyncMock()
+        monkeypatch.setitem(roster_mod._COATCHECK_HANDLERS, "nav_links", handler)
+        rid = self._keep("1: https://acme.com/about", data_type="PAGE_LINKS")
+        company = _company(company_data={"nav_links": rid, "parse_instructions": {"c": 1}})
+        assert await roster_mod.get_company_data(company, "nav_links") == "1: https://acme.com/about"
+        # Non-id keys are returned as stored
+        assert await roster_mod.get_company_data(company, "parse_instructions") == {"c": 1}
+        handler.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_ac5_ac7_website_content_ids_then_deleted_row_refetches(
+        self, monkeypatch: pytest.MonkeyPatch, sqlite_in_memory
+    ) -> None:
+        db = sqlite_in_memory
+        db.save_candidate("cand-1", state="NEW_CANDIDATE", candidate_data={"name": "T"})
+        nav_id = self._keep("1: https://acme.com/culture", data_type="PAGE_LINKS")
+        db.save_company("acme", "WEBSITE_FOUND", company_website="https://acme.com", candidate_id="cand-1",
+                        company_data={"nav_links": nav_id, "culture_links_to_explore": [1]})
+
+        @asynccontextmanager
+        async def _browser():
+            yield AsyncMock()
+
+        monkeypatch.setattr(roster_mod, "create_browser_context", _browser)
+        monkeypatch.setattr(gazer_mod, "get_visible_text", AsyncMock(return_value=("Culture page", "")))
+        out = await roster_mod._fetch_website_content(db.get_company("acme"))
+        assert out == [{"url": "https://acme.com/culture", "content": "Culture page"}]
+
+        def _blob() -> str:
+            conn = db._get_connection()
+            try:
+                return conn.execute("SELECT company_data FROM company WHERE short_name='acme'").fetchone()[0]
+            finally:
+                conn.close()
+
+        # AC5: blob entries are {url, id}; the id resolves to a kept row with the company's candidate_id
+        wc = db.get_company("acme")["company_data"]["website_content"]
+        assert [set(e) for e in wc] == [{"url", "id"}] and gazer_mod.is_telescope_id(wc[0]["id"])
+        conn = db._get_connection()
+        try:
+            row = conn.execute("SELECT candidate_id, url, data_type FROM web_data WHERE web_data_id=?",
+                               (wc[0]["id"],)).fetchone()
+        finally:
+            conn.close()
+        assert tuple(row) == ("cand-1", "https://acme.com/culture", "VISIBLE_TEXT")
+
+        # AC7: deleting the referenced row needs no blob surgery; next read re-runs the coat-check fetch
+        before = _blob()
+        self._drop(db, wc[0]["id"])
+        assert _blob() == before
+        refetch = AsyncMock(return_value=[{"url": "https://acme.com/culture", "content": "again"}])
+        monkeypatch.setitem(roster_mod._COATCHECK_HANDLERS, "website_content", refetch)
+        company = db.get_company("acme")
+        assert await roster_mod.get_company_data(company, "website_content") == refetch.return_value
+        refetch.assert_awaited_once_with(company)
+
+    def test_keep_job_list_visible_stores_row_for_company_candidate(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        db.save_candidate("cand-1", state="NEW_CANDIDATE", candidate_data={"name": "T"})
+        db.save_company("acme", "WEBSITE_FOUND", candidate_id="cand-1")
+        rid = roster_mod._keep_job_list_visible("acme", "https://acme.com/jobs", "Job list text")
+        assert gazer_mod.resolve_telescope_value(rid) == "Job list text"
+        conn = db._get_connection()
+        try:
+            row = conn.execute("SELECT candidate_id, url, data_type FROM web_data WHERE web_data_id=?",
+                               (rid,)).fetchone()
+        finally:
+            conn.close()
+        assert tuple(row) == ("cand-1", "https://acme.com/jobs", "VISIBLE_TEXT")
+        assert roster_mod._keep_job_list_visible("acme", "https://acme.com/jobs", "   ") is None
+
+    @pytest.mark.asyncio
+    async def test_prefilter_company_saves_nav_links_row_id(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        nav = roster_mod.enumerate_array("", _prefilter_nav_urls())
+        monkeypatch.setattr(roster_mod, "scrape_company_homepage_content", AsyncMock(return_value={
+            "company_website": "https://acme.com", "visible_text": "hello", "enumerated_nav_links": nav, "error": None,
+        }))
+        monkeypatch.setattr(roster_mod, "transition_company_state", MagicMock())
+        monkeypatch.setattr(roster_mod, "get_company", MagicMock(return_value=_company(state_history=[])))
+        save = MagicMock()
+        monkeypatch.setattr(roster_mod, "save_company_data", save)
+        monkeypatch.setattr(roster_mod, "do_task", AsyncMock(return_value={
+            "success": True,
+            "parsed_response": _encoded_prefilter_response(
+                _prefilter_grades({"grade": "A", "vector": "fit", "confidence": 5, "reason": "yes"}),
+                possible_job_links=[1],
+            ),
+        }))
+        out = await roster_mod.prefilter_company("acme", "https://acme.com", ctx=_prefilter_rubric_ctx())
+        assert out["state"] == "PREFILTER_PASSED"
+        navs = [c.args[1]["nav_links"] for c in save.call_args_list if "nav_links" in c.args[1]]
+        assert len(navs) == 1 and gazer_mod.is_telescope_id(navs[0])
+        assert gazer_mod.resolve_telescope_value(navs[0]) == nav
+
+    @pytest.mark.asyncio
+    async def test_fetch_prefilter_notes_saves_nav_links_row_id(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(gazer_mod, "get_visible_text", AsyncMock(return_value=("homepage", "")))
+        monkeypatch.setattr(gazer_mod, "extract_site_page_list", AsyncMock(return_value=["https://acme.com/about"]))
+        monkeypatch.setattr(roster_mod, "do_task", AsyncMock(return_value={"success": True, "parsed_response": "x"}))
+        # Isolate from the prefilter decode fixtures (pre-existing reds): feed the flat shape directly
+        monkeypatch.setattr(roster_mod, "_flatten_prefilter_parsed", lambda parsed: {
+            "grades": [{"vector": "fit", "grade": "A", "reason": "ok"}], "possible_job_links": [],
+        })
+        save = MagicMock()
+        monkeypatch.setattr(roster_mod, "save_company_data", save)
+        assert await roster_mod._fetch_prefilter_notes(_company()) == "fit=A: ok"
+        nav = save.call_args.args[1]["nav_links"]
+        assert gazer_mod.is_telescope_id(nav)
+        assert gazer_mod.resolve_telescope_value(nav) == roster_mod.enumerate_array("", ["https://acme.com/about"])
+        # Homepage capture kept too (never in the blob here — the notes path only stores nav_links)
+        assert "homepage" not in json.dumps(save.call_args.args[1])
+        # No links scraped -> nothing kept for them, so no nav_links key is written
+        monkeypatch.setattr(gazer_mod, "extract_site_page_list", AsyncMock(return_value=[]))
+        assert await roster_mod._fetch_prefilter_notes(_company()) == "fit=A: ok"
+        assert "nav_links" not in save.call_args.args[1]
+
+
+class TestAst2180LightCheckReasons:
+    """AST-2180: graders answer through the forced tool; a row the hydrate light check rejects lands in
+    decode_failures with its own reason — roster callers surface that reason and keep the retry route."""
+
+    _WHY = "[vet] row 000 missing website"
+
+    @pytest.mark.asyncio
+    async def test_vet_single_renumbers_hit_to_000_and_names_the_failure(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        caplog.set_level("DEBUG")
+        do_task = AsyncMock(return_value={"success": True, "parsed_response": {
+            "results": [], "decode_failures": [{"hit_index": 0, "pos": 0, "reason": self._WHY}],
+        }})
+        monkeypatch.setattr(roster_mod, "do_task", do_task)
+        entity = _company(state="NEW", company_website="",
+                          company_data={"inflow_discovery_blurb": "007|Co|https://co.example|snip"})
+        out = await roster_mod.vet_inflow_discovery_company("co_new", entity, "batch-2180", {}, False)
+        # The tool schema keys the one hit as 000, so the prompt row must be 000 whatever the stored blurb said.
+        assert do_task.await_args.kwargs["live_content"].splitlines()[1] == "000|Co|https://co.example|snip"
+        assert out == {"success": False, "state": None, "error": self._WHY}
+        assert f"co_new -> - [{self._WHY}]" in caplog.text
+
+    @pytest.mark.asyncio
+    async def test_vet_batch_warns_failed_hit_with_its_reason(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        caplog.set_level("DEBUG")
+        monkeypatch.setattr(roster_mod, "do_task", AsyncMock(return_value={"success": True, "parsed_response": {
+            "results": [{"hit_index": 0, "grade": "A", "website": "https://a.example"}],
+            "decode_failures": [{"hit_index": 1, "pos": 1, "reason": "[vet] row 001 missing website"}],
+        }}))
+        transition = MagicMock()
+        monkeypatch.setattr(roster_mod, "transition_company_state", transition)
+        monkeypatch.setattr(roster_mod, "update_company", MagicMock())
+        companies = [
+            {"short_name": "co_a", "company_data": {"inflow_discovery_blurb": "000|A|https://a.example|s"}},
+            {"short_name": "co_b", "company_data": {"inflow_discovery_blurb": "000|B|https://b.example|t"}},
+        ]
+        await roster_mod.vet_inflow_discovery_company_batch("batch-2180", companies, debug=False)
+        transition.assert_called_once_with("co_a", "WEBSITE_FOUND")
+        assert "co_b -> - [[vet] row 001 missing website]" in caplog.text
+        assert "missing results row hit_index=1" not in caplog.text
+
+    @pytest.mark.asyncio
+    async def test_prefilter_single_decode_failure_takes_retry_route_with_reason(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(roster_mod, "scrape_company_homepage_content", AsyncMock(return_value={
+            "company_website": "https://acme.com", "visible_text": "hello", "enumerated_nav_links": "",
+        }))
+        monkeypatch.setattr(gazer_mod, "keep_page_scrape", MagicMock(return_value=(None, None)))
+        transition = MagicMock()
+        monkeypatch.setattr(roster_mod, "transition_company_state", transition)
+        monkeypatch.setattr(roster_mod, "get_company", MagicMock(
+            return_value={"short_name": "acme", "state": "HOMEPAGE_READY", "state_history": []},
+        ))
+        monkeypatch.setattr(roster_mod, "do_task", AsyncMock(return_value={"success": True, "parsed_response": {
+            "companies": [], "decode_failures": [{"company_id": "acme", "pos": 0, "reason": "missing vector code"}],
+        }}))
+        out = await roster_mod.prefilter_company("acme", "https://acme.com", ctx=_prefilter_rubric_ctx())
+        assert out["error"] == "decode: missing vector code"
+        transition.assert_called_once_with("acme", "HOMEPAGE_READY_RETRY")
+
+    @pytest.mark.asyncio
+    async def test_prefilter_batch_decode_failure_retries_that_company_not_as_missing(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        caplog.set_level("DEBUG")
+        transition, _save = TestAst2125PrefilterMissingDescription._env(monkeypatch)
+        monkeypatch.setattr(roster_mod, "do_task", AsyncMock(return_value={"success": True, "parsed_response": {
+            "companies": [{"company_id": "beta_com", "grades": [{"vector": "fit", "grade": "F", "confidence": 5}]}],
+            "decode_failures": [{"company_id": "acme_com", "pos": 0, "reason": "missing vector code"}],
+        }}))
+        companies = [{"short_name": s, "state": "HOMEPAGE_READY", "company_data": {"homepage_text": "x"}}
+                     for s in ("acme_com", "beta_com")]
+        out = await roster_mod._run_batch_company_prefilter("b-2180", companies, ctx={"astral_candidate_id": "c1"})
+        assert out["retried"] == 1
+        assert [c.args for c in transition.call_args_list] == [
+            ("acme_com", "HOMEPAGE_READY_RETRY"), ("beta_com", "PREFILTER_FAILED"),
+        ]
+        assert "acme_com -> HOMEPAGE_READY_RETRY [decode: missing vector code]" in caplog.text
+        assert "missing id" not in caplog.text
+
+    @pytest.mark.asyncio
+    async def test_fetch_prefilter_notes_sends_candidate_rubric_codes(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(gazer_mod, "scrape_visible_text_and_keep", AsyncMock(return_value=("hello", "", None)))
+        monkeypatch.setattr(gazer_mod, "scrape_page_links_and_keep", AsyncMock(return_value=([], None)))
+        monkeypatch.setattr(
+            "src.core.candidate.rubric_criteria_for_task",
+            lambda cid, _task: [{"code": "fit", "label": "Fit"}] if cid == "cand-1" else [],
+        )
+        do_task = AsyncMock(return_value={"success": False})
+        monkeypatch.setattr(roster_mod, "do_task", do_task)
+        assert await roster_mod._fetch_prefilter_notes({**_company(), "candidate_id": "cand-1"}) is None
+        # Pre-fix the notes call sent no codes, so the grader skipped before send.
+        assert do_task.await_args.kwargs["ctx"]["vector_labels"] == {"fit": "Fit"}

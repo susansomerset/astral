@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import re
+
+import pytest
+
 from src.utils import rubric_text
 
 
@@ -232,13 +236,13 @@ class TestAst723SyncRubricVectors:
         db.sync_rubric_vectors_from_criteria(
             "cand-1",
             "grade_get",
-            [{"code": "G1", "label": "Get", "content": "v1", "importance": 5}],
+            [{"code": "GA", "label": "Get", "content": "v1", "importance": 5}],
         )
         uuid1 = db.list_rubric_vectors("cand-1", "grade_get")[0]["rubric_vector_uuid"]
         db.sync_rubric_vectors_from_criteria(
             "cand-1",
             "grade_get",
-            [{"code": "G1", "label": "Get", "content": "v2", "importance": 5}],
+            [{"code": "GA", "label": "Get", "content": "v2", "importance": 5}],
         )
         current = db.list_rubric_vectors("cand-1", "grade_get")
         assert len(current) == 1
@@ -253,19 +257,53 @@ class TestAst723SyncRubricVectors:
             "cand-1",
             "grade_do",
             [
-                {"code": "A", "label": "A", "content": "a", "importance": 5},
-                {"code": "B", "label": "B", "content": "b", "importance": 5},
+                {"code": "AA", "label": "A", "content": "a", "importance": 5},
+                {"code": "BB", "label": "B", "content": "b", "importance": 5},
             ],
         )
         db.sync_rubric_vectors_from_criteria(
             "cand-1",
             "grade_do",
-            [{"code": "A", "label": "A", "content": "a", "importance": 5}],
+            [{"code": "AA", "label": "A", "content": "a", "importance": 5}],
         )
         current = db.list_rubric_vectors("cand-1", "grade_do")
-        assert [r["code"] for r in current] == ["A"]
+        assert [r["code"] for r in current] == ["AA"]
         assert db.count_rubric_vectors_for_candidate_task("cand-1", "grade_do", current_only=False) == 2
 
+
+
+# AST-2008 Step 2: two current rows sharing a code (legacy somerset TP/TP). Branch: code already in
+# current_by_code -> retire the later row (rowid order) instead of overwriting the earlier one.
+class TestAst2008SyncRetiresDuplicateCurrentRows:
+    def _seed(self, db, task_uuid: str, label: str, content: str) -> str:
+        return db.insert_rubric_vector_row(
+            candidate_id="somerset", task_key="grade_do", task_key_uuid=task_uuid, code="TP", label=label,
+            content=content, importance=5,
+            content_fingerprint=rubric_text.rubric_vector_content_fingerprint(label, content),
+        )
+
+    def test_later_duplicate_row_retired_on_next_sync(self, seeded_db) -> None:
+        # Repro 3 - today the dict keeps r2, so r1 is never matched and r2 is re-inserted: TP, TP, TX.
+        db = seeded_db
+        db.save_agent_task("grade_do", agent_id="a1", user_prompt="p")
+        task_uuid = db.get_current_agent_task_uuid("grade_do")
+        r1 = self._seed(db, task_uuid, "Hands-On Technical Partnership", "partner body")
+        r2 = self._seed(db, task_uuid, "Speaking Truth to Power", "truth body")
+        db.sync_rubric_vectors_from_criteria(
+            "somerset",
+            "grade_do",
+            [
+                {"code": "TP", "label": "Hands-On Technical Partnership", "content": "partner body", "importance": 7},
+                {"code": "TX", "label": "Speaking Truth to Power", "content": "truth body", "importance": 5},
+            ],
+        )
+        current = {r["code"]: r for r in db.list_rubric_vectors("somerset", "grade_do", current_only=True)}
+        assert sorted(current) == ["TP", "TX"]
+        assert current["TP"]["rubric_vector_uuid"] == r1
+        assert current["TP"]["importance"] == 7
+        all_rows = {r["rubric_vector_uuid"]: r for r in db.list_rubric_vectors("somerset", "grade_do", current_only=False)}
+        assert all_rows[r2]["current"] == 0
+        assert len(all_rows) == 3
 
 class TestAst723RubricTokenMigration:
     def test_replaces_legacy_rubric_tokens_on_agent_task(self, sqlite_in_memory) -> None:
@@ -290,12 +328,12 @@ class TestAst724VectorFeedbackRows:
         db.sync_rubric_vectors_from_criteria(
             "cand-1",
             "grade_get",
-            [{"code": "G1", "label": "G1", "content": "body\nA = one\nB = two", "importance": 5}],
+            [{"code": "GA", "label": "GA", "content": "body\nA = one\nB = two", "importance": 5}],
         )
         mapping = db.list_rubric_vector_uuid_by_code("cand-1", "grade_get")
-        assert "G1" in mapping
+        assert "GA" in mapping
         rows = db.list_rubric_vectors("cand-1", "grade_get")
-        assert mapping["G1"] == rows[0]["rubric_vector_uuid"]
+        assert mapping["GA"] == rows[0]["rubric_vector_uuid"]
 
     def test_insert_vector_feedback_rows_writes_three_types_per_vector(self, seeded_db) -> None:
         db = seeded_db
@@ -303,11 +341,11 @@ class TestAst724VectorFeedbackRows:
         db.sync_rubric_vectors_from_criteria(
             "cand-1",
             "grade_get",
-            [{"code": "G1", "label": "G1", "content": "body\nA = one\nB = two", "importance": 5}],
+            [{"code": "GA", "label": "GA", "content": "body\nA = one\nB = two", "importance": 5}],
         )
         uuid = db.list_rubric_vectors("cand-1", "grade_get")[0]["rubric_vector_uuid"]
         db.insert_vector_feedback_rows(
-            [{"rubric_vector_uuid": uuid, "code": "G1", "relevance": "A", "clarity": "O", "verdict": "K"}],
+            [{"rubric_vector_uuid": uuid, "code": "GA", "relevance": "A", "clarity": "O", "verdict": "K"}],
             candidate_id="cand-1",
             batch_id="batch-724",
             task_key="grade_get",
@@ -344,11 +382,11 @@ class TestAst725ListVectorFeedback:
         db.sync_rubric_vectors_from_criteria(
             "cand-1",
             "grade_get",
-            [{"code": "G1", "label": "G1", "content": "body\nA = one\nB = two", "importance": 5}],
+            [{"code": "GA", "label": "GA", "content": "body\nA = one\nB = two", "importance": 5}],
         )
         uuid = db.list_rubric_vectors("cand-1", "grade_get")[0]["rubric_vector_uuid"]
         db.insert_vector_feedback_rows(
-            [{"rubric_vector_uuid": uuid, "code": "G1", "relevance": "A", "clarity": "O", "verdict": "K"}],
+            [{"rubric_vector_uuid": uuid, "code": "GA", "relevance": "A", "clarity": "O", "verdict": "K"}],
             candidate_id="cand-1",
             batch_id=batch_id,
             task_key=task_key,
@@ -370,10 +408,10 @@ class TestAst725ListVectorFeedback:
         rows = db.list_vector_feedback(
             candidate_id="cand-1",
             batch_id="batch-725-filter",
-            vector_code="g1",
+            vector_code="ga",
         )
         assert len(rows) == 3
-        assert all(r["vector_code"] == "G1" for r in rows)
+        assert all(r["vector_code"] == "GA" for r in rows)
 
 
 class TestAst725AggregateVectorFeedback:
@@ -384,13 +422,13 @@ class TestAst725AggregateVectorFeedback:
             "cand-1",
             "grade_get",
             [
-                {"code": "G1", "label": "G1", "content": "a\nA = one", "importance": 8},
-                {"code": "G2", "label": "G2", "content": "b\nA = one", "importance": 5},
+                {"code": "GA", "label": "GA", "content": "a\nA = one", "importance": 8},
+                {"code": "GB", "label": "GB", "content": "b\nA = one", "importance": 5},
             ],
         )
         uuid1 = db.list_rubric_vectors("cand-1", "grade_get")[0]["rubric_vector_uuid"]
         db.insert_vector_feedback_rows(
-            [{"rubric_vector_uuid": uuid1, "code": "G1", "relevance": "A", "clarity": "O", "verdict": "K"}],
+            [{"rubric_vector_uuid": uuid1, "code": "GA", "relevance": "A", "clarity": "O", "verdict": "K"}],
             candidate_id="cand-1",
             batch_id="batch-725-sum",
             task_key="grade_get",
@@ -398,8 +436,8 @@ class TestAst725AggregateVectorFeedback:
         )
         summary = db.aggregate_vector_feedback_by_vector("cand-1", "grade_get")
         assert len(summary) == 2
-        g1 = next(r for r in summary if r["code"] == "G1")
-        g2 = next(r for r in summary if r["code"] == "G2")
+        g1 = next(r for r in summary if r["code"] == "GA")
+        g2 = next(r for r in summary if r["code"] == "GB")
         assert g1["feedback_row_count"] == 3
         assert g1["batch_count"] == 1
         assert "A:" in g1["relevance_dist"]
@@ -413,11 +451,11 @@ class TestAst809VectorFeedbackBatchMetadata:
         db.sync_rubric_vectors_from_criteria(
             "cand-1",
             "grade_get",
-            [{"code": "G1", "label": "G1", "content": "body\nA = one", "importance": 5}],
+            [{"code": "GA", "label": "GA", "content": "body\nA = one", "importance": 5}],
         )
         uuid = db.list_rubric_vectors("cand-1", "grade_get")[0]["rubric_vector_uuid"]
         db.insert_vector_feedback_rows(
-            [{"rubric_vector_uuid": uuid, "code": "G1", "relevance": "A", "clarity": "O", "verdict": "K"}],
+            [{"rubric_vector_uuid": uuid, "code": "GA", "relevance": "A", "clarity": "O", "verdict": "K"}],
             candidate_id="cand-1",
             batch_id="",
             task_key="grade_get",
@@ -431,12 +469,12 @@ class TestAst809VectorFeedbackBatchMetadata:
         db.sync_rubric_vectors_from_criteria(
             "cand-1",
             "grade_get",
-            [{"code": "G1", "label": "G1", "content": "body\nA = one", "importance": 5}],
+            [{"code": "GA", "label": "GA", "content": "body\nA = one", "importance": 5}],
         )
         uuid = db.list_rubric_vectors("cand-1", "grade_get")[0]["rubric_vector_uuid"]
         completed = "2026-06-25 10:00:00"
         db.insert_vector_feedback_rows(
-            [{"rubric_vector_uuid": uuid, "code": "G1", "relevance": "A", "clarity": "O", "verdict": "K"}],
+            [{"rubric_vector_uuid": uuid, "code": "GA", "relevance": "A", "clarity": "O", "verdict": "K"}],
             candidate_id="cand-1",
             batch_id="batch-809",
             task_key="grade_get",
@@ -457,11 +495,11 @@ class TestAst808ListVectorFeedbackContent:
         db.sync_rubric_vectors_from_criteria(
             "cand-1",
             "grade_get",
-            [{"code": "G1", "label": "G1 label", "content": "Criterion text\nA = one", "importance": 7}],
+            [{"code": "GA", "label": "GA label", "content": "Criterion text\nA = one", "importance": 7}],
         )
         uuid = db.list_rubric_vectors("cand-1", "grade_get")[0]["rubric_vector_uuid"]
         db.insert_vector_feedback_rows(
-            [{"rubric_vector_uuid": uuid, "code": "G1", "relevance": "A", "clarity": "O", "verdict": "K"}],
+            [{"rubric_vector_uuid": uuid, "code": "GA", "relevance": "A", "clarity": "O", "verdict": "K"}],
             candidate_id="cand-1",
             batch_id="batch-808",
             task_key="grade_get",
@@ -471,4 +509,104 @@ class TestAst808ListVectorFeedbackContent:
         assert len(rows) == 3
         assert rows[0]["vector_content"] == "Criterion text\nA = one"
         assert rows[0]["vector_importance"] == 7
-        assert rows[0]["vector_label"] == "G1 label"
+        assert rows[0]["vector_label"] == "GA label"
+
+
+# AST-2066 Branches: list_rubric_vectors code= filter (case-insensitive, chronological) vs code=None
+# (ORDER BY code); set_current_rubric_vector moves one criterion only (AC6) + carries live importance
+# (COALESCE hit) / keeps own importance when no other current row (COALESCE miss); cross-code + unknown
+# uuid raise with no change; blank args raise.
+class TestAst2066RubricCriterionVersions:
+    _TASK = "grade_do"
+
+    def _seed(self, db) -> dict:
+        # VA: A then B (two blurs = fingerprint retire+insert); VB untouched.
+        db.save_agent_task(self._TASK, agent_id="a1", user_prompt="p")
+        v02 = {"code": "VB", "label": "Other", "content": "keep", "importance": 3}
+        db.sync_rubric_vectors_from_criteria(
+            "cand-1", self._TASK, [{"code": "VA", "label": "L", "content": "A", "importance": 5}, v02]
+        )
+        db.sync_rubric_vectors_from_criteria(
+            "cand-1", self._TASK, [{"code": "VA", "label": "L", "content": "B", "importance": 8}, v02]
+        )
+        hist = db.list_rubric_vectors("cand-1", self._TASK, current_only=False, code="VA")
+        cur = {r["code"]: r["rubric_vector_uuid"] for r in db.list_rubric_vectors("cand-1", self._TASK)}
+        return {"a": hist[0]["rubric_vector_uuid"], "b": hist[1]["rubric_vector_uuid"], "v02": cur["VB"]}
+
+    def _current(self, db) -> dict:
+        return {r["code"]: r for r in db.list_rubric_vectors("cand-1", self._TASK)}
+
+    def test_code_filter_lists_one_criterion_oldest_first(self, seeded_db) -> None:
+        db = seeded_db
+        ids = self._seed(db)
+        hist = db.list_rubric_vectors("cand-1", self._TASK, current_only=False, code=" va ")
+        assert [r["rubric_vector_uuid"] for r in hist] == [ids["a"], ids["b"]]
+        assert [r["content"] for r in hist] == ["A", "B"]
+        # code=None keeps the existing ORDER BY code listing across codes.
+        assert [r["code"] for r in db.list_rubric_vectors("cand-1", self._TASK)] == ["VA", "VB"]
+
+    def test_set_current_moves_one_criterion_and_carries_importance(self, seeded_db) -> None:
+        # AC6: VA back to A; VB unchanged; one current per code; live importance (8) carried.
+        db = seeded_db
+        ids = self._seed(db)
+        assert db.set_current_rubric_vector("cand-1", self._TASK, "va", ids["a"]) == ids["a"]
+        cur = self._current(db)
+        assert cur["VA"]["rubric_vector_uuid"] == ids["a"]
+        assert cur["VA"]["content"] == "A"
+        assert cur["VA"]["importance"] == 8
+        assert cur["VB"]["rubric_vector_uuid"] == ids["v02"]
+        all_rows = db.list_rubric_vectors("cand-1", self._TASK, current_only=False)
+        for code in ("VA", "VB"):
+            assert sum(1 for r in all_rows if r["code"] == code and r["current"] == 1) == 1
+
+    def test_reset_already_current_keeps_own_importance(self, seeded_db) -> None:
+        db = seeded_db
+        ids = self._seed(db)
+        assert db.set_current_rubric_vector("cand-1", self._TASK, "VA", ids["b"]) == ids["b"]
+        assert self._current(db)["VA"]["importance"] == 8
+
+    def test_cross_code_and_unknown_uuid_raise_without_change(self, seeded_db) -> None:
+        db = seeded_db
+        ids = self._seed(db)
+        before = db.list_rubric_vectors("cand-1", self._TASK, current_only=False)
+        with pytest.raises(ValueError, match="is not a version of"):
+            db.set_current_rubric_vector("cand-1", self._TASK, "VA", ids["v02"])
+        with pytest.raises(ValueError, match="is not a version of"):
+            db.set_current_rubric_vector("cand-1", self._TASK, "VA", "no-such-uuid")
+        assert db.list_rubric_vectors("cand-1", self._TASK, current_only=False) == before
+
+    @pytest.mark.parametrize(
+        "args",
+        [("", "grade_do", "VA", "u"), ("cand-1", "", "VA", "u"), ("cand-1", "grade_do", " ", "u"), ("cand-1", "grade_do", "VA", "")],
+    )
+    def test_blank_args_raise(self, seeded_db, args) -> None:
+        with pytest.raises(ValueError, match="required"):
+            seeded_db.set_current_rubric_vector(*args)
+
+
+# AST-2126 (AST-2127 tests): sync stores only codes agent._GRADE_SEG can decode — [A-Z]{2} after
+# strip().upper(). Branches: invalid code (blank / V01 / one letter / digit / three letters) → ValueError,
+# no V{idx} fallback, nothing committed for the owner (a valid earlier criterion in the same call included);
+# lowercase valid code → stored uppercased.
+class TestAst2126SyncRejectsUndecodableCodes:
+    _TASK = "grade_do"
+
+    @pytest.mark.parametrize("code", ["V01", "", "A", "G1", "CLR"])
+    def test_invalid_code_raises_and_writes_nothing(self, seeded_db, code: str) -> None:
+        db = seeded_db
+        db.save_agent_task(self._TASK, agent_id="a1", user_prompt="p")
+        crit = [
+            {"code": "TP", "label": "Valid first", "content": "ok", "importance": 5},
+            {"code": code, "label": "Bad", "content": "x", "importance": 5},
+        ]
+        with pytest.raises(ValueError, match=f"criterion 2 code {re.escape(repr(code))} is not two letters A-Z"):
+            db.sync_rubric_vectors_from_criteria("cand-1", self._TASK, crit)
+        assert db.list_rubric_vectors("cand-1", self._TASK) == []
+
+    def test_lowercase_code_stored_uppercased(self, seeded_db) -> None:
+        db = seeded_db
+        db.save_agent_task(self._TASK, agent_id="a1", user_prompt="p")
+        db.sync_rubric_vectors_from_criteria(
+            "cand-1", self._TASK, [{"code": " tp", "label": "Truth", "content": "x", "importance": 5}]
+        )
+        assert [r["code"] for r in db.list_rubric_vectors("cand-1", self._TASK)] == ["TP"]

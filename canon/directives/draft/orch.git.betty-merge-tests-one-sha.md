@@ -10,14 +10,14 @@ applies_when:
 source_docs:
   - docs/ASTRAL_GIT_WORKFLOW.md
 supersedes: null
-superseded_by: null
+superseded_by: orch.git.betty-tests-on-sub
 approved_by: Archie
-approved_at: "2026-07-23"
+approved_at: "2026-10-08"
 ---
 
 # Statement
 
-Betty delivers exactly one `origin/tests` SHA per child via exactly one `merge-tests(AST-NNN): origin/tests <sha>` commit on the sub, then pushes the sub.
+**Retired (superseded by `orch.git.betty-tests-on-sub`).** Betty delivered exactly one `origin/tests` SHA per child via exactly one `merge-tests(AST-NNN): origin/tests <sha>` commit on the sub, then pushed the sub. Legacy `merge-tests` commits already on in-flight subs remain valid history.
 
 ## Rationale
 

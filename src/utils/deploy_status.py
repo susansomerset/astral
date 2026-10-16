@@ -3,6 +3,8 @@
 import os
 import time
 
+from src.utils.config import ASTRAL_CONFIG
+
 _PROCESS_BOOT_TIME = time.time()
 
 
@@ -37,6 +39,12 @@ def get_deploy_label() -> str:
 def is_local_deploy_env() -> bool:
     raw = os.environ.get("ASTRAL_DEPLOY_ENV", "").strip()
     return raw.lower() == "local"
+
+
+def logo_background() -> str | None:
+    """Sidebar logo background for this deploy env; None keeps the stylesheet color (AST-2040)."""
+    raw = os.environ.get("ASTRAL_DEPLOY_ENV", "").strip().lower()
+    return ASTRAL_CONFIG["logo_background_by_deploy_env"].get(raw)
 
 
 def ui_llm_debug(*, explicit_debug: bool = False) -> bool:
