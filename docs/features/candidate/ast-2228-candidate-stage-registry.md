@@ -250,3 +250,66 @@ context_tokens≈42000
 | 3 | `be91a469` | `CANDIDATE_DATA_MODEL.md` stage bands + topic remap doc |
 
 **Betty note:** Registry + core helpers + data-model doc only. No test-tree edits. AC1–AC3 covered by import-time asserts; AC4 = no `candidate.stage` column.
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-2228
+**Publish ref:** `c488aeae7a1bdc74fca6275a62be3c10fe409497` (`origin/sub/AST-2225/AST-2228-candidate-stage-registry`)
+**Corpus:** b7ab2203048ce0beb2869a12200ab7fa696c8066
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| astral.entity.required-metadata | A | | |
+| astral.dispatch.entity-state-bound | A | | |
+
+## Column diff vs plan stage
+
+(aligned)
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **Location:** `src/core/candidate.py` — `migrate_retired_topic_candidate_states()` at start of `age_stale_candidate_states`
+- **Finding:** Live rows still persisted as retired topic labels heal on the first stale-aging tick, not at import/deploy. Until then, `candidate_stage("REQUIRED_TOPICS_READY")` correctly raises `ValueError` (tested); any caller that indexes `CANDIDATE_STATES[row["state"]]` without `remap_legacy_candidate_state` / migration can still break on those rows.
+- **Note:** Matches plan Stage 2 step 3 and Joan’s plan-stage discuss (no `dispatcher.py` in scope). No product call needed unless Susan wants synchronous heal outside this child’s boundaries.
+
+- **Location:** `docs/test-bible/**`, `tests/component/**` in diff
+- **Finding:** Betty manifest + component revisions for AST-2228 (28-node narrowed run per `docs/test-bible/utils/config.md` § QA test manifest — AST-2228). Not sibling product carry; scoped to this ticket.
+
+## Plan fidelity (non-canon)
+
+Diff vs `docs/features/candidate/ast-2228-candidate-stage-registry.md`: **matches** Stages 1–3 — `CANDIDATE_STATES` stage bands, topic retirement, legacy map/trigger frozenset, import asserts, `candidate_stage` / `migrate_retired_topic_candidate_states` / `check_context_complete` → `CONTEXT_READY`, `CANDIDATE_DATA_MODEL.md` updates. No `NAV_CONFIG`, `dispatcher.py`, `database.py`, or `candidate.stage` column. Ticket `## Scope` respected.
+
+## Estimate footprint (non-canon)
+
+Confirm estimate **5**: footprint is registry + two core helpers + data-model doc + targeted component tests — consistent with a 5-point child, not scope creep.
+
+## What's solid
+
+- Locked AC bands enforced in code and duplicated at import (`config.py` asserts) and in `TestAst2228CandidateStageRegistry`.
+- `CANDIDATE_STAGE_DISPATCH` still claims `REQUESTED_ARTIFACTS`; no stage-integer or retired-topic keys introduced as dispatch triggers.
+- Migration uses `remap_legacy_candidate_state` + `transition_candidate_state(..., force=True)` with explicit tests for rewrite count and stale-tick ordering.
+
+## Recommended actions (downstream — not for Radia)
+
+- Chuckles: append this artifact to `docs/features/candidate/ast-2228-candidate-stage-registry.md`, `docs(AST-2228): Radia review — clean`, push, post slim upshot `--as radia`, move **Review Posted**; datt **§3h** → **PROCEED** path toward **User Testing** (no fix-now canon items).
+- Optional for `resolve-child` / UT notes only: one line in issue doc that topic-labeled rows heal on first `age_stale_candidate_states` if operators care about the window (already in plan + data model).
+
+context_tokens≈28000
