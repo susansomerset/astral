@@ -248,3 +248,7 @@ context_tokens≈22000
 ```
 [code-rubric] PROCEED (Commit: 44db14e6e) Railway toml plus CI fence
 ```
+
+## Resolution (2026-10-16)
+
+Radia **CLEAN** — **fix-now:** none. **discuss** Default applied: leave Linear Acceptance criteria as fence-only (#2); Phase 1 toml stays plan + `test_astral_agent_deploy_ci.py` traceability. No product edits. `resolve(AST-2241): — clean`.
