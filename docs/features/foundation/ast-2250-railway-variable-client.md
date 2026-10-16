@@ -253,3 +253,9 @@ Confirm Chuckles estimate: 5 — agree
 context_tokens≈32000
 
 [plan-rubric] PROCEED (Commit: 55beb00) Railway client plan ready
+
+## Review stub (build-child)
+
+**Built:** `ef39d41ffdc9395ce80079b3c024c1ea00bba48a` on `sub/AST-2246/AST-2250-railway-variable-client`
+
+Catalog and env names: `cd65ade937d9a785ea753e9c0ae107643391fe21`. Railway client: `ef39d41ffdc9395ce80079b3c024c1ea00bba48a`. No test-tree edits. `stat.logging.error` logs once at the Railway handler with the variable name and no secret; `stat.logging.warning` has no call site in this module.
