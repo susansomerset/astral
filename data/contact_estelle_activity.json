@@ -4,7 +4,7 @@
       "slack_user_id": "U1",
       "slack_username": null,
       "slack_display_name": null,
-      "bind_ok": true,
+      "bind_ok": true, 
       "astral_candidate_id": "cand-slack-hook",
       "candidate_state": "PROSPECT",
       "inbound_message_count": 34,
