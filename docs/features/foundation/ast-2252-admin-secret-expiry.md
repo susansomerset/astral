@@ -139,3 +139,9 @@ Confirm Chuckles estimate: 3 — agree
 - **Recommendation:** Land #1 and #2 on ftr before build.
 
 context_tokens≈48000
+
+## Review stub (build-child)
+
+**Built:** `54725039e06df03c2be07733817e734525a4ed67` on `sub/AST-2246/AST-2252-admin-secret-expiry`
+
+API set/clear/expiry: `7b8a8cde7`. Manage Candidates status and expiry: `54725039e`. No test-tree edits. GET `api_keys` is status and expiry; plaintext `candidate_api_keys` is popped. Production PUT upserts or deletes, then one deploy, then the status write. Completion info stays the existing one-line route log and does not include the secret.
