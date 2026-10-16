@@ -145,3 +145,66 @@ context_tokens≈48000
 **Built:** `54725039e06df03c2be07733817e734525a4ed67` on `sub/AST-2246/AST-2252-admin-secret-expiry`
 
 API set/clear/expiry: `7b8a8cde7`. Manage Candidates status and expiry: `54725039e`. No test-tree edits. GET `api_keys` is status and expiry; plaintext `candidate_api_keys` is popped. Production PUT upserts or deletes, then one deploy, then the status write. Completion info stays the existing one-line route log and does not include the secret.
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-2252
+**Publish ref:** `8da4c37243c85d87cc1017ebda7230eeb861b050` (`origin/sub/AST-2246/AST-2252-admin-secret-expiry`)
+**Corpus:** `65a2864973ecf09fd57732c2cfc9a4e1ff3e0b91`
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| stat.logging.info.api | A | | |
+| new candidate-secret pattern (pending Archie) | A | | |
+
+## Column diff vs plan stage
+
+| slug | Joan | Radia | note |
+|------|------|-------|------|
+| new candidate-secret pattern (pending Archie) | B | A | Plan-stage B reflected pending corpus; diff implements admin slice (Railway before row write, GET status/expiry only, production token gate, one deploy per PUT). |
+
+(stat.logging.info.api: aligned at A)
+
+## Frame diff
+
+- [ ] **Acceptance criteria — AC 2:** Confirm `TestAst2252AdminSecretExpiry` (production upsert + single deploy + status-only row) satisfies this child’s portion of parent AC 2; full epic AC may still reference later deploy/env parity in UAT.
+- [ ] **Acceptance criteria — AC 3:** Confirm GET/PUT responses and `_sanitize_candidate` never surface plaintext (covered by sanitize + production set tests).
+
+## Findings
+
+### advisory — Sibling carry in three-dot diff
+
+- **Location:** AST-2250/AST-2251 paths (`src/external/railway.py`, `src/core/candidate.py`, `src/data/database.py`, migration script, prior docs/tests)
+- **Finding:** `origin/dev...origin/sub/AST-2246/AST-2252-admin-secret-expiry` includes prior siblings’ stacks; AST-2252’s in-scope product edits are `src/ui/api/api_candidate.py` and `AdminManageCandidates.tsx` plus their tests/bible pointers.
+- **Recommendation:** Note once in the issue doc; not a cross-ticket scope violation for AST-2252.
+
+### advisory — Off-list statutes (do not score)
+
+- **Location:** `api_candidate.py` imports `src.external.railway`
+- **Finding:** `astral.layers.import-direction` is not on the frozen Citations list; matches Joan’s plan-stage note and existing ui→external admin I/O patterns.
+- **Recommendation:** Archie may widen parent Canon Scope; do not insert ids on this pass.
+
+### discuss — Railway succeeds, DB fails
+
+- **Severity:** discuss
+- **Location:** Stage 1 decision (Railway + deploy before `update_candidate_api_keys`)
+- **Finding:** A DB error after a successful Railway write leaves the variable/deploy ahead of row status until retry.
+- **Question (@susan):** Keep documented operator-retry recovery, or pursue a compensating transaction later?
+- **Default:** Accept plan tradeoff; operator retries the save (no code change on this sub unless Susan escalates).
+
+## What's solid
+
+- **`_sanitize_candidate`:** Pops `candidate_api_keys`, `candidate_secret_status`, legacy ids; outbound `api_keys` is `{server, label, status, expires_at}` only with search labels via `_secret_label`.
+- **`update_candidate_data`:** Validates `CANDIDATE_SECRET_CATALOG`, requires `expires_at` on set, production path upsert/delete then **one** `trigger_service_deploy`, then `update_candidate_api_keys`; `RailwayCallFailed` → 502 without `logger.exception`; keys-only success uses one `logger.info` completion line with no secret material (`stat.logging.info.api`).
+- **Admin UI:** List column shows SET/NOT SET/EXPIRED + expiry; modal collects secret + UTC expiry; Clear on SET/EXPIRED; CSE catalog rows appended; client-side expiry regex blocks bad saves.
+- **Tests:** `TestAst2252AdminSecretExpiry` covers AC 2/3 (upsert+deploy+status-only row, clear+single deploy, local skip Railway, 502 leaves row empty); frontend tests cover expiry validation and PUT payload shape.
+
+## Recommended actions (downstream only — not in Radia lane)
+
+- Chuckles: append this artifact to `docs/features/foundation/ast-2252-admin-secret-expiry.md`, commit `docs(AST-2252): Radia review — clean`, post slim upshot `--as radia`, move to **Review Posted**.
+
+context_tokens≈42000
