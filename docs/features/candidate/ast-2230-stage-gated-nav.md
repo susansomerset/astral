@@ -164,3 +164,48 @@ Order of **groups** and **items** must match exactly (AC 5–7 + parent brief).
 ## Estimate
 
 Confirm Chuckles estimate: 3 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-2230
+**Overall:** APPROVED
+**Corpus:** b7ab2203048ce0beb2869a12200ab7fa696c8066
+**Publish ref tip:** `cb5a322717e82051fad76af5544180c2821b3d81` (`origin/sub/AST-2225/AST-2230-stage-gated-nav`)
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| astral.dispatch.entity-state-bound | A | | |
+| stat.logging.info.api | A | | |
+
+## Traceability
+
+AC5 → Stage 1 (four groups, order/labels) + Stage 2 (`_resolve_nav` payload). AC6 → Stage 1 (drop unlisted labels) + Stage 2 (non-admin filter unchanged). AC7 → Stage 1 (Criteria min stage 4) + Stage 2 (int `enabled` → `stage >= min`). AC8 → Stage 1 (`NAV_GROUP_RECENT_DEFAULTS`) + Stage 2 (group `recent` flags). Parent AC 1–4 → N/A (#1 vocabulary). Parent AC 9–13 → N/A (#2 advancement, #4 shell picker/expand chrome, dispatch tests). Parent AC 8 (stage-0 menu) → implemented in Stage 2 step 3 (omit groups); full shell behavior remains #4 — N/A for this child’s AC checkbox list.
+
+## Findings
+
+### discuss
+- **Location:** Linear ticket `## Scope` vs plan `## Explicit scope gate`
+- **Finding:** Issue description still lists only `config.py`, `api_system.py`, `routes.tsx`; Chuckles’ scope-gate comment amended Scope to add `JobsHomeRedirect.tsx` and `candidate.py`, and the published plan matches the amended five-file gate.
+- **Recommendation:** Sync Linear `## Scope` to the amended list so dispatch/plan-child and Joan/Radia lists stay aligned; not a plan defect.
+
+### discuss
+- **Location:** AC8 / Stage 2 step 5 vs sibling #4
+- **Finding:** This child delivers config knobs + API `recent` on groups; “fresh session expands only groups the API marks recent” still depends on `NavigationShell.tsx` (#4) honoring `recent`.
+- **Recommendation:** Acceptable partition; note in UAT that AC8 is not fully exercisable until #4 lands.
+
+### acceptable
+- **Location:** Prerequisite — `incomplete_profile` soft-dep
+- **Finding:** Plan correctly prefers AST-2229 symbol for `attention` / `incomplete_profile` recent rule and falls back to `false` without reimplementing completeness in API.
+- **Recommendation:** Engineer should leave the one-line Linear note if building before #2 merge.
+
+### acceptable
+- **Location:** `[scope-gate]` thread → plan publish
+- **Finding:** Prior Plan Discuss hold was resolved by Scope amendment; current plan Files Changed matches ticket scope gate and Hedy’s scope-gate rationale (Jobs home label + hop-label walk).
+- **Recommendation:** None.
+
+**R6 (summary):** Locked nav map matches parent brief (paths stable, label renames, stage floors). Scope gate includes all blast-radius files identified at scope-gate. No `CANDIDATE_STATES` edits, no dispatch/`trigger_state` changes, no shell chrome. Stage-gate migration from `progress_rank` / state-key `enabled` to int stage floors is explicit. Estimate 3 — agree.
+
+context_tokens≈72000
