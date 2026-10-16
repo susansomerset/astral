@@ -104,3 +104,48 @@ Plan Discuss still open: [scope-gate] needs parent/bug Component+Technical scope
 ---
 
 _Implementation detail may live in git history on `origin/dev`._
+
+## Bug: AST-2259 — Cover admin selected-candidate reload in CandidateContext tests
+
+### As-is
+
+`CandidateProvider — AST-1768 login-email candidate bind` asserts the admin picker only through an in-memory `refresh()` on the same mount (`[bug-repro] binds once per login email — refresh and admin picker are not overridden`). A remount, which is the page reload, is not asserted. `docs/test-bible/frontend/lib.md` § AST-1768 names that describe as “once-per-login” and does not name an admin-reload assertion.
+
+### To-be
+
+One new case in that describe mounts an admin, lets the login-email bind select `c2`, calls `setSelectedId("c1")`, unmounts, and mounts again with the same login, then expects the picked id `c1`. The non-admin bind-over-storage case stays. § AST-1768 names this remount as coverage distinct from same-mount `refresh()`. No edit to `CandidateContext.tsx` — that product change is AST-2258.
+
+### Repro
+
+Same fixture as the existing admin picker test (no database seed): `c1` Susan Somerset and `c2` Jolane Abrams from `GET /api/candidates`; verified login `soosomerset@gmail.com`; `GET /api/candidates/by_email` returns `{ candidate_id: "c2" }`; `is_admin: true`. The current test stops after `setSelectedId("c1")` plus `refresh()` on that hook. The hole is the missing unmount and second `renderHook` with the same wrapper.
+
+### Root cause
+
+The once-per-email guard is a ref on the provider instance. `refresh()` on the same mount never clears it, so that test stays green even when a new mount would run the login-email lookup again and replace the stored pick. The bible row records “once-per-login” without saying the assertion is same-mount only.
+
+### Proposed change
+
+`tests/component/frontend/contexts/test_CandidateContext.test.tsx` only, inside `describe("CandidateProvider — AST-1768 login-email candidate bind")`. Add one `it` after the existing refresh case, reusing `bindWrapper(true, …)` and the by-email → `c2` response:
+
+1. Mount, wait until `selectedId` is `"c2"`.
+2. `setSelectedId("c1")`.
+3. Unmount.
+4. `renderHook` again with the same wrapper.
+5. Wait until `candidatesHydrated` is true. Expect `selectedId` to be `"c1"`.
+
+Title: `admin picker survives remount for the same login email`. Do not change the body of the same-mount `refresh()` test or the non-admin test that expects a stored `c1` to become `c2`.
+
+`docs/test-bible/frontend/lib.md` § AST-1768, the login-email bind row only. Extend the Area cell from `match / verified-first / once-per-login / null+fail / unknown id / passthrough` so it also says `admin remount after setSelectedId (not the same-mount refresh())`, and name the new `it` title in the Component tests cell next to the describe name. Do not add a manifest entry and do not edit any other bible section.
+
+Do not modify `src/ui/frontend/src/contexts/CandidateContext.tsx`.
+
+### Blast radius
+
+The new node fails on a tree where a remount still replaces the stored admin id with the by-email id. Turning it green is AST-2258’s `load` change, not a product edit on this ticket. Other cases in the describe, and tests that only set `astral_selected_candidate`, stay as they are. The bible edit is that one table row.
+
+### What must still hold
+
+- Non-admin load still selects the by-email candidate over a stored id (existing test unchanged).
+- Same-mount `refresh()` still expects the admin pick `c1` and a single by-email call.
+- Verified-first, null/fail, unknown id, and no-Stytch-user cases in the same describe stay.
+- § AST-1768 return-path, `JobsJobDetail` hydration, and `by_email` API rows stay.
