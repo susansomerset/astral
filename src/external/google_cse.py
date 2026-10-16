@@ -9,11 +9,12 @@ from __future__ import annotations
 import os
 import time
 from collections.abc import Callable
-from typing import Sequence, TypedDict
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Sequence, TypedDict
 
 import requests
 
-from src.utils.config import GOOGLE_CSE_CONFIG
+from src.utils.config import GOOGLE_CSE_CONFIG, TIMESHEET_RECEIPT_FIELDS
 from src.utils.integration_io import require_controlled_external_io
 
 GOOGLE_CSE_API_URL = "https://www.googleapis.com/customsearch/v1"
@@ -21,13 +22,48 @@ _DEFAULT_REQUEST_TIMEOUT_SEC = 60
 
 _last_cse_request_at: float | None = None
 
-__all__ = ["GoogleCseHit", "search_google_cse"]
+__all__ = ["GoogleCseHit", "GoogleCseSearchResult", "search_google_cse", "get_receipt"]
 
 
 class GoogleCseHit(TypedDict):
     title: str
     url: str
     snippet: str
+
+
+class GoogleCseSearchResult(TypedDict):
+    hits: list[GoogleCseHit]
+    call_start: str
+    call_stop: str
+    hit_count: int
+
+
+def _search_result(hits: list[GoogleCseHit], call_start: str) -> GoogleCseSearchResult:
+    """Build the structured return; call_stop is always ≥ call_start."""
+    return {
+        "hits": hits,
+        "call_start": call_start,
+        "call_stop": datetime.now(timezone.utc).isoformat(),
+        "hit_count": len(hits),
+    }
+
+
+def get_receipt(external_ids: List[str], api_key: str) -> List[Dict[str, Any]]:
+    """Zero-stub receipts until search pricing exists (AST-2215). No network; api_key ignored."""
+    del api_key  # shared get_receipt(ids, key) signature; CSE has no candidate key
+    out: List[Dict[str, Any]] = []
+    for _eid in external_ids:
+        row = {k: None for k in TIMESHEET_RECEIPT_FIELDS}
+        row["native_tokens_prompt"] = 0
+        row["native_tokens_completion"] = 0
+        row["native_tokens_cached"] = 0
+        row["cache_write_tokens"] = 0
+        row["response_item_count"] = 0
+        row["response_char_length"] = 0
+        row["platform_cost"] = None
+        row["completion_status"] = "stub"
+        out.append(row)
+    return out
 
 
 def _item_to_hit(item: object) -> GoogleCseHit:
@@ -180,8 +216,8 @@ def search_google_cse(
     site_filters: Sequence[str] | None = None,
     days: int | None = None,
     pace_detail: Callable[[str], None] | None = None,
-) -> list[GoogleCseHit]:
-    """Run a Custom Search query; returns normalized hits (title, url, snippet).
+) -> GoogleCseSearchResult:
+    """Run a Custom Search query; returns hits plus call timing and hit_count.
 
     Credentials: GOOGLE_CSE_API_KEY and GOOGLE_CSE_ID via os.environ (no fallbacks).
 
@@ -196,6 +232,7 @@ def search_google_cse(
     ``pace_detail``: when provided, invoked with pacing/retry status strings (external
     layer does not log — callers wire to debug_detail when debug=True).
     """
+    call_start = datetime.now(timezone.utc).isoformat()
     require_controlled_external_io("google_cse.search_google_cse")
     try:
         api_key = os.environ["GOOGLE_CSE_API_KEY"]
@@ -238,7 +275,7 @@ def search_google_cse(
         if max_results > 0:
             remaining = max_results - len(hits)
             if remaining <= 0:
-                return hits[:max_results]
+                return _search_result(hits[:max_results], call_start)
             num_this = min(10, remaining)
         else:
             num_this = 10
@@ -297,7 +334,7 @@ def search_google_cse(
 
         if max_results > 0:
             if len(hits) >= max_results:
-                return hits[:max_results]
+                return _search_result(hits[:max_results], call_start)
 
         if not items_list:
             break
@@ -309,6 +346,5 @@ def search_google_cse(
             break
         start = next_start
 
-    if max_results > 0:
-        return hits[:max_results]
-    return hits
+    trimmed = hits[:max_results] if max_results > 0 else hits
+    return _search_result(trimmed, call_start)

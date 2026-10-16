@@ -107,7 +107,10 @@ class TestGoogleCseSearchGoogleCse:
         rsp = _fake_response(True, payload={"items": None})
         get = MagicMock(return_value=rsp)
         monkeypatch.setattr(google_cse_mod.requests, "get", get)
-        assert google_cse_mod.search_google_cse("q") == []
+        out = google_cse_mod.search_google_cse("q")
+        assert out["hits"] == []
+        assert out["hit_count"] == 0
+        assert out["call_start"] and out["call_stop"]
         get.assert_called_once()
 
     def test_success_one_page_with_filters(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -125,9 +128,10 @@ class TestGoogleCseSearchGoogleCse:
             max_results=5,
             site_filters=(" linkedin.com ", "", 99, "crunchbase.com"),
         )
-        assert len(out) == 2
-        assert out[0] == {"title": "A", "url": "https://a", "snippet": "sa"}
-        assert out[1] == {"title": "", "url": "", "snippet": ""}
+        assert out["hit_count"] == 2
+        assert out["hits"][0] == {"title": "A", "url": "https://a", "snippet": "sa"}
+        assert out["hits"][1] == {"title": "", "url": "", "snippet": ""}
+        assert out["call_start"] and out["call_stop"] >= out["call_start"]
         call_kw = get.call_args.kwargs
         assert call_kw["params"]["q"] == "base (site:linkedin.com OR site:crunchbase.com)"
         assert call_kw["params"]["num"] == 5
@@ -141,7 +145,8 @@ class TestGoogleCseSearchGoogleCse:
         get = MagicMock(side_effect=[_fake_response(True, payload=page1), _fake_response(True, payload=page2)])
         monkeypatch.setattr(google_cse_mod.requests, "get", get)
         out = google_cse_mod.search_google_cse("q", max_results=0)
-        assert [h["title"] for h in out] == ["1", "2"]
+        assert [h["title"] for h in out["hits"]] == ["1", "2"]
+        assert out["hit_count"] == 2
         assert get.call_count == 2
 
     def test_duplicate_next_start_breaks(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -153,7 +158,8 @@ class TestGoogleCseSearchGoogleCse:
         get = MagicMock(return_value=rsp)
         monkeypatch.setattr(google_cse_mod.requests, "get", get)
         out = google_cse_mod.search_google_cse("q", max_results=0)
-        assert len(out) == 1
+        assert len(out["hits"]) == 1
+        assert out["hit_count"] == 1
         get.assert_called_once()
 
     def test_next_start_invalid_int_skips_pagination(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -246,7 +252,8 @@ class TestGoogleCseAst837PacingAndRateLimit:
         monkeypatch.setattr(google_cse_mod.time, "sleep", lambda sec: sleeps.append(sec))
         monkeypatch.setattr(google_cse_mod.time, "monotonic", MagicMock(return_value=0.0))
         out = google_cse_mod.search_google_cse("q")
-        assert out == [{"title": "A", "url": "https://a", "snippet": ""}]
+        assert out["hits"] == [{"title": "A", "url": "https://a", "snippet": ""}]
+        assert out["hit_count"] == 1
         assert get.call_count == 2
         assert sleeps == [65.0]
 
@@ -281,7 +288,8 @@ class TestGoogleCseAst837PacingAndRateLimit:
         monkeypatch.setattr(google_cse_mod.time, "sleep", MagicMock())
         monkeypatch.setattr(google_cse_mod.time, "monotonic", MagicMock(return_value=0.0))
         out = google_cse_mod.search_google_cse("q")
-        assert out[0]["url"] == "https://b"
+        assert out["hits"][0]["url"] == "https://b"
+        assert out["hit_count"] == 1
         assert get.call_count == 2
 
     def test_pace_detail_receives_pacing_and_retry_messages(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -373,3 +381,35 @@ class TestGoogleCseAst839HttpOutcomeLines:
         with pytest.raises(RuntimeError, match=r"Google CSE HTTP 429"):
             google_cse_mod.search_google_cse("q", pace_detail=messages.append)
         assert messages[-1] == "CSE HTTP start=1 status=429 rate_limited=exhausted"
+
+
+class TestAst2219GetReceiptAndSearchResult:
+    """AST-2219: zero-stub get_receipt + GoogleCseSearchResult shape (parent AC5 search half)."""
+
+    def test_get_receipt_zero_stub_shared_shape(self) -> None:
+        from src.utils.config import TIMESHEET_RECEIPT_FIELDS
+
+        receipts = google_cse_mod.get_receipt(["x", "y"], api_key="ignored")
+        assert len(receipts) == 2
+        for row in receipts:
+            assert set(row) == set(TIMESHEET_RECEIPT_FIELDS)
+            assert row["platform_cost"] is None
+            assert row["completion_status"] == "stub"
+            assert row["native_tokens_prompt"] == 0
+            assert row["native_tokens_completion"] == 0
+
+    def test_get_receipt_no_http(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        get = MagicMock(side_effect=AssertionError("get_receipt must not HTTP"))
+        monkeypatch.setattr(google_cse_mod.requests, "get", get)
+        google_cse_mod.get_receipt(["a"], api_key="")
+        get.assert_not_called()
+
+    def test_search_result_keys_and_timing(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        payload = {"items": [{"title": "A", "link": "https://a", "snippet": "s"}]}
+        monkeypatch.setattr(
+            google_cse_mod.requests, "get", MagicMock(return_value=_fake_response(True, payload=payload))
+        )
+        out = google_cse_mod.search_google_cse("q")
+        assert set(out) == {"hits", "call_start", "call_stop", "hit_count"}
+        assert out["hit_count"] == len(out["hits"]) == 1
+        assert out["call_stop"] >= out["call_start"]

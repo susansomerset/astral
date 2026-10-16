@@ -860,3 +860,16 @@ grep -n '^_auto_thread_cap_override: Optional\[int\] = None' src/core/dispatcher
 ### AST-2222 · AST-1201 (pointer)
 
 Candidate claim expansion uses `candidate_stage_dispatch_claim_states` for every stage trigger (not only `REQUESTED_ARTIFACTS`). Primary: [`candidate.md`](candidate.md) § AST-2222 — AC 6/7 source scans on `dispatcher.py`.
+
+### AST-2218 · AST-2215 (fetch_timesheet ensure/provision/due; close → NEW)
+
+Parent AC **3** (exactly one row per candidate), **4** (due on `NEW` ledger count; historical null excluded). Ledger close stamps `timesheet_state="NEW"`. Runner routing is covered under [`timesheets.md`](timesheets.md).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| New — provision 3 candidates idempotent; null entity/trigger/freq; auto_mode off | `provision_fetch_timesheet_dispatch_tasks` | `TestAst2218FetchTimesheetProvisionAndDue::test_provision_three_candidates_idempotent` |
+| New — ensure requires candidate_id | `ensure_fetch_timesheet_dispatch_task` | `…::test_ensure_requires_candidate_id` |
+| New — AUTO due when NEW ≥ min_count; null historical ignored; other candidate isolated | `_fetch_timesheet_due_tasks` | `…::test_due_on_new_ledger_not_historical_null` |
+| New — `_persist_dispatch_ledger_close` sets timesheet_state NEW | `_persist_dispatch_ledger_close` | `…::test_persist_close_sets_timesheet_state_new` |
+
+**Primary manifest:** [`timesheets.md`](timesheets.md) § AST-2218.
