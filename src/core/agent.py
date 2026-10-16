@@ -3386,10 +3386,16 @@ def get_entity_agent_story(entity: Dict[str, Any]) -> List[Dict[str, Any]]:
 
         entry = {**e, "blocks": blocks}
 
-        # AST-1550: optional display name from live agent_task (omit when blank).
-        task_name = ((get_agent_task(task_key) or {}).get("task_name") or "").strip()
+        # AST-1550 / AST-2232: optional display names from live agent_task + agent (omit when blank).
+        task_row = get_agent_task(task_key) or {}
+        task_name = (task_row.get("task_name") or "").strip()
         if task_name:
             entry["task_name"] = task_name
+        agent_id = (task_row.get("agent_id") or "").strip()
+        agent_row = get_agent(agent_id) if agent_id else None
+        agent_name = ((agent_row or {}).get("agent_name") or "").strip()
+        if agent_name:
+            entry["agent_name"] = agent_name
 
         if is_scored:
             grades_key = task_cfg.get("grades_key")

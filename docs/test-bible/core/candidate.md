@@ -2239,6 +2239,37 @@ Operative `plain_text` validate on str-path (reuse); Writing Preferences `save_a
 - `docs/test-bible/core/candidate.md` — *(filled after publish)*
 - `docs/test-bible/ui/api/api_candidate.md` — *(filled after publish)*
 
+### AST-2243 · AST-2236 (fix — WP hydrate dict coerce)
+
+**Parent:** [AST-2236 — read current artifact for writing preferences is not working](https://linear.app/astralcareermatch/issue/AST-2236). **Publish:** `origin/sub/AST-2236/AST-2243-wp-hydrate-coerce`.
+
+`hydrate_operative_writing_preferences_for_response` coerces dict current bodies for display overlay (prefer non-empty `writing_general_instructions`, else stable `json.dumps`); string bodies unchanged; miss leaves legacy blob; other non-str types still skip. Does not rewrite artifact rows. Operative plain_text save still rejects non-str. Tests live in the AST-1665 class (flipped + added).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| dict coerce + instructions prefer + non-dict cd / non-dict-non-str skip | `src/core/candidate.py` | **`TestAst1665WritingPreferencesOperativeSaveHydrate`** — `test_hydrate_ignores_non_dict_cd_and_coerces_dict_body`, `test_hydrate_dict_prefers_writing_general_instructions` |
+
+**Broken / obsolete this pass:** `test_hydrate_ignores_non_dict_cd_and_non_str_body` (expected dict early-return blanking) — replaced by coerce asserts above.
+
+**Integration:** none — do not invent.
+
+## QA test manifest
+
+1. Coerce dict body (json.dumps fallback) + non-dict cd / other non-str skip: `tests/component/core/test_candidate.py::TestAst1665WritingPreferencesOperativeSaveHydrate::test_hydrate_ignores_non_dict_cd_and_coerces_dict_body`
+2. Prefer `writing_general_instructions` overlay: `tests/component/core/test_candidate.py::TestAst1665WritingPreferencesOperativeSaveHydrate::test_hydrate_dict_prefers_writing_general_instructions`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst1665WritingPreferencesOperativeSaveHydrate::test_hydrate_ignores_non_dict_cd_and_coerces_dict_body \
+  tests/component/core/test_candidate.py::TestAst1665WritingPreferencesOperativeSaveHydrate::test_hydrate_dict_prefers_writing_general_instructions \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/core/candidate.md` — *(filled after publish)*
+
 ### AST-1679 · AST-1677
 
 **Parent:** [AST-1677 — Move candidate_data.artifacts.resume_structure to artifact table](https://linear.app/astralcareermatch/issue/AST-1677). **Publish:** `origin/sub/AST-1677/AST-1679-operative-save-hydrate-blob-retirement`.
@@ -2562,3 +2593,63 @@ Runtime generalization of the candidate stage runner / claim expansion / consult
 **Pass criterion:** 24 passed (11 new + 13 existing). Not the zero-arg harness.
 
 **Bible shasum (after publish):** `git show origin/sub/AST-1201/AST-2222-stage-generic-candidate-chain-runner:docs/test-bible/core/candidate.md | shasum`
+### AST-2228 · AST-2225 (stage resolver + topic-row migrate + CONTEXT_READY gate)
+
+**Parent:** [AST-2225](https://linear.app/astralcareermatch/issue/AST-2225). **Publish:** `origin/sub/AST-2225/AST-2228-candidate-stage-registry`. Config registry half: [`../utils/config.md`](../utils/config.md) § AST-2228.
+
+`candidate_stage(state)` reads registry `stage` via `registered_base` (unknown → `ValueError`). `migrate_retired_topic_candidate_states()` force-transitions live topic-ready(+stale) rows onto `PROFILE_READY` / `CONTEXT_READY` via `remap_legacy_candidate_state`. Hooked at the start of `age_stale_candidate_states` (first stale tick heals; no dispatcher edit). `check_context_complete` completeness rank is `CONTEXT_READY` (was `ALL_TOPICS_READY`). Happy-path transitions use PROFILE → CONTEXT. No `candidate.stage` column.
+
+| Area | Component tests |
+| --- | --- |
+| Happy path PROFILE/CONTEXT; intake → PROFILE; RESUME_READY_STALE → REQUESTED_ARTIFACTS; age_stale on RESUME_READY | revised **`TestAst970CandidateStateMachine`** |
+| `candidate_stage` bands + retry inherit + unknown; migrate rewrite count; age_stale calls migrate first; CONTEXT_READY rank gate | new **`TestAst2228CandidateStageAndTopicMigrate`** |
+| Completeness past CONTEXT_READY | revised **`TestCheckContextCompleteExtended::test_returns_true_when_already_at_or_past_context_ready`** |
+
+**Broken / obsolete this pass:** AST-970 hops/stale/age asserts naming `REQUIRED_TOPICS_*` / `ALL_TOPICS_*`; completeness test name tied to `ALL_TOPICS_READY`.
+
+**Integration:** none — do not invent.
+
+## QA test manifest — AST-2228
+
+Primary command + pass criterion: [`../utils/config.md`](../utils/config.md) § QA test manifest — AST-2228 (same narrowed node list; 28 passed).
+
+
+### AST-2229 · AST-2225 (forward-only readiness advance + incomplete profile signal)
+
+**Parent:** [AST-2225](https://linear.app/astralcareermatch/issue/AST-2225). **Publish:** `origin/sub/AST-2225/AST-2229-readiness-advancement`. Plan: `docs/features/candidate/ast-2229-readiness-advancement.md`. Tick wiring: [`dispatcher.md`](dispatcher.md) § AST-2229.
+
+`check_profile_complete` / `incomplete_profile` (first+last+contact_email; missing row → incomplete False; never writes state). `_READINESS_HOPS` forward-only table + `advance_candidate_readiness` (list-scan peer of stale aging; demote ban via `candidate_stage`; hop targets are real registry / `CANDIDATE_STAGE_DISPATCH` trigger strings). Does **not** own nav/UI (#3/#4) or vocabulary (#1).
+
+| Area | Component tests |
+| --- | --- |
+| Profile complete / incomplete signal; no state write | new **`TestAst2229ProfileSignalAndReadinessAdvance`** (profile cases) |
+| Intake→PROFILE when pieces present; skip when incomplete; ARTIFACTS→ACTIVE_SEARCH; CONTEXT→REQUESTED_RESUME via raw_resume; RESUME_READY_STALE→REQUESTED_ARTIFACTS via base_resume; hop targets registry/claimable; demote ban; illegal swallow | same class (advance cases) |
+
+**Broken / obsolete this pass:** none in `test_candidate.py`. Tick stubs: [`dispatcher.md`](dispatcher.md) § AST-2229.
+
+**Integration:** none — do not invent.
+
+## QA test manifest — AST-2229
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst2229ProfileSignalAndReadinessAdvance \
+  tests/component/core/test_dispatcher.py::TestAst972CandidateStageDispatch::test_tick_loop_invokes_stale_aging \
+  tests/component/core/test_dispatcher.py::TestAst972CandidateStageDispatch::test_tick_loop_invokes_readiness_after_stale \
+  tests/component/core/test_dispatcher.py::TestScheduler::test_tick_loop_spawns_due_auto_tasks \
+  -q
+```
+
+**Pass criterion:** 13 passed on the narrowed run. Not the zero-arg harness.
+
+**Bible shasum (after publish):** `git show origin/sub/AST-2225/AST-2229-readiness-advancement:docs/test-bible/core/candidate.md | shasum`; same for `docs/test-bible/core/dispatcher.md`.
+
+### AST-2230 · AST-2225 (craft hop labels across all NAV groups)
+
+**Parent:** [AST-2225](https://linear.app/astralcareermatch/issue/AST-2225). **Publish:** `origin/sub/AST-2225/AST-2230-stage-gated-nav`. Primary: [`../ui/api/api_system.md`](../ui/api/api_system.md) § AST-2230.
+
+`_artifacts_nav_label_for_path` walks every `NAV_CONFIG` group (Artifacts group dissolved). Hop labels pick Criteria/Company renamed strings.
+
+| Area | Component tests |
+| --- | --- |
+| Walk labels use renamed Criteria/Company item labels | revised **`TestAst1253RequestedArtifactsHandoff::test_walk_helpers_order_labels_and_rubric_keys`** |

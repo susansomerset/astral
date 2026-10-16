@@ -1,3 +1,83 @@
+<!-- linear-archive: AST-2173 archived 2026-10-16 -->
+
+## Linear archive (AST-2173)
+
+**Archived:** 2026-10-16  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-2173/search-backend-config-reads-core-route-add-universal-entity-search  
+**Status at archive:** Archive  
+**Project:** Astral Interface  
+**Assignee:** ada  
+**Priority / estimate:** None / 3  
+**Parent:** AST-2168 — Add Universal Entity Search  
+**Blocked by / blocks / related:** parent: AST-2168; blocks: AST-2174
+
+### Description
+
+## What this implements
+
+Delivers `GET /api/search`: the config search registry and job-modal map, the candidate-scoped `job`/`company`/`meteorite` reads, the core function that tiers/orders hits and names each job's Jobs list and modal kind, and the route + blueprint registration. Does **not** touch any frontend file (#2).
+
+## Citations
+
+`stat.logging.debug`, `stat.logging.error`, `stat.logging.info.api`.
+
+## Scope
+
+`src/utils/config.py`, `src/data/database.py`, `src/core/search.py`, `src/ui/api/api_search.py`, `src/ui/server.py`. Technical scope: the `config.py`, `database.py`, `core/search.py`, `api_search.py`, and `server.py` items above, verbatim.
+
+* `config.py`
+  * **Search registry.** A new constant keyed by entity type (`job`, `company`, `meteorite`). Each entry holds the display label, the base field list, and the payload field list. Lists (confirmed by Susan, define round 1):
+    * job — base: `astral_job_id`, `company_job_id`, `job_title`, `job_link`, `company_id`, `source_entity_id`, `state`, `batch_id`; payload: `job_data`.
+    * company — base: `short_name`, `company_name`, `company_website`, `job_site`, `originating_search_term`, `state`, `batch_id`; payload: `company_data`.
+    * meteorite — base: `id`, `astral_job_id`, `job_title`, `employer_name`, `link`, `electronic_contact`, `source_id`, `source_ref`, `state`, `batch_id`; payload: `content`, `classify_outcome`, `error`.
+  * **Job modal map.** A new mapping from Jobs list (`ready`, `review`, `applied`, `processing`, `skipped`) to modal kind (`report` / `detail`). A module-level assert checks every Jobs list has exactly one modal kind.
+* `database.py` — one new read (or one per table; `plan-child`'s call) that, for one candidate and one search string, returns every row whose configured base or payload fields contain the string (case-insensitive, `LIKE` with `%`/`_`/escape-char escaped), with which fields matched. Field lists come from the config registry, not from literals in SQL. Candidate scope is `candidate_id = ?` on all three tables. No `LIMIT`. The module header inventory lists the new read.
+* `core/search.py` — new public function that takes the candidate id and search string, calls the new read(s), and returns the results keyed by entity type (`job`, `company`, `meteorite`), each an ordered list (base tier, then payload tier, most recently changed first within a tier); a type with no matches is an empty list. Each result has: entity id, display name, state, tier (`base` / `payload`), matched field names, and for jobs the Jobs list name and modal kind. A job's Jobs list is decided from `READY_JOB_STATES`, `REVIEW_JOB_STATES`, `APPLIED_JOB_STATES`, `SKIPPED_STATES`, processing as the complement, and below-floor via the existing `tracker` score-floor helpers (`score_floor_by_trigger_for_candidate`, `job_misses_dispatch_score_floor`). Debug lines at loop start/end per `stat.logging.debug`.
+* `api_search.py` — new blueprint at `/api/search`, one `@require_auth` GET taking `q` and `candidate_id`. Blank `q` or missing `candidate_id` → 400 with an `error` message. Otherwise returns the core result (keyed by entity type) as JSON. Exceptions go through `server_error_from_exception` (logged once there). No info line — idempotent GET (`stat.logging.info.api`).
+* `server.py` — registers the new blueprint beside the others.
+
+## Acceptance criteria
+
+ 1. **Candidate scope.** With candidates A and B each owning a job whose `job_title` contains `Zebra`, `GET /api/search?q=zebra&candidate_id=<A>` returns A's job and not B's. Same for a company and a meteorite. **Fail:** any row owned by another candidate.
+ 2. **Required params.** `GET /api/search?q=%20&candidate_id=<A>` and `GET /api/search?q=x` (no candidate) each return 400 with an `error` field. **Fail:** 200, or a 500.
+ 3. **Ids are findable.** For one job of candidate A, searching its full `astral_job_id`, its `company_job_id`, and a 6-character middle substring of its `astral_job_id` each returns that job as a `base` tier result. A meteorite's numeric `id` and its `astral_job_id` each return that meteorite as `base`. **Fail:** missing, or tier `payload`.
+ 4. **Base before payload.** Candidate A has job J1 with `job_title` containing `Quokka` and job J2 whose `job_data` (only) contains `quokka`. The response's `job` list has J1 (`tier: base`) before J2 (`tier: payload`), and each appears once. **Fail:** J2 before J1, a duplicate entity, or J1 tagged `payload`.
+ 5. **Case-insensitive, literal wildcards.** `q=QUOKKA` returns the same set as `q=quokka`. `q=%` returns only entities with a literal `%` in a searched field, and `q=_` only those with a literal `_` — not every row. **Fail:** a different set by case, or `%` / `_` matching everything.
+ 6. **No cap.** A candidate with 600 jobs whose `job_title` contains `Engineer` gets all 600 back for `q=engineer`. `rg -n "LIMIT" src/core/search.py` returns nothing, and the new read in `database.py` has no `LIMIT`. **Fail:** a truncated list or a `LIMIT`.
+ 7. **Field lists come from config.** `rg -n "company_job_id|originating_search_term|electronic_contact" src/core/search.py src/ui/api/api_search.py` returns nothing, and removing `job_link` from the job base list in config makes a job findable only by its link stop appearing. **Fail:** a field name hard-coded outside config, or the removal changes nothing.
+ 8. **Job modal by list.** For candidate A, one job each on Ready (`CANDIDATE_REVIEW`), Review (`RECOMMENDED`), an Applied state, a Processing state, a Skipped state, and a Processing-state job below its dispatch score floor: the API's Jobs list for each is `ready`, `review`, `applied`, `processing`, `skipped`, `skipped`, and modal kind is `report` for the first three and `detail` for the last three. Clicking each in the UI opens `JobAnalysisReportModal` or `JobDetailModal` to match. **Fail:** any mismatch.
+ 9. **Grouped by type.** `GET /api/search` returns an object whose keys are exactly `job`, `company`, `meteorite`, each a list. For a string matching two jobs and one meteorite but no company, the page shows a Jobs (2) section then a Meteorites (1) section, and no Companies section. A string matching nothing shows "No results" and no section headings. **Fail:** other keys, a Companies heading, wrong order or count, or an empty section heading.
+10. **No info line.** `rg -n "logger.info" src/ui/api/api_search.py src/core/search.py` returns nothing. **Fail:** any hit.
+11. **Builds clean.** From repo root, `PYTHONPATH=.:src python -c "import src.utils.config, src.core.search, ui.api.api_search"` exits 0. In `src/ui/frontend`, `npm run build` exits 0 and `npm run lint` reports no problem absent on `origin/dev`. **Fail:** non-zero exit or a new lint problem.
+
+## Boundaries
+
+Does not touch any frontend file — the search input, `/search` route, results page, and modal hosting are the sibling child (#2). For ACs 8 and 11, this child owns the API half (Jobs list + modal kind per job; response keyed by `job`/`company`/`meteorite`); the UI clicks/sections are #2's. For AC 15, this child owns the Python import check.
+
+## Notes for planning
+
+Citations: `stat.logging.debug`, `stat.logging.error`, `stat.logging.info.api`. Search field lists confirmed by Susan (define round 1): base-first ranking, no cap, `state_history` / timestamps / compressed stores not searched. Applied jobs → report modal.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/AST-2168-universal-entity-search`, child `sub/AST-2168/AST-2173-search-backend`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-10-12T23:17:40.394Z
+[code-rubric] REVIEW (Commit: bb3236f02) debug callee pair discuss
+
+#### betty — 2026-10-12T23:14:11.652Z
+`origin/sub/AST-2168/AST-2173-search-backend` @ `bb3236f02` · search backend tests landed
+
+#### joan — 2026-10-12T23:04:47.832Z
+[plan-rubric] PROCEED (Commit: 11c0b7ad) Backend search plan solid.
+
+#### ada — 2026-10-12T23:03:01.901Z
+`origin/sub/AST-2168/AST-2173-search-backend` @ `11c0b7ad3` · plan ready, estimate agreed
+
+---
+
 # AST-2173 — Search backend: config, reads, core, route
 
 - **Ticket:** [AST-2173](https://linear.app/astralcareermatch/issue/AST-2173) (child of [AST-2168](https://linear.app/astralcareermatch/issue/AST-2168) — Add Universal Entity Search)

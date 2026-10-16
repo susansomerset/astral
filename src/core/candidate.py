@@ -3,6 +3,7 @@ Core candidate: candidate lifecycle management (AST-216).
 
 In-scope: initiate_candidate, save_candidate_data, get_candidate,
 transition_candidate_state, parse_candidate_resume, check_context_complete,
+check_profile_complete, incomplete_profile, advance_candidate_readiness (AST-2229),
 contact uniqueness enforcement on save (AST-1080),
 get_new_candidate_batch / clear_candidate_batch (batch claim wrappers; AST-1259),
 operative save_candidate_data(candidate_id, artifact_key, blob) + hydrate via
@@ -73,6 +74,7 @@ from src.utils.config import (
     SURFER_CONSENT_CONFIG,
     CANDIDATE_STATES,
     CANDIDATE_STAGE_DISPATCH,
+    remap_legacy_candidate_state,
     CRAFT_ARTIFACTS_CHAIN_TASK_TO_NAV_PATH,
     CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY,
     CRAFT_RUBRIC_UI_TASK_KEYS,
@@ -2053,19 +2055,30 @@ def hydrate_operative_writing_preferences_for_response(candidate_id: str, cd: di
 
     Miss → leave legacy context.writing_preferences blob untouched (parent AC6 migration window).
     Hit → write current string onto context.writing_preferences for the editor contract.
+    Dict bodies (legacy/agent rows) coerce for display only — prefer writing_general_instructions,
+    else stable json.dumps; do not rewrite the artifact row (AST-2243).
     """
     if not isinstance(cd, dict):
         return
     body = get_candidate_current(candidate_id, _WRITING_PREFERENCES_ARTIFACT_KEY)
     if body is None:
         return
-    if not isinstance(body, str):
+    if isinstance(body, str):
+        overlay = body
+    elif isinstance(body, dict):
+        # Display coerce only — plain_text catalog still stores strings on new writes.
+        instructions = body.get("writing_general_instructions")
+        if isinstance(instructions, str) and instructions.strip():
+            overlay = instructions
+        else:
+            overlay = json.dumps(body, sort_keys=True)
+    else:
         return
     ctx = cd.get("context")
     if not isinstance(ctx, dict):
         ctx = {}
         cd["context"] = ctx
-    ctx["writing_preferences"] = body
+    ctx["writing_preferences"] = overlay
 
 
 def _normalize_search_term_lines(val: str) -> list[str]:
@@ -2824,9 +2837,9 @@ def is_requested_artifacts_chain_ui_task(task_key: str) -> bool:
 
 
 def _artifacts_nav_label_for_path(path: str) -> str:
-    """Resolve Artifacts NAV_CONFIG child label for a path string."""
+    """Resolve NAV_CONFIG child label for a path (any group — Artifacts group dissolved)."""
     for section in NAV_CONFIG:
-        if not isinstance(section, dict) or section.get("label") != "Artifacts":
+        if not isinstance(section, dict):
             continue
         for item in section.get("items") or []:
             if isinstance(item, dict) and item.get("path") == path:
@@ -2855,16 +2868,49 @@ def requested_artifacts_chain_artifact_keys() -> list[str]:
     return keys
 
 
+def candidate_stage(state: str) -> int:
+    """Registry stage for a candidate state (incl. implicit {base}_RETRY)."""
+    base = registered_base(CANDIDATE_STATES, state)
+    if not base:
+        raise ValueError(f"Unknown candidate state: {state}")
+    return int(CANDIDATE_STATES[base]["stage"])
+
+
+_RETIRED_TOPIC_STATES = frozenset({
+    "REQUIRED_TOPICS_READY",
+    "REQUIRED_TOPICS_READY_STALE",
+    "ALL_TOPICS_READY",
+    "ALL_TOPICS_READY_STALE",
+})
+
+
+def migrate_retired_topic_candidate_states() -> int:
+    """Persist remap of live topic-ready(+stale) rows onto PROFILE_READY / CONTEXT_READY.
+    Returns count of rows rewritten."""
+    rewritten = 0
+    for row in list_candidates(include_deleted=False):
+        state = row.get("state") or ""
+        if state not in _RETIRED_TOPIC_STATES:
+            continue
+        cid = row.get("astral_candidate_id")
+        if not cid:
+            continue
+        to_state = remap_legacy_candidate_state(state)
+        transition_candidate_state(cid, to_state, force=True)
+        rewritten += 1
+    return rewritten
+
+
 def check_context_complete(candidate_id: str) -> bool:
     """True when all CANDIDATE_LIBRARY_CONFIG['context_completeness_keys'] are non-empty (no state write).
-    Already-advanced candidates (progress_rank >= ALL_TOPICS_READY) count as complete."""
+    Already-advanced candidates (progress_rank >= CONTEXT_READY) count as complete."""
     candidate = database.get_candidate(candidate_id)
     if not candidate:
         return False
     current_state = candidate.get("state", "")
     # {base}_RETRY carries its base's rank (AST-1806).
     rank = int((CANDIDATE_STATES.get(registered_base(CANDIDATE_STATES, current_state) or "") or {}).get("progress_rank", -1))
-    ready_rank = int(CANDIDATE_STATES["ALL_TOPICS_READY"]["progress_rank"])
+    ready_rank = int(CANDIDATE_STATES["CONTEXT_READY"]["progress_rank"])
     if rank >= ready_rank and rank >= 0:
         return True
     ctx = (candidate.get("candidate_data") or {}).get("context", {})
@@ -2876,9 +2922,108 @@ def check_context_complete(candidate_id: str) -> bool:
     return True
 
 
+def check_profile_complete(candidate_id: str) -> bool:
+    """True when required Profile pieces are present (no state write)."""
+    candidate = database.get_candidate(candidate_id)
+    if not candidate:
+        return False
+    first = str(candidate.get("first") or "").strip()
+    last = str(candidate.get("last") or "").strip()
+    if not first or not last:
+        return False
+    contact = (candidate.get("candidate_data") or {}).get("contact") or {}
+    if not isinstance(contact, dict):
+        contact = {}
+    return bool(str(contact.get("contact_email") or "").strip())
+
+
+def incomplete_profile(candidate_id: str) -> bool:
+    """True when required Profile pieces are missing (alert signal for nav siblings)."""
+    # Missing row → False so callers do not paint a ghost Profile alert.
+    if not database.get_candidate(candidate_id):
+        return False
+    return not check_profile_complete(candidate_id)
+
+
+def _raw_resume_ready(candidate_id: str) -> bool:
+    """Non-empty context.raw_resume — material for REQUESTED_RESUME craft."""
+    candidate = database.get_candidate(candidate_id)
+    if not candidate:
+        return False
+    ctx = (candidate.get("candidate_data") or {}).get("context") or {}
+    if not isinstance(ctx, dict):
+        return False
+    return bool(str(ctx.get("raw_resume") or "").strip())
+
+
+def _base_resume_ready(candidate_id: str) -> bool:
+    """Operative base_resume present for REQUESTED_ARTIFACTS hop."""
+    body = load_pilot_base_resume_for_candidate(candidate_id)
+    if body is None:
+        return False
+    if isinstance(body, str):
+        return bool(body.strip())
+    return bool(body)
+
+
+def _always_ready(_candidate_id: str) -> bool:
+    return True
+
+
+# Exact from-state → (to_state, predicate). Stale companions forward; no demote hops.
+_READINESS_HOPS: Dict[str, Tuple[str, Any]] = {
+    "INTAKE_INITIATED": ("PROFILE_READY", check_profile_complete),
+    "PROFILE_READY": ("CONTEXT_READY", check_context_complete),
+    "CONTEXT_READY": ("REQUESTED_RESUME", _raw_resume_ready),
+    "RESUME_READY": ("REQUESTED_ARTIFACTS", _base_resume_ready),
+    "RESUME_READY_STALE": ("REQUESTED_ARTIFACTS", _base_resume_ready),
+    "ARTIFACTS_READY": ("ACTIVE_SEARCH", _always_ready),
+    "ARTIFACTS_READY_STALE": ("ACTIVE_SEARCH", _always_ready),
+}
+
+
+def advance_candidate_readiness() -> int:
+    """Forward-only presence advance. Returns count of successful transitions."""
+    moved = 0
+    for row in list_candidates(include_deleted=False):
+        state = row.get("state") or ""
+        cid = row.get("astral_candidate_id")
+        if not cid:
+            continue
+        hop = _READINESS_HOPS.get(state)
+        if hop is None:
+            continue
+        to_state, predicate = hop
+        if to_state not in CANDIDATE_STATES:
+            continue
+        if not predicate(cid):
+            continue
+        try:
+            if candidate_stage(to_state) < candidate_stage(state):
+                continue
+        except ValueError:
+            continue
+        try:
+            transition_candidate_state(cid, to_state)
+        except (IllegalCandidateTransition, ValueError):
+            continue
+        # Joan: statute `state` event (not a custom readiness_advance token).
+        logger.info(
+            "%s | candidate state: %s -> %s (batch: %s)",
+            cid,
+            state,
+            to_state,
+            "-",
+        )
+        moved += 1
+    return moved
+
+
 def age_stale_candidate_states(*, now: Optional[datetime] = None) -> int:
     """Move waiting-stage candidates past stale_after_hours into stale_state.
     Returns count of successful transitions. No scheduler wiring (AST-972)."""
+    # AST-2228: heal retired topic rows before stale aging (no dispatcher/database touch).
+    migrate_retired_topic_candidate_states()
     clock = now if now is not None else datetime.now(timezone.utc)
     if clock.tzinfo is None:
         clock = clock.replace(tzinfo=timezone.utc)

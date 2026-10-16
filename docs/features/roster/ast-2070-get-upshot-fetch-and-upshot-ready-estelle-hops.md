@@ -1,3 +1,90 @@
+<!-- linear-archive: AST-2070 archived 2026-10-16 -->
+
+## Linear archive (AST-2070)
+
+**Archived:** 2026-10-16  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-2070/get-upshot-fetch-and-upshot-ready-estelle-hops-company-upshot-new-task  
+**Status at archive:** Archive  
+**Project:** Astral Roster  
+**Assignee:** hedy  
+**Priority / estimate:** None / 5  
+**Parent:** AST-2054 — Company Upshot - new task  
+**Blocked by / blocks / related:** parent: AST-2054
+
+### Description
+
+## What this implements
+
+After #1. Builds the two runtime hops and routes them: telescope culture-page fetch at `GET_UPSHOT` (always moves to `UPSHOT_READY`), and the Estelle upshot batch at `UPSHOT_READY` (moves to `WATCH`, with retry then error). It also switches roster's locate/parse success writes from a hardcoded `"WATCH"` to the configured pass state. It does **not** do any display (#3).
+
+## Citations
+
+`patt.entity.batch-processing`, `patt.entity.batch-criteria`, `patt.task.dispatch-retry`, `stat.batch.claim-process-release`, `stat.logging.debug`, `stat.logging.error`, `stat.logging.warning`, `stat.logging.info.entity`, `stat.logging.info.dispatcher`.
+
+## Scope
+
+* `src/core/gazer.py` — **modified** — new company batch for the `GET_UPSHOT` culture-page fetch.
+* `src/core/roster.py` — **modified** — locate/parse success writes the configured pass state instead of a hardcoded `"WATCH"`; new Estelle upshot batch for `UPSHOT_READY`.
+* `src/core/consult.py` — **modified** — `run_consult_task` company routing for the two new task keys.
+* Technical:
+  * `src/core/gazer.py`: **new batch function** for `GET_UPSHOT`, modeled on `fetch_culture_pages_batch`. If `website_content` is already recorded, the company moves straight on. Otherwise it scrapes the culture links into `company_data.website_content`. Every company transitions to `UPSHOT_READY` whether or not anything was found. A connectivity loss aborts the batch without transitions, same as the sibling fetch batches. Because the content lands in `website_content`, the job-side `fetch_culture_pages` finds it cached later.
+  * `src/core/roster.py`:
+    * **Modified** `_finalize_parse_dispatch_success` and the two legacy locate-success paths now write the configured pass state instead of a hardcoded `"WATCH"`.
+    * **New batch function** for `UPSHOT_READY`, Pattern-A shaped like `_run_batch_company_prefilter`: one `do_task(company_upshot)` call, position/id-indexed input, decode by `company_id`, save `company_data.company_upshot`, transition to `WATCH`. Missing or fabricated ids and bad decodes go through the retry / error routing (`patt.task.dispatch-retry`).
+  * `src/core/consult.py`: **modified** `run_consult_task` company branch, which routes the two new task keys to the gazer and roster batches and returns the standard summary dict.
+
+## Acceptance criteria
+
+2. **Nothing writes WATCH directly.** `grep -n 'state="WATCH"' src/core/roster.py` returns nothing, and `ROSTER_CONFIG["parse_job_list"]["pass_state"] == "GET_UPSHOT"`. Fail: any hardcoded `state="WATCH"` remains, or the pass state is still `WATCH`.
+3. **Parse success lands in GET_UPSHOT.** After a successful `parse_job_list` dispatch on a `JOBLIST_IDENTIFIED` company, its state is `GET_UPSHOT` and its `parse_instructions` are saved. Fail: the state is `WATCH` or anything else.
+4. **GET_UPSHOT always advances.** A `GET_UPSHOT` batch moves every claimed company to `UPSHOT_READY`. That includes companies with empty `culture_links_to_explore` and companies whose scrapes all come back empty. `company_data.website_content` is written whenever at least one page scraped. Fail: any claimed company left in `GET_UPSHOT` (other than a connectivity abort) or moved to any other state.
+5. **Upshot written, then WATCH.** After an `UPSHOT_READY` batch whose `company_upshot` call succeeds, each returned company has a non-empty `company_data.company_upshot` and state `WATCH`. Fail: a missing or empty upshot, or a state other than `WATCH`.
+6. **One Estelle call per batch.** For an `UPSHOT_READY` batch of N companies, there is exactly one `do_task(task_key="company_upshot")` call. Fail: N calls, or zero calls for a non-empty batch.
+7. **Retry then error.** A company missing from a valid response moves from `UPSHOT_READY` to `UPSHOT_READY` retry. The same failure from the retry state moves it to `ERROR_UPSHOT`. Fail: it stays in `UPSHOT_READY`, goes straight to error, or lands in `WATCH` without an upshot.
+8. **Grades unchanged.** `git diff origin/dev -- src/core/roster.py` shows no change to `_apply_prefilter_decoded_company_outcome` or `_run_batch_company_prefilter`. Fail: any hunk in either function.
+
+## Boundaries
+
+Does not register states/tasks/agent_task rows (#1) and does not touch API/UI display (#3).
+
+## Notes for planning
+
+Parent [AST-2054](https://linear.app/astralcareermatch/issue/AST-2054) — see its Pipeline flow table and Architectural definition (canon links). Terminal error state is `ERROR_UPSHOT` (Susan).
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/<parent-segment>`, child `sub/<parent-id>/<child-segment>`. Created at dispatch-parent. Resolve via `epic_registry.py show AST-2054`.
+
+### Comments
+
+#### betty — 2026-10-09T01:18:11.793Z
+[check-linear] test-tree reconcile done: three frontend tests restored to origin/dev on ftr/AST-2054-company-upshot @ `8ab4600bf` (ff from 149dba902; `git diff --exit-code origin/dev origin/ftr/AST-2054-company-upshot -- <3 paths>` = 0; vitest 23/23, tsc clean). origin/tests brought up to dev for the same paths @ `e6e47125b`.
+
+#### chuckles — 2026-10-09T01:16:53.488Z
+[merge-child] test-tree regression — @Betty White
+
+`merge-tests(AST-2070)` (`517c1a3fa`, origin/tests @ `8598b335c`) took origin/tests' stale copies of three frontend test files, dropping 31 lines dev already carries. It is now on `origin/ftr/AST-2054-company-upshot` (`149dba902`); ftr contains every dev commit, so refresh-ftr will not restore them and land-ftr would delete them from dev.
+
+- `tests/component/frontend/components/test_NavigationShell.test.tsx` (-23, incl. dev `5707abcba` light sidebar wordmark case)
+- `tests/component/frontend/pages/test_AdminAgentTimesheets.test.tsx` (-4)
+- `tests/component/frontend/pages/test_AdminVectorFeedback.test.tsx` (-4)
+
+Fix: restore those three paths to `origin/dev` content on ftr (and bring origin/tests up to dev for them so the next merge-tests doesn't repeat it). Verify with `git diff --exit-code origin/dev origin/ftr/AST-2054-company-upshot -- <paths>`. No AST-2070 product change needed.
+
+#### radia — 2026-10-09T01:16:09.734Z
+[code-rubric] PROCEED (Commit: 517c1a3fa) upshot hops runtime clean
+
+#### betty — 2026-10-09T01:14:01.372Z
+`origin/sub/AST-2054/AST-2070-upshot-hops` @ `517c1a3fa` · upshot hop tests, drift revised
+
+#### joan — 2026-10-09T01:06:57.133Z
+[plan-rubric] PROCEED (Commit: 71e1ad853) runtime hops plan ready
+
+#### hedy — 2026-10-09T01:05:17.492Z
+`origin/sub/AST-2054/AST-2070-upshot-hops` @ `71e1ad853` · plan ready, dry-run verified
+
+---
+
 # AST-2070 — GET_UPSHOT fetch and UPSHOT_READY Estelle hops
 
 - **Ticket:** [AST-2070](https://linear.app/astralcareermatch/issue/AST-2070)

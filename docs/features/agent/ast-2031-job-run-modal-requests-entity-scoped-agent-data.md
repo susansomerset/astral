@@ -1,3 +1,69 @@
+<!-- linear-archive: AST-2031 archived 2026-10-16 -->
+
+## Linear archive (AST-2031)
+
+**Archived:** 2026-10-16  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-2031/job-run-modal-requests-entity-scoped-agent-data-technical-fail-modals  
+**Status at archive:** Archive  
+**Project:** Astral Agent  
+**Assignee:** katherine  
+**Priority / estimate:** None / 2  
+**Parent:** AST-2028 — Technical fail modals must filter by entity_id  
+**Blocked by / blocks / related:** parent: AST-2028
+
+### Description
+
+## What this implements
+
+After #2. The job modal's run view passes the job id through to the agent-data panes, which request the entity-scoped data. Execution History, Vector Feedback, and Ad Hoc keep requesting the full batch.
+
+## Citations
+
+none — frontend prop plumbing only; no in-force directive governs it.
+
+## Scope
+
+`BatchAgentDataModal.tsx` — `BatchAgentDataPanes` optional entity-id prop → `entity_id` query on `/api/agent_data/…` only. `BatchExecutionModal.tsx` — optional entity-id prop, forwarded. `JobDetailModal.tsx` — passes `job.astral_job_id` into `BatchExecutionModal`.
+
+## Acceptance criteria
+
+8. **Job modal sends the id.** `test_JobDetailModal.test.tsx`: admin clicks a State History row for job `J`, run `R` → fetch `/api/agent_data/R?entity_id=J`. Fail = no `entity_id`.
+9. **Batch-wide callers unchanged.** `grep -n "entity_id" src/ui/frontend/src/pages/AdminPerformanceMonitor.tsx src/ui/frontend/src/pages/AdminVectorFeedback.tsx src/ui/frontend/src/pages/AdminAnthropicAdHoc.tsx` returns nothing, and `test_AdminPerformanceMonitor.test.tsx` passes with no assertion edits. Fail = either.
+
+## Boundaries
+
+No backend change (siblings #1, #2). `JobAnalysisReportModal.tsx` / `JobDiscussionPane.tsx` / `AgentStoryTab.tsx` unchanged — they render what #2's story builder returns.
+
+## Notes for planning
+
+after #2. Citations: none. Estimate: 2.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/AST-2028-technical-fail-modals-filter-by-entity-id`, child `sub/AST-2028/AST-2031-job-run-modal-entity-scoped`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-10-08T04:42:06.779Z
+[code-rubric] PROCEED (Commit: caef65df) job modal entity_id query
+
+#### betty — 2026-10-08T04:40:14.022Z
+`origin/sub/AST-2028/AST-2031-job-run-modal-entity-scoped` @ `caef65df4` · 2 revised, pane gaps
+
+#### katherine — 2026-10-08T04:37:28.447Z
+`origin/sub/AST-2028/AST-2031-job-run-modal-entity-scoped` @ `2a6aae1e5`. For Betty: in `test_JobDetailModal.test.tsx`, AST-1865 AC4 and AC6 now fail as expected — they assert the unscoped `/api/agent_data/<run>`, and the modal now sends `?entity_id=` (AC 8). AST-1695 null-listing_href already failed before this change. Repo-wide lint: same 26 errors before and after, none in the touched files. Details are in the plan doc's `## Review`.
+
+#### joan — 2026-10-08T04:34:35.545Z
+[plan-rubric] PROCEED (Commit: ff397285d) Job modal entity_id plumbing
+
+#### katherine — 2026-10-08T04:32:53.863Z
+Finding — AC 9 grep can't pass as written: `grep -n "entity_id" src/ui/frontend/src/pages/AdminAnthropicAdHoc.tsx` already returns 8 lines on `origin/dev` (Ad Hoc's own run payload / table fields, unrelated to agent-data fetches). `AdminPerformanceMonitor.tsx` / `AdminVectorFeedback.tsx` return nothing. Plan leaves all three pages untouched, so the intent holds; suggest narrowing the check to `git diff origin/dev -- <those three pages>` empty.
+
+#### katherine — 2026-10-08T04:32:52.768Z
+`origin/sub/AST-2028/AST-2031-job-run-modal-entity-scoped` @ `ff397285d` · three-file prop plumbing
+
+---
+
 # AST-2031 — Job run modal requests entity-scoped agent data
 
 - **Parent:** [AST-2028 — Technical fail modals must filter by entity_id](https://linear.app/astralcareermatch/issue/AST-2028)

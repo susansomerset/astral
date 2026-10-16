@@ -1,3 +1,75 @@
+<!-- linear-archive: AST-2034 archived 2026-10-16 -->
+
+## Linear archive (AST-2034)
+
+**Archived:** 2026-10-16  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-2034/raw-new-meteorite-insert-stage-hop-classify-let-estelle-post-a  
+**Status at archive:** Archive  
+**Project:** Astral Contact  
+**Assignee:** ada  
+**Priority / estimate:** None / 3  
+**Parent:** AST-2032 — Let Estelle post a meteorite from Slack  
+**Blocked by / blocks / related:** parent: AST-2032; blocks: AST-2035
+
+### Description
+
+## What this implements
+
+Owns the meteorite side. It adds the public entry that saves one Slack-sourced raw blob at `NEW`, and teaches `run_stage_meteorite` to Ruth-classify unclassified `NEW` rows (in-place first job, fan-out siblings, `NOT_A_JOB` / `NEW_EMAIL_ERROR` on skip/failure) without changing the classified-row path. Ships AC8, AC9, and AC10, plus the AC1/AC2 row shape when the entry is called directly.
+
+## Citations
+
+`patt.entity.batch-processing`, `astral.batch.claim-process-release`, `astral.entity.required-metadata`, `stat.logging.info.entity`, `stat.logging.info.dispatcher`, `stat.logging.debug`, `stat.logging.warning`, `stat.logging.error`.
+
+## Scope
+
+`src/core/meteorite.py` (modified — new public entry that inserts one Slack-sourced raw `NEW` row from a link or pasted text, plus a `run_stage_meteorite` branch that Ruth-classifies unclassified `NEW` rows and fans out multi-posting blobs). Technical (insert): new public function taking candidate id, payload, Slack source id, and thread anchor. It inserts via `_insert_stage_rows` / `insert_meteorite_rows` at `NEW` with `source_kind = "slack"`, `content` = payload, `classify_outcome` empty, and `estelle_thread_ts` = thread anchor, and returns `{ok, meteorite_id}`. It soft-fails and never raises into Contact; link-vs-text is decided by Ruth at the stage hop. Technical (stage hop): `run_stage_meteorite` classifies empty-`classify_outcome` rows via `_classify_stage_blob` (tied to the claim's entity batch id) and maps via `_map_classify_jobs_to_meteorite_rows`. Skip outcomes → `NOT_A_JOB`. Classify/map failure → `NEW_EMAIL_ERROR` with `error`. Landable outcomes → job 1's fields are written onto the row and it falls through to the existing classified routing in the same pass, and jobs 2..N are inserted as classified `NEW` rows with the same `source_kind` / `source_id`. The classified-row branch is unchanged.
+
+## Acceptance criteria
+
+(Parent AC1/AC2 row shape — via direct call to the new entry; Slack parsing is #2.)
+
+1. **Link payload lands raw at NEW.** A bound candidate posts `@Estelle /add-job www.dice.com/jobs/13234abcd`, and the event text arrives as `<@UBOT> /add-job <http://www.dice.com/jobs/13234abcd|www.dice.com/jobs/13234abcd>`. Then `SELECT candidate_id, state, source_kind, classify_outcome, content FROM meteorite ORDER BY id DESC LIMIT 1` returns that candidate, `NEW`, `slack`, NULL, and `http://www.dice.com/jobs/13234abcd`. **Fail:** no new row, any other state, a non-NULL `classify_outcome`, or `<`, `>` or `|` left in `content`.
+2. **Text payload lands raw at NEW.** `@Estelle /add-job <multi-line pasted JD>` inserts exactly one row with `state = NEW`, `classify_outcome` NULL, and `content` equal to the pasted text with the mention and command token removed. **Fail:** `content` still holds `/add-job` or `<@U…>`, or more than one row is inserted.
+3. **Stage hop classifies unclassified NEW rows.** With Ruth's `do_task` patched, `run_stage_meteorite` routes rows as follows:
+   * The AC1 row (Ruth → `link_list`, one job) goes to `SCRAPE_LINK` with `link` = the URL.
+   * The AC2 row (Ruth → `single_jd_no_link`) goes to `CHECK_UNIQUE`.
+   * A row Ruth calls `not_job_content` goes to `NOT_A_JOB`.
+   * A Ruth failure leaves the row at `NEW_EMAIL_ERROR` with `error` set.
+   * A `multi_jd_inline` result with 3 jobs leaves the original row routed plus **2** new classified `NEW` rows sharing its `source_id`.
+
+   **Fail:** any unclassified row ends at `SCRAPE_ERROR` with `error = "missing classify_outcome"`, or the fan-out count is wrong.
+4. **Classified rows unchanged.** An existing component test fixture of a `NEW` row that already carries `classify_outcome` routes exactly as on `origin/dev` today, and `do_task` is called zero times for it. **Fail:** a Ruth call or a different target state.
+5. **Batch join.** `agent_data` rows written by the stage hop's classify step carry the dispatcher claim's `batch_id` (`SELECT DISTINCT batch_id FROM agent_data WHERE task_key = 'stage_meteorite' AND …` equals the claim id), and every claimed row is released (batch fields cleared) after the run. **Fail:** a self-minted `stage_meteorite-stage-…` batch id from the hop, or a row left claimed.
+
+## Boundaries
+
+Does **not** own Slack parsing, the command registry, or replies (sibling #2 — Contact command registry + `/add-job` intercept). Does not edit `src/utils/config.py` or `src/core/contact.py`. Email ingest stays on its inline-classify path.
+
+## Notes for planning
+
+Blocks #2 (its registry handler points at this ticket's public insert entry). Parent Decisions §1: option B — raw blob at `NEW`, Ruth classifies at the stage hop.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/AST-2032-estelle-add-job`, child `sub/AST-2032/AST-2034-raw-new-meteorite-stage-classify`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-10-08T05:39:17.840Z
+[code-rubric] PROCEED (Commit: b845ed472) Single-file meteorite ship clean
+
+#### betty — 2026-10-08T05:36:58.882Z
+`origin/sub/AST-2032/AST-2034-raw-new-meteorite-stage-classify` @ `b845ed472` · insert + stage-hop tests landed
+
+#### joan — 2026-10-08T05:28:34.273Z
+[plan-rubric] PROCEED (Commit: d53d0600) Single-file meteorite plan
+
+#### ada — 2026-10-08T05:26:00.418Z
+`origin/sub/AST-2032/AST-2034-raw-new-meteorite-stage-classify` @ `d53d0600e` · plan ready
+
+---
+
 # AST-2034 — Raw NEW meteorite insert + stage-hop classify
 
 **Linear:** [AST-2034](https://linear.app/astralcareermatch/issue/AST-2034)

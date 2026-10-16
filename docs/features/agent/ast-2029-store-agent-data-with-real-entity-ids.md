@@ -1,3 +1,65 @@
+<!-- linear-archive: AST-2029 archived 2026-10-16 -->
+
+## Linear archive (AST-2029)
+
+**Archived:** 2026-10-16  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-2029/store-agent-data-with-real-entity-ids-technical-fail-modals-must  
+**Status at archive:** Archive  
+**Project:** Astral Agent  
+**Assignee:** ada  
+**Priority / estimate:** None / 3  
+**Parent:** AST-2028 — Technical fail modals must filter by entity_id  
+**Blocked by / blocks / related:** parent: AST-2028; blocks: AST-2030
+
+### Description
+
+## What this implements
+
+Positional labels in stored NO_CACHE and RESPONSE blocks become the call's real entity ids at save time, for every call carrying batch entities (batch of one included, failed responses included). The wire prompt is untouched. Owns the hydrate and split helpers #2 reads with. Does not change any read path (#2) or UI (#3).
+
+## Citations
+
+`patt.entity.batch-processing`, `stat.logging.debug`.
+
+## Scope
+
+`src/utils/formatting.py` — new function (hydrate): positional labels (`NNN:`, `[index=NNN]:`, `NNN|`) → entity ids in order; unlabeled text unchanged. New function (split): hydrated text → per-entity segments keyed by id (plus JSON `jobs[]` / `companies[]` by `astral_job_id` / `company_id`). `src/core/agent.py` — prompt-block storage hydrates stored NO_CACHE from `batch_entities`; response storage hydrates the RESPONSE row on success and failure paths; wire blocks built from unhydrated text.
+
+## Acceptance criteria
+
+1. **Stored with ids, wire unchanged.** A do_task call with `batch_entities` `[A,B,C]` and live content `000: …\n001: …\n002: …`: the stored NO_CACHE row contains `A`, `B`, `C` as labels and no `000:` / `001:` / `002:` prefix, while the text handed to the provider still has `000:` and no `A`. Fail = stored row still positional, or an id reaches the wire.
+2. **Enumerate form hydrated.** Same with `[index=000]:` live content → stored row carries the ids in place of `index=NNN`. Fail = `index=000` remains.
+3. **Failed RESPONSE hydrated.** A failed call's raw response `000|…\n001|…` with entities `[A,B]` stores lines labeled `A` / `B`. Fail = `000|` remains.
+4. **No API / schema change.** `git diff origin/dev...<ftr> -- src/ui/api/ src/data/` is empty. Fail = any change.
+
+## Boundaries
+
+Does not change the agent-data read or agent-story builder (sibling #2). Does not touch UI (sibling #3). No schema change; batch `assemble` functions in `consult.py` / `roster.py` unchanged.
+
+## Notes for planning
+
+Citations: `patt.entity.batch-processing`, `stat.logging.debug`. Estimate: 3. Susan decisions (parent Open questions): hydrate the true entity id at store time regardless of batch mode; no roster column, no state_history stamp.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/AST-2028-technical-fail-modals-filter-by-entity-id`, child `sub/AST-2028/AST-2029-store-agent-data-with-entity-ids`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-10-08T04:17:40.839Z
+[code-rubric] REVIEW (Commit: b69f8dbe6) hydrate debug string
+
+#### betty — 2026-10-08T04:15:06.279Z
+`origin/sub/AST-2028/AST-2029-store-agent-data-with-entity-ids` @ `b69f8dbe6` · entity-id gap tests landed
+
+#### joan — 2026-10-08T04:06:14.963Z
+[plan-rubric] PROCEED (Commit: a010cb8fe) Store-time hydrate solid
+
+#### ada — 2026-10-08T04:04:19.761Z
+`origin/sub/AST-2028/AST-2029-store-agent-data-with-entity-ids` @ `a010cb8fe` · hydrate-at-store plan ready
+
+---
+
 # AST-2029 — Store agent data with real entity ids
 
 - **Parent:** [AST-2028 — Technical fail modals must filter by entity_id](https://linear.app/astralcareermatch/issue/AST-2028)

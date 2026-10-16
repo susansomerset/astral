@@ -1,3 +1,65 @@
+<!-- linear-archive: AST-2066 archived 2026-10-16 -->
+
+## Linear archive (AST-2066)
+
+**Archived:** 2026-10-16  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-2066/versioning-datacore-artifact-edit-enhancements  
+**Status at archive:** Archive  
+**Project:** Astral Artifacts  
+**Assignee:** ada  
+**Priority / estimate:** None / 3  
+**Parent:** AST-2043 — Artifact Edit Enhancements  
+**Blocked by / blocks / related:** parent: AST-2043; blocks: AST-2067
+
+### Description
+
+## What this implements
+
+Ships all backend behavior: the move-current primitives and history listing for artifacts and rubric criteria, plus the job identical no-op. Does not own HTTP routes (#2) or UI (#3).
+
+## Citations
+
+`patt.artifact.write-operative`, `patt.artifact.read-current`, `patt.artifact.read-operative`, `patt.artifact.traceability`, `stat.logging.info.entity`.
+
+## Scope
+
+`src/data/database.py` — move-current primitives for `artifact` rows and for `rubric_vector` rows, plus chronological history listing for one rubric criterion. `src/core/candidate.py` — list versions / set current version for candidate catalog keys and for one rubric criterion. `src/core/tracker.py` — list versions / set current version for job catalog keys. Identical-to-current no-op in `save_job_artifact`.
+
+## Acceptance criteria
+
+4. **Back arrow moves current.** With versions v1, v2, v3 (v3 current), set-current to v2. `get_current_artifact` returns v2's uuid, exactly one row for the key has `current=1`, and no row count or body changed. *Fail:* zero or two current rows, a new row, or a body change.
+5. **Edit after back appends.** From #4, save body Z. v4 is created with `created_at` greater than v3's and is current. v2 and v3 are unchanged, and the order is v1, v2, v3, v4. *Fail:* v2 or v3 body changed, or no new row.
+6. **Rubric criterion steps alone.** Save criterion V01 with content A, then B (two blurs). Set-current V01 to A's `rubric_vector_uuid`. `list_rubric_vectors(<id>, <task>)` returns A's uuid for V01, exactly one current row per code, and every other code's current uuid is unchanged. *Fail:* other codes changed, or V01 has 0 or 2 current rows.
+7. **Job identical no-op.** PUT the same cover letter body twice to `/api/jobs/<id>/artifacts/cover_letter`. `list_artifacts("job", <id>, "cover_letter")` grows by 1, not 2. *Fail:* 2.
+
+## Boundaries
+
+Does not own HTTP routes (sibling #2 Version API routes) or any UI (sibling #3 editors). No time-based coalescing, no in-place body UPDATE, no write-source column, no Application Questions changes.
+
+## Notes for planning
+
+Citations above are this child's Canon Scope (subset of parent [AST-2043](https://linear.app/astralcareermatch/issue/AST-2043) Architectural definition). Parent Technical scope has the function/table-level detail for these files.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/AST-2043-artifact-versions`, child `sub/AST-2043/AST-2066-versioning-core`. Created at dispatch-parent. Resolve with `epic_registry.py show AST-2043 --ref AST-2066`.
+
+### Comments
+
+#### radia — 2026-10-08T23:45:10.087Z
+[code-rubric] PROCEED (Commit: c1f9de609) data/core versioning clean
+
+#### betty — 2026-10-08T23:42:50.138Z
+`origin/sub/AST-2043/AST-2066-versioning-core` @ `ab7622965` · 29 tests, manifest in bible
+
+#### joan — 2026-10-08T23:04:17.465Z
+[plan-rubric] PROCEED (Commit: 54510c2ab) backend versioning core
+
+#### ada — 2026-10-08T23:02:38.354Z
+`origin/sub/AST-2043/AST-2066-versioning-core` @ `54510c2ab` · plan ready, decisions flagged
+
+---
+
 # AST-2066 — Versioning: data/core (Artifact Edit Enhancements)
 
 - **Ticket:** [AST-2066](https://linear.app/astralcareermatch/issue/AST-2066)

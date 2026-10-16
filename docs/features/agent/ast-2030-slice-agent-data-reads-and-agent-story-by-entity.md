@@ -1,3 +1,72 @@
+<!-- linear-archive: AST-2030 archived 2026-10-16 -->
+
+## Linear archive (AST-2030)
+
+**Archived:** 2026-10-16  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-2030/slice-agent-data-reads-and-agent-story-by-entity-technical-fail-modals  
+**Status at archive:** Archive  
+**Project:** Astral Agent  
+**Assignee:** hedy  
+**Priority / estimate:** None / 3  
+**Parent:** AST-2028 — Technical fail modals must filter by entity_id  
+**Blocked by / blocks / related:** parent: AST-2028; blocks: AST-2031
+
+### Description
+
+## What this implements
+
+After #1. The agent-data read with `entity_id` and the agent-story builder cut NO_CACHE / TASK / RESPONSE to one entity using #1's split, drop other chunks' rows, and fall back to the whole block for legacy rows. Story slicing covers every task, not only scored. Does not touch storage (#1) or UI (#3).
+
+## Citations
+
+`patt.entity.batch-processing`, `stat.logging.debug`.
+
+## Scope
+
+`src/core/agent.py` — agent-data read with `entity_id`: NO_CACHE / TASK / RESPONSE cut via the split; rows with segments but none for this id dropped; rows with no id-keyed segments returned whole; replaces the `_extract_entity_segment` scan for these types. Agent-story builder: NO_CACHE and RESPONSE for every task cut via the same split; scored-only `_filter_response_block` folds in.
+
+## Acceptance criteria
+
+4. **Run read sliced.** `GET /api/agent_data/<batch>?entity_id=B` over (1) returns a NO_CACHE row with B's segment only. Fail = A's or C's text present.
+5. **Other chunks dropped.** Same batch, second chunk call for `[D,E]`: the `entity_id=B` response returns no NO_CACHE / RESPONSE row from that call. Fail = any row from it.
+6. **Story sliced for unscored tasks.** `get_entity_agent_story` for job B, on an unscored batch task stored as in (1), returns a NO_CACHE block containing only B's segment. Fail = full batch text.
+7. **Legacy fallback.** A stored row still in `000:` form returns whole for `entity_id=B` and in B's story. Fail = empty or missing block.
+8. **No API / schema change.** `git diff origin/dev...<ftr> -- src/ui/api/ src/data/` is empty. Fail = any change.
+
+## Boundaries
+
+Does not change storage or the hydrate/split helpers (sibling #1). Does not touch UI (sibling #3). `src/ui/api/api_system.py` unchanged — the route already takes `entity_id`.
+
+## Notes for planning
+
+after #1. Citations: `patt.entity.batch-processing`, `stat.logging.debug`. Estimate: 3.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/AST-2028-technical-fail-modals-filter-by-entity-id`, child `sub/AST-2028/AST-2030-slice-agent-data-reads-by-entity`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-10-08T04:30:10.960Z
+[code-rubric] PROCEED (Commit: 9b73ea9d1) read paths sliced
+
+#### hedy — 2026-10-08T04:28:40.888Z
+`origin/sub/AST-2028/AST-2030-slice-agent-data-reads-by-entity` @ `9b73ea9d1` · manifest green: 30 passed; AC8 diff empty; `_filter_response_block` gone. Ran with `ASTRAL_PYTHON=python3` — `ensure_component_venv.sh` rejects host Python 3.14.
+
+#### betty — 2026-10-08T04:27:30.925Z
+`origin/sub/AST-2028/AST-2030-slice-agent-data-reads-by-entity` @ `0a96a0b39` · 5 revised, gaps added
+
+#### hedy — 2026-10-08T04:24:39.211Z
+`origin/sub/AST-2028/AST-2030-slice-agent-data-reads-by-entity` @ `2fd214be0` — 5 existing tests pin old behaviour (see plan ## Review)
+
+#### joan — 2026-10-08T04:22:18.895Z
+[plan-rubric] PROCEED (Commit: b75afb62c) Shared slicer read paths
+
+#### hedy — 2026-10-08T04:21:18.121Z
+`origin/sub/AST-2028/AST-2030-slice-agent-data-reads-by-entity` @ `b75afb62c` · plan ready, one shared slicer
+
+---
+
 # AST-2030 — Slice agent-data reads and agent story by entity
 
 - **Parent:** [AST-2028 — Technical fail modals must filter by entity_id](https://linear.app/astralcareermatch/issue/AST-2028)

@@ -1590,46 +1590,31 @@ COMPANY_STATES = {
 }
 
 # ---------------------------------------------------------------------------
-# CANDIDATE_STATES: job-style registry (AST-970). Keys are runtime states;
-# each value has prior_states (list or None), progress_rank, and optional
+# CANDIDATE_STATES: job-style registry (AST-970 + AST-2228 stage). Keys are
+# runtime states; each value has prior_states, progress_rank, stage, and optional
 # stale_after_hours/stale_state, retry_state/error_state, reap_after_hours.
 # PROSPECT = Slack-created candidate (AST-1068); prior_states None (entry state).
+# Stage is registry metadata on state — not a candidate table column (AST-2228).
 # ---------------------------------------------------------------------------
 CANDIDATE_STATES = {
-    "PROSPECT": {"prior_states": None, "progress_rank": -1},
-    "NEW_CANDIDATE": {"prior_states": None, "progress_rank": 0},
-    "INTAKE_INITIATED": {"prior_states": ["NEW_CANDIDATE"], "progress_rank": 1},
-    "REQUIRED_TOPICS_READY": {
-        "prior_states": ["INTAKE_INITIATED", "REQUIRED_TOPICS_READY_STALE"],
-        "stale_after_hours": 72,
-        "stale_state": "REQUIRED_TOPICS_READY_STALE",
+    "PROSPECT": {"prior_states": None, "progress_rank": -1, "stage": 1},
+    "NEW_CANDIDATE": {"prior_states": None, "progress_rank": 0, "stage": 1},
+    "INTAKE_INITIATED": {"prior_states": ["NEW_CANDIDATE"], "progress_rank": 1, "stage": 1},
+    "PROFILE_READY": {
+        "prior_states": ["INTAKE_INITIATED"],
         "progress_rank": 2,
+        "stage": 2,
     },
-    "REQUIRED_TOPICS_READY_STALE": {
-        "prior_states": ["REQUIRED_TOPICS_READY"],
-        "progress_rank": 2,
-    },
-    "ALL_TOPICS_READY": {
-        "prior_states": [
-            "REQUIRED_TOPICS_READY",
-            "REQUIRED_TOPICS_READY_STALE",
-            "ALL_TOPICS_READY_STALE",
-        ],
-        "stale_after_hours": 72,
-        "stale_state": "ALL_TOPICS_READY_STALE",
+    "CONTEXT_READY": {
+        "prior_states": ["PROFILE_READY"],
         "progress_rank": 3,
-    },
-    "ALL_TOPICS_READY_STALE": {
-        "prior_states": ["ALL_TOPICS_READY"],
-        "progress_rank": 3,
+        "stage": 3,
     },
     "REQUESTED_RESUME": {
-        "prior_states": [
-            "ALL_TOPICS_READY",
-            "ALL_TOPICS_READY_STALE",
-        ],
+        "prior_states": ["CONTEXT_READY"],
         "retry_state": retry_of("REQUESTED_RESUME"),
         "progress_rank": 4,
+        "stage": 3,
     },
     "RESUME_READY": {
         "prior_states": [
@@ -1639,10 +1624,12 @@ CANDIDATE_STATES = {
         "stale_after_hours": 168,
         "stale_state": "RESUME_READY_STALE",
         "progress_rank": 5,
+        "stage": 4,
     },
     "RESUME_READY_STALE": {
         "prior_states": ["RESUME_READY"],
         "progress_rank": 5,
+        "stage": 4,
     },
     "REQUESTED_ARTIFACTS": {
         "prior_states": [
@@ -1656,15 +1643,26 @@ CANDIDATE_STATES = {
         ],
         "retry_state": retry_of("REQUESTED_ARTIFACTS"),
         "progress_rank": 6,
+        "stage": 4,
     },
     # AST-2086: a failing craft hop lands on its own ERROR_<HOP> (TASK_CONFIG error_state).
+    # AST-2228: craft ERROR_* inherit artifact-waiting stage 4.
     **{
-        s: {"prior_states": ["REQUESTED_RESUME", "REQUESTED_ARTIFACTS"], "progress_rank": 6}
+        s: {
+            "prior_states": ["REQUESTED_RESUME", "REQUESTED_ARTIFACTS"],
+            "progress_rank": 6,
+            "stage": 4,
+        }
         for s in CANDIDATE_CRAFT_CHAIN_ERROR_STATES
     },
     # AST-2221: base-resume hop failures land on ERROR_<HOP> with REQUESTED_RESUME priors only.
+    # AST-2245: resume-request ERROR_* inherit stage 3 (parent locked band).
     **{
-        s: {"prior_states": ["REQUESTED_RESUME"], "progress_rank": 4}
+        s: {
+            "prior_states": ["REQUESTED_RESUME"],
+            "progress_rank": 4,
+            "stage": 3,
+        }
         for s in BASE_RESUME_CHAIN_ERROR_STATES
     },
     "ARTIFACTS_READY": {
@@ -1675,18 +1673,21 @@ CANDIDATE_STATES = {
         "stale_after_hours": 168,
         "stale_state": "ARTIFACTS_READY_STALE",
         "progress_rank": 7,
+        "stage": 4,
     },
     "ARTIFACTS_READY_STALE": {
         "prior_states": ["ARTIFACTS_READY"],
         "progress_rank": 7,
+        "stage": 4,
     },
     "ACTIVE_SEARCH": {
         "prior_states": ["ARTIFACTS_READY", "ARTIFACTS_READY_STALE", "PAUSE_SEARCH"],
         "progress_rank": 8,
+        "stage": 5,
     },
-    "PAUSE_SEARCH": {"prior_states": ["ACTIVE_SEARCH"], "progress_rank": 8},
-    "INACTIVE": {"prior_states": None, "progress_rank": -1},
-    "DELETED": {"prior_states": None, "progress_rank": -1, "reap_after_hours": 720},
+    "PAUSE_SEARCH": {"prior_states": ["ACTIVE_SEARCH"], "progress_rank": 8, "stage": 5},
+    "INACTIVE": {"prior_states": None, "progress_rank": -1, "stage": 0},
+    "DELETED": {"prior_states": None, "progress_rank": -1, "stage": 0, "reap_after_hours": 720},
 }
 
 CANDIDATE_CONFIG = {
@@ -2491,6 +2492,7 @@ assert "PROSPECT" in CANDIDATE_STATES
 for _name, _cfg in CANDIDATE_STATES.items():
     assert "progress_rank" in _cfg, _name
     assert "prior_states" in _cfg, _name
+    assert "stage" in _cfg, _name
     _stale = _cfg.get("stale_state")
     if _stale is not None:
         assert _stale in CANDIDATE_STATES and "stale_after_hours" in _cfg, _name
@@ -2502,23 +2504,47 @@ for _name, _cfg in CANDIDATE_STATES.items():
         assert _err in CANDIDATE_STATES, _name
 assert CANDIDATE_STATES["DELETED"].get("reap_after_hours", 0) > 0
 assert CANDIDATE_CONFIG["initial_state"] in CANDIDATE_STATES
+# AST-2228: revived path + topic retirement + locked stage bands.
+assert "PROFILE_READY" in CANDIDATE_STATES and "CONTEXT_READY" in CANDIDATE_STATES
+assert not (
+    {
+        "REQUIRED_TOPICS_READY",
+        "REQUIRED_TOPICS_READY_STALE",
+        "ALL_TOPICS_READY",
+        "ALL_TOPICS_READY_STALE",
+    }
+    & set(CANDIDATE_STATES)
+)
+assert CANDIDATE_STATES["PAUSE_SEARCH"]["stage"] == 5
+assert CANDIDATE_STATES["RESUME_READY"]["stage"] == 4
+assert CANDIDATE_STATES["PROFILE_READY"]["stage"] == 2
+assert CANDIDATE_STATES["DELETED"]["stage"] == 0
+assert all(
+    CANDIDATE_STATES[s]["stage"] == 3 for s in BASE_RESUME_CHAIN_ERROR_STATES
+)
 
-# Retired four-step names → AST-970 registry. DELETED is not remapped (hard-deleted).
+# Legacy labels -> live registry (AST-973 + AST-2228 topic remap). DELETED not remapped.
 CANDIDATE_LEGACY_STATE_MAP = {
     "LIVE_PROMPTS": "ACTIVE_SEARCH",
     "NEW": "NEW_CANDIDATE",
-    "PROFILE_READY": "NEW_CANDIDATE",
-    "CONTEXT_READY": "NEW_CANDIDATE",
+    "REQUIRED_TOPICS_READY": "PROFILE_READY",
+    "REQUIRED_TOPICS_READY_STALE": "PROFILE_READY",
+    "ALL_TOPICS_READY": "CONTEXT_READY",
+    "ALL_TOPICS_READY_STALE": "CONTEXT_READY",
 }
 
-# Candidate-only legacy labels (never job/company registry keys).
+# Candidate-only retired labels (never job/company registry keys).
 CANDIDATE_LEGACY_TRIGGER_STATES = frozenset({
-    "LIVE_PROMPTS", "PROFILE_READY", "CONTEXT_READY",
+    "LIVE_PROMPTS",
+    "REQUIRED_TOPICS_READY",
+    "REQUIRED_TOPICS_READY_STALE",
+    "ALL_TOPICS_READY",
+    "ALL_TOPICS_READY_STALE",
 })
 
 
 def remap_legacy_candidate_state(state: str) -> str:
-    """Map a persisted candidate.state onto CANDIDATE_STATES keys (AST-973)."""
+    """Map a persisted candidate state onto CANDIDATE_STATES keys (AST-973 / AST-2228)."""
     if not state:
         return CANDIDATE_CONFIG["initial_state"]
     if state in CANDIDATE_STATES:
@@ -4117,9 +4143,10 @@ assert all(
     for state in JOBS_RECOMMENDED_PRIMARY_ACTIONS
 )
 
-# AST-948 / AST-1550 / AST-1691 / AST-1872: top-level Recommended report tabs — first entry is the default tab (Meteorite after Discussion).
+# AST-948 / AST-1550 / AST-1691 / AST-1872 / AST-2232: top-level Recommended report tabs — first entry is the default tab (Job Description between Analysis and Summary; Meteorite after Discussion).
 JOBS_RECOMMENDED_REPORT_TOP_TABS = [
     {"tab_id": "analysis", "nav_label": "Analysis"},
+    {"tab_id": "job_description", "nav_label": "Job Description"},
     {"tab_id": "summary", "nav_label": "Summary"},
     {"tab_id": "artifacts", "nav_label": "Artifacts"},
     {"tab_id": "discussion", "nav_label": "Discussion"},
@@ -4131,7 +4158,6 @@ JOBS_RECOMMENDED_REPORT_SUMMARY_SECTIONS = [
     {"section_id": "company_upshot", "nav_label": "Company Upshot", "default_expanded": True},
     {"section_id": "caveats", "nav_label": "Noteworthy Caveats", "default_expanded": True},
     {"section_id": "questions", "nav_label": "Questions to Ask", "default_expanded": True},
-    {"section_id": "raw_jd", "nav_label": "Raw Job Description", "default_expanded": False},
 ]
 
 # AST-1691: Recommended report Meteorite pane sections (config → manifest; React must not invent order).
@@ -5265,6 +5291,7 @@ REPO_ADMIN_JSON_CONFIG = {
             "repo_relative_path": "data/admin/agent.json",
             "columns": (
                 "agent_id",
+                "agent_name",  # AST-2232: display name for Discussion headers
                 "content",
                 "model_id",
                 "max_tokens",
@@ -6476,8 +6503,9 @@ def validate_llm_provider_environment() -> None:
 # the group for non-admin users (resolved via nav_admin_only_group_labels).
 # Omit the key (or False) = visible to every authenticated user.
 #
-# Optional item-level "enabled": a CANDIDATE_STATES key (disabled unless at
-# or past that state) or False (permanently disabled stub). Omit = always enabled.
+# Optional item-level "enabled": minimum candidate registry stage (int) —
+# disabled unless candidate_stage(state) >= that floor — or False (permanently
+# disabled stub). Omit = always enabled. Resolved in api_system.py.
 #
 # Group-level candidate-state "visible" is not a NAV_CONFIG key. Do not add it.
 #
@@ -6602,12 +6630,13 @@ assert UI_CONFIG["themes"].get(UI_CONFIG["default_theme"], {}).get("profile_sele
 
 # ---------------------------------------------------------------------------
 # The /api/nav_config endpoint in api_system.py resolves item-level enabled
-# gates against the selected candidate's state and omits admin_only groups
-# for non-admins before serving. The frontend renders the resolved response
-# with no additional visibility logic.
+# gates against the selected candidate's registry stage and omits admin_only
+# groups for non-admins before serving. The frontend renders the resolved
+# response with no additional visibility logic.
 #
-# SYNC: Every path here must have a matching route in src/ui/frontend/src/routes.tsx.
-#       If you add/remove/rename a nav item, update routes.tsx to match.
+# SYNC: Every sidebar path here must have a matching route in
+#       src/ui/frontend/src/routes.tsx. Deeplink-only routes (search,
+#       jobs/detail, dropped sidebar items) are not listed here.
 # ---------------------------------------------------------------------------
 # Deeplink-only — not in NAV_CONFIG (no sidebar item).
 # SYNC: src/ui/frontend/src/routes.tsx path "jobs/detail/:jobId"
@@ -6617,57 +6646,57 @@ JOBS_DETAIL_ROUTE_PREFIX = "/jobs/detail"
 JOBS_DETAIL_ORIGIN_DOMAIN_ENV = "RAILWAY_PUBLIC_DOMAIN"
 assert isinstance(JOBS_DETAIL_ORIGIN_DOMAIN_ENV, str) and JOBS_DETAIL_ORIGIN_DOMAIN_ENV.strip()
 
+# AST-2230: per-group recent-expand defaults for /api/nav_config (shell #4 consumes `recent`).
+NAV_GROUP_RECENT_DEFAULTS = {
+    "Candidate": {"when": "incomplete_profile"},
+    "Criteria": {"when": "never"},
+    "Company": {"when": "any_item_count"},
+    "Job Opportunities": {"when": "any_item_count"},
+}
+
 NAV_CONFIG = [
-    {
-        "label": "Jobs",
-        "items": [
-            {"label": "Ready", "path": "/jobs/ready"},
-            {"label": "Review", "path": "/jobs/review"},
-            {"label": "Applied", "path": "/jobs/applied"},
-            {"label": "Processing", "path": "/jobs/processing"},
-            {"label": "Skipped", "path": "/jobs/skipped"},
-            {"label": "Meteorites", "path": "/jobs/meteorites"},
-        ],
-    },
-    {
-        "label": "Companies",
-        "items": [
-            {"label": "Watch List", "path": "/companies/watch_list"},
-            {"label": "New List", "path": "/companies/new_list"},
-            {"label": "Inactive List", "path": "/companies/inactive_list"},
-            {"label": "Ignored", "path": "/companies/ignored"},
-            {"label": "Meteorite", "path": "/companies/meteorite_list"},
-            {"label": "Watch History", "path": "/companies/watch_history"},
-        ],
-    },
-    {
-        "label": "Artifacts",
-        "items": [
-            {"label": "Base Resume Content", "path": "/artifacts/base_resume_content"},
-            {"label": "Company Watch Criteria", "path": "/artifacts/company_watch_criteria"},
-            {"label": "Company Search Terms", "path": "/artifacts/company_search_terms"},
-            {"label": "Job List Criteria", "path": "/artifacts/job_list_criteria"},
-            {"label": "Job Description Criteria", "path": "/artifacts/job_description_criteria"},
-            {"label": "Meteorite Criteria", "path": "/artifacts/meteorite_criteria"},
-            {"label": "Get Job Criteria", "path": "/artifacts/get_job_criteria"},
-            {"label": "Do Job Criteria", "path": "/artifacts/do_job_criteria"},
-            {"label": "Like Job Criteria", "path": "/artifacts/like_job_criteria"},
-        ],
-    },
     {
         "label": "Candidate",
         "items": [
-            {"label": "Intake", "path": "/candidate/intake"},
-            {"label": "Profile", "path": "/candidate/profile"},
-            {"label": "Surfer", "path": "/candidate/surfer"},
-            {"label": "Strengths", "path": "/candidate/strengths"},
-            {"label": "Bio Summary", "path": "/candidate/bio_summary"},
-            {"label": "Priorities", "path": "/candidate/priorities"},
-            {"label": "Deal Breakers", "path": "/candidate/deal_breakers"},
-            {"label": "Backstory", "path": "/candidate/backstory"},
-            {"label": "Ideal Day", "path": "/candidate/ideal_day"},
-            {"label": "Writing Preferences", "path": "/candidate/writing_preferences"},
-            {"label": "Surfer Consent", "path": "/candidate/surfer_consent"},
+            {"label": "Profile", "path": "/candidate/profile", "enabled": 1},
+            {"label": "Bio Summary", "path": "/candidate/bio_summary", "enabled": 2},
+            {"label": "Back Story", "path": "/candidate/backstory", "enabled": 2},
+            {"label": "Ideal Day", "path": "/candidate/ideal_day", "enabled": 2},
+            {"label": "Strengths", "path": "/candidate/strengths", "enabled": 2},
+            {"label": "Priorities", "path": "/candidate/priorities", "enabled": 2},
+            {"label": "Dealbreakers", "path": "/candidate/deal_breakers", "enabled": 2},
+            {"label": "Writing Preferences", "path": "/candidate/writing_preferences", "enabled": 2},
+            {"label": "Base Resume", "path": "/artifacts/base_resume_content", "enabled": 3},
+        ],
+    },
+    {
+        "label": "Criteria",
+        "items": [
+            {"label": "Job Listing Qualify Criteria", "path": "/artifacts/job_list_criteria", "enabled": 4},
+            {"label": "Meteorite Qualify Criteria", "path": "/artifacts/meteorite_criteria", "enabled": 4},
+            {"label": "Job Description Criteria", "path": "/artifacts/job_description_criteria", "enabled": 4},
+            {"label": "Do the Job Criteria", "path": "/artifacts/do_job_criteria", "enabled": 4},
+            {"label": "Get the Job Criteria", "path": "/artifacts/get_job_criteria", "enabled": 4},
+            {"label": "Like the Job Criteria", "path": "/artifacts/like_job_criteria", "enabled": 4},
+        ],
+    },
+    {
+        "label": "Company",
+        "items": [
+            {"label": "Company Discovery Terms", "path": "/artifacts/company_search_terms", "enabled": 4},
+            {"label": "Company Gazing Criteria", "path": "/artifacts/company_watch_criteria", "enabled": 4},
+            {"label": "Gaze Roster", "path": "/companies/watch_list", "enabled": 5},
+            {"label": "Ignore List", "path": "/companies/ignored", "enabled": 5},
+        ],
+    },
+    {
+        "label": "Job Opportunities",
+        "items": [
+            {"label": "Meteorites", "path": "/jobs/meteorites", "enabled": 5},
+            {"label": "Recommendations", "path": "/jobs/review", "enabled": 5},
+            {"label": "Ready to Apply", "path": "/jobs/ready", "enabled": 5},
+            {"label": "Submitted Applications", "path": "/jobs/applied", "enabled": 5},
+            {"label": "Skipped", "path": "/jobs/skipped", "enabled": 5},
         ],
     },
     {

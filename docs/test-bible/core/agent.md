@@ -2249,17 +2249,17 @@ git checkout -- data/
 
 **Pass criterion:** pytest green on the manifest lines, not the zero-arg harness or branch-lock gate.
 
-### AST-2217 · AST-2215 (call-time attribution into `_send_to_server`)
+### AST-2232 · AST-2226 (story agent_name)
 
-Parent AC **8**: `do_task` passes `request_type="DISPATCH_AGENT"`, task `entity_type`, and `entity_id=index` when the call covers one entity; multi-entity (`batch_size > 1` or multiple `batch_entities`) leaves `entity_id` empty. Contact attribution is AST-2220.
+**Parent:** [AST-2226](https://linear.app/astralcareermatch/issue/AST-2226). **Publish:** `origin/sub/AST-2226/AST-2232-agent-name-detail-enrichment-tab-config`.
+
+`get_entity_agent_story` attaches `agent_name` from the task's agent row when non-empty (parallel to `task_name`); omits when blank / missing `agent_id`. Primary manifest: **`docs/test-bible/core/tracker.md`** § AST-2232.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| New — single-entity DISPATCH_AGENT + index entity_id | `do_task` → `_send_to_server` | `TestAst2217CallTimeAttribution::test_single_entity_passes_dispatch_agent_and_index` |
-| New — multi-entity leaves entity_id empty | `do_task` → `_send_to_server` | `…::test_multi_entity_leaves_entity_id_empty` |
+| Attach / omit `agent_name` | `src/core/agent.py` | **`TestAst2232AgentStoryAgentName`** |
+| Regression `task_name` | same | **`TestAst1550AgentStoryTaskName`** |
 
-**Primary manifest:** [`../data/database/timesheets.md`](../data/database/timesheets.md) § AST-2217. **Integration:** none.
+**Broken / obsolete:** none — additive field.
 
-### AST-2220 · AST-2215 (`do_task` optional `request_type`)
-
-`do_task(..., request_type=...)` defaults to `DISPATCH_AGENT`; contact turns pass `CONTACT_AGENT` (AST-2220). Pass-through to `_send_to_server` / recorded timesheet. Primary coverage: [`contact.md`](contact.md) § AST-2220. Dispatch default still covered by AST-2217 `TestAst2217CallTimeAttribution`.
+**Integration:** none.

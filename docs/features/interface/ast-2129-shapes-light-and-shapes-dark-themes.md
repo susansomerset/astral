@@ -1,3 +1,80 @@
+<!-- linear-archive: AST-2129 archived 2026-10-16 -->
+
+## Linear archive (AST-2129)
+
+**Archived:** 2026-10-16  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-2129/shapes-light-and-shapes-dark-themes-add-shapes-light-and-shapes-dark  
+**Status at archive:** Archive  
+**Project:** Astral Interface  
+**Assignee:** ada  
+**Priority / estimate:** None / 3  
+**Parent:** AST-2101 — Add "Shapes - Light" and "Shapes - Dark" themes (one shape per grade)  
+**Blocked by / blocks / related:** parent: AST-2101; related: AST-2100
+
+### Description
+
+## What this implements
+
+Registers the two Shapes themes. Each one shares its sibling's token block, and both declare the shape ring settings. Adds the Shapes-only §9b rules that draw the shape, ring and centroid letter, and hide the circle. Runs after #1, because its rules style the mark #1 renders. Blocked by [AST-2100](https://linear.app/astralcareermatch/issue/AST-2100) landing on dev.
+
+## Citations
+
+none. No in-force pattern or statute governs stylesheet tokens or the theme registry (see Architectural definition).
+
+## Scope
+
+* `src/utils/config.py`: **modified**. `UI_CONFIG["themes"]` gains the two Shapes entries.
+* `src/ui/frontend/src/App.css`: **modified**. The Dark and Light token blocks also apply to their Shapes twin and declare the shape ring settings. New §9b rules draw the shapes in the two Shapes themes only.
+* `tests/component/frontend/test_AppCss.test.tsx`, `tests/component/utils/test_config.py`, `docs/test-bible/frontend/root.md`, `docs/test-bible/utils/config.md`: **modified**, as in Component scope.
+
+Technical scope (from parent):
+
+* `config.py` `UI_CONFIG["themes"]`: modified data. Add `shapes_light` ("Shapes - Light") and `shapes_dark` ("Shapes - Dark"), both `profile_selectable`. `default_theme` stays `dark`.
+* `App.css` **token blocks**: modified selectors and new tokens. The Dark block's selector becomes `:root, [data-theme="dark"], [data-theme="shapes_dark"]`. The Light block's selector becomes `[data-theme="light"], [data-theme="shapes_light"]`. Both blocks declare the per-grade shape ring widths, compact and lettered (Light 1.5px / 2.5px, Dark 0), following AST-2100's per-grade layering. No colour token is duplicated.
+* `App.css` **§9b Grade Dots**: new rules scoped to the two Shapes theme ids. The circle background and inset ring are dropped and the shape SVG is shown. The path fills with the grade fill (X: stroked in the grade fill at 24, or 20 when lettered, viewBox units, round caps, no fill). The ring strokes in the grade ring colour at the shape ring width, without scaling with the viewBox and without being clipped at the box edge, using `stroke-linejoin: round`. The letter is placed at the centroid at the brief's sizes and is hidden on X. Outside the Shapes themes the SVG is not displayed, so the [AST-2100](https://linear.app/astralcareermatch/issue/AST-2100/light-theme-replace-grade-colours-with-bright-ring-palette) circle rules are untouched.
+* **Tests and bible (Betty,** `qa-child`**)**: a new GradeMark test covers per-grade path, accessible name, text content and the letterless case. `test_AppCss` handles selector-list blocks and twin exemptions. `test_config` asserts four ids. The three bible pages are updated to match. (this child: `test_AppCss`, `test_config`, `root.md` and `config.md` only.)
+
+## Acceptance criteria
+
+1. **Four themes.** `GET /api/ui_config` lists exactly `dark`, `light`, `shapes_light`, `shapes_dark` under `themes`, with labels Dark, Light, Shapes - Light, Shapes - Dark, all `profile_selectable`. The profile Theme select shows those four options. **Fail:** a missing, extra or mislabelled entry, or a Shapes theme absent from the select.
+2. **Colours shared, not copied.** `git grep -c -e '--grade-a:' -- src/ui/frontend/src/App.css` returns 2. The block containing the Light `--grade-a: #2f9e44` opens with `[data-theme="light"], [data-theme="shapes_light"] {`, and the Dark block opens with `:root, [data-theme="dark"], [data-theme="shapes_dark"] {`. **Fail:** a count of 4 (copied twin blocks), or either twin missing from its sibling's selector.
+3. **Shapes per grade.** With the profile on either Shapes theme, on the Recommended list and in the Job Analysis Report, each `.grade-dot.dot-<g>` shows a displayed SVG path whose `d` is the brief's path for that grade (A circle, B diamond, C rounded square, D up, F down, X cross). The span's computed `background-color` is `rgba(0, 0, 0, 0)` and `box-shadow` is `none`. Non-X paths compute `fill` = the grade fill, and X computes `fill: none` with `stroke` = the X fill. **Fail:** a visible circle background, a wrong path, or the wrong colour.
+4. **Ring.** In Shapes - Light, a compact mark's path computes `stroke` = the grade ring colour and `stroke-width` 1.5px, and a lettered mark's computes 2.5px, with the ring not clipped (`overflow` on the SVG is visible). In Shapes - Dark the ring stroke width is 0. **Fail:** a missing or wrong-coloured ring on Shapes - Light, or any visible ring on Shapes - Dark.
+5. **Lettered layout.** In either Shapes theme, on a 22px lettered D mark the letter's computed `font-size` is about 8.4px (38/100) and its box centre sits at 63% ±3% of the mark height. On F it sits at 39% ±3%. On A, B and C the size is about 10.1px (46/100), centred at 50% ±3%. On X the letter computes `visibility: hidden` or `display: none`. **Fail:** any letter off by more than the tolerance, or a visible letter on X.
+6. **Light and Dark unchanged.** With the profile on Light or Dark, a `.dot-c` mark computes `border-radius: 50%`, `background-color` = the C fill, and the [AST-2100](https://linear.app/astralcareermatch/issue/AST-2100/light-theme-replace-grade-colours-with-bright-ring-palette) ring `box-shadow`, and its SVG computes `display: none`. **Fail:** any shape, a missing circle, or a ring or colour change.
+7. **Builds clean.** `npx tsc --noEmit` in `src/ui/frontend` exits 0, `python -c "import src.utils.config"` exits 0, and `test_AppCss.test.tsx` and `test_config.py::TestAst2047ThemeRegistry` pass. **Fail:** a non-zero exit or a failing case.
+
+## Boundaries
+
+Does not touch `GradeMark.tsx` or any call site — those belong to child #1, which this child styles. Does not change Light/Dark rules.
+
+## Notes for planning
+
+Canon Scope: none (parent Architectural definition). Open questions resolved by Susan: shape drawn per option **(A)** (shared mark always carries its shape SVG; CSS scoped to the Shapes theme ids shows it), X ring per option **(a)** (wider under-stroke in `--grade-x-ring`). [AST-2100](https://linear.app/astralcareermatch/issue/AST-2100) has landed on `origin/dev`.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/<parent-segment>`, child `sub/<parent-id>/<child-segment>`. Created at dispatch-parent. Resolve with `epic_registry.py show AST-2101`.
+
+### Comments
+
+#### radia — 2026-10-10T06:09:46.862Z
+[code-rubric] PROCEED (Commit: ea9c22a3a) Shapes themes registry CSS
+
+#### betty — 2026-10-10T06:07:50.155Z
+`origin/sub/AST-2101/AST-2129-shapes-themes` @ `ea9c22a3a` · AppCss twins, four-theme registry
+
+#### ada — 2026-10-10T06:05:13.696Z
+`origin/sub/AST-2101/AST-2129-shapes-themes` @ `5851e6284`
+
+#### joan — 2026-10-10T06:03:16.477Z
+[plan-rubric] PROCEED (Commit: 1d7298b65) Shapes themes plan ready
+
+#### ada — 2026-10-10T06:01:52.710Z
+`origin/sub/AST-2101/AST-2129-shapes-themes` @ `1d7298b65` · plan ready, four decisions flagged
+
+---
+
 # Shapes - Light and Shapes - Dark themes
 
 - **Ticket:** [AST-2129](https://linear.app/astralcareermatch/issue/AST-2129) — child of [AST-2101](https://linear.app/astralcareermatch/issue/AST-2101) (Add "Shapes - Light" and "Shapes - Dark" themes)

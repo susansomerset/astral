@@ -1,3 +1,96 @@
+<!-- linear-archive: AST-2072 archived 2026-10-16 -->
+
+## Linear archive (AST-2072)
+
+**Archived:** 2026-10-16  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-2072/natural-estelle-replies-thread-response-placement-contact-estelle  
+**Status at archive:** Archive  
+**Project:** Astral Contact  
+**Assignee:** hedy  
+**Priority / estimate:** None / 3  
+**Parent:** AST-2050 — Contact Estelle behavior  
+**Blocked by / blocks / related:** parent: AST-2050; related: AST-2055
+
+### Description
+
+## What this implements
+
+Removes the canned known-recognition reply, sets the new unknown-sender and failure-fallback reply strings, and adds the `thread_response` setting (`threads_only` default / `always_no_share` / `always_with_share`) so every Estelle reply to an inbound Slack message lands per config, with optional "Also send to channel". Does not change Estelle-initiated top-level posts (meteorite BOT_BLOCKED) or what thread anchor command handlers store.
+
+## Citations
+
+`patt.contact.command-intercept`, `stat.logging.info.contact`, `stat.logging.debug`.
+
+## Scope
+
+* `src/utils/config.py` — **modified** — `CONTACT_CONFIG` gains the `thread_response` setting (+ import-time assert on its vocabulary); `known_recognition_reply_text` and its assert are removed; unknown-sender and failure-fallback reply strings get their new values.
+* `src/external/slack.py` — **modified** — `post_message` can request Slack's reply broadcast ("Also send to channel") on a threaded post.
+* `src/core/contact.py` — **modified** — inbound path stops posting the known-recognition reply; all reply sites resolve thread placement + broadcast from `thread_response` through one shared helper and pass it through `contact_post_message`.
+* Technical scope: all items under `## Technical scope` above (config key + assert + removal + two reply-string values; `post_message` broadcast keyword; contact placement helper, `contact_post_message` pass-through + cache key, `_handle_slack_event_body`, `run_contact_estelle_turn` outbound step, `_run_contact_command` usage/ack posts with handler anchor unchanged).
+
+Parent `## Technical scope` (all items — this child owns the full slice):
+
+* `src/utils/config.py`: new `CONTACT_CONFIG` key for reply placement, string vocabulary `threads_only | always_with_share | always_no_share`, default `threads_only`, with an import-time assert rejecting any other value. Remove the `known_recognition_reply_text` key and its assert (no remaining reader). Modified values (keys and asserts unchanged): `unknown_recognition_reply_text` → "Sorry, I don't recognize you, yet.  Let's check with @susan"; `hear_ack_reply_text` → "That didn't work as planned.  Let's ask @susan."
+* `src/external/slack.py`: modified `post_message` — new optional keyword to request reply broadcast; adds Slack's `reply_broadcast: true` to the `chat.postMessage` body only when a `thread_ts` is also present. Default behavior (no broadcast) unchanged for existing callers (e.g. `src/core/meteorite.py` top-level post).
+* `src/core/contact.py`:
+  * new private helper that, given the inbound event's `thread_ts` and message `ts`, returns the reply `thread_ts` (or none for top-level) and the broadcast flag per `thread_response`;
+  * modified `contact_post_message` — passes the broadcast flag through to `post_message`; cache append keys on the thread actually posted to (top-level reply → channel-level cache key);
+  * modified `_handle_slack_event_body` — drops the known-recognition post; hear-ack and paste ack use the helper instead of inline `thread_ts or msg_ts`;
+  * modified `run_contact_estelle_turn` (outbound reply step) and `_run_contact_command` (usage + code-mode ack posts) — reply placement via the helper; the handler call in `_run_contact_command` keeps passing the anchor (`thread_ts or message_ts`) unchanged.
+
+## Acceptance criteria
+
+All parent ACs (single child):
+
+ 1. **Recognition text gone.** `git grep -n "known_recognition_reply_text\|I know who that is" -- src` returns nothing. Fail: any hit.
+ 2. **Setting exists with the right default.** `python -c "from src.utils.config import CONTACT_CONFIG as C; print(C['thread_response'])"` prints `threads_only`. Fail: KeyError or any other value. Setting it to any string outside the three values fails at import (assert). Fail: import succeeds with e.g. `"sometimes"`.
+ 3. **Bound user, one message.** Listen on, a bound user posts top-level `@Estelle hi` in a channel: Slack shows exactly one Estelle message, which is her turn reply — no "I know who that is". In component terms: `handle_slack_event` with a bound user calls `post_message` exactly once for a successful turn. Fail: two posts, or a post with the recognition text.
+ 4. `threads_only`**, top-level inbound.** Event without `thread_ts`: the `chat.postMessage` body has no `thread_ts` and no `reply_broadcast`. In Slack, the reply appears in the channel, not as "1 reply". Fail: body carries `thread_ts` (= message ts).
+ 5. `threads_only`**, in-thread inbound.** Event with `thread_ts=T`: body has `thread_ts=T`, no `reply_broadcast`. Fail: top-level post or broadcast set.
+ 6. `always_no_share`**.** Top-level inbound with `ts=M`: body `thread_ts=M`, no `reply_broadcast`; in-thread inbound: `thread_ts=T`, no `reply_broadcast`. Fail: any top-level post or broadcast.
+ 7. `always_with_share`**.** Same `thread_ts` as AC 6, and body carries `reply_broadcast: true` for both cases. In Slack the reply shows in the thread and in the channel. Fail: `reply_broadcast` missing.
+ 8. **Every reply site obeys the setting.** Under `threads_only` with a top-level inbound, each of: Estelle turn reply, `/add-job` usage reply (empty payload), `/add-job` code-mode ack, paste-saved ack, hear-ack fallback — posts with no `thread_ts`. Fail: any of them threaded.
+ 9. **One placement helper, no per-site logic (negative check).** `grep -n "thread_ts or message_ts\|thread_ts or msg_ts\|reply_thread_ts = event.get" src/core/contact.py` matches only inside the placement helper and the command-handler anchor in `_run_contact_command` (AC 10). Fail: inline placement logic at any reply site — a per-site copy is the wrong shape even if each copy behaves correctly.
+10. **Anchor unchanged.** Under `threads_only` with a top-level `@Estelle /add-job <link>` (`ts=M`), `insert_slack_meteorite` receives `thread_ts=M` and the new meteorite's `estelle_thread_ts` is `M`. Fail: `None`/empty anchor.
+11. **Broadcast never on top-level.** `slack.post_message(channel=…, text=…, broadcast requested, thread_ts=None)` sends a body without `reply_broadcast`. Fail: `reply_broadcast` present without `thread_ts`.
+12. **Listen info line intact.** With debug off, a bound-user turn still emits exactly one `contact listen <event_type> <outcome>` info line. Fail: line missing.
+13. **Unbound sender text.** `handle_slack_event` for an unbound Slack user posts exactly one message whose text (after the non-prod prefix) is `CONTACT_CONFIG["unknown_recognition_reply_text"]` == "Sorry, I don't recognize you, yet.  Let's check with @susan", placed per `thread_response`; no Estelle turn runs. Fail: old text, a second post, or a turn.
+14. **Failure fallback text.** A bound-user turn that raises (or returns no reply) posts exactly one message whose text is `CONTACT_CONFIG["hear_ack_reply_text"]` == "That didn't work as planned.  Let's ask @susan.", placed per `thread_response`. `git grep -n "Heard you" -- src` returns nothing. Fail: old text present, or no fallback post.
+
+## Boundaries
+
+Single child — no siblings. Does not change Estelle-initiated top-level posts (meteorite BOT_BLOCKED in `src/core/meteorite.py`) or the thread anchor command handlers store. No Manage Slack UI toggle — `thread_response` is config-only.
+
+## Notes for planning
+
+Citations above. Requested canon change (Archie): `patt.contact.command-intercept` Arc steps 3–4 wording ("known/unknown recognition first", "in-thread") — flag in plan, do not edit canon. In-flight [AST-2055](https://linear.app/astralcareermatch/issue/AST-2055) / [AST-2061](https://linear.app/astralcareermatch/issue/AST-2061) (not yet on dev) edits the same three files in other hunks: public-channel gate at the top of `_handle_slack_event_body`, `fetch_channel_type` in `slack.py`, `CONTACT_CONFIG["allowed_channel_types"]`, and removal of `CONTACT_CONFIG["skills"]` entries / `land_calls` in `run_contact_estelle_turn`. Keep edits local to reply sites to minimize merge surface.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/<parent-segment>`, child `sub/<parent-id>/<child-segment>`. Created at dispatch-parent.
+
+### Comments
+
+#### hedy — 2026-10-08T23:50:19.895Z
+`origin/sub/AST-2050/AST-2072-estelle-thread-response` @ `a4a7ce600` · §9a clean · ftr dry-run clean (`ftr/AST-2050-estelle-behavior` — spawn `--ftr AST-2050` misses it)
+
+#### radia — 2026-10-08T23:47:55.620Z
+[code-rubric] PROCEED (Commit: e9e30e065) placement helper, canon B
+
+#### betty — 2026-10-08T23:44:57.268Z
+`origin/sub/AST-2050/AST-2072-estelle-thread-response` @ `e9e30e065` · placement tests + 5 revised
+
+#### hedy — 2026-10-08T23:06:59.131Z
+`origin/sub/AST-2050/AST-2072-estelle-thread-response` @ `221def8f6` · AC 1 grep is substring-unsafe (`unknown_…` matches) — see plan `## Review`
+
+#### joan — 2026-10-08T23:05:05.551Z
+[plan-rubric] PROCEED (Commit: c968b6df) placement helper, three files
+
+#### hedy — 2026-10-08T23:03:21.174Z
+`origin/sub/AST-2050/AST-2072-estelle-thread-response` @ `c968b6dfa` · plan ready, two stages
+
+---
+
 # AST-2072 — Natural Estelle replies + thread_response placement
 
 **Linear:** [AST-2072](https://linear.app/astralcareermatch/issue/AST-2072)
