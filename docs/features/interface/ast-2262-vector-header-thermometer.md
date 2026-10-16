@@ -223,3 +223,16 @@ Confirm Chuckles estimate: 3 — agree
 - Self-assessment: **Estimate** confirm `3 — agree` fits two focused stages.
 
 context_tokens≈31000
+
+## Review stub (Hedy / build)
+
+**Publish ref:** `origin/sub/AST-2257/AST-2262-vector-header-thermometer`
+
+**Product commits:**
+
+| SHA | Stage | Summary |
+|-----|-------|---------|
+| `5e17e4cf3` | 1 | `RubricGradeThermometer` plus `--grade-*` segment colors |
+| `ec5bbe45c` | 2 | Run count and bar on each rubric vector header; reload after version move |
+
+**Built @ `ec5bbe45c`**
