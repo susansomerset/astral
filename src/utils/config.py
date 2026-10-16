@@ -6502,8 +6502,9 @@ def validate_llm_provider_environment() -> None:
 # the group for non-admin users (resolved via nav_admin_only_group_labels).
 # Omit the key (or False) = visible to every authenticated user.
 #
-# Optional item-level "enabled": a CANDIDATE_STATES key (disabled unless at
-# or past that state) or False (permanently disabled stub). Omit = always enabled.
+# Optional item-level "enabled": minimum candidate registry stage (int) —
+# disabled unless candidate_stage(state) >= that floor — or False (permanently
+# disabled stub). Omit = always enabled. Resolved in api_system.py.
 #
 # Group-level candidate-state "visible" is not a NAV_CONFIG key. Do not add it.
 #
@@ -6628,12 +6629,13 @@ assert UI_CONFIG["themes"].get(UI_CONFIG["default_theme"], {}).get("profile_sele
 
 # ---------------------------------------------------------------------------
 # The /api/nav_config endpoint in api_system.py resolves item-level enabled
-# gates against the selected candidate's state and omits admin_only groups
-# for non-admins before serving. The frontend renders the resolved response
-# with no additional visibility logic.
+# gates against the selected candidate's registry stage and omits admin_only
+# groups for non-admins before serving. The frontend renders the resolved
+# response with no additional visibility logic.
 #
-# SYNC: Every path here must have a matching route in src/ui/frontend/src/routes.tsx.
-#       If you add/remove/rename a nav item, update routes.tsx to match.
+# SYNC: Every sidebar path here must have a matching route in
+#       src/ui/frontend/src/routes.tsx. Deeplink-only routes (search,
+#       jobs/detail, dropped sidebar items) are not listed here.
 # ---------------------------------------------------------------------------
 # Deeplink-only — not in NAV_CONFIG (no sidebar item).
 # SYNC: src/ui/frontend/src/routes.tsx path "jobs/detail/:jobId"
@@ -6643,57 +6645,57 @@ JOBS_DETAIL_ROUTE_PREFIX = "/jobs/detail"
 JOBS_DETAIL_ORIGIN_DOMAIN_ENV = "RAILWAY_PUBLIC_DOMAIN"
 assert isinstance(JOBS_DETAIL_ORIGIN_DOMAIN_ENV, str) and JOBS_DETAIL_ORIGIN_DOMAIN_ENV.strip()
 
+# AST-2230: per-group recent-expand defaults for /api/nav_config (shell #4 consumes `recent`).
+NAV_GROUP_RECENT_DEFAULTS = {
+    "Candidate": {"when": "incomplete_profile"},
+    "Criteria": {"when": "never"},
+    "Company": {"when": "any_item_count"},
+    "Job Opportunities": {"when": "any_item_count"},
+}
+
 NAV_CONFIG = [
-    {
-        "label": "Jobs",
-        "items": [
-            {"label": "Ready", "path": "/jobs/ready"},
-            {"label": "Review", "path": "/jobs/review"},
-            {"label": "Applied", "path": "/jobs/applied"},
-            {"label": "Processing", "path": "/jobs/processing"},
-            {"label": "Skipped", "path": "/jobs/skipped"},
-            {"label": "Meteorites", "path": "/jobs/meteorites"},
-        ],
-    },
-    {
-        "label": "Companies",
-        "items": [
-            {"label": "Watch List", "path": "/companies/watch_list"},
-            {"label": "New List", "path": "/companies/new_list"},
-            {"label": "Inactive List", "path": "/companies/inactive_list"},
-            {"label": "Ignored", "path": "/companies/ignored"},
-            {"label": "Meteorite", "path": "/companies/meteorite_list"},
-            {"label": "Watch History", "path": "/companies/watch_history"},
-        ],
-    },
-    {
-        "label": "Artifacts",
-        "items": [
-            {"label": "Base Resume Content", "path": "/artifacts/base_resume_content"},
-            {"label": "Company Watch Criteria", "path": "/artifacts/company_watch_criteria"},
-            {"label": "Company Search Terms", "path": "/artifacts/company_search_terms"},
-            {"label": "Job List Criteria", "path": "/artifacts/job_list_criteria"},
-            {"label": "Job Description Criteria", "path": "/artifacts/job_description_criteria"},
-            {"label": "Meteorite Criteria", "path": "/artifacts/meteorite_criteria"},
-            {"label": "Get Job Criteria", "path": "/artifacts/get_job_criteria"},
-            {"label": "Do Job Criteria", "path": "/artifacts/do_job_criteria"},
-            {"label": "Like Job Criteria", "path": "/artifacts/like_job_criteria"},
-        ],
-    },
     {
         "label": "Candidate",
         "items": [
-            {"label": "Intake", "path": "/candidate/intake"},
-            {"label": "Profile", "path": "/candidate/profile"},
-            {"label": "Surfer", "path": "/candidate/surfer"},
-            {"label": "Strengths", "path": "/candidate/strengths"},
-            {"label": "Bio Summary", "path": "/candidate/bio_summary"},
-            {"label": "Priorities", "path": "/candidate/priorities"},
-            {"label": "Deal Breakers", "path": "/candidate/deal_breakers"},
-            {"label": "Backstory", "path": "/candidate/backstory"},
-            {"label": "Ideal Day", "path": "/candidate/ideal_day"},
-            {"label": "Writing Preferences", "path": "/candidate/writing_preferences"},
-            {"label": "Surfer Consent", "path": "/candidate/surfer_consent"},
+            {"label": "Profile", "path": "/candidate/profile", "enabled": 1},
+            {"label": "Bio Summary", "path": "/candidate/bio_summary", "enabled": 2},
+            {"label": "Back Story", "path": "/candidate/backstory", "enabled": 2},
+            {"label": "Ideal Day", "path": "/candidate/ideal_day", "enabled": 2},
+            {"label": "Strengths", "path": "/candidate/strengths", "enabled": 2},
+            {"label": "Priorities", "path": "/candidate/priorities", "enabled": 2},
+            {"label": "Dealbreakers", "path": "/candidate/deal_breakers", "enabled": 2},
+            {"label": "Writing Preferences", "path": "/candidate/writing_preferences", "enabled": 2},
+            {"label": "Base Resume", "path": "/artifacts/base_resume_content", "enabled": 3},
+        ],
+    },
+    {
+        "label": "Criteria",
+        "items": [
+            {"label": "Job Listing Qualify Criteria", "path": "/artifacts/job_list_criteria", "enabled": 4},
+            {"label": "Meteorite Qualify Criteria", "path": "/artifacts/meteorite_criteria", "enabled": 4},
+            {"label": "Job Description Criteria", "path": "/artifacts/job_description_criteria", "enabled": 4},
+            {"label": "Do the Job Criteria", "path": "/artifacts/do_job_criteria", "enabled": 4},
+            {"label": "Get the Job Criteria", "path": "/artifacts/get_job_criteria", "enabled": 4},
+            {"label": "Like the Job Criteria", "path": "/artifacts/like_job_criteria", "enabled": 4},
+        ],
+    },
+    {
+        "label": "Company",
+        "items": [
+            {"label": "Company Discovery Terms", "path": "/artifacts/company_search_terms", "enabled": 4},
+            {"label": "Company Gazing Criteria", "path": "/artifacts/company_watch_criteria", "enabled": 4},
+            {"label": "Gaze Roster", "path": "/companies/watch_list", "enabled": 5},
+            {"label": "Ignore List", "path": "/companies/ignored", "enabled": 5},
+        ],
+    },
+    {
+        "label": "Job Opportunities",
+        "items": [
+            {"label": "Meteorites", "path": "/jobs/meteorites", "enabled": 5},
+            {"label": "Recommendations", "path": "/jobs/review", "enabled": 5},
+            {"label": "Ready to Apply", "path": "/jobs/ready", "enabled": 5},
+            {"label": "Submitted Applications", "path": "/jobs/applied", "enabled": 5},
+            {"label": "Skipped", "path": "/jobs/skipped", "enabled": 5},
         ],
     },
     {
