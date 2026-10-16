@@ -29,7 +29,7 @@ Config sections:
   SURFER_CONSENT_CONFIG — Surfer install disclosure version + copy + consent status vocabulary (AST-1235; UI = AST-1237/1238)
   PREAMBLE_VALIDATION_CONFIG — Ruth Valid/Try Again/Escalate task_key + outcomes (AST-1015)
   ROSTER_CONFIG   — roster-specific (prefilter, locate_job_page, parse_job_list)
-  TELESCOPE_DATA_CONFIG — telescope_data content-type keys + company_data keys that hold telescope row ids (AST-2131)
+  WEB_DATA_CONFIG — web_data content-type keys + company_data keys that hold telescope row ids (AST-2131)
   GAZER_CONFIG    — gazer batch steps (validate_title inline-only, fetch_jd, fetch_culture_pages, gaze)
   JOB_STATES      — job state list + prior_states / retry_state per state
   TRACKER_CONFIG  — tracker-specific (ingest, jd processing)
@@ -60,7 +60,7 @@ Config sections:
   METEORITE_BOT_BLOCKED_NOTIFY_CONFIG — BOT_BLOCKED_SCRAPE_METEORITE Estelle DM notify + nag limits (AST-1561)
   REVIEW_DUPLICATE_METEORITE_CONFIG — Ruth duplicate-review closed outcomes + peer id key (AST-1773)
   SEED_CONFIG — SQL-first seed register (idempotent INSERT tuples per table-purpose); dispatch_task-* are Linear paste only, never auto-executed (AST-1496)
-  CONTACT_CONFIG  — Contact listen + debug flags, Slack env-name contracts, skills ACL, Slack commands registry (AST-1066 / AST-1206 / AST-2035; distinct from TASK_CONFIG)
+  CONTACT_CONFIG  — Contact listen + debug flags, Slack env-name contracts, skills ACL, Slack commands registry incl. 18 context commands generated from CONTACT_CONTEXT_COMMAND_CONFIG (AST-1066 / AST-1206 / AST-2035 / AST-2206; distinct from TASK_CONFIG)
   CANDIDATE_CONTACT_UNIQUENESS_CONFIG — contact uniqueness / within-candidate dedupe field paths + compare rules (AST-1079; sibling to CANDIDATE_LOOKUP_CONFIG)
 """
 
@@ -194,6 +194,12 @@ _CRAFT_RESUME_NORMALIZE_TASK_KEYS = frozenset({
     "simple_resume_parse",
 })
 
+# AST-2206: shared by the six draft_context_* tasks (principal Estelle drafts one context piece).
+_CONTACT_DRAFT_RESPONSE_SCHEMA: Dict[str, Any] = {
+    "draft": {"type": "str", "required": True},
+    "note": {"type": "str", "required": False},
+}
+
 # ---------------------------------------------------------------------------
 # Implicit retry substate (AST-1804): {base}_RETRY is valid wherever {base} is a
 # registry key. Validators resolve through the base — never the full _RETRY string.
@@ -291,6 +297,19 @@ CANDIDATE_CRAFT_CHAIN_TASK_KEYS = (
     "craft_jobdesc_rubric", "craft_prefilter_rubric", "craft_company_search_terms", "craft_joblist_rubric",
 )
 CANDIDATE_CRAFT_CHAIN_ERROR_STATES = tuple(error_state_for(k) for k in CANDIDATE_CRAFT_CHAIN_TASK_KEYS)
+# Base resume chain (REQUESTED_RESUME entry shape_the_story, run_next order). AST-2221.
+BASE_RESUME_CHAIN_TASK_KEYS = (
+    "shape_the_story",
+    "draft_resume_experiences",
+    "draft_supporting_sections",
+    "draft_highlights",
+    "draft_core_competencies",
+    "draft_professional_summary",
+    "draft_keywords",
+    "draft_resume_base",
+    "draft_title_patterns",
+)
+BASE_RESUME_CHAIN_ERROR_STATES = tuple(error_state_for(k) for k in BASE_RESUME_CHAIN_TASK_KEYS)
 
 
 def is_registered_state(registry: Dict[str, Any], state: Optional[str]) -> bool:
@@ -502,6 +521,90 @@ TASK_CONFIG = {
         },
         "response_format": "json",
         "entity_type": None,
+        "requires_candidate_key": True,
+        "trigger_state": None,
+    },
+    # AST-2221 base resume chain (REQUESTED_RESUME → RESUME_READY; succession via agent_task.run_next).
+    "shape_the_story": {
+        "response_schema": {
+            "story": {"type": "str", "required": True},
+        },
+        "response_format": "json",
+        "entity_type": "candidate",
+        "requires_candidate_key": True,
+        "trigger_state": None,
+    },
+    "draft_resume_experiences": {
+        "response_schema": {
+            "experience": _EXPERIENCE_JOB_ARRAY_FIELD,
+        },
+        "response_format": "json",
+        "entity_type": "candidate",
+        "requires_candidate_key": True,
+        "trigger_state": None,
+    },
+    "draft_supporting_sections": {
+        "response_schema": {
+            "education_certifications": {"type": "str", "required": False},
+            "technical_skills": {"type": "str", "required": False},
+            "prior_experience": {"type": "str", "required": False},
+            "publications": {"type": "str", "required": False},
+        },
+        "response_format": "json",
+        "entity_type": "candidate",
+        "requires_candidate_key": True,
+        "trigger_state": None,
+    },
+    "draft_highlights": {
+        "response_schema": {
+            "highlights": {"type": "str", "required": True},
+        },
+        "response_format": "json",
+        "entity_type": "candidate",
+        "requires_candidate_key": True,
+        "trigger_state": None,
+    },
+    "draft_core_competencies": {
+        "response_schema": {
+            "core_competencies": {"type": "str", "required": True},
+        },
+        "response_format": "json",
+        "entity_type": "candidate",
+        "requires_candidate_key": True,
+        "trigger_state": None,
+    },
+    "draft_professional_summary": {
+        "response_schema": {
+            "professional_summary": {"type": "str", "required": True},
+        },
+        "response_format": "json",
+        "entity_type": "candidate",
+        "requires_candidate_key": True,
+        "trigger_state": None,
+    },
+    "draft_keywords": {
+        "response_schema": {
+            "keywords": {"type": "str", "required": True},
+        },
+        "response_format": "json",
+        "entity_type": "candidate",
+        "requires_candidate_key": True,
+        "trigger_state": None,
+    },
+    "draft_resume_base": {
+        "response_schema": _CRAFT_RESUME_BASE_RESPONSE_SCHEMA,
+        "response_format": "json",
+        "entity_type": "candidate",
+        "requires_candidate_key": True,
+        "trigger_state": None,
+        "artifact_key": "candidate.artifacts.base_resume",
+    },
+    "draft_title_patterns": {
+        "response_schema": {
+            "title_patterns": {"type": "str", "required": True},
+        },
+        "response_format": "json",
+        "entity_type": "candidate",
         "requires_candidate_key": True,
         "trigger_state": None,
     },
@@ -1232,6 +1335,83 @@ TASK_CONFIG = {
         "task_type": "CHAT",
         "agent_task": "contact_estelle_turn",
     },
+    # AST-2206: principal Estelle drafts one candidate context piece from the Slack channel
+    # history + resume/profile. Drafting never saves (no artifact_key on purpose).
+    "draft_context_strengths": {
+        "print_label": "Draft Context: Strengths",
+        "response_format": "json",
+        "response_schema": _CONTACT_DRAFT_RESPONSE_SCHEMA,
+        "entity_type": None,
+        "requires_candidate_key": True,
+        "trigger_state": None,
+        "task_type": "CRAFT",
+        "agent_task": "draft_context_strengths",
+    },
+    "draft_context_deal_breakers": {
+        "print_label": "Draft Context: Deal Breakers",
+        "response_format": "json",
+        "response_schema": _CONTACT_DRAFT_RESPONSE_SCHEMA,
+        "entity_type": None,
+        "requires_candidate_key": True,
+        "trigger_state": None,
+        "task_type": "CRAFT",
+        "agent_task": "draft_context_deal_breakers",
+    },
+    "draft_context_priorities": {
+        "print_label": "Draft Context: Priorities",
+        "response_format": "json",
+        "response_schema": _CONTACT_DRAFT_RESPONSE_SCHEMA,
+        "entity_type": None,
+        "requires_candidate_key": True,
+        "trigger_state": None,
+        "task_type": "CRAFT",
+        "agent_task": "draft_context_priorities",
+    },
+    "draft_context_ideal_day": {
+        "print_label": "Draft Context: Ideal Day",
+        "response_format": "json",
+        "response_schema": _CONTACT_DRAFT_RESPONSE_SCHEMA,
+        "entity_type": None,
+        "requires_candidate_key": True,
+        "trigger_state": None,
+        "task_type": "CRAFT",
+        "agent_task": "draft_context_ideal_day",
+    },
+    "draft_context_bio_summary": {
+        "print_label": "Draft Context: Bio Summary",
+        "response_format": "json",
+        "response_schema": _CONTACT_DRAFT_RESPONSE_SCHEMA,
+        "entity_type": None,
+        "requires_candidate_key": True,
+        "trigger_state": None,
+        "task_type": "CRAFT",
+        "agent_task": "draft_context_bio_summary",
+    },
+    "draft_context_backstory": {
+        "print_label": "Draft Context: Backstory",
+        "response_format": "json",
+        "response_schema": _CONTACT_DRAFT_RESPONSE_SCHEMA,
+        "entity_type": None,
+        "requires_candidate_key": True,
+        "trigger_state": None,
+        "task_type": "CRAFT",
+        "agent_task": "draft_context_backstory",
+    },
+    # AST-2206: contact Estelle's turn in a /draft-<context> thread — prose reply, revised draft
+    # only when asked. Named by CONTACT_DRAFT_THREAD_CONFIG["revise_task_key"].
+    "contact_draft_revise": {
+        "print_label": "Contact Draft Revise",
+        "response_format": "json",
+        "response_schema": {
+            "reply": {"type": "str", "required": True},
+            "revised_draft": {"type": "str", "required": False},
+        },
+        "entity_type": None,
+        "requires_candidate_key": True,
+        "trigger_state": None,
+        "task_type": "CHAT",
+        "agent_task": "contact_draft_revise",
+    },
 }
 # AST-1851: every LLM task runs on the candidate's platform key — a system-key task is a bug.
 assert all(cfg.get("requires_candidate_key") is True for cfg in TASK_CONFIG.values()), [
@@ -1249,8 +1429,8 @@ assert TASK_CONFIG["qualify_meteorite"]["company_stem_response_key"] in (
 )
 assert TASK_CONFIG["qualify_meteorite"]["email_link_prefix"] == "email-"
 assert TASK_CONFIG["qualify_meteorite"]["bot_blocked_state"] == bot_blocked_state_for("qualify_meteorite")
-# AST-2086: every artifact / candidate craft chain hop names its own failure (ERROR_<HOP>).
-for _hop in (*BUILD_ARTIFACTS_CHAIN_TASK_KEYS, *CANDIDATE_CRAFT_CHAIN_TASK_KEYS):
+# AST-2086: every artifact / candidate craft / base-resume chain hop names its own failure (ERROR_<HOP>).
+for _hop in (*BUILD_ARTIFACTS_CHAIN_TASK_KEYS, *CANDIDATE_CRAFT_CHAIN_TASK_KEYS, *BASE_RESUME_CHAIN_TASK_KEYS):
     TASK_CONFIG[_hop]["error_state"] = error_state_for(_hop)
 
 def is_conversational_task(task_key: str) -> bool:
@@ -1410,46 +1590,31 @@ COMPANY_STATES = {
 }
 
 # ---------------------------------------------------------------------------
-# CANDIDATE_STATES: job-style registry (AST-970). Keys are runtime states;
-# each value has prior_states (list or None), progress_rank, and optional
+# CANDIDATE_STATES: job-style registry (AST-970 + AST-2228 stage). Keys are
+# runtime states; each value has prior_states, progress_rank, stage, and optional
 # stale_after_hours/stale_state, retry_state/error_state, reap_after_hours.
 # PROSPECT = Slack-created candidate (AST-1068); prior_states None (entry state).
+# Stage is registry metadata on state — not a candidate table column (AST-2228).
 # ---------------------------------------------------------------------------
 CANDIDATE_STATES = {
-    "PROSPECT": {"prior_states": None, "progress_rank": -1},
-    "NEW_CANDIDATE": {"prior_states": None, "progress_rank": 0},
-    "INTAKE_INITIATED": {"prior_states": ["NEW_CANDIDATE"], "progress_rank": 1},
-    "REQUIRED_TOPICS_READY": {
-        "prior_states": ["INTAKE_INITIATED", "REQUIRED_TOPICS_READY_STALE"],
-        "stale_after_hours": 72,
-        "stale_state": "REQUIRED_TOPICS_READY_STALE",
+    "PROSPECT": {"prior_states": None, "progress_rank": -1, "stage": 1},
+    "NEW_CANDIDATE": {"prior_states": None, "progress_rank": 0, "stage": 1},
+    "INTAKE_INITIATED": {"prior_states": ["NEW_CANDIDATE"], "progress_rank": 1, "stage": 1},
+    "PROFILE_READY": {
+        "prior_states": ["INTAKE_INITIATED"],
         "progress_rank": 2,
+        "stage": 2,
     },
-    "REQUIRED_TOPICS_READY_STALE": {
-        "prior_states": ["REQUIRED_TOPICS_READY"],
-        "progress_rank": 2,
-    },
-    "ALL_TOPICS_READY": {
-        "prior_states": [
-            "REQUIRED_TOPICS_READY",
-            "REQUIRED_TOPICS_READY_STALE",
-            "ALL_TOPICS_READY_STALE",
-        ],
-        "stale_after_hours": 72,
-        "stale_state": "ALL_TOPICS_READY_STALE",
+    "CONTEXT_READY": {
+        "prior_states": ["PROFILE_READY"],
         "progress_rank": 3,
-    },
-    "ALL_TOPICS_READY_STALE": {
-        "prior_states": ["ALL_TOPICS_READY"],
-        "progress_rank": 3,
+        "stage": 3,
     },
     "REQUESTED_RESUME": {
-        "prior_states": [
-            "ALL_TOPICS_READY",
-            "ALL_TOPICS_READY_STALE",
-        ],
+        "prior_states": ["CONTEXT_READY"],
         "retry_state": retry_of("REQUESTED_RESUME"),
         "progress_rank": 4,
+        "stage": 3,
     },
     "RESUME_READY": {
         "prior_states": [
@@ -1459,10 +1624,12 @@ CANDIDATE_STATES = {
         "stale_after_hours": 168,
         "stale_state": "RESUME_READY_STALE",
         "progress_rank": 5,
+        "stage": 4,
     },
     "RESUME_READY_STALE": {
         "prior_states": ["RESUME_READY"],
         "progress_rank": 5,
+        "stage": 4,
     },
     "REQUESTED_ARTIFACTS": {
         "prior_states": [
@@ -1476,11 +1643,27 @@ CANDIDATE_STATES = {
         ],
         "retry_state": retry_of("REQUESTED_ARTIFACTS"),
         "progress_rank": 6,
+        "stage": 4,
     },
     # AST-2086: a failing craft hop lands on its own ERROR_<HOP> (TASK_CONFIG error_state).
+    # AST-2228: craft ERROR_* inherit artifact-waiting stage 4.
     **{
-        s: {"prior_states": ["REQUESTED_RESUME", "REQUESTED_ARTIFACTS"], "progress_rank": 6}
+        s: {
+            "prior_states": ["REQUESTED_RESUME", "REQUESTED_ARTIFACTS"],
+            "progress_rank": 6,
+            "stage": 4,
+        }
         for s in CANDIDATE_CRAFT_CHAIN_ERROR_STATES
+    },
+    # AST-2221: base-resume hop failures land on ERROR_<HOP> with REQUESTED_RESUME priors only.
+    # AST-2245: resume-request ERROR_* inherit stage 3 (parent locked band).
+    **{
+        s: {
+            "prior_states": ["REQUESTED_RESUME"],
+            "progress_rank": 4,
+            "stage": 3,
+        }
+        for s in BASE_RESUME_CHAIN_ERROR_STATES
     },
     "ARTIFACTS_READY": {
         "prior_states": [
@@ -1490,18 +1673,21 @@ CANDIDATE_STATES = {
         "stale_after_hours": 168,
         "stale_state": "ARTIFACTS_READY_STALE",
         "progress_rank": 7,
+        "stage": 4,
     },
     "ARTIFACTS_READY_STALE": {
         "prior_states": ["ARTIFACTS_READY"],
         "progress_rank": 7,
+        "stage": 4,
     },
     "ACTIVE_SEARCH": {
         "prior_states": ["ARTIFACTS_READY", "ARTIFACTS_READY_STALE", "PAUSE_SEARCH"],
         "progress_rank": 8,
+        "stage": 5,
     },
-    "PAUSE_SEARCH": {"prior_states": ["ACTIVE_SEARCH"], "progress_rank": 8},
-    "INACTIVE": {"prior_states": None, "progress_rank": -1},
-    "DELETED": {"prior_states": None, "progress_rank": -1, "reap_after_hours": 720},
+    "PAUSE_SEARCH": {"prior_states": ["ACTIVE_SEARCH"], "progress_rank": 8, "stage": 5},
+    "INACTIVE": {"prior_states": None, "progress_rank": -1, "stage": 0},
+    "DELETED": {"prior_states": None, "progress_rank": -1, "stage": 0, "reap_after_hours": 720},
 }
 
 CANDIDATE_CONFIG = {
@@ -2006,6 +2192,82 @@ for _mode in CANDIDATE_CONTACT_UNIQUENESS_CONFIG["compare"].values():
     assert _mode in ("casefold", "exact"), _mode
 
 # ---------------------------------------------------------------------------
+# CONTACT_CONTEXT_COMMAND_CONFIG (AST-2206): Contact context commands — /draft-, /save-,
+# /show-<suffix> for six candidate context pieces. Keyed by command suffix (the token after
+# the verb). Each row names the ARTIFACT_CONFIG key the commands act on, the TASK_CONFIG draft
+# task principal Estelle runs, and the label used in command descriptions. The 18
+# CONTACT_CONFIG["commands"] entries are generated from this block x _CONTACT_CONTEXT_COMMAND_VERBS;
+# never hand-list them. The artifact-key assert sits after ARTIFACT_CONFIG (defined later).
+# ---------------------------------------------------------------------------
+CONTACT_CONTEXT_COMMAND_CONFIG = {
+    "strengths": {
+        "artifact_key": "candidate.context.strengths",
+        "draft_task": "draft_context_strengths",
+        "label": "strengths",
+    },
+    "dealbreakers": {
+        "artifact_key": "candidate.context.deal_breakers",
+        "draft_task": "draft_context_deal_breakers",
+        "label": "deal breakers",
+    },
+    "priorities": {
+        "artifact_key": "candidate.context.priorities",
+        "draft_task": "draft_context_priorities",
+        "label": "priorities",
+    },
+    "ideal-day": {
+        "artifact_key": "candidate.context.ideal_day",
+        "draft_task": "draft_context_ideal_day",
+        "label": "ideal day",
+    },
+    "bio-summary": {
+        "artifact_key": "candidate.context.bio_summary",
+        "draft_task": "draft_context_bio_summary",
+        "label": "bio summary",
+    },
+    "backstory": {
+        "artifact_key": "candidate.context.backstory",
+        "draft_task": "draft_context_backstory",
+        "label": "backstory",
+    },
+}
+for _ctx_suffix, _ctx_meta in CONTACT_CONTEXT_COMMAND_CONFIG.items():
+    assert _ctx_suffix.split() == [_ctx_suffix] and not _ctx_suffix.startswith("/"), _ctx_suffix
+    for _field in ("artifact_key", "draft_task", "label"):
+        assert isinstance(_ctx_meta.get(_field), str) and _ctx_meta[_field].strip(), (_ctx_suffix, _field)
+    assert _ctx_meta["draft_task"] in TASK_CONFIG, _ctx_suffix
+# One artifact key per row — the draft handler finds its draft_task by the entry's artifact_key.
+assert len({_m["artifact_key"] for _m in CONTACT_CONTEXT_COMMAND_CONFIG.values()}) == len(
+    CONTACT_CONTEXT_COMMAND_CONFIG
+)
+# Per-verb template for the generated context commands; {label} / {suffix} are filled per row.
+# draft-/show- run on an empty payload (payload_optional); save- keeps the usage reply for one.
+_CONTACT_CONTEXT_COMMAND_VERBS = {
+    "draft": {
+        "handler": "src.core.contact.contact_command_draft_context",
+        "mode": "code",
+        "description": "Draft {label} for this channel's candidate from the channel history, resume, and profile. Nothing is saved.",
+        "usage_reply_text": "Usage: @Estelle /draft-{suffix}",
+        "payload_optional": True,
+        # The draft (and its discussion) always threads under the command message.
+        "reply_placement": "always_no_share",
+    },
+    "save": {
+        "handler": "src.core.candidate.contact_command_save_context",
+        "mode": "code",
+        "description": "Save the text after the command as this channel's candidate's new current {label}.",
+        "usage_reply_text": "Usage: @Estelle /save-{suffix} <text>",
+    },
+    "show": {
+        "handler": "src.core.candidate.contact_command_show_context",
+        "mode": "code",
+        "description": "Show this channel's candidate's currently saved {label}.",
+        "usage_reply_text": "Usage: @Estelle /show-{suffix}",
+        "payload_optional": True,
+    },
+}
+
+# ---------------------------------------------------------------------------
 # CONTACT_CONFIG: Astral Contact / Estelle foundation (AST-1066 / AST-1043).
 # Skills ACL is Contact-only — never dispatch TASK_CONFIG / agent_task catalog rows.
 # Secret *values* live in environ; this block stores env *names* + behavior flags.
@@ -2028,6 +2290,12 @@ CONTACT_CONFIG = {
     "hear_ack_reply_text": "That didn't work as planned.  Let's ask @susan.",
     # AST-1668 / AST-2072: reply to an unbound Slack sender (bound senders get no recognition post).
     "unknown_recognition_reply_text": "Sorry, I don't recognize you, yet.  Let's check with @susan",
+    # AST-2206: reply to a private_channel_only command posted outside a private channel (a DM,
+    # or an @mention in a public channel). Nothing else runs.
+    "private_channel_only_reply_text": "I can only do that in the candidate's private channel.",
+    # AST-2206: reply to a private_channel_only command in a private channel that no candidate's
+    # contact.slack_channel_id names. No handler runs.
+    "unmapped_channel_reply_text": "This channel isn't linked to a candidate yet.  Let's check with @susan",
     # AST-2072: where every Estelle reply to an inbound Slack message lands.
     #   threads_only      — in-thread only when the user posted in a thread; else a new top-level post.
     #   always_no_share   — always in a thread (the user's thread, or a new one under their message).
@@ -2037,7 +2305,8 @@ CONTACT_CONFIG = {
     # Environ name contracts — readers use os.environ[CONTACT_CONFIG["…_env"]] (no .get).
     "bot_token_env": "SLACK_BOT_TOKEN",
     "signing_secret_env": "SLACK_SIGNING_SECRET",
-    # AST-2061: Estelle has no write skills — candidate is read-only to Contact.
+    # AST-2061: no Estelle write skills — this map stays empty. Contact's only writes are pinhole
+    # command handlers: meteorites, and /save-<context> artifact versions (AST-2206).
     # Map kept (empty) for contact_skills()/admin routes; keys must never appear in TASK_CONFIG.
     "skills": {},
     # AST-2035: Slack commands — `@Estelle /<command id> <payload>`, recognized only as the
@@ -2046,6 +2315,10 @@ CONTACT_CONFIG = {
     # mode "code": fixed usage post, no LLM turn; the handler's reply_text when it returns one, else
     # ack_reply_template on ok (AST-2144). mode "agent": one Estelle turn sees the result.
     # Optional reply_placement overrides thread_response for this command's replies (AST-2144).
+    # AST-2206 optional fields: payload_optional (an empty payload runs the handler instead of the
+    # usage reply); artifact_key (handed to the handler as the artifact_key= kwarg);
+    # private_channel_only (runs only in a mapped private channel, on that channel's candidate;
+    # anywhere else private_channel_only_reply_text posts and nothing runs).
     "commands": {
         "add-job": {
             "handler": "src.core.meteorite.insert_slack_meteorite",
@@ -2071,6 +2344,18 @@ CONTACT_CONFIG = {
             # Appended as {deeplink} only when the origin env is set; "" otherwise. Format with url=.
             "deeplink_template": "\n{url}",
             "no_match_reply_text": "Nothing matched that. Try a job link, title, or company.",
+        },
+        # AST-2206: 18 context commands generated from CONTACT_CONTEXT_COMMAND_CONFIG x verbs.
+        **{
+            f"{_verb}-{_suffix}": {
+                **_verb_meta,
+                "description": _verb_meta["description"].format(label=_ctx["label"]),
+                "usage_reply_text": _verb_meta["usage_reply_text"].format(suffix=_suffix),
+                "artifact_key": _ctx["artifact_key"],
+                "private_channel_only": True,
+            }
+            for _suffix, _ctx in CONTACT_CONTEXT_COMMAND_CONFIG.items()
+            for _verb, _verb_meta in _CONTACT_CONTEXT_COMMAND_VERBS.items()
         },
     },
     # AST-1069: Events API Request URL path (Flask route under /api).
@@ -2102,6 +2387,8 @@ assert isinstance(CONTACT_CONFIG["activity_state_filename"], str) and CONTACT_CO
 assert isinstance(CONTACT_CONFIG["production_deploy_env"], str) and CONTACT_CONFIG["production_deploy_env"].strip()
 assert isinstance(CONTACT_CONFIG["hear_ack_reply_text"], str) and CONTACT_CONFIG["hear_ack_reply_text"].strip()
 assert isinstance(CONTACT_CONFIG["unknown_recognition_reply_text"], str) and CONTACT_CONFIG["unknown_recognition_reply_text"].strip()
+assert isinstance(CONTACT_CONFIG["private_channel_only_reply_text"], str) and CONTACT_CONFIG["private_channel_only_reply_text"].strip()
+assert isinstance(CONTACT_CONFIG["unmapped_channel_reply_text"], str) and CONTACT_CONFIG["unmapped_channel_reply_text"].strip()
 # AST-2072 / AST-2144: reply-placement vocabulary — global thread_response and per-command reply_placement.
 _CONTACT_THREAD_RESPONSE_MODES = ("threads_only", "always_no_share", "always_with_share")
 assert CONTACT_CONFIG["thread_response"] in _CONTACT_THREAD_RESPONSE_MODES, CONTACT_CONFIG["thread_response"]
@@ -2170,6 +2457,12 @@ for _cmd_id, _cmd_meta in CONTACT_CONFIG["commands"].items():
     assert not _lookup or _lookup == _CONTACT_COMMAND_JOB_LOOKUP_FIELDS, (_cmd_id, sorted(_lookup))
     if "reply_placement" in _cmd_meta:
         assert _cmd_meta["reply_placement"] in _CONTACT_THREAD_RESPONSE_MODES, _cmd_id
+    # AST-2206: optional context-command fields.
+    for _flag in ("payload_optional", "private_channel_only"):
+        if _flag in _cmd_meta:
+            assert isinstance(_cmd_meta[_flag], bool), (_cmd_id, _flag)
+    if "artifact_key" in _cmd_meta:
+        assert isinstance(_cmd_meta["artifact_key"], str) and _cmd_meta["artifact_key"].strip(), _cmd_id
     assert _cmd_id not in CONTACT_CONFIG["skills"], _cmd_id
 
 # AST-1049: Manage Email Create — strip/extract email HTML + subject inclusion before meteorite job create.
@@ -2199,6 +2492,7 @@ assert "PROSPECT" in CANDIDATE_STATES
 for _name, _cfg in CANDIDATE_STATES.items():
     assert "progress_rank" in _cfg, _name
     assert "prior_states" in _cfg, _name
+    assert "stage" in _cfg, _name
     _stale = _cfg.get("stale_state")
     if _stale is not None:
         assert _stale in CANDIDATE_STATES and "stale_after_hours" in _cfg, _name
@@ -2210,23 +2504,47 @@ for _name, _cfg in CANDIDATE_STATES.items():
         assert _err in CANDIDATE_STATES, _name
 assert CANDIDATE_STATES["DELETED"].get("reap_after_hours", 0) > 0
 assert CANDIDATE_CONFIG["initial_state"] in CANDIDATE_STATES
+# AST-2228: revived path + topic retirement + locked stage bands.
+assert "PROFILE_READY" in CANDIDATE_STATES and "CONTEXT_READY" in CANDIDATE_STATES
+assert not (
+    {
+        "REQUIRED_TOPICS_READY",
+        "REQUIRED_TOPICS_READY_STALE",
+        "ALL_TOPICS_READY",
+        "ALL_TOPICS_READY_STALE",
+    }
+    & set(CANDIDATE_STATES)
+)
+assert CANDIDATE_STATES["PAUSE_SEARCH"]["stage"] == 5
+assert CANDIDATE_STATES["RESUME_READY"]["stage"] == 4
+assert CANDIDATE_STATES["PROFILE_READY"]["stage"] == 2
+assert CANDIDATE_STATES["DELETED"]["stage"] == 0
+assert all(
+    CANDIDATE_STATES[s]["stage"] == 3 for s in BASE_RESUME_CHAIN_ERROR_STATES
+)
 
-# Retired four-step names → AST-970 registry. DELETED is not remapped (hard-deleted).
+# Legacy labels -> live registry (AST-973 + AST-2228 topic remap). DELETED not remapped.
 CANDIDATE_LEGACY_STATE_MAP = {
     "LIVE_PROMPTS": "ACTIVE_SEARCH",
     "NEW": "NEW_CANDIDATE",
-    "PROFILE_READY": "NEW_CANDIDATE",
-    "CONTEXT_READY": "NEW_CANDIDATE",
+    "REQUIRED_TOPICS_READY": "PROFILE_READY",
+    "REQUIRED_TOPICS_READY_STALE": "PROFILE_READY",
+    "ALL_TOPICS_READY": "CONTEXT_READY",
+    "ALL_TOPICS_READY_STALE": "CONTEXT_READY",
 }
 
-# Candidate-only legacy labels (never job/company registry keys).
+# Candidate-only retired labels (never job/company registry keys).
 CANDIDATE_LEGACY_TRIGGER_STATES = frozenset({
-    "LIVE_PROMPTS", "PROFILE_READY", "CONTEXT_READY",
+    "LIVE_PROMPTS",
+    "REQUIRED_TOPICS_READY",
+    "REQUIRED_TOPICS_READY_STALE",
+    "ALL_TOPICS_READY",
+    "ALL_TOPICS_READY_STALE",
 })
 
 
 def remap_legacy_candidate_state(state: str) -> str:
-    """Map a persisted candidate.state onto CANDIDATE_STATES keys (AST-973)."""
+    """Map a persisted candidate state onto CANDIDATE_STATES keys (AST-973 / AST-2228)."""
     if not state:
         return CANDIDATE_CONFIG["initial_state"]
     if state in CANDIDATE_STATES:
@@ -2401,9 +2719,9 @@ def roster_scrape_readiness_config() -> Dict[str, Any]:
     return cfg
 
 
-# AST-2131: scraped Telescope content lives in telescope_data (owned by gazer); entity blobs hold row ids.
-TELESCOPE_DATA_CONFIG = {
-    # data_type values written to telescope_data.data_type — free text, not validated in code.
+# AST-2131: scraped Telescope content lives in web_data (owned by gazer); entity blobs hold row ids.
+WEB_DATA_CONFIG = {
+    # data_type values written to web_data.data_type — free text, not validated in code.
     "data_types": {
         "VISIBLE_TEXT": "VISIBLE_TEXT",
         "PAGE_LINKS": "PAGE_LINKS",
@@ -2420,8 +2738,8 @@ TELESCOPE_DATA_CONFIG = {
 }
 # Each id-holding key must still be a declared company_data key.
 assert all(
-    k in ROSTER_CONFIG["company_data_keys"] for k in TELESCOPE_DATA_CONFIG["company_data_id_keys"]
-), TELESCOPE_DATA_CONFIG["company_data_id_keys"]
+    k in ROSTER_CONFIG["company_data_keys"] for k in WEB_DATA_CONFIG["company_data_id_keys"]
+), WEB_DATA_CONFIG["company_data_id_keys"]
 
 
 # Phase 1 roster inflow discovery (AST-505): CSE search limits, vet task keys, weekly cadence.
@@ -2474,7 +2792,7 @@ assert TASK_CONFIG["resolve_website"]["agent_task"] == "find_company_website"
 assert TASK_CONFIG["resolve_website"]["trigger_state"] == "WEBSITE_REVIEW"
 assert TASK_CONFIG["vet_inflow_discovery"]["trigger_state"] == "DISCOVERED"
 
-# AST-1252: REQUESTED_ARTIFACTS opens at craft_get_rubric; succession via agent_task.run_next.
+# AST-1252 / AST-2221: candidate stages open at entry hop; succession via agent_task.run_next.
 # task_key is the entry hop (no parallel craft_task_key). Resume wrapper stage removed.
 CANDIDATE_STAGE_DISPATCH = {
     "requested_artifacts": {
@@ -2483,8 +2801,14 @@ CANDIDATE_STAGE_DISPATCH = {
         "pass_state": "ARTIFACTS_READY",
         "auto_mode": False,
     },
+    "requested_resume": {
+        "task_key": "shape_the_story",
+        "trigger_state": "REQUESTED_RESUME",
+        "pass_state": "RESUME_READY",
+        "auto_mode": False,
+    },
 }
-assert CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["task_key"] in TASK_CONFIG
+assert all(e["task_key"] in TASK_CONFIG for e in CANDIDATE_STAGE_DISPATCH.values())
 
 # Google Custom Search HTTP pacing (AST-837). Units: seconds (float/int) and count (int).
 GOOGLE_CSE_CONFIG = {
@@ -3061,6 +3385,32 @@ for _ms, _mcfg in METEORITE_STATES.items():
     if _priors is not None:
         assert all(p in METEORITE_STATES for p in _priors), _ms
 
+# AST-2223: candidate overwrite edit on non-landed meteorite rows (Jobs → Meteorites modal).
+# Not versioned — plain update_meteorite; pick-list is every registry key minus locked.
+CANDIDATE_METEORITE_EDIT_CONFIG = {
+    "locked_states": ("LANDED",),
+    "editable_fields": (
+        "state",
+        "content",
+        "link",
+        "job_title",
+        "employer_name",
+        METEORITE_CONFIG["electronic_contact_column"],
+    ),
+    "state_options": tuple(
+        s for s in METEORITE_STATES if s not in ("LANDED",)
+    ),
+    "default_save_state": "CHECK_UNIQUE",
+}
+_cme = CANDIDATE_METEORITE_EDIT_CONFIG
+assert all(s in METEORITE_STATES for s in _cme["locked_states"])
+assert all(s in METEORITE_STATES for s in _cme["state_options"])
+assert _cme["default_save_state"] in _cme["state_options"]
+assert set(_cme["locked_states"]).isdisjoint(_cme["state_options"])
+assert set(_cme["state_options"]) == set(METEORITE_STATES) - set(_cme["locked_states"])
+assert "state" in _cme["editable_fields"] and "content" in _cme["editable_fields"]
+assert METEORITE_CONFIG["electronic_contact_column"] in _cme["editable_fields"]
+
 # AST-1560: dispatcher-driven meteorite row transitions (not Ruth classify — inline in check_inbox).
 # AST-1773: check_unique hop between stage/scrape success and land (land stays READY).
 METEORITE_INGRESS_DISPATCH_CONFIG = {
@@ -3291,6 +3641,24 @@ assert set(METEORITE_EMAIL_MAILBOX_CONFIG["subject_url_schemes"]) == {"http", "h
 assert METEORITE_EMAIL_MAILBOX_CONFIG["debug_func"] == "inbox.check_email"
 assert METEORITE_EMAIL_MAILBOX_CONFIG["auto_mode"] is False
 
+# AST-2217 / AST-2215: candidate-bound fetch_timesheet dispatch-row defaults.
+# entity_type / trigger_state None — poller, not ENTITY_TYPES claim (stat.dispatch.entity-state-bound).
+# freq_hrs None, auto_mode False — Susan 2026-10-15. Provision/due path is AST-2218.
+FETCH_TIMESHEET_CONFIG = {
+    "task_key": "fetch_timesheet",
+    "entity_type": None,
+    "trigger_state": None,
+    "freq_hrs": None,
+    "auto_mode": False,
+    "min_count": 1,
+    "batch_size": 1,
+}
+assert FETCH_TIMESHEET_CONFIG["task_key"] == "fetch_timesheet"
+assert FETCH_TIMESHEET_CONFIG["entity_type"] is None
+assert FETCH_TIMESHEET_CONFIG["trigger_state"] is None
+assert FETCH_TIMESHEET_CONFIG["freq_hrs"] is None
+assert FETCH_TIMESHEET_CONFIG["auto_mode"] is False
+
 # AST-1559: inbox already-ingested outcome (row/classify line templates retired).
 METEORITE_MONITORING_CONFIG = {
     "outcome_already_ingested": "already_ingested",
@@ -3455,6 +3823,11 @@ def is_meteorite_email_mailbox_task_key(task_key: str) -> bool:
     tk = (task_key or "").strip()
     cfg = METEORITE_EMAIL_PARSE_CONFIG
     return tk == cfg["task_key"] or tk == cfg["legacy_agent_task_key"]
+
+
+def is_fetch_timesheet_task_key(task_key: str) -> bool:
+    """True for the candidate-bound fetch_timesheet poller (AST-2218)."""
+    return (task_key or "").strip() == FETCH_TIMESHEET_CONFIG["task_key"]
 
 # AST-1054: meteorite dispatch_task row specs (unique per candidate on task_key+trigger_state).
 # score_floor 0 on score-gated triggers — claim never excludes for low latest_score.
@@ -3770,9 +4143,10 @@ assert all(
     for state in JOBS_RECOMMENDED_PRIMARY_ACTIONS
 )
 
-# AST-948 / AST-1550 / AST-1691 / AST-1872: top-level Recommended report tabs — first entry is the default tab (Meteorite after Discussion).
+# AST-948 / AST-1550 / AST-1691 / AST-1872 / AST-2232: top-level Recommended report tabs — first entry is the default tab (Job Description between Analysis and Summary; Meteorite after Discussion).
 JOBS_RECOMMENDED_REPORT_TOP_TABS = [
     {"tab_id": "analysis", "nav_label": "Analysis"},
+    {"tab_id": "job_description", "nav_label": "Job Description"},
     {"tab_id": "summary", "nav_label": "Summary"},
     {"tab_id": "artifacts", "nav_label": "Artifacts"},
     {"tab_id": "discussion", "nav_label": "Discussion"},
@@ -3784,7 +4158,6 @@ JOBS_RECOMMENDED_REPORT_SUMMARY_SECTIONS = [
     {"section_id": "company_upshot", "nav_label": "Company Upshot", "default_expanded": True},
     {"section_id": "caveats", "nav_label": "Noteworthy Caveats", "default_expanded": True},
     {"section_id": "questions", "nav_label": "Questions to Ask", "default_expanded": True},
-    {"section_id": "raw_jd", "nav_label": "Raw Job Description", "default_expanded": False},
 ]
 
 # AST-1691: Recommended report Meteorite pane sections (config → manifest; React must not invent order).
@@ -3980,8 +4353,9 @@ def _dispatch_trigger_state_for_task_key(task_key: str) -> str:
         return "WATCH"
     if task_key == "inflow_discovery":
         return INFLOW_CONFIG["discovery"]["dispatch_trigger_state"]
-    if task_key == CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["task_key"]:
-        return CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["trigger_state"]
+    for _stage in CANDIDATE_STAGE_DISPATCH.values():
+        if task_key == _stage["task_key"]:
+            return _stage["trigger_state"]
     if task_key == "inflow_resolve_website":
         return INFLOW_CONFIG["resolve"]["dispatch_trigger_state"]
     if task_key == "resolve_website":
@@ -4046,7 +4420,9 @@ def _dispatch_trigger_state_for_task_key(task_key: str) -> str:
 def _dispatch_entity_type_for_task_key(task_key: str) -> str:
     if task_key in _DISPATCH_COMPANY_ENTITY_TASK_KEYS:
         return "company"
-    if task_key == "inflow_discovery" or task_key == CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["task_key"]:
+    if task_key == "inflow_discovery" or any(
+        task_key == _stage["task_key"] for _stage in CANDIDATE_STAGE_DISPATCH.values()
+    ):
         return "candidate"
     # stat.dispatch.entity-state-bound: ingress/notify rows now per-candidate meteorite (was global NULL pool).
     if task_key in (
@@ -4175,6 +4551,14 @@ def dispatch_task_admin_defaults(
         return {
             "entity_type": METEORITE_EMAIL_PARSE_CONFIG["admin_entity_type"],
             "trigger_state": None,
+            "sort_by": None,
+            "batch_call_mode": 0,
+        }
+    # AST-2218: fetch_timesheet poller — entity/trigger null (stat.dispatch.entity-state-bound).
+    if tk == FETCH_TIMESHEET_CONFIG["task_key"]:
+        return {
+            "entity_type": FETCH_TIMESHEET_CONFIG["entity_type"],
+            "trigger_state": FETCH_TIMESHEET_CONFIG["trigger_state"],
             "sort_by": None,
             "batch_call_mode": 0,
         }
@@ -4808,7 +5192,7 @@ TRACKER_CONFIG = {
     },
     "job_data_keys": {
         "job_description": "job_description",  # coat-check: fetch via playwright if missing
-        "jd_telescope_data_id": "jd_telescope_data_id",  # AST-2130: telescope_data row id of the scraped JD; no coat-check handler
+        "jd_web_data_id": "jd_web_data_id",  # AST-2130: web_data row id of the scraped JD; no coat-check handler
     },
     "jd_min_chars": 200,  # scraped JDs shorter than this are discarded (not saved) as junk
     # AST-1120: full path-segment match for UUID-shaped external job ids in job_link.
@@ -4907,6 +5291,7 @@ REPO_ADMIN_JSON_CONFIG = {
             "repo_relative_path": "data/admin/agent.json",
             "columns": (
                 "agent_id",
+                "agent_name",  # AST-2232: display name for Discussion headers
                 "content",
                 "model_id",
                 "max_tokens",
@@ -4917,6 +5302,7 @@ REPO_ADMIN_JSON_CONFIG = {
                 "provider_only",
                 "provider_ignore",
                 "provider_sort",
+                "requires_structured_output",
                 "updated_at",
             ),
         },
@@ -4941,18 +5327,37 @@ def get_repo_admin_json_table_keys() -> tuple[str, ...]:
     """Apply order: agent personas before agent_task rows that reference agent_id."""
     return ("agent", "agent_task")
 
-# AST-1154: injected into multi-vector grades_encoded* payload_instructions (not vet / grades_json).
-_ENCODED_GRADE_SET_COMPLETENESS = (
-    "GRADE SET COMPLETENESS (AST-1154) — mandatory:\n"
-    "Emit exactly one grade segment for every rubric vector code listed in the grading "
-    "instructions for this run. Omitting a code is invalid.\n"
-    "When there is no signal for a vector, emit {code}X0 — never skip that segment.\n"
-    "Do not invent extra codes beyond the rubric. Do not invent letter grades to fill gaps — "
-    "use X with confidence 0 when the source is silent.\n"
-    # Example lines show a fixed code count; models copy that length unless told otherwise.
-    "Example lines are illustrative — their code count is not a template. Each line carries "
-    "exactly as many grade segments as the rubric has codes; check every line against the "
-    "rubric code list before moving on."
+# agent_performance rules shared by every call (AST-1839). prompt_prefix wraps them in the two-key envelope
+# sentence; structured-output calls (AST-2172) report agent_performance inside the tool input, so they get the
+# rules alone via prompt_prefix_structured.
+_PROMPT_PERFORMANCE_RULES = (
+    "agent_performance refers ONLY "
+    "to your ability to perform your task.  It has nothing to do with the payload at all, "
+    "just whether or not you were prevented for some reason to perform your task.  NEVER "
+    "use \"failed\" because everything in your payload did not pass for some reason, "
+    "the software will think your prompt is broken and we will wastefully replicate "
+    "the prompt to troubleshoot a non-existent issue.  If the status is truly \"failure\", use "
+    "\"failure_note\" to explain the legitimate issue."
+)
+
+# Confidence scale for rubric grader instructions (stat.agent.confidence-bounds): 1-5 with a letter, 0 only with X.
+_CONFIDENCE_SCALE_LINES = (
+    "    - 5: The source explicitly states it.\n"
+    "    - 4: The source strongly suggests it.\n"
+    "    - 3: The source hints about it.\n"
+    "    - 2: The source makes a vague reference.\n"
+    "    - 1: The source doesn't say it out loud, but it's possible.\n"
+)
+# Grade semantics shared by every multi-vector grader output type; the tool schema enforces the shape (AST-2172).
+_GRADE_SEMANTICS = (
+    "Report your grades through the provided tool. Each row in the content is identified by its index "
+    "(for example 024); report that row under its index, with one entry per rubric vector code.\n"
+    "  grade: one letter — A B C D F X. Each vector's rubric defines what A–F mean for that vector; "
+    "X means not applicable / no signal.\n"
+    "  confidence: an integer for that vector's grade:\n"
+    + _CONFIDENCE_SCALE_LINES +
+    "    - 0: Use only with grade X (not applicable / no signal).\n"
+    "When the source is silent on a vector, grade it X with confidence 0 — never leave a vector out."
 )
 
 # ---------------------------------------------------------------------------
@@ -5035,19 +5440,15 @@ ASTRAL_CONFIG = {
     "support_email": "runtime-dispatch-error-498a58685f26@intake.linear.app",
 
     # --- Prompt prefix (anthropic) ---
-    # Prepended to the user prompt on every API call. Tells agents the date/time
-    # and instructs them on the response envelope format.
+    # Prepended to the user prompt after the date/time line. prompt_prefix: the two-key envelope sentence around
+    # the agent_performance rules. prompt_prefix_structured: the rules alone, for structured-output (forced tool)
+    # calls that have no agent_payload (AST-2172).
     "prompt_prefix": (
         "Your JSON response must use the two-key envelope, one is the agent_performance, the "
-        "other is the agent_payload.  This is very important.  agent_performance refers ONLY "
-        "to your ability to perform your task.  It has nothing to do with the payload at all, "
-        "just whether or not you were prevented for some reason to perform your task.  NEVER "
-        "use \"failed\" because everything in your payload did not pass for some reason, "
-        "the software will think your prompt is broken and we will wastefully replicate "
-        "the prompt to troubleshoot a non-existent issue.  If the status is truly \"failure\", use "
-        "\"failure_note\" to explain the legitimate issue.\n\nThe agent_payload is the complete "
+        "other is the agent_payload.  This is very important.  " + _PROMPT_PERFORMANCE_RULES + "\n\nThe agent_payload is the complete "
         "response that the software can parse per the required output schema."
     ),
+    "prompt_prefix_structured": _PROMPT_PERFORMANCE_RULES,
 
     # --- Company state machine (gazer, database, roster) ---
     # State list lives in COMPANY_STATES; transitions here.
@@ -5159,10 +5560,12 @@ ASTRAL_CONFIG = {
     # Valid grade letters — used by agent.py to build the grade-segment regex and for UI display.
     "valid_grades": ["A", "B", "C", "D", "F", "X"],
 
-    # Output type registry — each entry drives {$OUTPUT_INSTRUCTIONS} token resolution and
-    # determines how agent.py handles the agent_payload after receiving the AI response.
-    # Entries with "_encoded" in their key are decoded by _decode_payload; "_meta" additionally
-    # accepts listing metadata after grade segments; "grades_encoded_notes" maps tail to job["notes"].
+    # Output type registry — each entry drives {$OUTPUT_INSTRUCTIONS} token resolution.
+    # "structured_output": True marks a rubric grader type: its calls carry a call-time forced-tool schema (AST-2172).
+    # This marker is the only grader-type signal; no module keeps its own list of grader types or task keys.
+    # "extra_fields": per-row fields beyond the rubric codes, as JSON Schema fragments; the schema builder makes
+    # each one required and nullable. "grade_letters" / "confidence_range" override the defaults
+    # (ASTRAL_CONFIG["valid_grades"] / (0, 5)) — vet only.
     "output_types": {
         # Standard JSON grades — reserved for future use when grade_do and similar tasks
         # adopt output_type-driven instructions. No task uses this key today.
@@ -5172,130 +5575,64 @@ ASTRAL_CONFIG = {
                 "This output is parsed by software — any deviation will cause a processing failure."
             ),
         },
-        # Compact encoded — grades only, no metadata fields after grade segments.
+        # Grades only, no extra per-row fields.
         "grades_encoded": {
-            "payload_instructions": (
-                "Return one JSON object with top-level keys exactly: \"agent_performance\" and \"agent_payload\".\n"
-                "Put the multi-line encoded grading block inside \"agent_payload\" as a single string "
-                "(newlines separate jobs). Never respond with bare pipe-lines only; never put a JSON array "
-                'of jobs inside "agent_payload" — only the compact line format below.\n\n'
-                "Inside agent_payload — one line per item. Format: {pos}|{code}{grade}{conf}|{code}{grade}{conf}|...\n"
-                "  {pos}: 0-based input position, zero-padded to 3 digits\n"
-                "  {code}: 2-char rubric vector code from the grading instructions\n"
-                "  {grade}: one letter — A B C D F X\n"
-                "  {conf}: one digit — confidence for that vector's grade:\n"
-                "    - 5: The source explicitly states it.\n"
-                "    - 4: The source strongly suggests it.\n"
-                "    - 3: The source hints about it.\n"
-                "    - 2: The source makes a vague reference.\n"
-                "    - 1: The source doesn't say it out loud, but it's possible.\n"
-                "    - 0: Use only with grade X (not applicable / no signal).\n"
-                "Each grade segment is exactly 4 characters: {code}{grade}{conf}.\n"
-                "\nExample:\n"
-                "000|ERF1|MEF2|PGX0|WAF1|MWF1|KOF1|QCF1\n"
-                "001|ERA3|MEF2|PGA4|WAA4|MWA5|KOA3|QCA1\n"
-                "002|ERA5|MEA3|PGA3|WAA1|MWX0|KOF2|QCF2"
-            ) + "\n\n" + _ENCODED_GRADE_SET_COMPLETENESS,
+            "structured_output": True,
+            "extra_fields": {},
+            "payload_instructions": _GRADE_SEMANTICS,
         },
-        # Same grade segments as grades_encoded; optional tail → job["notes"] (do/get/like), not listing meta.
+        # Grades plus an optional note → job["notes"] (do/get/like).
         "grades_encoded_notes": {
-            "payload_instructions": (
-                "Return one JSON object with top-level keys exactly: \"agent_performance\" and \"agent_payload\". "
-                "Place the newline-separated compact grading lines inside \"agent_payload\" as one string "
-                '(do/get/like use this shape; envelope is mandatory — not "lines only").\n'
-                "Format inside agent_payload — one line per item: "
-                "{pos}|{code}{grade}{conf}|{code}{grade}{conf}|...[|optional notes tail]\n"
-                "  {pos}: 0-based input position, zero-padded to 3 digits\n"
-                "  {code}: 2-char rubric vector code from the grading instructions\n"
-                "  {grade}: one letter — A B C D F X\n"
-                "  {conf}: one digit — confidence for that vector's grade:\n"
-                "    - 5: The source explicitly states it.\n"
-                "    - 4: The source strongly suggests it.\n"
-                "    - 3: The source hints about it.\n"
-                "    - 2: The source makes a vague reference.\n"
-                "    - 1: The source doesn't say it out loud, but it's possible.\n"
-                "    - 0: Use only with grade X (not applicable / no signal).\n"
-                "Each grade segment is exactly 4 characters: {code}{grade}{conf}.\n"
-                "After all segments you may append one optional notes field (pipe-separated from the last segment).\n"
-                "Omit the tail entirely if you have nothing to add — that is valid.\n"
-                "\nExamples (value of agent_payload):\n"
-                "000|ERF1|MEF2|PGX0|WAF1|MWF1|KOF1|QCF1\n"
-                "000|ERA3|MEF2|PGA4|WAA4|MWA5|KOA3|QCA1|Short optional note for the job"
-            ) + "\n\n" + _ENCODED_GRADE_SET_COMPLETENESS,
-        },
-        # Compact encoded with optional metadata fields after grade segments.
-        "grades_encoded_meta": {
-            "payload_instructions": (
-                "Return one JSON object with top-level keys exactly: \"agent_performance\" and \"agent_payload\".\n"
-                "Pack the newline-separated qualification lines inside \"agent_payload\" as one string "
-                '(outer envelope required — not bare lines).\n'
-                "Format per line inside agent_payload: "
-                "{pos}|{code}{grade}{conf}|{code}{grade}{conf}|...|{company_job_id}[|{job_title}|{job_link}[|{key}:{value}...]]\n"
-                "  {pos}: 0-based input position, zero-padded to 3 digits\n"
-                "  {code}: 2-char rubric vector code from the grading instructions\n"
-                "  {grade}: one letter — A B C D F X\n"
-                "  {conf}: one digit — confidence for that vector's grade:\n"
-                "    - 5: The source explicitly states it.\n"
-                "    - 4: The source strongly suggests it.\n"
-                "    - 3: The source hints about it.\n"
-                "    - 2: The source makes a vague reference.\n"
-                "    - 1: The source doesn't say it out loud, but it's possible.\n"
-                "    - 0: Use only with grade X (not applicable / no signal).\n"
-                "Each grade segment is exactly 4 characters: {code}{grade}{conf}.\n"
-                "Metadata fields follow all grade segments when your instructions say to include them.\n"
-                "\nExample:\n"
-                "000|ERC3|MEC4|PGA5|WAX0|MWC3|KOB5|QCB3|2983982372|Mediocre Job Title|https://www.workheredummy.com/jobs/2983982372|location:Remote|salary_range:$140-160k\n"
-                "001|ERA2|MEA4|PGF5|WAA4|MWX0|KOA5|QCA2|8398237461\n"
-                "002|ERB3|MEB4|PGB5|WAB5|MWA4|KOA5|QCB1|9823975238|Fine Job Title|https://www.workheredummy.com/jobs/9823975238|location:Remote|salary_range:$140-160k"
-            ) + "\n\n" + _ENCODED_GRADE_SET_COMPLETENESS,
-        },
-        # Vet inflow discovery: one LT{grade}{conf} segment + required website meta (AST-880).
-        "grades_encoded_vet_meta": {
-            "payload_instructions": (
-                "Return one JSON object with top-level keys exactly: \"agent_performance\" and \"agent_payload\".\n"
-                "Put the newline-separated encoded vet lines inside \"agent_payload\" as a single string "
-                "(not a JSON results array). Never respond with bare pipe-lines only.\n\n"
-                "Inside agent_payload — one line per input hit. Format: {pos}|LT{grade}{conf}|{website}\n"
-                "  {pos}: 0-based input position, zero-padded to 3 digits (matches live-content 000/001/…)\n"
-                "  LT: fixed vector code for link-type Result Finding\n"
-                "  {grade}: exactly one letter — A B C D F\n"
-                "  {conf}: one digit 1–5 (use 5 when the page type is clear)\n"
-                "  {website}: absolute company homepage URL — required on every grade including F\n"
-                "Each grade segment is exactly 4 characters: LT{grade}{conf}.\n"
-                "\nExample:\n"
-                "000|LTA5|https://www.acme.com\n"
-                "001|LTF5|https://www.otherco.com"
+            "structured_output": True,
+            "extra_fields": {"notes": {"type": "string"}},
+            "payload_instructions": _GRADE_SEMANTICS + (
+                "\n  notes: one optional short note for the row; null when you have nothing to add."
             ),
         },
-        # Prefilter company: grades_encoded plus JOB:/CULT: link index tails (AST-603).
-        "grades_encoded_prefilter_links": {
+        # Grades plus listing metadata (qualify_job_listings).
+        "grades_encoded_meta": {
+            "structured_output": True,
+            "extra_fields": {
+                "company_job_id": {"type": "string"},
+                "job_title": {"type": "string"},
+                "job_link": {"type": "string"},
+                "job_data": {"type": "object", "additionalProperties": {"type": "string"}},
+            },
+            "payload_instructions": _GRADE_SEMANTICS + (
+                "\n  company_job_id: the listing's company job identifier; null when none is found.\n"
+                "  job_title, job_link: the listing's title and link as found; job_data: other key/value details "
+                "the listing states (e.g. location, salary_range). Fill these when your instructions say to include "
+                "them; otherwise null."
+            ),
+        },
+        # Vet inflow discovery: one LT grade per hit + website (AST-880).
+        "grades_encoded_vet_meta": {
+            "structured_output": True,
+            "extra_fields": {"website": {"type": "string"}},
+            "grade_letters": sorted(INFLOW_CONFIG["vet"]["pass_grades"] | INFLOW_CONFIG["vet"]["fail_grades"]),
+            "confidence_range": (1, 5),
             "payload_instructions": (
-                "Return one JSON object with top-level keys exactly: \"agent_performance\" and \"agent_payload\".\n"
-                "Put the multi-line encoded grading block inside \"agent_payload\" as a single string "
-                "(newlines separate jobs). Never respond with bare pipe-lines only; never put a JSON array "
-                'of jobs inside "agent_payload" — only the compact line format below.\n\n'
-                "Inside agent_payload — one line per item. Format: {pos}|{code}{grade}{conf}|{code}{grade}{conf}|...\n"
-                "  {pos}: 0-based input position, zero-padded to 3 digits\n"
-                "  {code}: 2-char rubric vector code from the grading instructions\n"
-                "  {grade}: one letter — A B C D F X\n"
-                "  {conf}: one digit — confidence for that vector's grade:\n"
-                "    - 5: The source explicitly states it.\n"
-                "    - 4: The source strongly suggests it.\n"
-                "    - 3: The source hints about it.\n"
-                "    - 2: The source makes a vague reference.\n"
-                "    - 1: The source doesn't say it out loud, but it's possible.\n"
-                "    - 0: Use only with grade X (not applicable / no signal).\n"
-                "Each grade segment is exactly 4 characters: {code}{grade}{conf}.\n"
-                "After all grade segments, append two optional link_set bracket fields (positional): "
-                "first tail → possible job page indices (1–5 ints from the enumerated nav list); "
-                "second tail → culture link indices (1–5 ints). "
-                "Alternate shapes: JOB:<indices> and CULT:<indices> prefixes, or JSON keys "
-                "possible_job_links / culture_links_to_explore. Software normalizes all listed shapes.\n"
-                "\nExamples:\n"
-                "000|ERC2|MEA3|PGA2|[13]|[3,6,19]\n"
-                "000|RCA3|MPB3|USA3|[59,60]|[51,46,53]\n"
-                "000|RCA3|MPB3|USA3|JOB:59,60|CULT:51,46,53"
-            ) + "\n\n" + _ENCODED_GRADE_SET_COMPLETENESS,
+                "Report one result per hit through the provided tool. Each hit in the content is identified by its "
+                "index (for example 000); report that hit under its index, graded on the fixed link-type vector code "
+                f"{INFLOW_CONFIG['vet']['grade_vector_code']}.\n"
+                "  grade: exactly one of A B C D F, as defined in your instructions.\n"
+                "  confidence: an integer 1–5 for that grade (use 5 when the page type is clear):\n"
+                + _CONFIDENCE_SCALE_LINES +
+                "  website: absolute company homepage URL — required on every grade including F."
+            ),
+        },
+        # Prefilter company: grades plus job / culture link indices (AST-603).
+        "grades_encoded_prefilter_links": {
+            "structured_output": True,
+            "extra_fields": {
+                "possible_job_links": {"type": "array", "items": {"type": "integer"}},
+                "culture_links_to_explore": {"type": "array", "items": {"type": "integer"}},
+            },
+            "payload_instructions": _GRADE_SEMANTICS + (
+                "\n  possible_job_links: 1–5 integer indices from the enumerated nav list that may lead to job "
+                "pages; null when none.\n"
+                "  culture_links_to_explore: 1–5 integer indices from the same list for culture pages; null when none."
+            ),
         },
     },
     # --- Consult (consult): per-vector importance (1–10); multipliers for AST-358 scoring ---
@@ -5511,6 +5848,13 @@ assert CONTACT_ESTELLE_CONFIG["turn_context_message_limit"] > 0
 assert isinstance(CONTACT_ESTELLE_CONFIG["turn_context_text_max_chars"], int)
 assert CONTACT_ESTELLE_CONFIG["turn_context_text_max_chars"] > 0
 
+# AST-2206: Contact draft thread — an @mention reply in a thread rooted at a /draft-<context>
+# command runs this task (contact Estelle) instead of CONTACT_ESTELLE_CONFIG["task_key"].
+CONTACT_DRAFT_THREAD_CONFIG = {
+    "revise_task_key": "contact_draft_revise",
+}
+assert CONTACT_DRAFT_THREAD_CONFIG["revise_task_key"] in TASK_CONFIG
+
 # CONTACT_TASK_CONFIG: allowlisted Contact task keys (AST-1515 / AST-1414).
 # Distinct from CONTACT_CONFIG skills ACL and TASK_CONFIG dispatch catalog.
 CONTACT_TASK_CONFIG = {
@@ -5570,7 +5914,8 @@ for _ct_key, _ct_meta in CONTACT_TASK_CONFIG.items():
 for _cmd_id in CONTACT_CONFIG["commands"]:
     assert _cmd_id not in CONTACT_TASK_CONFIG, _cmd_id
 # AST-2061 pinhole: every Contact command/task handler must be listed here, keyed by dotted path.
-# Writes are meteorite-only (never create_meteorite_job / job / candidate); everything else reads.
+# Contact writes only meteorites ("write meteorite", src.core.meteorite.*) and artifact versions
+# ("write artifact", AST-2206) — never create_meteorite_job / job / candidate rows; the rest reads.
 _CONTACT_PINHOLE_HANDLERS = {
     "src.core.meteorite.insert_slack_meteorite": "write meteorite (NEW)",
     "src.core.gazer.contact_task_gazer_scrape": "read (external fetch, no platform write)",
@@ -5579,9 +5924,14 @@ _CONTACT_PINHOLE_HANDLERS = {
     "src.core.tracker.contact_task_get_job_data": "read job",
     "src.core.tracker.contact_task_get_company_data": "read company",
     "src.core.tracker.contact_task_get_candidate_data": "read candidate",
+    "src.core.candidate.contact_command_show_context": "read artifact",
+    "src.core.candidate.contact_command_save_context": "write artifact",
+    "src.core.contact.contact_command_draft_context": "read artifact (LLM draft, no artifact write)",
 }
 assert all(
-    _h.startswith("src.core.meteorite.") for _h, _kind in _CONTACT_PINHOLE_HANDLERS.items()
+    (_kind.startswith("write meteorite") and _h.startswith("src.core.meteorite."))
+    or _kind.startswith("write artifact")
+    for _h, _kind in _CONTACT_PINHOLE_HANDLERS.items()
     if _kind.startswith("write")
 )
 for _h in [m["handler"] for m in CONTACT_TASK_CONFIG.values()] + [
@@ -5606,7 +5956,10 @@ for _h in [m["handler"] for m in CONTACT_TASK_CONFIG.values()] + [
 #                        refused after the retries stops the dispatch batch, ledger FAILED — AST-2010)
 #   probe              — True: one host-discovery probe per batch, then the batch is pinned to the
 #                        probe's host (src.external.openrouter, AST-1959). Only OpenRouter routes per call.
+#   structured_output_capability — "enforced" | "advisory" | None: forced-tool schema support (AST-2172); a model entry's own key overrides it
 # ---------------------------------------------------------------------------
+# structured_output_capability values: AST-2177 provider spike not run (Susan, 2026-10-13: no provider calls from
+# the build host). Every server is None until checked; grader-model overrides below are provisional.
 LLM_SERVER_CONFIG = {
     "anthropic": {
         "label": "Anthropic",
@@ -5617,6 +5970,7 @@ LLM_SERVER_CONFIG = {
         "request_extras": {},
         "concurrency": None,
         "probe": False,
+        "structured_output_capability": None,
     },
     "kimi": {
         "label": "Kimi",
@@ -5627,6 +5981,7 @@ LLM_SERVER_CONFIG = {
         "request_extras": {},
         "concurrency": None,
         "probe": False,
+        "structured_output_capability": None,
     },
     "openrouter": {
         "label": "OpenRouter",
@@ -5639,6 +5994,8 @@ LLM_SERVER_CONFIG = {
         # 10s base: sleeps 10/20/40/80/160s nominal, jittered 0.5-1.0x → roughly 2.5-5 min before the batch stops.
         "concurrency": {"rate_limit_retries": 5, "backoff_base_seconds": 10.0, "exhausted_stops_batch": True},
         "probe": True,
+        # 93 of 95 slugs unchecked → None; checked slugs get OPENROUTER_STRUCTURED_OUTPUT_OVERRIDES.
+        "structured_output_capability": None,
     },
     "deepseek": {
         "label": "DeepSeek",
@@ -5655,16 +6012,54 @@ LLM_SERVER_CONFIG = {
             "backoff_max_seconds": 30.0,
         },
         "probe": False,
+        "structured_output_capability": None,
     },
 }
 LLM_SERVER_PROTOCOLS = ("anthropic", "anthropic_compat")
 LLM_SERVER_AUTH_STYLES = ("x-api-key", "bearer")
+# Allowed structured_output_capability values (AST-2172).
+LLM_STRUCTURED_OUTPUT_CAPABILITIES = ("enforced", "advisory", None)
 # Probe user turn only (AST-1959): tiny text so the host pin is cheap on *input*; max_tokens / effort / thinking
 # match the real hop — do not try to disable reasoning here (that breaks host parity and mandatory-thinking slugs).
 LLM_PROBE_MESSAGE = "Respond with 1."
 
 # Timesheet rows (database ledgers): provider string validated on insert = a server id.
 ALLOWED_TIMESHEET_PROVIDERS = tuple(LLM_SERVER_CONFIG)
+# Search timesheet rows (AST-2219 writer); not an LLM_SERVER_CONFIG id.
+TIMESHEET_SEARCH_SERVER_ID = "google_cse"
+
+TIMESHEET_REQUEST_TYPES = (
+    "DISPATCH_AGENT",
+    "DISPATCH_SEARCH",
+    "CONTACT_AGENT",
+)
+# Vendor half filled by get_receipt; Astral half (request_type, candidate_id, entity_*)
+# comes from the recorded call. Shared shape for every billing external (AST-2215 AC5).
+TIMESHEET_RECEIPT_FIELDS = (
+    "request_type",
+    "call_start",
+    "call_stop",
+    "platform_cost",
+    "candidate_id",
+    "entity_type",
+    "entity_id",
+    "native_tokens_prompt",
+    "native_tokens_completion",
+    "native_tokens_cached",  # cache read
+    "cache_write_tokens",
+    "response_item_count",
+    "response_char_length",
+    "completion_status",
+)
+LEDGER_TIMESHEET_STATES = (
+    "NEW",
+    "FETCHING",
+    "RECEIPTED",
+)
+assert set(TIMESHEET_REQUEST_TYPES) == {"DISPATCH_AGENT", "DISPATCH_SEARCH", "CONTACT_AGENT"}
+assert set(LEDGER_TIMESHEET_STATES) == {"NEW", "FETCHING", "RECEIPTED"}
+assert "platform_cost" in TIMESHEET_RECEIPT_FIELDS
+
 # Platform cost reconcile for openrouter-routed timesheet rows (AST-1963). OpenRouter 404s the
 # generation record for about 30s after the call, so the first lookup waits INITIAL_WAIT. A not-ready
 # or failed lookup is tried RETRIES times in total; the wait before the 2nd try is the base, doubled
@@ -5804,6 +6199,7 @@ LLM_MODEL_ROUTING_TYPES = ("direct", "openrouter")
 #   tier.max_tokens     — resolved wire budget (agent row or default, then catalog floor if any)
 #   pricing[<sku>]: model_label, cpm_input, cpm_output, cpm_cache_read, cpm_cache_write,
 #     cache_min_tokens (USD per million tokens; cache_write 0 where the vendor does not bill it)
+#   structured_output_capability — optional; overrides the server's value (AST-2172)
 # ---------------------------------------------------------------------------
 LLM_MODEL_CONFIG = {
     "kimi-k2.6": {
@@ -5893,6 +6289,15 @@ LLM_MODEL_CONFIG = {
 }
 
 
+# Per-slug structured-output capability; slugs not listed inherit the server's None.
+# Provisional — unverified, Susan checks on staging (AST-2177: spike not run). These are the models the
+# three graders run on (Grace / Lucy: qwen, Kent: gpt-oss), kept selectable while "requires structured output" is on.
+OPENROUTER_STRUCTURED_OUTPUT_OVERRIDES: Dict[str, Optional[str]] = {
+    "openai/gpt-oss-120b": "advisory",
+    "qwen/qwen3-235b-a22b-2507": "advisory",
+}
+
+
 def _build_openrouter_models() -> None:
     """Append one LLM_MODEL_CONFIG entry per OPENROUTER_MODEL_TABLE row (AST-1938, AST-1955). Model id,
     label, SKU and pricing key are all the slug; the output default is min(16000, the slug's max output)."""
@@ -5914,6 +6319,7 @@ def _build_openrouter_models() -> None:
                     "cache_min_tokens": 0,
                 },
             },
+            **({"structured_output_capability": OPENROUTER_STRUCTURED_OUTPUT_OVERRIDES[slug]} if slug in OPENROUTER_STRUCTURED_OUTPUT_OVERRIDES else {}),
         }
 
 
@@ -5934,6 +6340,15 @@ def get_llm_model(model_id: str) -> Dict[str, Any]:
     if not m:
         raise ValueError(f"Unknown LLM model {model_id!r}. Valid: {list(LLM_MODEL_CONFIG)}")
     return m
+
+
+def get_structured_output_capability(model_id: str) -> Optional[str]:
+    """Forced-tool schema support for a model: its own override, else its server's (AST-2172).
+    "enforced" | "advisory" | None. Raises ValueError on an unknown model."""
+    m = get_llm_model(model_id)
+    if "structured_output_capability" in m:
+        return m["structured_output_capability"]
+    return get_llm_server(m["server"])["structured_output_capability"]
 
 
 def get_model_routing(server_id: str, sku: str) -> str:
@@ -6088,8 +6503,9 @@ def validate_llm_provider_environment() -> None:
 # the group for non-admin users (resolved via nav_admin_only_group_labels).
 # Omit the key (or False) = visible to every authenticated user.
 #
-# Optional item-level "enabled": a CANDIDATE_STATES key (disabled unless at
-# or past that state) or False (permanently disabled stub). Omit = always enabled.
+# Optional item-level "enabled": minimum candidate registry stage (int) —
+# disabled unless candidate_stage(state) >= that floor — or False (permanently
+# disabled stub). Omit = always enabled. Resolved in api_system.py.
 #
 # Group-level candidate-state "visible" is not a NAV_CONFIG key. Do not add it.
 #
@@ -6214,12 +6630,13 @@ assert UI_CONFIG["themes"].get(UI_CONFIG["default_theme"], {}).get("profile_sele
 
 # ---------------------------------------------------------------------------
 # The /api/nav_config endpoint in api_system.py resolves item-level enabled
-# gates against the selected candidate's state and omits admin_only groups
-# for non-admins before serving. The frontend renders the resolved response
-# with no additional visibility logic.
+# gates against the selected candidate's registry stage and omits admin_only
+# groups for non-admins before serving. The frontend renders the resolved
+# response with no additional visibility logic.
 #
-# SYNC: Every path here must have a matching route in src/ui/frontend/src/routes.tsx.
-#       If you add/remove/rename a nav item, update routes.tsx to match.
+# SYNC: Every sidebar path here must have a matching route in
+#       src/ui/frontend/src/routes.tsx. Deeplink-only routes (search,
+#       jobs/detail, dropped sidebar items) are not listed here.
 # ---------------------------------------------------------------------------
 # Deeplink-only — not in NAV_CONFIG (no sidebar item).
 # SYNC: src/ui/frontend/src/routes.tsx path "jobs/detail/:jobId"
@@ -6229,57 +6646,57 @@ JOBS_DETAIL_ROUTE_PREFIX = "/jobs/detail"
 JOBS_DETAIL_ORIGIN_DOMAIN_ENV = "RAILWAY_PUBLIC_DOMAIN"
 assert isinstance(JOBS_DETAIL_ORIGIN_DOMAIN_ENV, str) and JOBS_DETAIL_ORIGIN_DOMAIN_ENV.strip()
 
+# AST-2230: per-group recent-expand defaults for /api/nav_config (shell #4 consumes `recent`).
+NAV_GROUP_RECENT_DEFAULTS = {
+    "Candidate": {"when": "incomplete_profile"},
+    "Criteria": {"when": "never"},
+    "Company": {"when": "any_item_count"},
+    "Job Opportunities": {"when": "any_item_count"},
+}
+
 NAV_CONFIG = [
-    {
-        "label": "Jobs",
-        "items": [
-            {"label": "Ready", "path": "/jobs/ready"},
-            {"label": "Review", "path": "/jobs/review"},
-            {"label": "Applied", "path": "/jobs/applied"},
-            {"label": "Processing", "path": "/jobs/processing"},
-            {"label": "Skipped", "path": "/jobs/skipped"},
-            {"label": "Meteorites", "path": "/jobs/meteorites"},
-        ],
-    },
-    {
-        "label": "Companies",
-        "items": [
-            {"label": "Watch List", "path": "/companies/watch_list"},
-            {"label": "New List", "path": "/companies/new_list"},
-            {"label": "Inactive List", "path": "/companies/inactive_list"},
-            {"label": "Ignored", "path": "/companies/ignored"},
-            {"label": "Meteorite", "path": "/companies/meteorite_list"},
-            {"label": "Watch History", "path": "/companies/watch_history"},
-        ],
-    },
-    {
-        "label": "Artifacts",
-        "items": [
-            {"label": "Base Resume Content", "path": "/artifacts/base_resume_content"},
-            {"label": "Company Watch Criteria", "path": "/artifacts/company_watch_criteria"},
-            {"label": "Company Search Terms", "path": "/artifacts/company_search_terms"},
-            {"label": "Job List Criteria", "path": "/artifacts/job_list_criteria"},
-            {"label": "Job Description Criteria", "path": "/artifacts/job_description_criteria"},
-            {"label": "Meteorite Criteria", "path": "/artifacts/meteorite_criteria"},
-            {"label": "Get Job Criteria", "path": "/artifacts/get_job_criteria"},
-            {"label": "Do Job Criteria", "path": "/artifacts/do_job_criteria"},
-            {"label": "Like Job Criteria", "path": "/artifacts/like_job_criteria"},
-        ],
-    },
     {
         "label": "Candidate",
         "items": [
-            {"label": "Intake", "path": "/candidate/intake"},
-            {"label": "Profile", "path": "/candidate/profile"},
-            {"label": "Surfer", "path": "/candidate/surfer"},
-            {"label": "Strengths", "path": "/candidate/strengths"},
-            {"label": "Bio Summary", "path": "/candidate/bio_summary"},
-            {"label": "Priorities", "path": "/candidate/priorities"},
-            {"label": "Deal Breakers", "path": "/candidate/deal_breakers"},
-            {"label": "Backstory", "path": "/candidate/backstory"},
-            {"label": "Ideal Day", "path": "/candidate/ideal_day"},
-            {"label": "Writing Preferences", "path": "/candidate/writing_preferences"},
-            {"label": "Surfer Consent", "path": "/candidate/surfer_consent"},
+            {"label": "Profile", "path": "/candidate/profile", "enabled": 1},
+            {"label": "Bio Summary", "path": "/candidate/bio_summary", "enabled": 2},
+            {"label": "Back Story", "path": "/candidate/backstory", "enabled": 2},
+            {"label": "Ideal Day", "path": "/candidate/ideal_day", "enabled": 2},
+            {"label": "Strengths", "path": "/candidate/strengths", "enabled": 2},
+            {"label": "Priorities", "path": "/candidate/priorities", "enabled": 2},
+            {"label": "Dealbreakers", "path": "/candidate/deal_breakers", "enabled": 2},
+            {"label": "Writing Preferences", "path": "/candidate/writing_preferences", "enabled": 2},
+            {"label": "Base Resume", "path": "/artifacts/base_resume_content", "enabled": 3},
+        ],
+    },
+    {
+        "label": "Criteria",
+        "items": [
+            {"label": "Job Listing Qualify Criteria", "path": "/artifacts/job_list_criteria", "enabled": 4},
+            {"label": "Meteorite Qualify Criteria", "path": "/artifacts/meteorite_criteria", "enabled": 4},
+            {"label": "Job Description Criteria", "path": "/artifacts/job_description_criteria", "enabled": 4},
+            {"label": "Do the Job Criteria", "path": "/artifacts/do_job_criteria", "enabled": 4},
+            {"label": "Get the Job Criteria", "path": "/artifacts/get_job_criteria", "enabled": 4},
+            {"label": "Like the Job Criteria", "path": "/artifacts/like_job_criteria", "enabled": 4},
+        ],
+    },
+    {
+        "label": "Company",
+        "items": [
+            {"label": "Company Discovery Terms", "path": "/artifacts/company_search_terms", "enabled": 4},
+            {"label": "Company Gazing Criteria", "path": "/artifacts/company_watch_criteria", "enabled": 4},
+            {"label": "Gaze Roster", "path": "/companies/watch_list", "enabled": 5},
+            {"label": "Ignore List", "path": "/companies/ignored", "enabled": 5},
+        ],
+    },
+    {
+        "label": "Job Opportunities",
+        "items": [
+            {"label": "Meteorites", "path": "/jobs/meteorites", "enabled": 5},
+            {"label": "Recommendations", "path": "/jobs/review", "enabled": 5},
+            {"label": "Ready to Apply", "path": "/jobs/ready", "enabled": 5},
+            {"label": "Submitted Applications", "path": "/jobs/applied", "enabled": 5},
+            {"label": "Skipped", "path": "/jobs/skipped", "enabled": 5},
         ],
     },
     {
@@ -7042,6 +7459,9 @@ assert set(ARTIFACT_CONFIG.keys()) == {
     "candidate.context.ideal_day",
     "candidate.context.writing_preferences",
 }
+# AST-2206: every context command acts on a registered artifact (registry defined above CONTACT_CONFIG).
+for _ctx_suffix, _ctx_meta in CONTACT_CONTEXT_COMMAND_CONFIG.items():
+    assert _ctx_meta["artifact_key"] in ARTIFACT_CONFIG, _ctx_suffix
 # Sibling job blob keys stay out of the catalog (parent AC / AST-1590 AC2 / AST-1678 AC3).
 for _sibling in (
     "notes",
@@ -7319,7 +7739,7 @@ def is_valid_job_batch_claim_state(state: str) -> bool:
 
 
 def is_valid_candidate_batch_claim_state(state: str) -> bool:
-    """True for CANDIDATE_STATES keys and REQUESTED_ARTIFACTS.<hop> runtime labels (claim + persist)."""
+    """True for CANDIDATE_STATES keys and <stage_trigger>.<hop> runtime labels (claim + persist)."""
     s = (state or "").strip()
     if not s:
         return False
@@ -7328,8 +7748,8 @@ def is_valid_candidate_batch_claim_state(state: str) -> bool:
     parsed = parse_dispatch_hop_label(s)
     if parsed is None:
         return False
-    stage_trigger = CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["trigger_state"]
-    return parsed[0] == stage_trigger
+    stage_triggers = {e["trigger_state"] for e in CANDIDATE_STAGE_DISPATCH.values()}
+    return parsed[0] in stage_triggers
 
 
 def dispatch_hop_label(trigger_state: str, completed_task_key: str) -> str:
@@ -8063,35 +8483,21 @@ CALLER_HOP_TOKEN_NAMES: tuple[str, ...] = tuple(
 
 def stringify_response_schema(task_key: str) -> str:
     """Return the response_schema as a nested envelope for prompt insertion.
-    For encoded output types, agent_payload is shown as a compact string example.
+    Structured-output (grader) types show agent_performance only — rows go through the forced tool (AST-2172).
     For all others: { agent_performance: {...}, agent_payload: {...task fields...} }"""
     task_cfg = TASK_CONFIG.get(task_key, {})
     schema = task_cfg.get("response_schema")
     if not schema:
         return ""
-    output_type = task_cfg.get("output_type", "")
-    if "_encoded" in output_type:
-        if output_type == "grades_encoded_notes":
-            example = "000|ERC3|MEA4|PGA4|optional notes after grades"
-        elif output_type == "grades_encoded_prefilter_links":
-            example = "000|ERC2|MEA3|PGA2|[13]|[3,6,19]"
-        elif "_meta" in output_type:
-            example = "000|ERC3|MEA4|PGA5|2983982372|Job Title|https://example.com/jobs/123"
-        else:
-            example = "000|ERC2|MEA3|PGA2"
-        payload: object = example
-    else:
-        payload = _schema_to_example(schema)
     # CHAT tasks use concern-capable performance schema; others keep BASE_SCHEMA.
     perf_schema = (
         CONVERSATIONAL_PERFORMANCE_SCHEMA
         if is_conversational_task(task_key)
         else BASE_SCHEMA
     )
-    envelope = {
-        "agent_performance": _schema_to_example(perf_schema),
-        "agent_payload": payload,
-    }
+    envelope = {"agent_performance": _schema_to_example(perf_schema)}
+    if not ASTRAL_CONFIG["output_types"].get(task_cfg.get("output_type", ""), {}).get("structured_output"):
+        envelope["agent_payload"] = _schema_to_example(schema)
     return json.dumps(envelope, indent=2)
 
 

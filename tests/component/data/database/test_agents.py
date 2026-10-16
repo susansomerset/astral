@@ -86,6 +86,7 @@ def _agent_repo_row(
         "provider_only": None,
         "provider_ignore": None,
         "provider_sort": None,
+        "requires_structured_output": False,  # AST-2181: seed column tuple carries the gate setting.
         "updated_at": updated_at,
     }
     row.update(settings)
@@ -330,3 +331,128 @@ class TestAst1955AgentSettings:
         grace = db.get_agent("job_analyst_grace")
         assert (grace["temperature"], grace["provider_sort"], grace["model_id"]) == (0.2, None, "deepseek-v4-pro")
         assert repo_json_mod.get_repo_admin_json_divergence_status()["agent"]["diverged"] is False
+
+
+
+class TestAst2232AgentName:
+    """AST-2232: agent_name — display TEXT column (not an AGENT_SETTING); public read/write/list."""
+
+    def test_save_get_list_round_trip(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        db.save_agent("a1", "c", agent_name="Grace", model_id="qwen/qwen3-235b-a22b-2507")
+        assert db.get_agent("a1")["agent_name"] == "Grace"
+        assert [r["agent_name"] for r in db.list_agents()] == ["Grace"]
+        db.update_agent("a1", agent_name="Atlas")
+        assert db.get_agent("a1")["agent_name"] == "Atlas"
+        # None on update means leave alone (same rule as max_tokens).
+        db.update_agent("a1", content="c2")
+        assert db.get_agent("a1")["agent_name"] == "Atlas"
+
+    def test_none_on_insert_stores_empty(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        db.save_agent("a1", "c")
+        assert db.get_agent("a1")["agent_name"] == ""
+
+    def test_schema_ensure_adds_column(self, sqlite_in_memory, monkeypatch) -> None:
+        db = sqlite_in_memory
+        conn = db._get_connection()
+        try:
+            conn.execute(
+                "CREATE TABLE agent (agent_id TEXT PRIMARY KEY, content TEXT, model_id TEXT, max_tokens INTEGER, "
+                "quantization TEXT, temperature REAL, reasoning_effort TEXT, provider_allow_fallbacks INTEGER, "
+                "provider_only TEXT, provider_ignore TEXT, provider_sort TEXT, "
+                "requires_structured_output INTEGER, updated_at TIMESTAMP)"
+            )
+            conn.execute(
+                "INSERT INTO agent (agent_id, content, model_id, provider_allow_fallbacks, requires_structured_output) "
+                "VALUES ('old', 'body', 'qwen/qwen3-235b-a22b-2507', 1, 0)"
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        monkeypatch.setattr(db, "_agent_schema_ensured", False)
+        row = db.get_agent("old")
+        conn = db._get_connection()
+        try:
+            cols = {r[1] for r in conn.execute("PRAGMA table_info(agent)").fetchall()}
+        finally:
+            conn.close()
+        assert "agent_name" in cols
+        assert row["agent_name"] is None or row["agent_name"] == ""
+
+
+class TestAst2181RequiresStructuredOutput:
+    """AST-2181: requires_structured_output — stored bool agent setting (gates model choice in the admin API,
+    never sent). New rows default False; bool type check; INTEGER in SQLite read back as bool; seed export / apply."""
+
+    def test_new_row_defaults_false_and_round_trips_as_bool(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        db.save_agent("a1", "c", model_id="qwen/qwen3-235b-a22b-2507")
+        assert db.get_agent("a1")["requires_structured_output"] is False
+        db.update_agent("a1", requires_structured_output=True)
+        assert db.get_agent("a1")["requires_structured_output"] is True
+        assert [r["requires_structured_output"] for r in db.list_agents()] == [True]
+
+    @pytest.mark.parametrize("value", [1, "true"])
+    def test_non_bool_rejected_nothing_written(self, sqlite_in_memory, value) -> None:
+        db = sqlite_in_memory
+        with pytest.raises(ValueError, match="requires_structured_output must be bool"):
+            db.save_agent("a1", "c", requires_structured_output=value)
+        assert db.get_agent("a1") is None
+        db.save_agent("a2", "c")
+        with pytest.raises(ValueError, match="requires_structured_output must be bool"):
+            db.update_agent("a2", requires_structured_output=value)
+        assert db.get_agent("a2")["requires_structured_output"] is False
+
+    def test_seed_export_is_bool_and_apply_stores_it(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        conn = db._get_connection()
+        try:
+            db.apply_agent_repo_json_startup(conn, [
+                _agent_repo_row("on", requires_structured_output=True),
+                _agent_repo_row("off"),
+            ])
+            conn.commit()
+            exported = {r["agent_id"]: r["requires_structured_output"] for r in db.fetch_agent_repo_json_export_rows(conn)}
+        finally:
+            conn.close()
+        # JSON true/false in the seed, not 1/0.
+        assert exported == {"on": True, "off": False}
+        assert all(type(v) is bool for v in exported.values())
+        assert db.get_agent("on")["requires_structured_output"] is True
+
+    def test_schema_ensure_adds_column_without_backfill(self, sqlite_in_memory, monkeypatch) -> None:
+        db = sqlite_in_memory
+        conn = db._get_connection()
+        try:
+            # Pre-AST-2181 live shape: every AST-1955 setting, no requires_structured_output.
+            conn.execute(
+                "CREATE TABLE agent (agent_id TEXT PRIMARY KEY, content TEXT, model_id TEXT, max_tokens INTEGER, "
+                "quantization TEXT, temperature REAL, reasoning_effort TEXT, provider_allow_fallbacks INTEGER, "
+                "provider_only TEXT, provider_ignore TEXT, provider_sort TEXT, updated_at TIMESTAMP)"
+            )
+            conn.execute(
+                "INSERT INTO agent (agent_id, content, model_id, provider_allow_fallbacks) "
+                "VALUES ('old', 'body', 'qwen/qwen3-235b-a22b-2507', 1)"
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        monkeypatch.setattr(db, "_agent_schema_ensured", False)
+        row = db.get_agent("old")
+        conn = db._get_connection()
+        try:
+            cols = {r[1] for r in conn.execute("PRAGMA table_info(agent)").fetchall()}
+        finally:
+            conn.close()
+        assert "requires_structured_output" in cols
+        # NULL until a save or Revert to file; the admin gate and UI read NULL as off.
+        assert row["requires_structured_output"] is None
+
+    def test_setting_never_reaches_the_call_tier(self) -> None:
+        from src.utils.config import resolve_agent_settings
+
+        base = {"provider_allow_fallbacks": True, "temperature": 0.1}
+        with_flag = resolve_agent_settings("qwen/qwen3-235b-a22b-2507", {**base, "requires_structured_output": True})
+        assert with_flag == resolve_agent_settings("qwen/qwen3-235b-a22b-2507", base)
+        assert "requires_structured_output" not in json.dumps(with_flag, default=str)

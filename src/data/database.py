@@ -11,16 +11,16 @@ Tables used (inventory):
 - job       — Tracker: astral_job_id, company_id (nullable real employer; AST-1701), candidate_id (required owning candidate; AST-1598 / AST-1594), company_job_id, job_title, job_link, job_data, state, state_history, batch_id, source (company|meteorite parent/track; AST-1701 repurpose of AST-1469) + source_entity_id (company short_name or meteorite id text), etc.
 - meteorite — Ingress staging spine (AST-1557): one row per prospective job after classify fan-out; `state` from `METEORITE_STATES`; claim via `batch_id` / `batch_created_at`; eligibility count via `count_meteorites_unclaimed_in_states`; reverse lookup via `get_meteorite_by_astral_job_id(astral_job_id)`; candidate-scoped listing via `list_meteorites_for_candidate(candidate_id)` (+ landed `job_state`, AST-1974); listing-href fallback reverse lookup via `get_meteorite_link_by_astral_job_id(astral_job_id)` (AST-1694 — link column only; not AST-1685 provenance); columns id, candidate_id, source_kind, source_id, source_ref, state, content, classify_outcome, link, electronic_contact (AST-1689; config literal from AST-1688), job_title, employer_name (AST-1713; Ruth stage_meteorite response keys), astral_job_id, estelle_thread_ts, estelle_notified_at, nag_count, error, batch_id, batch_created_at, created_at, updated_at, state_changed_at.
 - candidate — Candidate: state, state_history JSON array, candidate_data JSON (contact/context/artifacts + meta), first/last/full/pronouns TEXT columns, candidate_api_key TEXT (legacy — not read or written since AST-1878), api_keys TEXT JSON array [{"server": LLM_SERVER_CONFIG id, "key": Fernet ciphertext}] — at most one entry per server; hydrated as candidate_api_keys {server: plaintext} (AST-1901), batch_id, batch_created_at (null/empty = unclaimed; AST-1258).
-- agent    — Agent: agent_id TEXT PK, content TEXT, model_id TEXT (LLM_MODEL_CONFIG key), max_tokens INTEGER, plain call settings sent as stored — quantization TEXT, temperature REAL, reasoning_effort TEXT, provider_allow_fallbacks INTEGER (bool), provider_only / provider_ignore TEXT (JSON array of provider slugs), provider_sort TEXT (AST-1955) — updated_at TIMESTAMP.
+- agent    — Agent: agent_id TEXT PK, agent_name TEXT (display string; AST-2232), content TEXT, model_id TEXT (LLM_MODEL_CONFIG key), max_tokens INTEGER, plain call settings sent as stored — quantization TEXT, temperature REAL, reasoning_effort TEXT, provider_allow_fallbacks INTEGER (bool), provider_only / provider_ignore TEXT (JSON array of provider slugs), provider_sort TEXT (AST-1955), requires_structured_output INTEGER (bool; gates model choice, never sent — AST-2172) — updated_at TIMESTAMP.
 - agent_task — Task prompt config with versioning: task_key_uuid TEXT PK, task_key TEXT, current INTEGER (1=active), agent_id TEXT, seven prompt segments (`user_prompt`; `cache_prompt` = Anthropic cache block A; `cache_prompt_b|c|d` = blocks B–D; `nocache_prompt`; `system_prompt` per-task override, empty = use agent content at runtime), `run_next`, `task_group_order TEXT`, `task_group_name TEXT`, `task_seq REAL`, `task_name TEXT` (UI grouping metadata, global per task_key), `updated_at`. Any segment edit (all seven) retires prior row + inserts new `current=1`.
-- anthropic_timesheets — Anthropic-only token/cost ledger mirror: anthropic_req_id TEXT UNIQUE, same metric columns as agent_timesheets (batch_id, token counts, calc_cost_*, agent_performance, failure_note, created_at).
-- agent_timesheets — Unified token/cost ledger for all LLM providers: agent_req_id TEXT UNIQUE (vendor request id), same metric columns as anthropic_timesheets, plus nullable platform columns (AST-1965: platform_cost — NULL = not reconciled, native_tokens_prompt/_completion/_cached/_reasoning, host, platform_reconciled_at) set by update_timesheet_platform; sum_cost_by_batch prefers platform_cost per row.
+- anthropic_timesheets — Anthropic-only token/cost ledger mirror: anthropic_req_id TEXT UNIQUE, same metric columns as the unified timesheet (batch_id, token counts, calc_cost_*, agent_performance, failure_note, created_at). Untouched by AST-2217 rename.
+- service_timesheet — Unified token/cost ledger for LLM + search/contact calls (renamed from agent_timesheets, AST-2217): agent_req_id TEXT UNIQUE (vendor / minted external id), same metric columns as anthropic_timesheets, attribution (provider/server id, request_type, entity_type, entity_id, call_start, call_stop, response_item_count, response_char_length, completion_status), plus nullable platform columns (AST-1965: platform_cost — NULL = not reconciled / stub, native_tokens_prompt/_completion/_cached/_reasoning, host, platform_reconciled_at) set by update_timesheet_platform; sum_cost_by_batch prefers platform_cost per row when present (stub null falls through to calc).
 - agent_data — Prompt/response content blocks keyed by batch_id (save_agent_data, get_agent_data_by_batch, list_agent_data_batches, get_agent_data, list_entity_latest_agent_refs); entity_id on RESPONSE rows for latest-per-task lookup (AST-984); nullable self-ref ref_agent_data_id points at earliest identical content row when set (AST-974 / AST-977).
-- telescope_data — scraped Telescope content, one row per capture (telescope_data_id uuid PK, candidate_id, url, data_type free text e.g. VISIBLE_TEXT / PAGE_LINKS, content zlib-compressed like agent_data.block_data, created_at); index (candidate_id, created_at). Owned by gazer (AST-2130).
+- web_data — scraped Telescope content, one row per capture (web_data_id uuid PK, candidate_id, url, data_type free text e.g. VISIBLE_TEXT / PAGE_LINKS, content zlib-compressed like agent_data.block_data, created_at); index (candidate_id, created_at). Owned by gazer (AST-2130).
 - scheduled_query — Admin Scheduled Queries (AST-1122): named SQL rows with active flag, interval_hours cadence, last_run_at / last_rows_affected; tick runner in dispatcher.
 - company_job_scan — Gazer: scan outcome per company per batch (insert-only).
 - dispatch_task — Dispatcher scheduling config (save/get/list/update_dispatch_task, list_dispatch_tasks_for_task_key, revalidate_dispatch_tasks_for_task_key, revalidate_dispatch_tasks_for_artifact, get_due_tasks). candidate_id required on save (AST-1134); meteorite_email live Avail is core (AST-1135 / AST-1466), not this module. Primary rows only; companion *_RETRY entities claimed via dispatch_claim_states (config), not separate dispatch rows.
-- dispatch_ledger — Dispatcher run history incl. served LLM host (save/update/get/list_dispatch_ledger).
+- dispatch_ledger — Dispatcher run history incl. served LLM host (save/update/get/list_dispatch_ledger); nullable timesheet_state NEW|FETCHING|RECEIPTED (AST-2217; historical null).
 - app_log — Application log storage (add_log_entry, list_log_entries); id INTEGER PRIMARY KEY AUTOINCREMENT (writers omit id); nullable candidate_id (stamped when logging context has a candidate; NULL otherwise; AST-1598).
 - company_search_terms — Per-candidate Google discovery queries (candidate_id, search_term TEXT, nullable last_scan_at,
   created_at, updated_at). Composite PRIMARY KEY (candidate_id, search_term). Source of truth for discovery terms (AST-524).
@@ -75,6 +75,7 @@ from cryptography.fernet import Fernet, InvalidToken
 from src.utils.config import (
     AGENT_CONFIG,
     ALLOWED_TIMESHEET_PROVIDERS,
+    LEDGER_TIMESHEET_STATES,
     LLM_MODEL_CONFIG,
     PRONOUN_PREFERENCE_DEFAULT,
     PRONOUN_PREFERENCE_OPTIONS,
@@ -85,6 +86,7 @@ from src.utils.config import (
     CANDIDATE_LEGACY_TRIGGER_STATES,
     CANDIDATE_LIBRARY_CONFIG,
     CANDIDATE_STATES,
+    TIMESHEET_SEARCH_SERVER_ID,
     is_valid_candidate_batch_claim_state,
     remap_legacy_candidate_state,
     registered_base,
@@ -144,11 +146,15 @@ _AGENT_SETTING_TYPES: Dict[str, tuple] = {
     "provider_only": (list,),
     "provider_ignore": (list,),
     "provider_sort": (str,),
+    # Not a call setting: gates which models the agent may use (AST-2172); resolve_agent_settings never reads it.
+    "requires_structured_output": (bool,),
 }
 AGENT_SETTING_COLUMNS: Tuple[str, ...] = tuple(_AGENT_SETTING_TYPES)
 # List settings live in SQLite (and the repo seed) as JSON-array text.
 _AGENT_LIST_SETTINGS = frozenset({"provider_only", "provider_ignore"})
-_AGENT_PUBLIC_COLUMNS = ("agent_id", "content", "model_id", "max_tokens", *AGENT_SETTING_COLUMNS, "updated_at")
+# Bool settings live in SQLite as INTEGER and read back as bool.
+_AGENT_BOOL_SETTINGS = frozenset({"provider_allow_fallbacks", "requires_structured_output"})
+_AGENT_PUBLIC_COLUMNS = ("agent_id", "agent_name", "content", "model_id", "max_tokens", *AGENT_SETTING_COLUMNS, "updated_at")
 
 
 def _check_agent_setting(name: str, value: Any) -> None:
@@ -172,7 +178,7 @@ def _agent_setting_from_db(name: str, value: Any) -> Any:
         return None
     if name in _AGENT_LIST_SETTINGS:
         return json.loads(value)
-    return bool(value) if name == "provider_allow_fallbacks" else value
+    return bool(value) if name in _AGENT_BOOL_SETTINGS else value
 
 
 def _check_agent_model_id(model_id: Any) -> None:
@@ -247,7 +253,7 @@ _intake_session_schema_ensured = False
 _dispatch_ledger_schema_ensured = False
 _app_log_schema_ensured = False
 _agent_data_schema_ensured = False
-_telescope_data_schema_ensured = False
+_web_data_schema_ensured = False
 _scheduled_query_schema_ensured = False
 _meteorite_schema_ensured = False
 
@@ -752,8 +758,9 @@ def fetch_agent_repo_json_export_rows(conn: sqlite3.Connection) -> List[Dict[str
         f"SELECT {cols_sql} FROM agent ORDER BY agent_id",
     ).fetchall()]
     for row in rows:
-        if row["provider_allow_fallbacks"] is not None:
-            row["provider_allow_fallbacks"] = bool(row["provider_allow_fallbacks"])
+        for name in _AGENT_BOOL_SETTINGS:
+            if row[name] is not None:
+                row[name] = bool(row[name])
     return rows
 
 
@@ -1695,19 +1702,19 @@ def get_agent_data_for_ids(ids: List[str]) -> Dict[str, Any]:
 
 
 
-def save_telescope_data(candidate_id, url, data_type, content):
-    """Insert one telescope_data row and return its new telescope_data_id.
+def save_web_data(candidate_id, url, data_type, content):
+    """Insert one web_data row and return its new web_data_id.
 
     data_type is free text — deliberately no allow-list (new content types
     need no code gate). content is plain text; compressed at rest."""
     conn = _get_connection()
     try:
-        _ensure_telescope_data_schema(conn)
+        _ensure_web_data_schema(conn)
         new_id = str(uuid.uuid4())
         # created_at has no column DEFAULT (mirrors agent_data) — always pass _utc_now().
         conn.execute(
-            """INSERT INTO telescope_data
-               (telescope_data_id, candidate_id, url, data_type, content, created_at)
+            """INSERT INTO web_data
+               (web_data_id, candidate_id, url, data_type, content, created_at)
                VALUES (?, ?, ?, ?, ?, ?)""",
             (new_id, candidate_id, url, data_type, _compress_payload(content), _utc_now()),
         )
@@ -1717,26 +1724,26 @@ def save_telescope_data(candidate_id, url, data_type, content):
         conn.close()
 
 
-def get_telescope_data_for_ids(telescope_data_ids):
-    """Return {telescope_data_id: plain content} for the ids that exist; missing ids are omitted."""
-    if not telescope_data_ids:
+def get_web_data_for_ids(web_data_ids):
+    """Return {web_data_id: plain content} for the ids that exist; missing ids are omitted."""
+    if not web_data_ids:
         return {}
     conn = _get_connection()
     try:
-        _ensure_telescope_data_schema(conn)
-        placeholders = ",".join("?" for _ in telescope_data_ids)
+        _ensure_web_data_schema(conn)
+        placeholders = ",".join("?" for _ in web_data_ids)
         rows = conn.execute(
-            f"SELECT telescope_data_id, content FROM telescope_data WHERE telescope_data_id IN ({placeholders})",
-            list(telescope_data_ids),
+            f"SELECT web_data_id, content FROM web_data WHERE web_data_id IN ({placeholders})",
+            list(web_data_ids),
         ).fetchall()
         return {row[0]: _decompress_payload(row[1]) for row in rows}
     finally:
         conn.close()
 
 
-def get_telescope_data(telescope_data_id):
+def get_web_data(web_data_id):
     """Return plain content for one row, or None if the row does not exist."""
-    return get_telescope_data_for_ids([telescope_data_id]).get(telescope_data_id)
+    return get_web_data_for_ids([web_data_id]).get(web_data_id)
 
 def get_company_job_ids(company: str) -> List[str]:
     """Return list of company_job_id for company (excludes NULL). For dedup / inverted match."""
@@ -2571,7 +2578,7 @@ def _table_exists(conn: sqlite3.Connection, name: str) -> bool:
 
 
 # AST-1965: platform-billed facts per call (OpenRouter generation stats). Nullable; platform_cost NULL = not
-# reconciled. Appended after created_at so new and migrated tables share one PRAGMA column order.
+# reconciled / stub. Appended after attribution so new and migrated tables share one PRAGMA column order.
 _AGENT_TIMESHEET_PLATFORM_COLUMNS = (
     ("platform_cost",            "REAL"),
     ("native_tokens_prompt",     "INTEGER"),
@@ -2581,6 +2588,19 @@ _AGENT_TIMESHEET_PLATFORM_COLUMNS = (
     ("host",                     "TEXT"),
     ("platform_reconciled_at",   "TIMESTAMP"),
     ("platform_metadata",        "TEXT"),
+)
+
+# AST-2217: call-time attribution + persisted server id (provider) for receipt routing.
+_SERVICE_TIMESHEET_ATTRIBUTION_COLUMNS = (
+    ("provider",             "TEXT"),
+    ("request_type",         "TEXT"),
+    ("entity_type",          "TEXT"),
+    ("entity_id",            "TEXT"),
+    ("call_start",           "TIMESTAMP"),
+    ("call_stop",            "TIMESTAMP"),
+    ("response_item_count",  "INTEGER DEFAULT 0"),
+    ("response_char_length", "INTEGER DEFAULT 0"),
+    ("completion_status",    "TEXT"),
 )
 
 
@@ -2610,9 +2630,12 @@ def _create_anthropic_timesheets_table(conn: sqlite3.Connection) -> None:
     """)
 
 
-def _create_agent_timesheets_table(conn: sqlite3.Connection) -> None:
+def _create_service_timesheet_table(conn: sqlite3.Connection) -> None:
+    # AST-2217: renamed from agent_timesheets; attribution + AST-1965 platform columns.
+    attr = ", ".join(f"{name} {col_def}" for name, col_def in _SERVICE_TIMESHEET_ATTRIBUTION_COLUMNS)
+    plat = ", ".join(f"{name} {col_def}" for name, col_def in _AGENT_TIMESHEET_PLATFORM_COLUMNS)
     conn.execute(f"""
-        CREATE TABLE agent_timesheets (
+        CREATE TABLE service_timesheet (
             agent_req_id TEXT UNIQUE,
             task_key_uuid TEXT,
             model_code TEXT,
@@ -2632,13 +2655,14 @@ def _create_agent_timesheets_table(conn: sqlite3.Connection) -> None:
             agent_performance TEXT,
             failure_note TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            {', '.join(f'{name} {col_def}' for name, col_def in _AGENT_TIMESHEET_PLATFORM_COLUMNS)}
+            {attr},
+            {plat}
         )
     """)
 
 
 def _ensure_timesheets_schema(conn: sqlite3.Connection) -> None:
-    """Create anthropic_timesheets + agent_timesheets; rename legacy ``timesheets``; migrate pre-AST-324 v1."""
+    """Create anthropic_timesheets + service_timesheet; rename agent_timesheets in place (AST-2217)."""
     global _timesheets_schema_ensured
     if _timesheets_schema_ensured:
         return
@@ -2675,23 +2699,27 @@ def _ensure_timesheets_schema(conn: sqlite3.Connection) -> None:
         _create_anthropic_timesheets_table(conn)
         conn.commit()
 
-    if not _table_exists(conn, "agent_timesheets"):
-        _create_agent_timesheets_table(conn)
+    # AST-2217: agent_timesheets → service_timesheet (in place; never leave both).
+    if _table_exists(conn, "agent_timesheets") and not _table_exists(conn, "service_timesheet"):
+        conn.execute("ALTER TABLE agent_timesheets RENAME TO service_timesheet")
         conn.commit()
 
-    # AST-1965: platform columns on pre-existing agent_timesheets. DDL only — old rows stay NULL (unreconciled).
-    existing = {row[1] for row in conn.execute("PRAGMA table_info(agent_timesheets)").fetchall()}
-    for col, col_def in _AGENT_TIMESHEET_PLATFORM_COLUMNS:
+    if not _table_exists(conn, "service_timesheet"):
+        _create_service_timesheet_table(conn)
+        conn.commit()
+
+    existing = {row[1] for row in conn.execute("PRAGMA table_info(service_timesheet)").fetchall()}
+    for col, col_def in list(_SERVICE_TIMESHEET_ATTRIBUTION_COLUMNS) + list(_AGENT_TIMESHEET_PLATFORM_COLUMNS):
         if col not in existing:
-            conn.execute(f"ALTER TABLE agent_timesheets ADD COLUMN {col} {col_def}")
+            conn.execute(f"ALTER TABLE service_timesheet ADD COLUMN {col} {col_def}")
     conn.commit()
 
-    n_agent = conn.execute("SELECT COUNT(*) FROM agent_timesheets").fetchone()[0]
+    n_agent = conn.execute("SELECT COUNT(*) FROM service_timesheet").fetchone()[0]
     n_anth = conn.execute("SELECT COUNT(*) FROM anthropic_timesheets").fetchone()[0]
     # One-shot backfill: historical Anthropic rows → unified ledger (preserve UNIQUE via OR IGNORE)
     if n_agent == 0 and n_anth > 0:
         conn.execute("""
-            INSERT OR IGNORE INTO agent_timesheets (
+            INSERT OR IGNORE INTO service_timesheet (
                 agent_req_id, task_key_uuid, model_code, candidate_id, batch_id, batch_size,
                 cache_write_tokens, cache_read_tokens, no_cache_prompt_tokens, no_cache_live_tokens,
                 total_no_cache_input_tokens, total_output_tokens,
@@ -2731,30 +2759,47 @@ def _add_timesheet_entry(
     agent_performance: Optional[str] = None,
     failure_note: Optional[str] = None,
     provider: str = "anthropic",
+    request_type: Optional[str] = None,
+    entity_type: Optional[str] = None,
+    entity_id: Optional[str] = None,
+    call_start: Optional[str] = None,
+    call_stop: Optional[str] = None,
+    response_item_count: int = 0,
+    response_char_length: int = 0,
+    completion_status: Optional[str] = None,
 ) -> bool:
-    """Anthropic completions mirror into anthropic_timesheets + agent_timesheets; other providers use agent_timesheets only.
-    Server id must be a catalog server (ValueError otherwise); the SKU need not be catalog-priced (AST-1965)."""
-    if provider not in ALLOWED_TIMESHEET_PROVIDERS:
+    """Anthropic completions mirror into anthropic_timesheets + service_timesheet; others use service_timesheet only.
+    Server id must be a catalog server or TIMESHEET_SEARCH_SERVER_ID (AST-2217); SKU need not be catalog-priced."""
+    if provider not in ALLOWED_TIMESHEET_PROVIDERS and provider != TIMESHEET_SEARCH_SERVER_ID:
         raise ValueError(f"Invalid timesheet provider {provider!r}")
-    row_vals = (
+    if completion_status is None and agent_performance:
+        completion_status = agent_performance
+    # anthropic_timesheets mirror keeps the pre-attribution column set.
+    anth_vals = (
         agent_req_id, task_key_uuid, model_code, candidate_id, batch_id, batch_size,
         cache_write_tokens, cache_read_tokens, no_cache_prompt_tokens, no_cache_live_tokens,
         total_no_cache_input_tokens, total_output_tokens,
         calc_cost_cache_write, calc_cost_cache_read, calc_cost_no_cache_input, calc_cost_output,
         agent_performance, failure_note,
     )
+    svc_vals = anth_vals + (
+        provider, request_type, entity_type, entity_id, call_start, call_stop,
+        response_item_count, response_char_length, completion_status,
+    )
     conn = _get_connection()
     try:
         _ensure_timesheets_schema(conn)
         conn.execute("""
-            INSERT OR IGNORE INTO agent_timesheets (
+            INSERT OR IGNORE INTO service_timesheet (
                 agent_req_id, task_key_uuid, model_code, candidate_id, batch_id, batch_size,
                 cache_write_tokens, cache_read_tokens, no_cache_prompt_tokens, no_cache_live_tokens,
                 total_no_cache_input_tokens, total_output_tokens,
                 calc_cost_cache_write, calc_cost_cache_read, calc_cost_no_cache_input, calc_cost_output,
-                agent_performance, failure_note
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, row_vals)
+                agent_performance, failure_note,
+                provider, request_type, entity_type, entity_id, call_start, call_stop,
+                response_item_count, response_char_length, completion_status
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, svc_vals)
         if provider == "anthropic":
             conn.execute("""
                 INSERT OR IGNORE INTO anthropic_timesheets (
@@ -2764,7 +2809,7 @@ def _add_timesheet_entry(
                     calc_cost_cache_write, calc_cost_cache_read, calc_cost_no_cache_input, calc_cost_output,
                     agent_performance, failure_note
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, row_vals)
+            """, anth_vals)
         conn.commit()
         return True
     except Exception:
@@ -2776,7 +2821,7 @@ def _add_timesheet_entry(
 
 def update_timesheet_platform(
     agent_req_id: str,
-    platform_cost: float,
+    platform_cost: Optional[float],
     native_tokens_prompt: Optional[int],
     native_tokens_completion: Optional[int],
     native_tokens_cached: Optional[int],
@@ -2784,15 +2829,16 @@ def update_timesheet_platform(
     host: Optional[str],
     platform_metadata: Optional[str] = None,
 ) -> int:
-    """Set one agent_timesheets row's platform columns by agent_req_id; stamps platform_reconciled_at.
-    Never touches calc_cost_* or the original token columns. Returns rowcount (0 when no row matches)."""
+    """Set one service_timesheet row's platform columns by agent_req_id; stamps platform_reconciled_at.
+    platform_cost None = stub / not billed (still a completed receipt write). Never touches calc_cost_*
+    or Astral attribution columns. Returns rowcount (0 when no row matches)."""
     def _with_conn() -> int:
         conn = _get_connection()
         try:
             _ensure_timesheets_schema(conn)
             cur = conn.execute(
                 """
-                UPDATE agent_timesheets
+                UPDATE service_timesheet
                 SET platform_cost = ?, native_tokens_prompt = ?, native_tokens_completion = ?,
                     native_tokens_cached = ?, native_tokens_reasoning = ?, host = ?,
                     platform_reconciled_at = ?, platform_metadata = ?
@@ -2822,7 +2868,7 @@ def count_pending_gen_platform_timesheets() -> int:
             _ensure_timesheets_schema(conn)
             row = conn.execute(
                 """
-                SELECT COUNT(*) AS n FROM agent_timesheets
+                SELECT COUNT(*) AS n FROM service_timesheet
                 WHERE agent_req_id LIKE 'gen-%' AND platform_cost IS NULL
                 """,
             ).fetchone()
@@ -2842,7 +2888,7 @@ def list_pending_gen_platform_timesheets() -> List[Dict[str, Any]]:
             rows = conn.execute(
                 """
                 SELECT agent_req_id, candidate_id, batch_id, model_code
-                FROM agent_timesheets
+                FROM service_timesheet
                 WHERE agent_req_id LIKE 'gen-%' AND platform_cost IS NULL
                 ORDER BY created_at ASC
                 """,
@@ -2855,7 +2901,7 @@ def list_pending_gen_platform_timesheets() -> List[Dict[str, Any]]:
 
 
 def backfill_agent_timesheet_costs(server_id: str) -> int:
-    """Recompute calc_cost_* from stored token counts for agent_timesheets rows priced on one catalog server."""
+    """Recompute calc_cost_* from stored token counts for service_timesheet rows priced on one catalog server."""
     get_llm_server(server_id)
     model_codes = tuple(sorted({
         sku for m in LLM_MODEL_CONFIG.values() if m["server"] == server_id for sku in m["pricing"]
@@ -2872,7 +2918,7 @@ def backfill_agent_timesheet_costs(server_id: str) -> int:
                 f"""
                 SELECT agent_req_id, model_code, cache_write_tokens, cache_read_tokens,
                        total_no_cache_input_tokens, total_output_tokens
-                FROM agent_timesheets
+                FROM service_timesheet
                 WHERE model_code IN ({placeholders})
                 """,
                 model_codes,
@@ -2889,7 +2935,7 @@ def backfill_agent_timesheet_costs(server_id: str) -> int:
                 )
                 conn.execute(
                     """
-                    UPDATE agent_timesheets
+                    UPDATE service_timesheet
                     SET calc_cost_cache_write = ?,
                         calc_cost_cache_read = ?,
                         calc_cost_no_cache_input = ?,
@@ -2956,7 +3002,7 @@ def list_timesheets(
                 params.append(agent_performance)
             where = (" WHERE " + " AND ".join(clauses)) if clauses else ""
             rows = conn.execute(
-                f"SELECT * FROM agent_timesheets{where} ORDER BY created_at DESC", params
+                f"SELECT * FROM service_timesheet{where} ORDER BY created_at DESC", params
             ).fetchall()
             return [_row_to_dict(r) for r in rows]
         finally:
@@ -2965,7 +3011,8 @@ def list_timesheets(
 
 
 def sum_cost_by_batch(batch_ids: List[str]) -> Dict[str, float]:
-    """Return {batch_id: total_cost} for the given batch IDs — per row, platform_cost when reconciled, else the calc_cost_* sum."""
+    """Return {batch_id: total_cost} — per row, platform_cost when present (non-null), else calc_cost_* sum.
+    Stub receipts leave platform_cost null so calculated cost still wins (AST-2217)."""
     if not batch_ids:
         return {}
     def _with_conn() -> Dict[str, float]:
@@ -2976,10 +3023,95 @@ def sum_cost_by_batch(batch_ids: List[str]) -> Dict[str, float]:
             rows = conn.execute(
                 f"""SELECT batch_id,
                     SUM(COALESCE(platform_cost, calc_cost_cache_write + calc_cost_cache_read + calc_cost_no_cache_input + calc_cost_output)) AS total
-                    FROM agent_timesheets WHERE batch_id IN ({placeholders}) GROUP BY batch_id""",
+                    FROM service_timesheet WHERE batch_id IN ({placeholders}) GROUP BY batch_id""",
                 batch_ids,
             ).fetchall()
             return {r["batch_id"]: r["total"] for r in rows}
+        finally:
+            conn.close()
+    return _run_with_retry(_with_conn)
+
+
+def count_ledger_timesheet_state(candidate_id: str, state: str = "NEW") -> int:
+    """Count one candidate's dispatch_ledger rows in timesheet_state (null never matches)."""
+    def _with_conn() -> int:
+        conn = _get_connection()
+        try:
+            _ensure_dispatch_ledger_schema(conn)
+            row = conn.execute(
+                """
+                SELECT COUNT(*) AS n FROM dispatch_ledger
+                WHERE candidate_id = ? AND timesheet_state = ?
+                """,
+                (candidate_id, state),
+            ).fetchone()
+            return int(row["n"] or 0)
+        finally:
+            conn.close()
+    return _run_with_retry(_with_conn)
+
+
+def claim_ledger_timesheet_fetching(candidate_id: str) -> List[str]:
+    """Move that candidate's NEW ledger rows to FETCHING; return their batch_ids (lightweight claim)."""
+    def _with_conn() -> List[str]:
+        conn = _get_connection()
+        try:
+            _ensure_dispatch_ledger_schema(conn)
+            rows = conn.execute(
+                """
+                SELECT batch_id FROM dispatch_ledger
+                WHERE candidate_id = ? AND timesheet_state = 'NEW'
+                """,
+                (candidate_id,),
+            ).fetchall()
+            batch_ids = [r["batch_id"] for r in rows]
+            if batch_ids:
+                placeholders = ",".join("?" for _ in batch_ids)
+                conn.execute(
+                    f"""
+                    UPDATE dispatch_ledger SET timesheet_state = 'FETCHING'
+                    WHERE batch_id IN ({placeholders}) AND timesheet_state = 'NEW'
+                    """,
+                    batch_ids,
+                )
+                conn.commit()
+            return batch_ids
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+    return _run_with_retry(_with_conn)
+
+
+def set_ledger_timesheet_state(batch_id: str, state: str) -> None:
+    """Set one ledger row's timesheet_state (must be in LEDGER_TIMESHEET_STATES)."""
+    if state not in LEDGER_TIMESHEET_STATES:
+        raise ValueError(f"Invalid ledger timesheet state {state!r}")
+    update_dispatch_ledger(batch_id, timesheet_state=state)
+
+
+def list_timesheet_rows_for_batches(batch_ids: List[str]) -> List[Dict[str, Any]]:
+    """Timesheet rows for batch_ids with server id (provider) and external id (agent_req_id)."""
+    if not batch_ids:
+        return []
+    def _with_conn() -> List[Dict[str, Any]]:
+        conn = _get_connection()
+        try:
+            _ensure_timesheets_schema(conn)
+            placeholders = ",".join("?" for _ in batch_ids)
+            rows = conn.execute(
+                f"""
+                SELECT agent_req_id, provider, batch_id, candidate_id, request_type,
+                       entity_type, entity_id, model_code, platform_cost,
+                       call_start, call_stop, completion_status
+                FROM service_timesheet
+                WHERE batch_id IN ({placeholders})
+                ORDER BY created_at ASC
+                """,
+                batch_ids,
+            ).fetchall()
+            return [_row_to_dict(r) for r in rows]
         finally:
             conn.close()
     return _run_with_retry(_with_conn)
@@ -6450,6 +6582,7 @@ def _ensure_agent_schema(conn: sqlite3.Connection) -> None:
         conn.execute("""
             CREATE TABLE agent (
                 agent_id TEXT PRIMARY KEY,
+                agent_name TEXT,
                 content TEXT,
                 model_id TEXT,
                 max_tokens INTEGER,
@@ -6460,6 +6593,7 @@ def _ensure_agent_schema(conn: sqlite3.Connection) -> None:
                 provider_only TEXT,
                 provider_ignore TEXT,
                 provider_sort TEXT,
+                requires_structured_output INTEGER,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
@@ -6467,6 +6601,7 @@ def _ensure_agent_schema(conn: sqlite3.Connection) -> None:
     else:
         cols = {row[1] for row in conn.execute("PRAGMA table_info(agent)").fetchall()}
         for col_name, col_def in [
+            ("agent_name", "TEXT"),
             ("model_id", "TEXT"),
             ("max_tokens", "INTEGER"),
             ("quantization", "TEXT"),
@@ -6476,6 +6611,7 @@ def _ensure_agent_schema(conn: sqlite3.Connection) -> None:
             ("provider_only", "TEXT"),
             ("provider_ignore", "TEXT"),
             ("provider_sort", "TEXT"),
+            ("requires_structured_output", "INTEGER"),
         ]:
             if col_name not in cols:
                 try:
@@ -6501,6 +6637,7 @@ def save_agent(
     agent_id: str,
     content: str,
     *,
+    agent_name: Optional[str] = None,
     model_id: Optional[str] = None,
     max_tokens: Optional[int] = None,
     quantization: Optional[str] = None,
@@ -6510,9 +6647,11 @@ def save_agent(
     provider_only: Optional[List[str]] = None,
     provider_ignore: Optional[List[str]] = None,
     provider_sort: Optional[str] = None,
+    requires_structured_output: bool | None = None,
 ) -> None:
     """Upsert an agent row (AST-1955). Settings are type-checked only; on an existing row None leaves a column as is.
-    New rows default provider_allow_fallbacks to True."""
+    New rows default provider_allow_fallbacks to True and requires_structured_output to False.
+    agent_name (AST-2232): display string; None on UPDATE leaves the column; INSERT stores "" when None."""
     settings: Dict[str, Any] = {
         "quantization": quantization,
         "temperature": temperature,
@@ -6521,12 +6660,14 @@ def save_agent(
         "provider_only": provider_only,
         "provider_ignore": provider_ignore,
         "provider_sort": provider_sort,
+        "requires_structured_output": requires_structured_output,
     }
     for name, value in settings.items():
         _check_agent_setting(name, value)
     mid = model_id.strip() if model_id is not None else None
     if mid is not None:
         _check_agent_model_id(mid)
+    aname: Optional[str] = None if agent_name is None else str(agent_name)
     now = _utc_now()
 
     def _with_conn() -> None:
@@ -6540,8 +6681,10 @@ def save_agent(
                 # Default true is applied here, not as a SQL DEFAULT (no backfill of live rows on ensure).
                 if settings["provider_allow_fallbacks"] is None:
                     settings["provider_allow_fallbacks"] = True
-                cols = ["agent_id", "content", "model_id", "max_tokens", *settings, "updated_at"]
-                vals = [agent_id, content, mid, max_tokens,
+                if settings["requires_structured_output"] is None:
+                    settings["requires_structured_output"] = False
+                cols = ["agent_id", "agent_name", "content", "model_id", "max_tokens", *settings, "updated_at"]
+                vals = [agent_id, "" if aname is None else aname, content, mid, max_tokens,
                         *(_agent_setting_to_db(n, v) for n, v in settings.items()), now]
                 conn.execute(
                     f"INSERT INTO agent ({', '.join(cols)}) VALUES ({', '.join('?' * len(cols))})",
@@ -6550,6 +6693,9 @@ def save_agent(
             else:
                 sets = ["content = ?", "updated_at = ?"]
                 params: List[Any] = [content, now]
+                if aname is not None:
+                    sets.append("agent_name = ?")
+                    params.append(aname)
                 # None leaves the stored value (same rule max_tokens always followed).
                 for name, value in {"model_id": mid, "max_tokens": max_tokens, **settings}.items():
                     if value is not None:
@@ -6590,9 +6736,10 @@ def list_agents() -> List[Dict[str, Any]]:
             _ensure_agent_schema(conn)
             _ensure_agent_task_schema(conn)
             rows = conn.execute("""
-                SELECT agent_id, LENGTH(content) AS content_length,
+                SELECT agent_id, agent_name, LENGTH(content) AS content_length,
                        model_id, max_tokens, quantization, temperature, reasoning_effort,
-                       provider_allow_fallbacks, provider_only, provider_ignore, provider_sort, updated_at,
+                       provider_allow_fallbacks, provider_only, provider_ignore, provider_sort,
+                       requires_structured_output, updated_at,
                        (SELECT COUNT(*) FROM agent_task WHERE agent_task.agent_id = agent.agent_id) AS task_count
                 FROM agent ORDER BY agent_id
             """).fetchall()
@@ -6603,7 +6750,7 @@ def list_agents() -> List[Dict[str, Any]]:
     return _run_with_retry(_with_conn)
 
 
-_UPDATE_AGENT_ALLOWED = frozenset({"content", "model_id", "max_tokens", *AGENT_SETTING_COLUMNS})
+_UPDATE_AGENT_ALLOWED = frozenset({"content", "agent_name", "model_id", "max_tokens", *AGENT_SETTING_COLUMNS})
 
 
 def update_agent(agent_id: str, **kwargs: Any) -> int:
@@ -7502,15 +7649,30 @@ def _ensure_agent_data_schema(conn: sqlite3.Connection) -> None:
     _agent_data_schema_ensured = True
 
 
-def _ensure_telescope_data_schema(conn: sqlite3.Connection) -> None:
-    """Create telescope_data table + index if not present. Idempotent."""
-    global _telescope_data_schema_ensured
-    if _telescope_data_schema_ensured:
+def _ensure_web_data_schema(conn: sqlite3.Connection) -> None:
+    """Create web_data table + index if not present. Idempotent."""
+    global _web_data_schema_ensured
+    if _web_data_schema_ensured:
         return
-    # New table (AST-2131) — no legacy ALTER block; IF NOT EXISTS keeps re-runs no-ops.
+    # AST-2209: one-time rename of the legacy telescope_data table (+ PK column, index, and the
+    # jd_telescope_data_id job_data key). Gated on old-present / new-absent so re-runs are no-ops.
+    names = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type IN ('table', 'index')")}
+    if "telescope_data" in names and "web_data" not in names:
+        conn.execute("ALTER TABLE telescope_data RENAME TO web_data")
+        conn.execute("ALTER TABLE web_data RENAME COLUMN telescope_data_id TO web_data_id")
+        # Old index follows the table on rename; drop it so CREATE INDEX below re-adds it under the new name.
+        conn.execute("DROP INDEX IF EXISTS idx_telescope_data_candidate_created")
+        if "job" in names:
+            conn.execute("""
+                UPDATE job SET job_data = json_remove(
+                    json_set(job_data, '$.jd_web_data_id', json_extract(job_data, '$.jd_telescope_data_id')),
+                    '$.jd_telescope_data_id')
+                WHERE json_valid(job_data) AND json_type(job_data, '$.jd_telescope_data_id') IS NOT NULL
+            """)
+    # IF NOT EXISTS keeps re-runs no-ops (AST-2131).
     conn.execute("""
-        CREATE TABLE IF NOT EXISTS telescope_data (
-            telescope_data_id TEXT PRIMARY KEY,
+        CREATE TABLE IF NOT EXISTS web_data (
+            web_data_id TEXT PRIMARY KEY,
             candidate_id      TEXT,
             url               TEXT,
             data_type         TEXT NOT NULL,
@@ -7519,11 +7681,11 @@ def _ensure_telescope_data_schema(conn: sqlite3.Connection) -> None:
         )
     """)
     conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_telescope_data_candidate_created "
-        "ON telescope_data (candidate_id, created_at)"
+        "CREATE INDEX IF NOT EXISTS idx_web_data_candidate_created "
+        "ON web_data (candidate_id, created_at)"
     )
     conn.commit()
-    _telescope_data_schema_ensured = True
+    _web_data_schema_ensured = True
 
 
 def _find_earliest_agent_data_content_match(
@@ -8147,7 +8309,8 @@ def _ensure_dispatch_ledger_schema(conn: sqlite3.Connection) -> None:
                 prompt_blocks     TEXT,
                 host              TEXT,
                 llm_call_seconds  REAL,
-                llm_failure_class TEXT
+                llm_failure_class TEXT,
+                timesheet_state   TEXT
             )
         """)
         conn.commit()
@@ -8167,6 +8330,8 @@ def _ensure_dispatch_ledger_schema(conn: sqlite3.Connection) -> None:
             # AST-2008: last LLM call's duration (s) and failure class (NULL = success). DDL only, old rows NULL.
             ("llm_call_seconds",  "REAL"),
             ("llm_failure_class", "TEXT"),
+            # AST-2217: receipt queue state (nullable — historical rows stay null).
+            ("timesheet_state",   "TEXT"),
         ]
         for col, col_def in migrations:
             if col not in existing:
@@ -8206,6 +8371,7 @@ _LEDGER_UPDATE_COLS = {
     "total_processed", "total_passed", "total_failed", "total_errors",
     "agent_performance", "agent_note", "total_cost", "entity_cost", "prompt_blocks",
     "batch_size", "host", "llm_call_seconds", "llm_failure_class",
+    "timesheet_state",
 }
 
 
@@ -8829,7 +8995,7 @@ _UPSERT_SCHEMA_ENSURE_FLAGS: dict[str, tuple[str, ...]] = {
     "dispatch_ledger": ("_dispatch_ledger_schema_ensured",),
     "dispatch_task": ("_dispatch_task_schema_ensured",),
     "job": ("_job_schema_ensured",),
-    "telescope_data": ("_telescope_data_schema_ensured",),
+    "web_data": ("_web_data_schema_ensured",),
 }
 
 _UPSERT_LAZY_SCHEMA_HANDLERS: dict[str, Callable[[sqlite3.Connection], None]] = {
@@ -8845,7 +9011,7 @@ _UPSERT_LAZY_SCHEMA_HANDLERS: dict[str, Callable[[sqlite3.Connection], None]] = 
     "dispatch_ledger": _ensure_dispatch_ledger_schema,
     "dispatch_task": _ensure_dispatch_task_schema,
     "job": _ensure_job_schema,
-    "telescope_data": _ensure_telescope_data_schema,
+    "web_data": _ensure_web_data_schema,
 }
 
 

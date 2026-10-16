@@ -401,7 +401,7 @@ Rename craft task key **`craft_company_prefilter`** → **`craft_prefilter_rubri
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Schema example | `src/utils/config.py` (`stringify_response_schema`) | `tests/component/utils/test_config.py::TestStringifyResponseSchema::test_prefilter_company_schema_shows_bracket_link_set_tails` |
+| Schema example (retired **AST-2177** — grader envelope is `agent_performance` only) | `src/utils/config.py` (`stringify_response_schema`) | `tests/component/utils/test_config.py::TestStringifyResponseSchema::test_prefilter_company_schema_has_no_encoded_link_tails` |
 | Output type key | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst507EncodedPrefilterConfig::test_prefilter_company_grades_encoded` |
 
 ---
@@ -4933,7 +4933,7 @@ All 8 new/revised nodes red on pre-AST-2024 `config.py` / `agent_task.json`, gre
 
 **Parent:** [AST-2055](https://linear.app/astralcareermatch/issue/AST-2055) (fix child [AST-2061](https://linear.app/astralcareermatch/issue/AST-2061)). **Publish:** `origin/sub/AST-2055/AST-2062-estelle-pinhole-tests`.
 
-AST-2061 config: `CONTACT_CONFIG["skills"] = {}` (map kept for `contact_skills()` / admin routes), `CONTACT_CONFIG["allowed_channel_types"] = ("im", "group")` with import-time asserts (tuple, Slack vocabulary, never `"channel"`), `create_contact_meteorite` removed from `CONTACT_TASK_CONFIG`, and the `_CONTACT_PINHOLE_HANDLERS` allowlist + import-time assert (every task/command handler listed; `write` kinds only under `src.core.meteorite.`). Contact behavior: [`../core/contact.md`](../core/contact.md) § AST-2062.
+AST-2061 config: `CONTACT_CONFIG["skills"] = {}` (map kept for `contact_skills()` / admin routes), `CONTACT_CONFIG["allowed_channel_types"] = ("im", "group")` with import-time asserts (tuple, Slack vocabulary, never `"channel"`), `create_contact_meteorite` removed from `CONTACT_TASK_CONFIG`, and the `_CONTACT_PINHOLE_HANDLERS` allowlist + import-time assert (every task/command handler listed; `write` kinds only under `src.core.meteorite.` — **amended by § AST-2210**: `write meteorite` under `src.core.meteorite.` or `write artifact`). Contact behavior: [`../core/contact.md`](../core/contact.md) § AST-2062.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
@@ -5031,15 +5031,15 @@ Config only, no branches. `line` is appended to `RESUME_STRUCTURE_BODY_FORMATS`.
 
 Manifest: [`../core/tracker.md`](../core/tracker.md) § AST-2081.
 
-### AST-2131 · AST-2130 (TELESCOPE_DATA_CONFIG + jd_telescope_data_id)
+### AST-2131 · AST-2130 (WEB_DATA_CONFIG + jd_web_data_id)
 
-Config literals plus one module-level guard: every `TELESCOPE_DATA_CONFIG["company_data_id_keys"]` entry must be in `ROSTER_CONFIG["company_data_keys"]`. New block is fully line/branch covered.
+Config literals plus one module-level guard: every `WEB_DATA_CONFIG["company_data_id_keys"]` entry must be in `ROSTER_CONFIG["company_data_keys"]`. New block is fully line/branch covered.
 
 | Area | Component tests |
 | --- | --- |
-| `data_types` id→value shape (`VISIBLE_TEXT`, `PAGE_LINKS`, reserved `DOM_CONTENT`); exact id-key tuple ⊆ `company_data_keys` | new **`TestAst2131TelescopeDataConfig::test_data_types_and_id_keys`** |
-| `TRACKER_CONFIG["job_data_keys"]["jd_telescope_data_id"]`; `job_description` unchanged | **`TestAst2131TelescopeDataConfig::test_job_data_keys_gain_jd_telescope_data_id`** |
-| Guard fires when an id key leaves `company_data_keys` (AST-2105 `_splice_exec` re-exec) | **`TestAst2131TelescopeDataConfig::test_guard_rejects_id_key_missing_from_company_data_keys`** |
+| `data_types` id→value shape (`VISIBLE_TEXT`, `PAGE_LINKS`, reserved `DOM_CONTENT`); exact id-key tuple ⊆ `company_data_keys` | new **`TestAst2131WebDataConfig::test_data_types_and_id_keys`** |
+| `TRACKER_CONFIG["job_data_keys"]["jd_web_data_id"]`; `job_description` unchanged | **`TestAst2131WebDataConfig::test_job_data_keys_gain_jd_web_data_id`** |
+| Guard fires when an id key leaves `company_data_keys` (AST-2105 `_splice_exec` re-exec) | **`TestAst2131WebDataConfig::test_guard_rejects_id_key_missing_from_company_data_keys`** |
 
 Pre-existing: 22 `test_config.py` failures identical on `origin/ftr/AST-2130-telescope-data` (removed symbols, e.g. `SURFER_BATCH_CONFIG`, `METEORITE_RETENTION_CONFIG`) — not this ticket.
 
@@ -5070,3 +5070,259 @@ Manifest: [`../data/database/telescope_data.md`](../data/database/telescope_data
 
 **Broken / obsolete:** none (additions only; no new branches in locked `config.py`). Manifest: [`../core/search.md`](../core/search.md) § AST-2173.
 
+### AST-2177 · AST-2172 (structured-output capability registry, grader marker, semantics-only prompts)
+
+`structured_output_capability` on every `LLM_SERVER_CONFIG` entry (all `None` as built) + optional per-model override; `OPENROUTER_STRUCTURED_OUTPUT_OVERRIDES` (`openai/gpt-oss-120b`, `qwen/qwen3-235b-a22b-2507` → provisional `"advisory"`, spike not run per Susan 2026-10-13); `LLM_STRUCTURED_OUTPUT_CAPABILITIES`; `get_structured_output_capability()` (model override → server value; unknown model `ValueError`). The five `grades_encoded*` output types carry `structured_output: True` + `extra_fields` (vet adds `grade_letters` / `confidence_range (1, 5)`); `payload_instructions` are semantics only (`_GRADE_SEMANTICS`, `_CONFIDENCE_SCALE_LINES`); `_ENCODED_GRADE_SET_COMPLETENESS` deleted; `stringify_response_schema` shows `agent_performance` only for grader types; `prompt_prefix` bytes unchanged + new `prompt_prefix_structured` (rules without the envelope sentence). Nine grader `cache_prompt` rows in `data/admin/agent_task.json` lose encoded-line text (catalog side: [`../core/repo_admin_json.md`](../core/repo_admin_json.md) § AST-2177).
+
+| Area | Component tests |
+| --- | --- |
+| Capability values allowed; grader slugs stay selectable; server fallback; model override wins; unknown model raises (both lookup branches) | new **`TestAst2177StructuredOutputConfig`** — `test_capability_values_are_allowed_everywhere`, `test_current_grader_models_stay_selectable`, `test_lookup_falls_back_to_server_value`, `test_model_override_wins_over_server`, `test_unknown_model_raises` |
+| Marker is exactly the five grader types; `extra_fields` per type; scale lines kept + no encoding text (`stat.agent.confidence-bounds`); `prompt_prefix` / `prompt_prefix_structured` split | same class — `test_structured_output_marker_is_exactly_the_grader_types`, `test_extra_field_declarations`, `test_grader_instructions_keep_confidence_scale_without_encoding`, `test_prompt_prefix_split` |
+| Grader envelope = `agent_performance` only | revised **`TestStringifyResponseSchema::test_grader_types_show_agent_performance_only`** (was `test_encoded_meta_notes_and_default_encoded_examples`) · **`::test_prefilter_company_schema_has_no_encoded_link_tails`** (was AST-697 `test_prefilter_company_schema_shows_bracket_link_set_tails`) |
+| `{$OUTPUT_INSTRUCTIONS}` = tool + scale, no grade segments | revised **`TestResolveTokens::test_output_type_token_uses_task_instructions`** |
+| Vet output type: marker, `website` extra field, A–F letters, confidence 1–5 | revised **`TestAst505InflowDiscoveryConfig::test_vet_grades_encoded_vet_meta_output_type`** |
+| AST-1154 completeness: never-omit rule now in `_GRADE_SEMANTICS`; shared constant retired | revised **`TestAst1154EncodedGradeSetCompleteness::test_shared_clause_on_multi_vector_encoded_types`** · **`::test_grade_count_not_template_on_multi_vector_types`** (`test_clause_absent_from_vet_meta_and_grades_json` unchanged) |
+
+**Broken / obsolete (revised this pass):** the 6 `test_config.py` functions above (red on tip before revision, encoded-line assertions). **Masked drift, revised:** `TestResolveTokens::test_resolves_candidate_config_output_and_chain_tokens` asserted `"agent_payload"` for `grade_get` — now `agent_performance` present / `agent_payload` absent; the test stays a pre-existing red at its earlier `"Hi Ada"` line (`{$FIRST_NAME}` resolves empty), not this ticket. Repro check: every revised/new function above is red with `01c1478eb`'s `config.py` + `agent_task.json` swapped in, green on tip.
+
+#### QA test manifest (AST-2177)
+
+1. **Must pass** (revised + new, both files):
+   ```bash
+   ASTRAL_PYTHON=<venv python> scripts/testing/run_component_tests.sh \
+     tests/component/utils/test_config.py::TestAst2177StructuredOutputConfig \
+     tests/component/utils/test_config.py::TestStringifyResponseSchema \
+     tests/component/utils/test_config.py::TestResolveTokens::test_output_type_token_uses_task_instructions \
+     tests/component/utils/test_config.py::TestAst505InflowDiscoveryConfig::test_vet_grades_encoded_vet_meta_output_type \
+     tests/component/utils/test_config.py::TestAst1154EncodedGradeSetCompleteness \
+     tests/component/core/test_repo_admin_json.py::TestAst2177GraderPromptsSemanticsOnly \
+     tests/component/core/test_repo_admin_json.py::TestAst1154GradedTaskCompletenessPrompts \
+     tests/component/core/test_repo_admin_json.py::TestAst1910EvaluateJdQcNeverXPrompt::test_catalog_evaluate_jd_cache_prompt_qc_exception
+   ```
+2. **Pre-existing reds, name-skipped:** `TestResolveTokens::test_resolves_candidate_config_output_and_chain_tokens` (fails at `"Hi Ada"`); `TestAst1910EvaluateJdQcNeverXPrompt::test_fixture_evaluate_jd_row_lockstep_with_catalog` (AST-756 fixture ≠ catalog, red before this ticket).
+3. **No-new-reds gate** over the 15 files that read the touched config / catalog: `test_config.py`, `test_agent.py`, `test_roster.py`, `test_consult.py`, `test_candidate.py`, `test_anthropic.py`, `test_repo_admin_json.py`, `test_llm_compat.py`, `test_cost_calculator.py`, `test_api_candidate.py`, `test_api_admin.py`, `test_remap_agent_settings.py`, `test_meteorite.py`, `test_ast1467_gaze_email_retire.py`, `test_agent_ast1879.py`. Baseline = same run with `git checkout 01c1478eb -- src/utils/config.py data/admin/agent_task.json` (restore after). QA run: 219 failed both sides, identical sets; `test_roster.py::TestJobSiteDistinct674` flips 3↔4 cases by run order (4/4 red in isolation on the pre-build tree too) — not this ticket.
+4. **No integration scenario touched** (`tests/integration/scenarios/test_candidate_nav_api.py` does not read grader config).
+
+**Bible shasums (after publish):** `git show origin/sub/AST-2172/AST-2177-capability-registry-grader-marker-prompts:docs/test-bible/<path> | shasum` for `utils/config.md`, `core/repo_admin_json.md`, `core/consult.md`, `core/agent.md`.
+
+
+### AST-2180 · AST-2172
+
+**Revised:** `TestAst1055MeteoriteLikeUpshotTasks::test_rubric_owner_batch_and_encoded_membership` no longer reads the retired agent encoded-batch set. It asserts that `meteorite_like`'s output type carries `structured_output: True`. Manifest: [`../core/agent.md`](../core/agent.md) § AST-2180.
+
+### AST-2210 · AST-2206 (context command registry, generated commands, draft/revise tasks, pinhole amendment)
+
+**Parent:** [AST-2206](https://linear.app/astralcareermatch/issue/AST-2206). **Publish:** `origin/sub/AST-2206/AST-2210-registry-estelle-prompts`. Plan: `docs/features/contact/ast-2210-context-command-registry-and-estelle-prompts.md`.
+
+Config only, no handlers. `CONTACT_CONTEXT_COMMAND_CONFIG` (six suffixes → `artifact_key` / `draft_task` / `label`; import-time asserts: token-shaped suffix, non-empty fields, `draft_task` in `TASK_CONFIG`, one artifact key per row, every artifact key in `ARTIFACT_CONFIG`) × `_CONTACT_CONTEXT_COMMAND_VERBS` generates the 18 `draft-`/`save-`/`show-<suffix>` entries in `CONTACT_CONFIG["commands"]`. Optional entry fields + asserts: `payload_optional` (bool; draft/show only), `private_channel_only` (bool; all 18), `artifact_key` (non-empty str). Draft entries carry `reply_placement: "always_no_share"`. New reply texts `private_channel_only_reply_text` / `unmapped_channel_reply_text`. Six `draft_context_*` CRAFT tasks + `contact_draft_revise` CHAT task, none with `artifact_key` (drafting never saves). `CONTACT_DRAFT_THREAD_CONFIG["revise_task_key"]`. Pinhole: show `read artifact`, save `write artifact`, draft `read artifact (LLM draft, no artifact write)`; write-kind assert amended to `write meteorite` (under `src.core.meteorite.`) or `write artifact`. Seven `data/admin/agent_task.json` rows: [`../core/repo_admin_json.md`](../core/repo_admin_json.md) § AST-2210.
+
+**Interim (plan-accepted):** handlers resolve "unavailable" and `payload_optional` is inert in the runner until siblings **AST-2211** / **AST-2212** — not a product bug on this child.
+
+| Area | Component tests |
+| --- | --- |
+| AC 1 exact 18 ids; AC 2 no hand-listed id literal in `config.py`; per-verb handler / mode / `artifact_key` / `private_channel_only` / usage + description / `payload_optional` (absent on save) / `reply_placement` (draft only) | new **`TestAst2210ContextCommandRegistry`** — `test_ac1_*`, `test_ac2_*`, `test_entry_fields_per_verb` |
+| Registry rows resolve; draft + revise tasks carry no `artifact_key`; response schemas; revise key | same — `test_registry_rows_resolve_and_drafts_never_save` |
+| Reply texts (exact, double space deliberate); AC 4 three pinhole rows | same — `test_reply_texts`, `test_ac4_pinhole_rows` |
+| Real import-time asserts (AST-2151 `_splice_exec`, anchors must appear once): non-bool `payload_optional`; unregistered artifact key; duplicate artifact key; `write candidate` kind outside meteorite/artifact | same class (4) |
+| Revised: AC 4 amended write rule + save handler is `write artifact` | **`TestAst2061ContactPinholeConfig::test_every_contact_handler_in_pinhole`** |
+
+**Broken / obsolete this pass (isolated A/B vs `ftr` product):** `TestAst2061ContactPinholeConfig::test_every_contact_handler_in_pinhole` — asserted every `write` kind sits under `src.core.meteorite.`; the parent spec amends that rule. Revised. No other new red across `test_config.py`, `test_repo_admin_json.py`, `test_agent.py`, `test_meteorite.py`, `test_contact.py`.
+
+**Pre-existing red, not this ticket:** 63 failures across `test_config.py` + `test_repo_admin_json.py`, identical on `origin/ftr/AST-2206-contact-context-draft-commands` product. `test_contact.py` / `test_meteorite.py` need `asyncpg` / `nh3` in the interpreter to collect.
+
+**Integration:** none — no `tests/integration/` scenario reads `CONTACT_CONFIG["commands"]` or the pinhole map; do not invent.
+
+## QA test manifest — AST-2210
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst2210ContextCommandRegistry \
+  tests/component/utils/test_config.py::TestAst2061ContactPinholeConfig \
+  tests/component/utils/test_config.py::TestAst2151CheckStatusRegistry \
+  tests/component/core/test_repo_admin_json.py::TestAst2210ContextDraftCatalogRows \
+  tests/component/core/test_repo_admin_json.py::TestAst1072ContactEstelleTurnCatalogRow \
+  -q
+./scripts/testing/run_component_tests.sh tests/component/utils/test_config.py -k pinhole -q
+```
+
+**Pass criterion:** 24 passed on the first command; 6 passed on the `-k pinhole` run (ticket AC 4). Not the zero-arg harness.
+
+**Bible shasum (after publish):** `git show origin/sub/AST-2206/AST-2210-registry-estelle-prompts:docs/test-bible/utils/config.md | shasum`; same for `docs/test-bible/core/repo_admin_json.md`.
+
+### AST-2232 · AST-2226 (agent_name column + Job Description top tab)
+
+**Parent:** [AST-2226](https://linear.app/astralcareermatch/issue/AST-2226). **Publish:** `origin/sub/AST-2226/AST-2232-agent-name-detail-enrichment-tab-config`.
+
+`REPO_ADMIN_JSON_CONFIG` agent columns insert `agent_name` after `agent_id` (keeps AST-2181 `requires_structured_output`). `JOBS_RECOMMENDED_REPORT_TOP_TABS` = analysis → **job_description** → summary → artifacts → discussion → meteorite (first entry still default). Summary sections drop `raw_jd`. Seed `data/admin/agent.json` every row has non-empty `agent_name` and exact column key set. Primary manifest: **`docs/test-bible/core/tracker.md`** § AST-2232.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Tab order + Summary sections (manifest) | `build_state_ui_manifest` | **`TestBuildStateUiManifest::test_ast565_recommended_report_manifest_tabs`** (revised) |
+| Constant tab order | `JOBS_RECOMMENDED_REPORT_TOP_TABS` | **`TestAst1550DiscussionHopKeys::test_top_tabs_discussion_after_artifacts`** (revised) · **`TestAst1691MeteoriteReportConfig`** (unchanged, holds) |
+| Columns + seed names | `REPO_ADMIN_JSON_CONFIG` + `data/admin/agent.json` | **`TestAst1955PlainAgentSettings::test_agent_repo_json_columns_and_seed`** (revised) |
+
+**Broken / obsolete (revised):** Analysis→Summary without `job_description`; Summary `raw_jd`; agent column tuple without `agent_name` / `requires_structured_output`; AST-1955 seed model pin (models drifted on later tickets — pin is now names + column contract).
+
+**Frontend fixture deferral:** `stateUiManifestFixture.ts` still pre-2232 until siblings #2/#3.
+
+**Integration:** none.
+
+### AST-2221 · AST-1201 (base resume chain registry + stage-generic resolvers)
+
+**Parent:** [AST-1201](https://linear.app/astralcareermatch/issue/AST-1201). **Publish:** `origin/sub/AST-1201/AST-2221-base-resume-chain-registry-and-seed-prompts`. Plan: `docs/features/artifacts/ast-2221-base-resume-chain-registry-and-seed-prompts.md`.
+
+Config + seed only (no `src/core/*`). `BASE_RESUME_CHAIN_TASK_KEYS` / `BASE_RESUME_CHAIN_ERROR_STATES` (nine hops, Functional-scope order); nine `TASK_CONFIG` entries (`entity_type: candidate`, JSON schemas; `draft_resume_base` shares `_CRAFT_RESUME_BASE_RESPONSE_SCHEMA` by identity + `artifact_key` `candidate.artifacts.base_resume`; `draft_resume_experiences` reuses `_EXPERIENCE_JOB_ARRAY_FIELD`); ERROR states with priors `REQUESTED_RESUME` only / `progress_rank` 4; `CANDIDATE_STAGE_DISPATCH["requested_resume"]` entry (`shape_the_story` → `REQUESTED_RESUME` → `RESUME_READY`, `auto_mode` False); three resolvers loop every stage entry (`_dispatch_trigger_state_for_task_key`, `_dispatch_entity_type_for_task_key`, `is_valid_candidate_batch_claim_state`). Catalog seed: [`../core/repo_admin_json.md`](../core/repo_admin_json.md) § AST-2221. Sibling **AST-2222** owns the stage runner.
+
+| Area | Component tests |
+| --- | --- |
+| AC 1 nine hops + shell fields; AC 2 schema/`artifact_key` identity; experience field object identity | new **`TestAst2221BaseResumeChainConfig`** — `test_nine_hops_registered`, `test_assembler_reuses_craft_schema_and_artifact_key` |
+| AC 4 ERROR states + priors; AC 5 stage entry; every stage `task_key` in `TASK_CONFIG` | same — `test_error_states_and_priors`, `test_requested_resume_stage_entry` |
+| AC 6 stage-generic resolvers (entry + craft regression); mid-chain KeyError; hop-label claim | same — `test_stage_generic_resolvers`, `test_hop_label_claim_validation` |
+| Revised: artifacts-only “no `requested_resume`” lock retired | **`TestAst972CandidateStageDispatch::test_stage_dispatch_map_and_task_config`** |
+| Revised: AUTO-off covers every stage entry (not only artifacts) | **`TestAst1022HonorAutoOffStageDispatch::test_stage_dispatch_auto_mode_seed_false`** |
+
+**Broken / obsolete this pass:** AST-972 asserted `"requested_resume" not in CANDIDATE_STAGE_DISPATCH` — product now registers that stage. AST-1022 only checked `requested_artifacts["auto_mode"]`.
+
+**Masked, not revised:** `TestAst786AgentTaskRepoJsonSeed` (pinned 57-key set) stays pre-existing red (also missing AST-2210 keys); do not re-pin here.
+
+**Integration:** none — no `tests/integration/` scenario reads `BASE_RESUME_CHAIN_*` or `requested_resume` stage dispatch.
+
+## QA test manifest — AST-2221
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst2221BaseResumeChainConfig \
+  tests/component/utils/test_config.py::TestAst972CandidateStageDispatch \
+  tests/component/utils/test_config.py::TestAst1022HonorAutoOffStageDispatch \
+  tests/component/utils/test_config.py::TestAst1252ArtifactsDispatchChainConfig \
+  tests/component/core/test_repo_admin_json.py::TestAst2221BaseResumeChainCatalogRows \
+  -q
+```
+
+**Pass criterion:** all nodes green on the command above. Not the zero-arg harness / branch-lock gate.
+
+**Bible shasum (after publish):** `git show origin/sub/AST-1201/AST-2221-base-resume-chain-registry-and-seed-prompts:docs/test-bible/utils/config.md | shasum`; same for `docs/test-bible/core/repo_admin_json.md`.
+
+### AST-2217 · AST-2215 (fetch_timesheet registries)
+
+`FETCH_TIMESHEET_CONFIG` (poller defaults: `entity_type` / `trigger_state` / `freq_hrs` None, `auto_mode` False) plus `TIMESHEET_REQUEST_TYPES`, `TIMESHEET_RECEIPT_FIELDS`, `LEDGER_TIMESHEET_STATES`, `TIMESHEET_SEARCH_SERVER_ID`. Reconcile constants left in place for AST-2218.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| New — fetch_timesheet dispatch-row defaults | `FETCH_TIMESHEET_CONFIG` | `TestAst2217FetchTimesheetRegistries::test_fetch_timesheet_config_poller_defaults` |
+| New — request / receipt / ledger / search-server registries | `TIMESHEET_*` / `LEDGER_TIMESHEET_STATES` | `…::test_request_receipt_ledger_registries` |
+
+**Primary manifest:** [`../data/database/timesheets.md`](../data/database/timesheets.md) § AST-2217.
+
+### AST-2218 · AST-2215 (`dispatch_task_admin_defaults` fold for fetch_timesheet)
+
+Mailbox-twin fold: `fetch_timesheet` → `{entity_type, trigger_state}=None`, `sort_by=None`, `batch_call_mode=0`. `is_fetch_timesheet_task_key`. Reconcile constants left in place (unused).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| New — admin defaults null entity/trigger | `dispatch_task_admin_defaults` | `TestAst2218FetchTimesheetAdminDefaults::test_fold_returns_null_entity_trigger` |
+| New — task-key helper | `is_fetch_timesheet_task_key` | `…::test_is_fetch_timesheet_task_key` |
+
+**Primary manifest:** [`../core/timesheets.md`](../core/timesheets.md) § AST-2218.
+
+### AST-2223 · AST-2216
+
+**Parent:** [AST-2216 — Make meteorite text editable (not versioned)](https://linear.app/astralcareermatch/issue/AST-2216). **Publish:** `origin/sub/AST-2216/AST-2223-candidate-meteorite-edit`.
+
+`CANDIDATE_METEORITE_EDIT_CONFIG`: locked `LANDED`, editable columns (incl. `METEORITE_CONFIG["electronic_contact_column"]`), `state_options` = every `METEORITE_STATES` key minus locked, `default_save_state` `CHECK_UNIQUE`, load-time asserts. Core/API: **`docs/test-bible/core/meteorite.md`** · **`docs/test-bible/ui/api/api_meteorite.md`** § AST-2223.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Config block shape + asserts | `src/utils/config.py` | **`TestAst2223CandidateMeteoriteEditConfig`** |
+
+**Broken / obsolete:** none — additive config block.
+
+**Integration:** none — do not invent.
+
+## QA test manifest
+
+See **`docs/test-bible/core/meteorite.md`** § AST-2223 (shared numbered list).
+### AST-2228 · AST-2225 (candidate stage registry + topic vocabulary cutover)
+
+**Parent:** [AST-2225](https://linear.app/astralcareermatch/issue/AST-2225). **Publish:** `origin/sub/AST-2225/AST-2228-candidate-stage-registry`. Plan: `docs/features/candidate/ast-2228-candidate-stage-registry.md`. Core resolver/migrate: [`../core/candidate.md`](../core/candidate.md) § AST-2228.
+
+`stage` on every `CANDIDATE_STATES` entry; revive `PROFILE_READY` / `CONTEXT_READY`; delete four topic-ready(+stale) keys; locked bands (`PAUSE_SEARCH` 5, `RESUME_READY` 4, `PROFILE_READY` 2, `DELETED` 0; craft `ERROR_*` → 4); `CANDIDATE_LEGACY_STATE_MAP` remaps topics onto the revived path (live PROFILE/CONTEXT drop from the map); import-time asserts. No `candidate.stage` column (AC 4 — registry metadata only). Does **not** regroup `NAV_CONFIG` (sibling #3).
+
+| Area | Component tests |
+| --- | --- |
+| Stage on every entry; happy path keys; no topic keys; no profile/context stale; REQUESTED_RESUME priors = CONTEXT_READY; NEW/LIVE_PROMPTS stay retired | revised **`TestAst970CandidateStateRegistry`** |
+| Locked AC 1–3 bands + craft ERROR stage 4 | new **`TestAst2228CandidateStageRegistry`** |
+| Legacy map + remap (topics → PROFILE/CONTEXT; live keys identity) | revised **`TestAst973LegacyCandidateRemap`** |
+| AST-1806 prior snapshot: drop topic keys; pin PROFILE/CONTEXT + REQUESTED_RESUME priors | revised **`TestAst1808RetryRegistryPurge::test_prior_snapshot_pinned`** (`_ast2228_candidate_topic_cutover`) |
+
+**Broken / obsolete this pass:** AST-970 happy-path / stale / retired-name asserts that still named topic states or claimed PROFILE/CONTEXT absent; AST-973 map that remapped PROFILE/CONTEXT → NEW_CANDIDATE; AST-1808 snapshot set equality without topic cutover.
+
+**Integration:** none — no existing scenario asserts topic-ready labels or `CANDIDATE_STATES[*].stage`; do not invent.
+
+## QA test manifest — AST-2228
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst970CandidateStateRegistry \
+  tests/component/utils/test_config.py::TestAst973LegacyCandidateRemap \
+  tests/component/utils/test_config.py::TestAst2228CandidateStageRegistry \
+  tests/component/utils/test_config.py::TestAst1808RetryRegistryPurge::test_prior_snapshot_pinned \
+  tests/component/core/test_candidate.py::TestAst970CandidateStateMachine \
+  tests/component/core/test_candidate.py::TestAst2228CandidateStageAndTopicMigrate \
+  tests/component/core/test_candidate.py::TestCheckContextCompleteExtended::test_returns_true_when_already_at_or_past_context_ready \
+  -q
+```
+
+**Pass criterion:** 28 passed on the narrowed run. Not the zero-arg harness.
+
+**Bible shasum (after publish):** `git show origin/sub/AST-2225/AST-2228-candidate-stage-registry:docs/test-bible/utils/config.md | shasum`; same for `docs/test-bible/core/candidate.md`.
+
+### AST-2245 · AST-2225 (gap — BASE_RESUME_CHAIN_ERROR_STATES stage 3)
+
+**Parent:** [AST-2225](https://linear.app/astralcareermatch/issue/AST-2225). **Publish:** `origin/sub/AST-2225/AST-2245-gap-base-resume-error-stage`. Plan: `docs/features/candidate/ast-2245-gap-base-resume-error-stage.md`.
+
+After AST-2228 × AST-2221 merge, `BASE_RESUME_CHAIN_ERROR_STATES` expansion omitted `"stage"` (import assert red on `ERROR_SHAPE_THE_STORY`, …). Gap adds `"stage": 3` (resume-request prior band). Craft `ERROR_CRAFT_*` stay stage 4. No NAV / readiness / UI / data-model.
+
+| Area | Component tests |
+| --- | --- |
+| Every `CANDIDATE_STATES` entry has `stage`; every `BASE_RESUME_CHAIN_ERROR_STATES` key is stage 3 (+ priors/rank unchanged); craft ERROR stay 4 | new **`TestAst2245BaseResumeErrorStage`** |
+| AST-2221 error registry row also asserts stage 3 | revised **`TestAst2221BaseResumeChainConfig::test_error_states_and_priors`** |
+
+**Broken / obsolete this pass:** AST-2221 `test_error_states_and_priors` omitted stage (revised). **Keeper:** restored **`### AST-2228`** block above (lost on ftr `sync(dev)` of sibling epics).
+
+**Integration:** none — do not invent.
+
+## QA test manifest — AST-2245
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst2245BaseResumeErrorStage \
+  tests/component/utils/test_config.py::TestAst2221BaseResumeChainConfig::test_error_states_and_priors \
+  tests/component/utils/test_config.py::TestAst2228CandidateStageRegistry \
+  -q
+```
+
+**Pass criterion:** 4 passed on the narrowed run. Not the zero-arg harness.
+
+**Bible shasum (after publish):** `git show origin/sub/AST-2225/AST-2245-gap-base-resume-error-stage:docs/test-bible/utils/config.md | shasum`.
+
+### AST-2230 · AST-2225 (stage-gated NAV_CONFIG regroup + recent defaults)
+
+**Parent:** [AST-2225](https://linear.app/astralcareermatch/issue/AST-2225). **Publish:** `origin/sub/AST-2225/AST-2230-stage-gated-nav`. Plan: `docs/features/candidate/ast-2230-stage-gated-nav.md`. API gates: [`../ui/api/api_system.md`](../ui/api/api_system.md) § AST-2230. Hop labels: [`../core/candidate.md`](../core/candidate.md) § AST-2230. Frontend redirect: [`../frontend/components.md`](../frontend/components.md) § AST-2230.
+
+Candidate-facing groups → **Candidate / Criteria / Company / Job Opportunities** (order locked); item `"enabled"` = min stage int; drop Intake/Surfer/Processing/…; `NAV_GROUP_RECENT_DEFAULTS` knobs. Admin Operations/Admin/Tools unchanged. Does **not** edit `CANDIDATE_STATES` vocabulary (#1) or shell chrome (#4).
+
+| Area | Component tests |
+| --- | --- |
+| Facing order + Criteria stage 4 + Job Opportunities rows; dropped labels; recent defaults | new **`TestAst2230StageGatedNavConfig`** |
+| Facing foursome (no Jobs/Companies/Artifacts); no group `visible` | revised **`TestAst970CandidateStateRegistry::test_nav_and_gen_states_use_new_vocab`** |
+| Admin segments after facing foursome | revised **`TestAst1386ThreeSegmentAdminNav`** |
+| Applied / Meteorites under Job Opportunities; meteorite_list dropped | revised **`TestAst1479…`**, **`TestAst1495…`**, **`TestAst1749…`**, **`TestAst1974…::test_nav_jobs_items_exact`** |
+
+**Broken / obsolete this pass:** every assert looking up `NAV_CONFIG` groups labeled Jobs / Companies / Artifacts (listed above).
+
+**Integration:** revised `tests/integration/scenarios/test_candidate_nav_api.py` — see [`../integration/README.md`](../integration/README.md).
+
+## QA test manifest — AST-2230
+
+Primary command: [`../ui/api/api_system.md`](../ui/api/api_system.md) § QA test manifest — AST-2230.

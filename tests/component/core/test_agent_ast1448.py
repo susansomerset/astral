@@ -10,7 +10,7 @@ import pytest
 from src.core import agent as agent_mod
 from src.utils import config as cfg
 
-from tests.component.core.test_agent import _agent_rows, _api_response, _draft_job_resume_ctx
+from tests.component.core.test_agent import _CR_LABELS, _agent_rows, _api_response, _draft_job_resume_ctx, _tool_input
 
 
 @pytest.fixture
@@ -25,7 +25,7 @@ class TestAst1448PersistPromptBeforeProvider:
 
     _OK = {
         "success": True,
-        "parsed_response": {"agent_payload": "0|CRA2"},
+        "parsed_response": _tool_input(),
         "api_response": _api_response("ok"),
         "timesheet": {},
     }
@@ -66,7 +66,7 @@ class TestAst1448PersistPromptBeforeProvider:
         out = await agent_mod.do_task(
             "evaluate_jd",
             index="job-1",
-            ctx=_draft_job_resume_ctx(),
+            ctx={**_draft_job_resume_ctx(), "vector_labels": dict(_CR_LABELS)},
         )
         assert out["success"] is True
         assert events[:2] == ["prompt", "provider"]
@@ -89,7 +89,7 @@ class TestAst1448PersistPromptBeforeProvider:
             await agent_mod.do_task(
                 "evaluate_jd",
                 index="job-1",
-                ctx=_draft_job_resume_ctx(),
+                ctx={**_draft_job_resume_ctx(), "vector_labels": dict(_CR_LABELS)},
             )
         assert events == ["prompt", "provider"]
 
@@ -109,7 +109,7 @@ class TestAst1448PersistPromptBeforeProvider:
         out = await agent_mod.do_task(
             "evaluate_jd",
             index="job-1",
-            ctx=_draft_job_resume_ctx(),
+            ctx={**_draft_job_resume_ctx(), "vector_labels": dict(_CR_LABELS)},
             store_agent_data=False,
         )
         assert out["success"] is True
@@ -141,7 +141,7 @@ class TestAst1448PersistPromptBeforeProvider:
         out = await agent_mod.do_task(
             "evaluate_jd",
             index="job-1",
-            ctx=_draft_job_resume_ctx(),
+            ctx={**_draft_job_resume_ctx(), "vector_labels": dict(_CR_LABELS)},
         )
         assert out["success"] is True
         assert events[0] == "prompt-fail"
@@ -192,7 +192,7 @@ class TestAst1448PersistPromptBeforeProvider:
         await agent_mod.do_task(
             "evaluate_jd",
             index="job-1",
-            ctx=_draft_job_resume_ctx(),
+            ctx={**_draft_job_resume_ctx(), "vector_labels": dict(_CR_LABELS)},
             debug=True,
         )
         assert "prompt-found" in events
@@ -222,7 +222,7 @@ class TestAst1448PersistPromptBeforeProvider:
         await agent_mod.do_task(
             "evaluate_jd",
             index="job-1",
-            ctx=_draft_job_resume_ctx(),
+            ctx={**_draft_job_resume_ctx(), "vector_labels": dict(_CR_LABELS)},
             debug=False,
         )
         assert not any(c.kwargs.get("debug_flag") for c in spy.call_args_list)
@@ -257,7 +257,7 @@ class TestAst1448PersistPromptBeforeProvider:
                 await agent_mod.do_task(
                     "evaluate_jd",
                     index="job-1",
-                    ctx=_draft_job_resume_ctx(),
+                    ctx={**_draft_job_resume_ctx(), "vector_labels": dict(_CR_LABELS)},
                 )
         finally:
             agent_mod.log_batch_id.reset(t1)
@@ -268,7 +268,7 @@ class TestAst1448PersistPromptBeforeProvider:
             out = await agent_mod.do_task(
                 "evaluate_jd",
                 index="job-1",
-                ctx=_draft_job_resume_ctx(),
+                ctx={**_draft_job_resume_ctx(), "vector_labels": dict(_CR_LABELS)},
             )
         finally:
             agent_mod.log_batch_id.reset(t2)

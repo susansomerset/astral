@@ -1287,7 +1287,7 @@ git diff origin/dev -- src/core/roster.py | grep -n '_apply_prefilter_decoded_co
 
 **Integration:** none.
 
-### AST-2134 · AST-2130 (roster company scrapes + admin preview on telescope_data)
+### AST-2134 · AST-2130 (roster company scrapes + admin preview on web_data)
 
 **Parent:** [AST-2130](https://linear.app/astralcareermatch/issue/AST-2130). **Publish:** `origin/sub/AST-2130/AST-2134-roster-telescope-data`. Plan: `docs/features/foundation/ast-2134-roster-company-scrapes-and-admin-preview-on-telescope-data.md`. Gazer API: [`gazer.md`](gazer.md) § AST-2132. Admin preview: [`../ui/api/api_admin.md`](../ui/api/api_admin.md) § AST-2134.
 
@@ -1314,8 +1314,60 @@ Writers keep via gazer and store row ids: `_fetch_nav_links` / `_fetch_prefilter
 1. `./scripts/testing/run_component_tests.sh tests/component/core/test_roster.py tests/component/core/test_gazer.py tests/component/ui/api/test_api_admin.py -q -k "Ast2134 or TestAst719 or nav_links_saves or website_content_scrapes or TestFetchJobPagesBatch"` — 36 passed.
 2. No-regression: the same three files plus `tests/component/core/{test_gazer_scrape_failure,test_bootstrap,test_consult,test_dispatcher}.py`, `tests/component/utils/test_debug_logging.py`, `tests/component/ui/api/test_api_system.py` — failure set equals the ftr baseline (98 nodes, counts above).
 3. AC8 (AST-2133, closed here): `git grep -n -E "\.get\((jd_key|[\"']job_description[\"'])" -- src/core src/ui/api ':!src/core/tracker.py'` → empty.
-4. Live DB untouched: run with `ASTRAL_DB_DIR=<empty tmp dir>`; `telescope_data` row count in `~/astral/data/astral.db` is the same before and after items 1–2, and the tmp dir gains no `telescope_data` table from item 2's roster run.
+4. Live DB untouched: run with `ASTRAL_DB_DIR=<empty tmp dir>`; `web_data` row count in `~/astral/data/astral.db` is the same before and after items 1–2, and the tmp dir gains no `web_data` table from item 2's roster run.
 
 **Pass criterion:** items 1–4 — narrowed run, not the zero-arg harness / branch-lock gate (pre-existing reds on the ftr tip).
 
 **Bible shasum (after publish):** `git show origin/sub/AST-2130/AST-2134-roster-telescope-data:docs/test-bible/core/roster.md | shasum`
+
+### AST-2180 · AST-2172 (light-check reasons on roster graders)
+
+**New:** **`TestAst2180LightCheckReasons`** (5), all red before the build:
+- The vet single blurb is renumbered to row `000`, and a `decode_failures` reason becomes the warning and the error.
+- Vet batch warns the failed hit with its own reason, not `missing results row hit_index=N`.
+- A prefilter single with a light-check failure takes the retry route with `decode: <reason>`.
+- In a prefilter batch, the decode-failed company retries with `decode: <reason>`, not `missing id`, while its sibling applies its verdict.
+- `_fetch_prefilter_notes` sends the candidate's real rubric codes.
+
+The existing `prefilter_company` tests that go through `keep_page_scrape` are pre-existing reds (`ASTRAL_DATABASE_URL not set`), so the new single test stubs `scrape_company_homepage_content` and `gazer.keep_page_scrape`. Manifest: [`agent.md`](agent.md) § AST-2180.
+
+### AST-2219 · AST-2215 (DISPATCH_SEARCH at CSE call sites; return-shape mock fix)
+
+Child AC **10**. Both roster CSE sites record via `record_search_timesheet_entry` (discovery always; resolve only when `log_batch_id` set). Mocks must return `GoogleCseSearchResult`. Pace debug now asserts `_pace_debug` → `logger.debug` (retired `debug_index` streaming).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| New — AC10 discovery 7 hits → one DISPATCH_SEARCH | `run_inflow_discovery_batch` | `TestAst2219SearchTimesheetRecording::test_ac10_discovery_seven_hits_records_dispatch_search` |
+| New — resolve records when batch context set | `resolve_company_website` | `…::test_resolve_records_when_log_batch_id_set` |
+| New — resolve skips record without batch | `resolve_company_website` | `…::test_resolve_skips_record_without_batch` |
+| Revised — CSE mocks → `_cse_result(...)`; happy path land_state DISCOVERED | discovery / resolve suites | `TestAst505*` / `TestAst506*` / `TestAst837*` / `TestAst839*` / `TestAst877*` |
+
+## QA test manifest (AST-2219)
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/external/test_google_cse.py \
+  tests/component/core/test_timesheets.py::TestRecordSearchTimesheetEntry \
+  tests/component/core/test_timesheets.py::TestAst2219GoogleCseReceiptRoute \
+  tests/component/core/test_roster.py::TestAst2219SearchTimesheetRecording \
+  tests/component/core/test_roster.py::TestAst505InflowDiscovery::test_run_batch_happy_path \
+  tests/component/core/test_roster.py::TestAst505InflowDiscovery::test_run_batch_cse_failure_continues \
+  tests/component/core/test_roster.py::TestAst505InflowDiscovery::test_run_batch_searches_only_stale_terms \
+  tests/component/core/test_roster.py::TestAst505InflowDiscovery::test_run_batch_freq_hrs_zero_searches_fresh_terms \
+  tests/component/core/test_roster.py::TestAst837CsePaceDebug \
+  tests/component/core/test_roster.py::TestAst839CseDebugStreaming \
+  tests/component/core/test_roster.py::TestAst506InflowResolve \
+  tests/component/core/test_roster.py::TestAst775InflowDiscoveryRecordNew::test_run_batch_no_deduped_hits_is_success \
+  tests/component/core/test_roster.py::TestAst877OriginatingSearchTerm::test_run_batch_stamps_term_from_cse_loop \
+  tests/component/core/test_roster.py::TestAst877OriginatingSearchTerm::test_run_batch_debug_emits_originating_search_term
+```
+
+**Pass criterion:** pytest green on the nodes above. Not the zero-arg harness.
+
+**Bible shasums (publish tip after this docs commit):**
+
+```text
+docs/test-bible/external/google_cse.md 86a58edf4b2f75c1c4ce8dc511237fbb88c6c2c3
+docs/test-bible/core/timesheets.md     0d673050c050303311b3d5dbf5b51506f424f9af
+# roster.md: git show origin/sub/AST-2215/AST-2219-google-search-receipt-stub:docs/test-bible/core/roster.md | shasum
+```

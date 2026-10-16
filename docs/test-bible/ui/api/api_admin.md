@@ -1223,8 +1223,60 @@ Tests run the **real** `rubric_dispatch_error` behind a stubbed `src.data.databa
   tests/component/ui/api/test_api_admin.py::TestApiAdminBranchGaps::test_update_dispatch_task_scored_score_floor_and_auto_mode_success
 ```
 
-### AST-2134 · AST-2130 (ad-hoc preview on telescope_data)
+### AST-2134 · AST-2130 (ad-hoc preview on web_data)
 
-`_build_adhoc_live_content` company branch resolves `TELESCOPE_DATA_CONFIG["company_data_id_keys"]` via `gazer.resolve_telescope_value` (legacy text passes through); `website_content` page text is stripped in the join. Job branch reads `tracker.compose_job_description` (single-entity falls back to `raw_job_listing`; `qualify_meteorite` CONTENT lines); LIKE's company context resolves `website_content` ids.
+`_build_adhoc_live_content` company branch resolves `WEB_DATA_CONFIG["company_data_id_keys"]` via `gazer.resolve_telescope_value` (legacy text passes through); `website_content` page text is stripped in the join. Job branch reads `tracker.compose_job_description` (single-entity falls back to `raw_job_listing`; `qualify_meteorite` CONTENT lines); LIKE's company context resolves `website_content` ids.
 
-**New:** **`TestAst2134AdhocPreviewTelescope`** (6; real `telescope_data` rows on ui `sqlite_in_memory`): AC6 `prefilter_company` / `select_job_page` / `gaze` byte-identical for a legacy text blob vs the same content as ids (incl. a raw unstripped fresh capture), website_content fallback, gone capture → empty, composed JD in job previews, LIKE context. Manifest: [`../../core/roster.md`](../../core/roster.md) § AST-2134.
+**New:** **`TestAst2134AdhocPreviewTelescope`** (6; real `web_data` rows on ui `sqlite_in_memory`): AC6 `prefilter_company` / `select_job_page` / `gaze` byte-identical for a legacy text blob vs the same content as ids (incl. a raw unstripped fresh capture), website_content fallback, gone capture → empty, composed JD in job previews, LIKE context. Manifest: [`../../core/roster.md`](../../core/roster.md) § AST-2134.
+
+### AST-2180 · AST-2172 (adhoc test sends the forced tool)
+
+`adhoc_test` builds `grade_ctx` (with `vector_labels` from the rubric) and passes `forced_tool` to the run. It hydrates only a dict reply (a hydrate error lands in `hydrated.error`). A grader with no codes returns 400 before the run. **New:** **`TestAst2180AdhocForcedTool`** (5: job rows, company rows, non-object reply not hydrated, no-codes 400, non-grader `forced_tool=None`). **Revised:** `TestAdhocRoutes::test_adhoc_preview_and_test` stubs `_rubric_criteria_for_cfg` and asserts the hydrate-error tail. **Retired:** `test_adhoc_test_decodes_encoded_payload`, `test_adhoc_test_hydrates_encoded_payload_with_entities`, `test_adhoc_test_skips_decode_without_response_text`. Manifest: [`../../core/agent.md`](../../core/agent.md) § AST-2180.
+
+### AST-2181 · AST-2172 (requires structured output — model gate)
+
+**Primary manifest** for AST-2181. Other blocks: [`../../data/database/agents.md`](../../data/database/agents.md) § AST-2181, [`../../core/repo_admin_json.md`](../../core/repo_admin_json.md) § AST-2181, [`../../frontend/pages.md`](../../frontend/pages.md) § AST-2181.
+
+`GET /agents/models` adds `structured_output_capability` (`get_structured_output_capability`) on every model. `create_agent` / `update_agent` call `_structured_output_gate` on the post-save values: body keys win, absent keys keep the stored ones. When `requires_structured_output` is truthy and the model's capability is `None`, the response is 400 naming the model, and nothing is written. Advisory models are allowed, and an unknown model stays a 400. Only the API gates: the data layer and Revert to file do not. Tests use the real data layer (`sqlite_in_memory`); there are no provider calls.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| New — capability on every model, values within `enforced` / `advisory` / `None` | `list_models` | **`TestAst2181StructuredOutputModelGate::test_models_report_capability_for_every_model`** |
+| New — AC 10: `GET /agents/<id>` and the list carry the setting | `get_agent`, `list_agents` | **`::test_get_agent_returns_the_setting`** |
+| New — create: required + `None` model → 400, no row; advisory / off / absent → 201 (absent stores `False`) | `create_agent` | **`::test_create_refuses_incapable_model_when_required`** |
+| New — update: model change, flag on, or both → 400 with row unchanged | `update_agent` | **`::test_update_gates_on_post_put_values_row_unchanged`** (3) |
+| New — update allowed when the flag is turned off in the same PUT, or the model is capable | `update_agent` | **`::test_update_allowed_when_flag_turned_off_or_model_capable`** |
+| New — unknown model with the flag → 400, not 500 | `create_agent`, `update_agent` | **`::test_unknown_model_with_flag_is_400_not_500`** |
+| Revised — exact model dict gains `structured_output_capability` | `list_models` | `TestAdminConfigAndAgents::test_list_models_is_flat_catalog_with_default_output_budget` |
+
+The class's autouse fixture asserts that the two picks (`qwen/qwen3-235b-a22b-2507` advisory, `qwen/qwen3-32b` `None`) still sit on either side of the gate. Every Anthropic model is `None` today: the AST-2177 provider spike was not run (see config).
+
+**Broken / obsolete:** these exact-shape assertions predate the new key and were revised, not retired. `test_list_models_is_flat_catalog_with_default_output_budget`, `test_agents.py` `_agent_repo_row` (2 tests), and 2 `test_AdminAgentPrompts` exact save bodies.
+
+**Repro:** on the ftr product (`origin/ftr/AST-2172-structured-output-graders`) all new and revised Python nodes are red except `TestAst2181RequiresStructuredOutput::test_setting_never_reaches_the_call_tier`, a guard that passes there too by design. In the frontend, the two revised and three new picker / body tests are red. The 400-toast test was already green, because generic API errors reached the toast before this build; it stays as a guard.
+
+**Pre-existing, not this ticket:** Revert to file for agents already fails on dev, because `data/admin/agent.json` rows carry `brain_setting` / `mode` and int `provider_allow_fallbacks`. The plan flagged this for Susan. The real-seed tests in `test_repo_admin_json.py` (`TestAst787…`, `TestAst1878AgentSeedModels`, …) and `test_agents.py::TestAst1955AgentSettings::test_seed_round_trips_and_revert_restores_it` were red before this build and are unchanged. So at UAT, AC 10's "Lucy → true" comes from the checkbox, not the seed.
+
+**Integration:** none. No `tests/integration/` scenario touches agent settings or `/agents/models`.
+
+**AST-2181 QA test manifest:**
+
+```bash
+ASTRAL_DB_DIR=$PWD/data /home/susan/astral/.venv/bin/python -m pytest -q \
+  tests/component/ui/api/test_api_admin.py::TestAst2181StructuredOutputModelGate \
+  tests/component/ui/api/test_api_admin.py::TestAdminConfigAndAgents::test_list_models_is_flat_catalog_with_default_output_budget \
+  tests/component/data/database/test_agents.py::TestAst2181RequiresStructuredOutput \
+  tests/component/data/database/test_agents.py::TestAst782AgentRepoJsonStartup::test_apply_upserts_updates_and_deletes_absent_agents \
+  tests/component/data/database/test_agents.py::TestAst1878AgentModelField::test_repo_json_requires_known_model \
+  tests/component/core/test_repo_admin_json.py::TestAst2181RequiresStructuredOutputSeed
+git checkout -- data/
+cd src/ui/frontend && npx vitest run --config vite.config.ts ../../../tests/component/frontend/pages/test_AdminAgentPrompts.test.tsx
+```
+
+Expect 20 Python passed and 17 frontend passed.
+
+**Regression (no new reds):**
+- `tests/component --continue-on-collection-errors`: the failing-id set on the tip is a subset of the ftr product run (379 before, 363 on the tip; same 5 collection errors). `test_intake::test_background_initiate_failure_writes_assistant_error` is flaky (background-thread timing): it fails only in the full run and passes 3/3 in its own file on both trees.
+- The full vitest suite has no new failures against the ftr TSX with the original tests.
+
+**Pass criterion:** pytest and vitest green on the manifest lines, not the zero-arg harness or branch-lock gate.

@@ -1,3 +1,67 @@
+<!-- linear-archive: AST-2132 archived 2026-10-16 -->
+
+## Linear archive (AST-2132)
+
+**Archived:** 2026-10-16  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-2132/gazer-owns-telescope-data-gazer-scrapes-keep-everything-create-a-new  
+**Status at archive:** Archive  
+**Project:** Astral Foundation  
+**Assignee:** hedy  
+**Priority / estimate:** None / 5  
+**Parent:** AST-2130 — Create a new table telescope_data  
+**Blocked by / blocks / related:** parent: AST-2130; blocks: AST-2134; blocks: AST-2133
+
+### Description
+
+## What this implements
+
+After #1. Gazer's scrape-and-keep calls and resolve helper (legacy-text tolerant); gazer's own writers (`fetch_website`, `fetch_job_pages`, `fetch_jd`) store row ids and its culture cache resolves them. Observable: AC 3, 4, and 5 for the gazer-written keys. Does **not** compose the JD for readers (#3) or change roster paths (#4).
+
+## Citations
+
+`stat.logging.debug`, `stat.logging.warning`, `stat.logging.error`, `stat.logging.info.entity`.
+
+## Scope
+
+`src/core/gazer.py` — new scrape-and-keep functions wrapping the Telescope visible-text and link-list calls core already uses: call Telescope, save every result (with the entity's `candidate_id` and URL) via the new data function, return content plus row id; new resolve helper that takes a stored value (row id, list of `{url, row id}`, or legacy text) and returns content in today's shape (string, enumerated links, or `[{url, content}]`); modified `fetch_website_batch` and `fetch_job_pages_batch` to store row ids; modified the JD save path in `fetch_jd` to keep classification / min-length gates on the pruned text and store the scraped-JD reference instead of JD text; modified culture-cache checks to resolve ids.
+
+## Acceptance criteria
+
+3. **Every pipeline scrape is kept, with candidate.** After `fetch_website` for company X, `telescope_data` has new `VISIBLE_TEXT` and `PAGE_LINKS` rows whose `candidate_id` equals `SELECT candidate_id FROM company WHERE short_name='X'`. A `fetch_jd` run on a job whose page is bot-walled or classified closed still adds its `VISIBLE_TEXT` row. Fail: missing row, or NULL / wrong `candidate_id` on an entity-scoped scrape.
+4. **Gazer is the only owner.** `git grep -n -i "telescope_data" -- src/core src/ui ':!src/core/gazer.py'` shows no import or call of a `database.py` telescope function (only calls into gazer); `git diff origin/dev...HEAD --stat -- src/external/telescope.py service/telescope` is empty. Fail: another module touches the table directly, or the client / service changed.
+5. **Company blobs hold ids, not text.** After `fetch_website` for X, `json_extract(company_data,'$.homepage_text')` and `'$.nav_links'` are uuid-shaped and each resolves to a `telescope_data` row; same for `website_content` / `pjl_scrape_pages` entries (each `{url, id}`) after the culture and PJL fetches. `json_extract(company_data,'$.pjl_assembled_content')` and `'$.pjl_nav_links'` are NULL on newly written companies. Fail: any of those keys holds page text.
+
+## Boundaries
+
+AC 5 here covers gazer-written keys only. No composed-JD readers (#3), roster/admin paths (#4), or data move (#5).
+
+## Notes for planning
+
+Parent: AST-2130. Citations above are the frozen Canon Scope subset for this child.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/AST-2130-telescope-data`, child `sub/AST-2130/AST-2132-gazer-telescope-owner`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-10-10T23:37:46.967Z
+[code-rubric] PROCEED (Commit: 94906c4) gazer owns telescope keeps
+
+#### betty — 2026-10-10T23:32:36.583Z
+`origin/sub/AST-2130/AST-2132-gazer-telescope-owner` @ `94906c494` · gazer tests revised, DB isolated
+
+#### hedy — 2026-10-10T23:25:17.762Z
+`origin/sub/AST-2130/AST-2132-gazer-telescope-owner` @ `479f95521` · 11 `test_gazer.py` reds assert the pre-AST-2130 contract (text vs row id, `get_visible_text` mock shape) — list in plan doc `## Review`.
+
+#### joan — 2026-10-10T23:20:34.445Z
+[plan-rubric] PROCEED (Commit: f9f18dcc) gazer owns telescope_data context_tokens≈52000
+
+#### hedy — 2026-10-10T23:19:28.880Z
+`origin/sub/AST-2130/AST-2132-gazer-telescope-owner` @ `f9f18dcc0` · gazer API, writers keep all
+
+---
+
 # AST-2132 — Gazer owns telescope_data; gazer scrapes keep everything
 
 **Parent:** [AST-2130 — Create a new table telescope_data](https://linear.app/astralcareermatch/issue/AST-2130)

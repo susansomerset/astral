@@ -1,3 +1,64 @@
+<!-- linear-archive: AST-2134 archived 2026-10-16 -->
+
+## Linear archive (AST-2134)
+
+**Archived:** 2026-10-16  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-2134/roster-company-scrapes-and-admin-preview-on-telescope-data-create-a  
+**Status at archive:** Archive  
+**Project:** Astral Foundation  
+**Assignee:** ada  
+**Priority / estimate:** None / 5  
+**Parent:** AST-2130 — Create a new table telescope_data  
+**Blocked by / blocks / related:** parent: AST-2130; blocks: AST-2135
+
+### Description
+
+## What this implements
+
+After #2. Roster's company writers use gazer's scrape-and-keep calls and store row ids; roster readers, `get_company_data` and the admin preview resolve via gazer; derived PJL fields rebuilt on read. Observable: AC 5 for roster-written keys, AC 6 (fresh-write side), AC 11. Does **not** move existing blob data (#5).
+
+## Citations
+
+`stat.logging.debug`, `stat.logging.warning`, `stat.logging.error`, `stat.logging.info.entity`.
+
+## Scope
+
+`src/core/roster.py` — modified `_fetch_nav_links`, `_fetch_website_content`, homepage / prefilter writers and the select-job-page `job_list_visible` writer to use gazer's scrape-and-keep calls and store row ids; modified `_scrape_pjl_page` / PJL merge to keep `{url, row id}` per page; modified readers (homepage presence check, prefilter homepage block, upshot culture text, PJL assembly and nav-link merge) to resolve via gazer; modified `get_company_data` to resolve id-holding keys before the coat-check handler. `src/ui/api/api_admin.py` — modified `_build_adhoc_live_content` company branch to resolve ids via gazer and job branch to use the composed-JD function.
+
+## Acceptance criteria
+
+5. **Company blobs hold ids, not text.** After `fetch_website` for X, `json_extract(company_data,'$.homepage_text')` and `'$.nav_links'` are uuid-shaped and each resolves to a `telescope_data` row; same for `website_content` / `pjl_scrape_pages` entries (each `{url, id}`) after the culture and PJL fetches. `json_extract(company_data,'$.pjl_assembled_content')` and `'$.pjl_nav_links'` are NULL on newly written companies. Fail: any of those keys holds page text.
+6. **Company readers unchanged.** For one company, the admin ad-hoc preview for `prefilter_company`, `select_job_page` and `gaze` returns byte-identical text before migration (text in blob) and after `clear` (ids in blob). Fail: any diff.
+7. **Deleting content needs no blob surgery.** Deleting the `telescope_data` row referenced by a company's `website_content` leaves `company.company_data` byte-identical, and the next `get_company_data(company, "website_content")` re-runs the coat-check fetch instead of raising. Fail: blob changes or read raises.
+
+## Boundaries
+
+AC 5 here covers roster-written keys; AC 6 fresh-write side. No gazer changes (#2), JD composer (#3), or data move (#5).
+
+## Notes for planning
+
+Parent: AST-2130. Citations above are the frozen Canon Scope subset for this child.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/AST-2130-telescope-data`, child `sub/AST-2130/AST-2134-roster-telescope-data`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-10-11T00:32:38.531Z
+[code-rubric] PROCEED (Commit: 08691b0) roster admin telescope resolve
+
+#### betty — 2026-10-11T00:28:47.358Z
+08691b036 — roster telescope tests landed
+
+#### joan — 2026-10-10T23:48:02.383Z
+[plan-rubric] PROCEED (Commit: 56c4455) roster + admin telescope plan
+
+#### ada — 2026-10-10T23:46:04.855Z
+`origin/sub/AST-2130/AST-2134-roster-telescope-data` @ `56c4455eb` · Stage 5 needs AST-2133
+
+---
+
 # AST-2134 — Roster company scrapes and admin preview on telescope_data
 
 **Parent:** [AST-2130 — Create a new table telescope_data](https://linear.app/astralcareermatch/issue/AST-2130)

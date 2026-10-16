@@ -113,11 +113,15 @@ describe("NavigationShell", () => {
     expect(screen.getByText("1h15m")).toBeInTheDocument()
   })
 
-  it("disables candidate select for non-admin users", async () => {
+  // AST-2231: non-admin omits picker entirely (was disabled select).
+  it("omits candidate select for non-admin users", async () => {
     mockShellApis({ isAdmin: false, navGroups: [] })
 
     renderWithProviders(<NavigationShell />)
-    await waitFor(() => expect(screen.getByRole("combobox")).toBeDisabled())
+    await waitFor(() => expect(screen.getByRole("searchbox", { name: "Search" })).toBeInTheDocument())
+    expect(screen.queryByRole("combobox")).not.toBeInTheDocument()
+    expect(document.querySelector(".sidebar-candidate-select")).toBeNull()
+    expect(document.querySelector(".sidebar-candidate-menu")).toBeNull()
     expect(screen.queryByLabelText("Deploy status")).not.toBeInTheDocument()
   })
 
@@ -233,19 +237,15 @@ describe("NavigationShell", () => {
       expect(document.querySelector(".sidebar-candidate-menu-list")).toBeNull()
     })
 
-    it("narrow: non-admin cannot change candidate; deploy footer omitted", async () => {
+    // AST-2231: non-admin has no candidate menu (was disabled checked list).
+    it("narrow: non-admin omits candidate menu; deploy footer omitted", async () => {
       stubNavViewport(false)
       mockShellApis({ isAdmin: false, navGroups: [] })
       renderWithProviders(<NavigationShell />)
-      await waitFor(() => expect(screen.getByRole("button", { name: "Ada Lovelace" })).toBeInTheDocument())
+      await waitFor(() => expect(screen.getByRole("button", { name: "Open navigation" })).toBeInTheDocument())
+      expect(screen.queryByRole("button", { name: "Ada Lovelace" })).not.toBeInTheDocument()
+      expect(document.querySelector(".sidebar-candidate-menu")).toBeNull()
       expect(screen.queryByLabelText("Deploy status")).not.toBeInTheDocument()
-
-      await userEvent.click(screen.getByRole("button", { name: "Ada Lovelace" }))
-      const list = document.querySelector(".sidebar-candidate-menu-list") as HTMLElement
-      const other = within(list).getByRole("button", { name: /Grace Hopper/ })
-      expect(other).toBeDisabled()
-      await userEvent.click(other)
-      expect(localStorage.getItem("astral_selected_candidate")).toBe("c1")
     })
   })
 
@@ -488,6 +488,106 @@ describe("NavigationShell", () => {
       await waitFor(() => expect(screen.getByTestId("location")).toHaveTextContent("/search?q=second"))
       expect(screen.getByRole("button", { name: "Open navigation" })).toHaveAttribute("aria-expanded", "false")
       expect(document.getElementById("app-sidebar")).not.toHaveClass("sidebar--open")
+    })
+  })
+
+  describe("AST-2231 candidate shell UX", () => {
+    const facingGroups = [
+      {
+        label: "Candidate",
+        recent: true,
+        items: [
+          { label: "Profile", path: "/candidate/profile", enabled: true, attention: true },
+          { label: "Intake", path: "/candidate/intake", enabled: false },
+        ],
+      },
+      {
+        label: "Criteria",
+        recent: false,
+        items: [{ label: "Strengths", path: "/artifacts/strengths", enabled: false }],
+      },
+      {
+        label: "Company",
+        recent: false,
+        items: [{ label: "Discovery Terms", path: "/company/discovery", enabled: true }],
+      },
+      {
+        label: "Job Opportunities",
+        recent: true,
+        items: [{ label: "Ready to Apply", path: "/jobs/ready", enabled: true, count: 2 }],
+      },
+    ]
+
+    it("wide admin keeps picker; non-admin has none (AC9)", async () => {
+      stubNavViewport(true)
+      mockShellApis({ isAdmin: true, navGroups: facingGroups })
+      const { unmount } = renderWithProviders(<NavigationShell />, {
+        router: { initialEntries: ["/candidate/profile"] },
+      })
+      await waitFor(() => expect(screen.getByRole("combobox")).toBeInTheDocument())
+      expect(document.querySelector(".sidebar-candidate-select")).not.toBeNull()
+      unmount()
+
+      mockShellApis({ isAdmin: false, navGroups: facingGroups })
+      renderWithProviders(<NavigationShell />, {
+        router: { initialEntries: ["/candidate/profile"] },
+      })
+      await waitFor(() => expect(screen.getByText("Candidate")).toBeInTheDocument())
+      expect(screen.queryByRole("combobox")).not.toBeInTheDocument()
+      expect(document.querySelector(".sidebar-candidate-select")).toBeNull()
+      expect(document.querySelector(".sidebar-candidate-state")).toBeNull()
+    })
+
+    it("null-key first visit expands only recent groups; persisted [] stays collapsed", async () => {
+      stubNavViewport(true)
+      expect(localStorage.getItem("nav:expanded")).toBeNull()
+      mockShellApis({ isAdmin: false, navGroups: facingGroups })
+      const { unmount } = renderWithProviders(<NavigationShell />, {
+        router: { initialEntries: ["/jobs/ready"] },
+      })
+      await waitFor(() => expect(screen.getByText("Candidate")).toBeInTheDocument())
+      // recent=true → items visible without click; recent=false → collapsed
+      expect(screen.getByRole("link", { name: /Profile/ })).toBeInTheDocument()
+      expect(screen.getByRole("link", { name: /Ready to Apply/ })).toBeInTheDocument()
+      expect(screen.queryByText("Strengths")).not.toBeInTheDocument()
+      expect(screen.queryByText("Discovery Terms")).not.toBeInTheDocument()
+      // seed must not write storage (user toggle is the only writer)
+      expect(localStorage.getItem("nav:expanded")).toBeNull()
+      unmount()
+
+      localStorage.setItem("nav:expanded", "[]")
+      mockShellApis({ isAdmin: false, navGroups: facingGroups })
+      renderWithProviders(<NavigationShell />, {
+        router: { initialEntries: ["/jobs/ready"] },
+      })
+      await waitFor(() => expect(screen.getByText("Candidate")).toBeInTheDocument())
+      expect(screen.queryByRole("link", { name: /Profile/ })).not.toBeInTheDocument()
+      expect(screen.queryByRole("link", { name: /Ready to Apply/ })).not.toBeInTheDocument()
+      expect(localStorage.getItem("nav:expanded")).toBe("[]")
+    })
+
+    it("Profile attention mark when API attention true; disabled items stay visible", async () => {
+      stubNavViewport(true)
+      mockShellApis({ isAdmin: false, navGroups: facingGroups })
+      renderWithProviders(<NavigationShell />, {
+        router: { initialEntries: ["/candidate/profile"] },
+      })
+      await waitFor(() => expect(screen.getByRole("link", { name: /Profile/ })).toBeInTheDocument())
+      expect(screen.getByLabelText("Profile needs attention")).toHaveClass("nav-link-attention")
+      // Intake is disabled but present under expanded Candidate
+      expect(screen.getByText("Intake")).toHaveClass("nav-link", "disabled")
+      expect(screen.queryByRole("link", { name: "Intake" })).not.toBeInTheDocument()
+    })
+
+    it("stage-0 empty facing menu is non-interactive (AC8)", async () => {
+      stubNavViewport(true)
+      mockShellApis({ isAdmin: false, navGroups: [] })
+      renderWithProviders(<NavigationShell />, { router: { initialEntries: ["/"] } })
+      await waitFor(() => expect(screen.getByRole("searchbox", { name: "Search" })).toBeInTheDocument())
+      await waitFor(() => expect(document.querySelector(".sidebar-loading")).toBeNull())
+      expect(document.querySelectorAll(".nav-group")).toHaveLength(0)
+      expect(screen.queryByRole("link")).not.toBeInTheDocument()
+      expect(screen.queryByRole("combobox")).not.toBeInTheDocument()
     })
   })
 })

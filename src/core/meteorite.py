@@ -58,6 +58,7 @@ from src.data.database import (
 )
 from src.external.telescope import get_visible_text
 from src.utils.config import (
+    CANDIDATE_METEORITE_EDIT_CONFIG,
     METEORITE_BOT_BLOCKED_NOTIFY_CONFIG,
     METEORITE_CONFIG,
     METEORITE_EMAIL_MAILBOX_CONFIG,
@@ -2495,6 +2496,92 @@ def apply_paste(meteorite_id: int, pasted_text: str, *, debug: bool = False) -> 
     update_meteorite(meteorite_id, content=content, state="READY", error=None)
     _meteorite_state_info(meteorite_id, "READY", from_state=METEORITE_BOT_BLOCKED_NOTIFY_CONFIG["trigger_state"])
     return {"ok": True, "meteorite_id": meteorite_id, "state": "READY"}
+
+
+def is_meteorite_editable(row: Optional[dict]) -> bool:
+    """True when the row's state is not in CANDIDATE_METEORITE_EDIT_CONFIG locked_states."""
+    if not row:
+        return False
+    locked = CANDIDATE_METEORITE_EDIT_CONFIG["locked_states"]
+    return (row.get("state") or "") not in locked
+
+
+def save_candidate_meteorite_edit(meteorite_id: int, fields: dict) -> dict:
+    """Overwrite candidate-supplied meteorite fields. No pipeline side-effects (AST-2223)."""
+    row = get_meteorite(meteorite_id)
+    if not row:
+        _warn_item(
+            f"meteorite {meteorite_id}",
+            "not found",
+            "This candidate edit is not saving",
+        )
+        return {"ok": False, "error": "not_found"}
+
+    cid = row.get("candidate_id")
+    who = f"meteorite {meteorite_id} for {cid}"
+    cfg = CANDIDATE_METEORITE_EDIT_CONFIG
+
+    if row.get("state") in cfg["locked_states"]:
+        _warn_item(who, "landed", "This candidate edit is not saving")
+        return {"ok": False, "error": "locked"}
+
+    batch_id = row.get("batch_id")
+    if batch_id is not None and batch_id != "":
+        _warn_item(who, "claimed", "This candidate edit is not saving")
+        return {"ok": False, "error": "claimed"}
+
+    if not isinstance(fields, dict):
+        _warn_item(who, "fields not a dict", "This candidate edit is not saving")
+        return {"ok": False, "error": "bad_field"}
+
+    editable = set(cfg["editable_fields"])
+    for key in fields:
+        if key not in editable:
+            _warn_item(who, f"field not editable: {key}", "This candidate edit is not saving")
+            return {"ok": False, "error": "bad_field"}
+
+    to_write: Dict[str, Any] = {}
+    for key, value in fields.items():
+        if key == "content":
+            raw = value if isinstance(value, str) else ""
+            logger.debug("Calling _normalize_apply_paste_content: [len=%s]", len(raw))
+            logger.debug("candidate meteorite edit paste body: %s", raw)
+            normalized = _normalize_apply_paste_content(raw)
+            logger.debug("Response from _normalize_apply_paste_content: len=%s", len(normalized))
+            if not normalized:
+                _warn_item(who, "empty content", "This candidate edit is not saving")
+                return {"ok": False, "error": "empty_content"}
+            to_write["content"] = normalized
+        elif key == "state":
+            state = value if isinstance(value, str) else ""
+            if state not in cfg["state_options"]:
+                _warn_item(
+                    who,
+                    f"state not in pick-list: {state}",
+                    "This candidate edit is not saving",
+                )
+                return {"ok": False, "error": "bad_state"}
+            to_write["state"] = state
+        else:
+            # link / job_title / employer_name / electronic_contact — trim only
+            text = "" if value is None else str(value)
+            to_write[key] = text.strip()
+
+    if "content" not in fields or "state" not in fields:
+        _warn_item(who, "content and state required", "This candidate edit is not saving")
+        return {"ok": False, "error": "bad_field"}
+
+    from_state = row.get("state")
+    state_changing = ("state" in to_write) and (to_write["state"] != from_state)
+    if state_changing:
+        to_write["error"] = None
+
+    update_meteorite(meteorite_id, **to_write)
+    if state_changing:
+        _meteorite_state_info(meteorite_id, to_write["state"], from_state=from_state)
+
+    updated = get_meteorite(meteorite_id)
+    return {"ok": True, "meteorite": updated}
 
 
 def _resolve_slack_dm_channel_for_candidate(candidate_id: str) -> Optional[str]:

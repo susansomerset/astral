@@ -4074,3 +4074,61 @@ cd src/ui/frontend && npm run test:component -- \
 **Pass criterion:** items 1–3. Narrowed runs, not the zero-arg harness.
 
 **Bible shasum (after publish):** `git show origin/sub/AST-2168/AST-2174-search-results-page:docs/test-bible/frontend/pages.md | shasum`
+
+### AST-2181 · AST-2172 (Manage Agents — requires structured output)
+
+The `AdminAgentPrompts.tsx` editor gains a "Requires structured output" checkbox under Model, and the body always sends the flag. While it's ticked, the picker drops models whose `structured_output_capability` is null. The current model stays as one flagged option, `<label> — no structured output`. The fixture `models` now carry a capability: Kimi `advisory`, Haiku `null`.
+
+**New:** `describe("AST-2181 requires structured output")` (4):
+- Add: unchecked by default; ticking hides Haiku, leaving only the flagged current value; picking Kimi drops it; unticking restores.
+- Add saves the flag.
+- Edit: stored `true` shows checked, with only Kimi offered and saved.
+- Edit: the API's 400 gate text reaches the error toast and the editor stays open.
+
+**Revised:** the exact POST / PUT bodies in "Add saves every setting…" and "AC 10: Edit renders…" gain `requires_structured_output: false`. Manifest: [`../ui/api/api_admin.md`](../ui/api/api_admin.md) § AST-2181.
+
+### AST-2224 · AST-2216
+
+**Parent:** [AST-2216 — Make meteorite text editable (not versioned)](https://linear.app/astralcareermatch/issue/AST-2216). **Publish:** `origin/sub/AST-2216/AST-2224-meteorite-modal-edit-form`.
+
+`JobsMeteorites` passes list `load` as `MeteoriteDetailModal` `onSaved` so a successful candidate save refreshes the list (§6c page wiring). Modal behavior: **`docs/test-bible/frontend/components.md`** § AST-2224.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| §6c page render + Save → list reload | `JobsMeteorites.tsx` | **`test_JobsMeteorites.test.tsx`** › **`JobsMeteorites — AST-2224 onSaved list refresh`** |
+| Modal AC 1 / 12 | `MeteoriteDetailModal.tsx` | **`test_MeteoriteDetailModal.test.tsx`** › **`MeteoriteDetailModal — AST-2224 candidate edit form`** |
+
+**Broken / obsolete:** none — additive `onSaved={load}` prop.
+
+**Integration:** none — do not invent.
+
+## QA test manifest
+
+1. Modal: `tests/component/frontend/components/test_MeteoriteDetailModal.test.tsx` — **`MeteoriteDetailModal — AST-2224 candidate edit form`**
+2. Page (§6c): `tests/component/frontend/pages/test_JobsMeteorites.test.tsx` — **`JobsMeteorites — AST-2224 onSaved list refresh`**
+3. Regression: full `test_MeteoriteDetailModal.test.tsx` + `test_JobsMeteorites.test.tsx` (AST-1749 / AST-1983 / AST-1976 / AST-1980 / AST-1982 cases stay green)
+4. Docs-acceptance: `rg -n 'LANDED\|"CHECK_UNIQUE"\|"NEW"' src/ui/frontend/src/components/MeteoriteDetailModal.tsx` empty
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_MeteoriteDetailModal.test.tsx \
+  ../../../tests/component/frontend/pages/test_JobsMeteorites.test.tsx
+```
+
+**Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible path shasums (publish tip `2b5a8f786`):**
+- `docs/test-bible/frontend/components.md` — `02f1b04adf3b3953651804b5f19d8db18208b65b`
+- `docs/test-bible/frontend/pages.md` — `7dd54eed4d2ffc854170b508a0e283487e8e0b62`
+
+### AST-2234 · AST-2226 (§6c JobsRecommended totalScore import)
+
+**Parent:** AST-2226. **Publish:** `origin/sub/AST-2226/AST-2234-modal-panes-and-wiring`.
+
+`JobsRecommended.tsx` drops its local `totalScore` and imports the shared helper from `recommendedJobReport` (behavior unchanged). Existing page Vitest covers first paint / score column — no new page asserts.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| §6c routed page still renders | `JobsRecommended.tsx` | **`test_JobsRecommended.test.tsx`** (existing suite, regression) |
+
+Manifest: [`components.md`](components.md) § AST-2234.

@@ -462,6 +462,24 @@ describe("CandidateProvider — AST-1768 login-email candidate bind", () => {
     expect(byEmailCalls()).toHaveLength(1)
   })
 
+  it("admin picker survives remount for the same login email", async () => {
+    stytchTestState.session = { user_id: "u1" }
+    stytchTestState.user = { emails: [{ email: "soosomerset@gmail.com", verified: true }] }
+    const wrapper = bindWrapper(true, () =>
+      ({ ok: true, json: async () => ({ candidate_id: "c2" }) }) as Response,
+    )
+    const first = renderHook(() => useCandidateState(), { wrapper })
+    await waitFor(() => expect(first.result.current.selectedId).toBe("c2"))
+    act(() => {
+      first.result.current.setSelectedId("c1")
+    })
+    first.unmount()
+
+    const second = renderHook(() => useCandidateState(), { wrapper })
+    await waitFor(() => expect(second.result.current.candidatesHydrated).toBe(true))
+    expect(second.result.current.selectedId).toBe("c1")
+  })
+
   it("keeps stored/first selection when lookup returns null or fails", async () => {
     localStorage.setItem("astral_selected_candidate", "c1")
     stytchTestState.session = { user_id: "u1" }

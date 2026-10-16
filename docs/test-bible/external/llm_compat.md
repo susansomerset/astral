@@ -208,3 +208,33 @@ Expect **all passed** with the AST-2010 fix. The AST-897 / AST-1867 / AST-1877 /
 | Exhausted 429 on the probe stays `provider_rate_limit` (AC 4 guard) | probe branch | **`::TestAst1959ProbeHostLock::test_ac4_failed_probe_fails_the_batch_with_no_fallback`** (unchanged) |
 
 **Integration:** none — do not invent.
+
+### AST-2179 · AST-2172 (forced-tool transport — compat side)
+
+**Primary manifest:** [`anthropic.md`](anthropic.md) § AST-2179.
+
+`send_to_llm_compat(..., forced_tool=…)` merges the same `_forced_tool_body` after `system`. On an OpenRouter-routed model (`get_model_routing(server_id, sku) == "openrouter"`) it copies the tier's `provider` object and adds `require_parameters: True` before the AST-1959 probe, so the probe (a copy of the real kwargs plus `zdr`) and the host-locked real call both carry it. Direct servers (`kimi`, `deepseek`) get the tool but no `provider` object. Parse, missing-tool and `max_tokens` behave as on the Anthropic side. `_ToolClient` (a `_HostClient` subclass) answers real calls with a `tool_use` block and leaves the probe's plain reply alone.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| New — AC 3 / AC 4 OpenRouter: one tool + forcing `tool_choice`; `provider` = agent keys + `require_parameters` | `send_to_llm_compat` | **`TestAst2179ForcedToolTransport::test_ac3_openrouter_call_carries_one_tool_choice_and_require_parameters`** |
+| New — AC 4 direct-routed (kimi-k2.6, deepseek-v4-flash): tool sent, `extra_body == {}` | `send_to_llm_compat` | **`::test_ac4_direct_routed_gets_tool_but_no_require_parameters`** (2) |
+| New — AC 4 OpenRouter without `forced_tool` unchanged (no tool keys, no `require_parameters`) | `send_to_llm_compat` | **`::test_ac4_openrouter_without_forced_tool_is_unchanged`** |
+| New — tier's `provider` object not mutated | `send_to_llm_compat` | **`::test_ac4_tier_provider_object_is_not_mutated`** |
+| New — AC 4 in a batch: probe and real call both carry `require_parameters` (probe also tool + `zdr`; real call `only` = served host) | `send_to_llm_compat` + `openrouter._probe_request_kwargs` | **`::test_ac4_probe_and_real_call_both_require_parameters`** |
+| New — tool input is `parsed_response` for `response_format` None / text / json | `send_to_llm_compat` | **`::test_tool_input_is_parsed_response_whatever_format`** (3) |
+| New — other-named tool → failure + timesheet `failure`; `max_tokens` fails closed with a text format | `send_to_llm_compat` | **`::test_missing_tool_call_is_a_failure`** · **`::test_max_tokens_fails_closed_even_with_text_format`** |
+
+**Broken / obsolete:** none. **Integration:** none — do not invent.
+
+### AST-2217 · AST-2215 (zero-stub `get_receipt` + real/probe attribution)
+
+Parent AC **5** stub half (direct-server stub; OpenRouter billed receipts are AST-2218) + AC **8** attribution on real and probe timesheet rows.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| New — stub receipt shape + null platform cost | `get_receipt` | `TestAst2217ReceiptStubAndAttribution::test_get_receipt_zero_stub_shape_and_null_cost` |
+| New — real call carries attribution | `send_to_llm_compat` | `…::test_recorded_call_carries_attribution` |
+| New — probe row shares outer attribution | `_record_probe` / `send_to_llm_compat` | `…::test_probe_row_carries_same_attribution` |
+
+**Primary manifest:** [`../data/database/timesheets.md`](../data/database/timesheets.md) § AST-2217. **Integration:** none.

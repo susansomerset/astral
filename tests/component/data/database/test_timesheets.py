@@ -187,9 +187,18 @@ class TestAst1878TimesheetCatalogValidation:
         assert db.backfill_agent_timesheet_costs("openrouter") == 0
 
 
+# AST-2217 attribution (after created_at) then AST-1965 platform cols (incl. platform_metadata).
+_ATTR_COLS = (
+    "provider", "request_type", "entity_type", "entity_id", "call_start", "call_stop",
+    "response_item_count", "response_char_length", "completion_status",
+)
 _PLATFORM_COLS = (
     "platform_cost", "native_tokens_prompt", "native_tokens_completion", "native_tokens_cached",
-    "native_tokens_reasoning", "host", "platform_reconciled_at",
+    "native_tokens_reasoning", "host", "platform_reconciled_at", "platform_metadata",
+)
+_PLATFORM_STAT_COLS = (
+    "platform_cost", "native_tokens_prompt", "native_tokens_completion", "native_tokens_cached",
+    "native_tokens_reasoning", "host",
 )
 # A fully reconciled row's platform values (AST-1965 writer args after agent_req_id).
 _STATS = (0.0123, 1200, 300, 400, 50, "DeepInfra")
@@ -203,13 +212,14 @@ def _ts_row(db, req: str, batch: str, calc=(0.0, 0.0, 0.0, 0.0), sku: str = "z-a
 def _columns(db) -> list[str]:
     conn = db._get_connection()
     try:
-        return [r[1] for r in conn.execute("PRAGMA table_info(agent_timesheets)").fetchall()]
+        return [r[1] for r in conn.execute("PRAGMA table_info(service_timesheet)").fetchall()]
     finally:
         conn.close()
 
 
 class TestAst1965PlatformColumns:
-    """AST-1965: nullable platform columns on agent_timesheets, update_timesheet_platform, platform-first totals.
+    """AST-1965: nullable platform columns on service_timesheet (was agent_timesheets), update_timesheet_platform,
+    platform-first totals. AST-2217: table rename + attribution columns sit between created_at and platform.
 
     Branches: create path carries the columns; _ensure_timesheets_schema ALTER adds each missing column (old db)
     and skips present ones (idempotent); writer hit (rowcount 1) / miss (0); sum_cost_by_batch COALESCE —
@@ -220,8 +230,8 @@ class TestAst1965PlatformColumns:
         db = sqlite_in_memory
         _ts_row(db, "req-1", "b1")
         cols = _columns(db)
-        # Appended after created_at, same order as a migrated table.
-        assert cols[cols.index("created_at") + 1:] == list(_PLATFORM_COLS)
+        # Attribution then platform, same order as migrate-ALTER path.
+        assert cols[cols.index("created_at") + 1:] == list(_ATTR_COLS) + list(_PLATFORM_COLS)
         row = db.list_timesheets()[0]
         assert {c: row[c] for c in _PLATFORM_COLS} == dict.fromkeys(_PLATFORM_COLS)
 
@@ -229,11 +239,11 @@ class TestAst1965PlatformColumns:
         db = sqlite_in_memory
         _ts_row(db, "req-old", "b1", calc=(0.1, 0.2, 0.3, 0.4))
         before = db.list_timesheets()[0]
-        # Pre-AST-1965 shape: same table without the platform columns.
+        # Pre-AST-1965 shape: same table without the platform columns (attribution may remain).
         conn = db._get_connection()
         try:
             for c in _PLATFORM_COLS:
-                conn.execute(f"ALTER TABLE agent_timesheets DROP COLUMN {c}")
+                conn.execute(f"ALTER TABLE service_timesheet DROP COLUMN {c}")
             conn.commit()
         finally:
             conn.close()
@@ -256,7 +266,7 @@ class TestAst1965PlatformColumns:
         assert db.update_timesheet_platform("req-1", *_STATS) == 1
         after = {r["agent_req_id"]: r for r in db.list_timesheets()}
         r1 = after["req-1"]
-        assert tuple(r1[c] for c in _PLATFORM_COLS[:-1]) == _STATS
+        assert tuple(r1[c] for c in _PLATFORM_STAT_COLS) == _STATS
         assert r1["platform_reconciled_at"]
         originals = lambda r: {k: v for k, v in r.items() if k not in _PLATFORM_COLS}  # noqa: E731
         assert originals(r1) == originals(before["req-1"])
@@ -320,3 +330,132 @@ class TestAst1965PlatformColumns:
         assert after["req-unpriced"] == before["req-unpriced"]
         assert after["req-priced"]["calc_cost_output"] != 9.0
         assert {c: after["req-priced"][c] for c in _PLATFORM_COLS} == {c: before["req-priced"][c] for c in _PLATFORM_COLS}
+
+class TestAst2217ServiceTimesheet:
+    """AST-2217: agent_timesheets → service_timesheet rename, attribution writers, ledger state helpers,
+    stub-null platform_cost, google_cse provider allow.
+    """
+
+    def test_renames_agent_timesheets_preserving_rows(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        conn = db._get_connection()
+        try:
+            conn.execute("DROP TABLE IF EXISTS service_timesheet")
+            conn.execute("DROP TABLE IF EXISTS anthropic_timesheets")
+            conn.execute(
+                """
+                CREATE TABLE agent_timesheets (
+                    agent_req_id TEXT UNIQUE,
+                    task_key_uuid TEXT,
+                    model_code TEXT,
+                    candidate_id TEXT,
+                    batch_id TEXT,
+                    batch_size INTEGER DEFAULT 1,
+                    cache_write_tokens INTEGER DEFAULT 0,
+                    cache_read_tokens INTEGER DEFAULT 0,
+                    no_cache_prompt_tokens INTEGER DEFAULT 0,
+                    no_cache_live_tokens INTEGER DEFAULT 0,
+                    total_no_cache_input_tokens INTEGER DEFAULT 0,
+                    total_output_tokens INTEGER DEFAULT 0,
+                    calc_cost_cache_write REAL DEFAULT 0,
+                    calc_cost_cache_read REAL DEFAULT 0,
+                    calc_cost_no_cache_input REAL DEFAULT 0,
+                    calc_cost_output REAL DEFAULT 0,
+                    agent_performance TEXT,
+                    failure_note TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
+            conn.execute(
+                "INSERT INTO agent_timesheets (agent_req_id, batch_id, calc_cost_output) "
+                "VALUES ('req-legacy', 'b-legacy', 0.05)"
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        db._timesheets_schema_ensured = False
+        rows = db.list_timesheets()
+        assert len(rows) == 1 and rows[0]["agent_req_id"] == "req-legacy"
+        assert rows[0]["calc_cost_output"] == pytest.approx(0.05)
+        conn = db._get_connection()
+        try:
+            names = {r[0] for r in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            ).fetchall()}
+            assert "service_timesheet" in names and "agent_timesheets" not in names
+            cols = {r[1] for r in conn.execute("PRAGMA table_info(service_timesheet)").fetchall()}
+            assert {"request_type", "entity_id", "platform_cost", "provider"} <= cols
+        finally:
+            conn.close()
+
+    def test_attribution_columns_persist_on_insert(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        assert db._add_timesheet_entry(
+            "req-attr", "task-uuid", "kimi-k2.6", "cand-1", "b1", 1,
+            0, 0, 0, 0, 10, 5, 0.0, 0.0, 0.0, 0.0,
+            provider="kimi",
+            request_type="DISPATCH_AGENT",
+            entity_type="job",
+            entity_id="job-9",
+            call_start="2026-10-15T12:00:00+00:00",
+            call_stop="2026-10-15T12:00:01+00:00",
+            response_item_count=1,
+            response_char_length=12,
+            completion_status="success",
+        ) is True
+        row = db.list_timesheets()[0]
+        assert row["provider"] == "kimi"
+        assert row["request_type"] == "DISPATCH_AGENT"
+        assert (row["entity_type"], row["entity_id"]) == ("job", "job-9")
+        assert row["call_start"].startswith("2026-10-15")
+        assert row["call_stop"].startswith("2026-10-15")
+        assert (row["response_item_count"], row["response_char_length"], row["completion_status"]) == (1, 12, "success")
+
+    def test_accepts_search_server_id_provider(self, sqlite_in_memory) -> None:
+        from src.utils.config import TIMESHEET_SEARCH_SERVER_ID
+        db = sqlite_in_memory
+        assert db._add_timesheet_entry(
+            "req-cse", None, None, "cand-1", "b1", 1,
+            0, 0, 0, 0, 0, 0, 0.0, 0.0, 0.0, 0.0,
+            provider=TIMESHEET_SEARCH_SERVER_ID,
+            request_type="DISPATCH_SEARCH",
+        ) is True
+        assert db.list_timesheets()[0]["provider"] == TIMESHEET_SEARCH_SERVER_ID
+
+    def test_update_platform_null_cost_stamps_reconciled(self, sqlite_in_memory) -> None:
+        # Stub receipt: platform_cost None is still a completed write (AST-2217 / AC5).
+        db = sqlite_in_memory
+        _ts_row(db, "req-stub", "b1", calc=(0.0, 0.0, 0.01, 0.02))
+        assert db.update_timesheet_platform("req-stub", None, 0, 0, 0, 0, None) == 1
+        row = db.list_timesheets()[0]
+        assert row["platform_cost"] is None
+        assert row["platform_reconciled_at"]
+        # Null platform still falls through to calc in sum_cost_by_batch.
+        assert db.sum_cost_by_batch(["b1"])["b1"] == pytest.approx(0.03)
+
+    def test_ledger_timesheet_state_claim_and_list(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        assert db.save_dispatch_ledger("batch-a", "fetch_timesheet", "cand-1", "2026-10-15 12:00:00") is True
+        assert db.save_dispatch_ledger("batch-b", "fetch_timesheet", "cand-1", "2026-10-15 12:01:00") is True
+        assert db.save_dispatch_ledger("batch-other", "fetch_timesheet", "cand-2", "2026-10-15 12:02:00") is True
+        # Historical null never matches NEW.
+        assert db.count_ledger_timesheet_state("cand-1", "NEW") == 0
+        db.set_ledger_timesheet_state("batch-a", "NEW")
+        db.set_ledger_timesheet_state("batch-b", "NEW")
+        db.set_ledger_timesheet_state("batch-other", "NEW")
+        assert db.count_ledger_timesheet_state("cand-1", "NEW") == 2
+        claimed = db.claim_ledger_timesheet_fetching("cand-1")
+        assert set(claimed) == {"batch-a", "batch-b"}
+        assert db.count_ledger_timesheet_state("cand-1", "NEW") == 0
+        assert db.count_ledger_timesheet_state("cand-1", "FETCHING") == 2
+        assert db.count_ledger_timesheet_state("cand-2", "NEW") == 1
+        db.set_ledger_timesheet_state("batch-a", "RECEIPTED")
+        with pytest.raises(ValueError, match="Invalid ledger timesheet state"):
+            db.set_ledger_timesheet_state("batch-b", "DONE")
+        _ts_row(db, "req-a", "batch-a")
+        _ts_row(db, "req-b", "batch-b")
+        listed = db.list_timesheet_rows_for_batches(["batch-a", "batch-b"])
+        assert {r["agent_req_id"] for r in listed} == {"req-a", "req-b"}
+        assert all("provider" in r and "request_type" in r for r in listed)
+        assert db.list_timesheet_rows_for_batches([]) == []

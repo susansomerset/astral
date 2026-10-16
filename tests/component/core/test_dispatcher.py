@@ -57,6 +57,11 @@ def _run_one_tick(monkeypatch: pytest.MonkeyPatch) -> None:
         "src.core.candidate.age_stale_candidate_states",
         MagicMock(return_value=0),
     )
+    # AST-2229: tick advances readiness after stale aging — keep unit ticks DB-free
+    monkeypatch.setattr(
+        "src.core.candidate.advance_candidate_readiness",
+        MagicMock(return_value=0),
+    )
     # AST-1022: tick Style D AUTO-off side path lists stage rows — keep unit ticks DB-free
     monkeypatch.setattr(dispatcher_mod.database, "list_dispatch_tasks", lambda: [])
     # AST-1022: tick Style D AUTO-off side path lists stage rows — keep unit ticks DB-free
@@ -2927,6 +2932,21 @@ class TestAst972CandidateStageDispatch:
             dispatcher_mod._tick_loop()
         aged.assert_called_once_with()
 
+    def test_tick_loop_invokes_readiness_after_stale(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # AST-2229 AC12: advance runs on the tick after age_stale (order via call recording).
+        order: list[str] = []
+        aged = MagicMock(side_effect=lambda: order.append("stale") or 0)
+        advanced = MagicMock(side_effect=lambda: order.append("ready") or 0)
+        monkeypatch.setattr(dispatcher_mod.database, "get_due_tasks", lambda: [])
+        _run_one_tick(monkeypatch)
+        monkeypatch.setattr("src.core.candidate.age_stale_candidate_states", aged)
+        monkeypatch.setattr("src.core.candidate.advance_candidate_readiness", advanced)
+        with pytest.raises(StopIteration):
+            dispatcher_mod._tick_loop()
+        assert order == ["stale", "ready"]
+        aged.assert_called_once_with()
+        advanced.assert_called_once_with()
+
     def test_start_scheduler_invokes_wrapper_retire(self, monkeypatch: pytest.MonkeyPatch) -> None:
         dispatcher_mod._tick_thread = None
         monkeypatch.setattr(dispatcher_mod.database, "mark_stale_ledger_interrupted", MagicMock(return_value=0))
@@ -4500,3 +4520,90 @@ class TestAst2091RunTaskRubricGate:
         self._row(monkeypatch, "empty_cand", auto_mode=1, task_key=task_key)
         assert dispatcher_mod.run_task(2093) is True
         assert len(self.started) == 1 and self.updates == []
+
+class TestAst2218FetchTimesheetProvisionAndDue:
+    """Parent AC3 / AC4 — provision idempotency; NEW ledger due; historical null excluded."""
+
+    def test_provision_three_candidates_idempotent(self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch) -> None:
+        db = sqlite_in_memory
+        for cid in ("c1", "c2", "c3"):
+            db.save_candidate(cid, state="ACTIVE_SEARCH", candidate_data={})
+        monkeypatch.setattr(dispatcher_mod, "template_candidate_id", lambda: "c1")
+        first = dispatcher_mod.provision_fetch_timesheet_dispatch_tasks()
+        # template c1 counted twice in loop but ensure is idempotent — 3 unique candidates get rows
+        rows = [r for r in db.list_dispatch_tasks() if r.get("task_key") == "fetch_timesheet"]
+        by_cid = {r["candidate_id"]: r for r in rows}
+        assert set(by_cid) == {"c1", "c2", "c3"}
+        for r in by_cid.values():
+            assert r["entity_type"] is None
+            assert r["trigger_state"] is None
+            assert r["freq_hrs"] is None
+            assert not r["auto_mode"]
+        second = dispatcher_mod.provision_fetch_timesheet_dispatch_tasks()
+        assert second["added"] == 0
+        assert len([r for r in db.list_dispatch_tasks() if r.get("task_key") == "fetch_timesheet"]) == 3
+
+    def test_ensure_requires_candidate_id(self) -> None:
+        with pytest.raises(ValueError, match="candidate_id is required"):
+            dispatcher_mod.ensure_fetch_timesheet_dispatch_task("")
+
+    def test_due_on_new_ledger_not_historical_null(
+        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        db = sqlite_in_memory
+        db.save_candidate("cand-a", state="ACTIVE_SEARCH", candidate_data={})
+        db.save_candidate("cand-b", state="ACTIVE_SEARCH", candidate_data={})
+        # AUTO row for cand-a (provision defaults auto_mode False — save AUTO manually).
+        db.save_dispatch_task(
+            candidate_id="cand-a",
+            task_key="fetch_timesheet",
+            min_count=1,
+            auto_mode=True,
+            entity_type=None,
+            trigger_state=None,
+            batch_size=1,
+            freq_hrs=None,
+        )
+        db.save_dispatch_task(
+            candidate_id="cand-b",
+            task_key="fetch_timesheet",
+            min_count=1,
+            auto_mode=True,
+            entity_type=None,
+            trigger_state=None,
+            batch_size=1,
+            freq_hrs=None,
+        )
+        # Historical null timesheet_state on cand-a — must not count.
+        assert db.save_dispatch_ledger("hist-a", "evaluate_jd", "cand-a", "2026-10-01 00:00:00") is True
+        db.update_dispatch_ledger("hist-a", status="COMPLETED", completed_at="2026-10-01 01:00:00")
+        # Close after deploy → NEW on cand-a
+        assert db.save_dispatch_ledger("new-a", "evaluate_jd", "cand-a", "2026-10-15 00:00:00") is True
+        db.update_dispatch_ledger(
+            "new-a", status="COMPLETED", completed_at="2026-10-15 01:00:00", timesheet_state="NEW",
+        )
+        # Other candidate NEW must not make cand-a due when cand-a has 0 NEW... wait cand-a has 1 NEW.
+        # Zero NEW for cand-b: not due. cand-a has 1 NEW: due.
+        monkeypatch.setattr(dispatcher_mod.database, "dispatch_task_freq_allows", lambda task: True)
+        due = dispatcher_mod._fetch_timesheet_due_tasks()
+        due_cids = {t["candidate_id"] for t in due}
+        assert due_cids == {"cand-a"}
+        # Drop cand-a's NEW → not due
+        db.set_ledger_timesheet_state("new-a", "RECEIPTED")
+        assert dispatcher_mod._fetch_timesheet_due_tasks() == []
+        # Restore NEW — due again; cand-b still 0
+        db.set_ledger_timesheet_state("new-a", "NEW")
+        assert {t["candidate_id"] for t in dispatcher_mod._fetch_timesheet_due_tasks()} == {"cand-a"}
+
+    def test_persist_close_sets_timesheet_state_new(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        assert db.save_dispatch_ledger("batch-close", "evaluate_jd", "cand-1", "2026-10-15 00:00:00") is True
+        dispatcher_mod._persist_dispatch_ledger_close(
+            "batch-close",
+            "COMPLETED",
+            {"total_processed": 1, "total_passed": 1, "total_failed": 0, "total_errors": 0},
+            "cand-1",
+            {"entity_type": "job", "task_key": "evaluate_jd"},
+            "evaluate_jd",
+        )
+        assert db.get_dispatch_ledger("batch-close")["timesheet_state"] == "NEW"

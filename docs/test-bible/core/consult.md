@@ -102,13 +102,13 @@ Manifest default ( **`test-astral`** on publish tip — consult/config scope): `
 | --- | --- | --- |
 | Bracket **link_set** decode + prefix precedence | `src/core/consult.py` (`_apply_prefilter_encoded_link_meta`) | `tests/component/core/test_agent.py::TestAst697PrefilterBracketLinkDecode`; `tests/component/core/test_agent.py::TestAst603RubricNormalize::test_lovable_encoded_line_with_bracket_tails` |
 | **`_decode_payload`** wiring | `src/core/agent.py` | `tests/component/core/test_agent.py::TestAst697PrefilterBracketLinkDecode` |
-| **`stringify_response_schema`** bracket example | `src/utils/config.py` | `tests/component/utils/test_config.py::TestStringifyResponseSchema::test_prefilter_company_schema_shows_bracket_link_set_tails` |
+| **`stringify_response_schema`** bracket example (retired **AST-2177** — grader envelope is `agent_performance` only) | `src/utils/config.py` | `tests/component/utils/test_config.py::TestStringifyResponseSchema::test_prefilter_company_schema_has_no_encoded_link_tails` |
 
 **AST-697** narrowed run (includes **AST-603** prefix-tail regression):
 
 ```bash
 ./scripts/testing/run_component_tests.sh \
-  tests/component/utils/test_config.py::TestStringifyResponseSchema::test_prefilter_company_schema_shows_bracket_link_set_tails \
+  tests/component/utils/test_config.py::TestStringifyResponseSchema::test_prefilter_company_schema_has_no_encoded_link_tails \
   tests/component/core/test_agent.py::TestAst697PrefilterBracketLinkDecode \
   tests/component/core/test_agent.py::TestAst603RubricNormalize \
   tests/component/core/test_roster.py::TestAst603ConsultParityHydration \
@@ -1714,3 +1714,11 @@ Single-side `missing vectors` / `unknown vectors` tests (`TestRenderScore::test_
 ### AST-2133 · AST-2130 (consult reads the composed JD)
 
 `build_job_token_context` (VISIBLE_JD), `qualify_meteorite` (length / CONTENT / input JD), `_jd_ready_for_evaluate`, and `evaluate_jd_batch` (not-ready skip + assemble) read `tracker.compose_job_description(job)` instead of `job_data.job_description`. **New:** **`TestAst2133ConsultReadsComposedJd`** (2; reference-only job on core `sqlite_in_memory` → composed VISIBLE_JD; readiness counts the capture). No-reference paths stay covered by existing tests. Manifest: [`tracker.md`](tracker.md) § AST-2133.
+
+### AST-2180 · AST-2172 (normalize cluster retired)
+
+The consult letter-pipe / zero-grade normalize cluster is deleted. A missing code is now the hydrate's per-entity light-check failure. **New:** **`TestEncodedDecodeIsolation::test_ast2180_missing_code_row_retries_entity_sibling_scores`** (AC 5 end to end): real `hydrate_grade_tool_input` output → `_run_batch_consult`; J1 → `METEORITE_QUALIFIED_RETRY`, J0 passes, `decode_failed == ["J1"]`. It is green before the build too, by design, because hydrate and routing predate it. **Retired:** `TestEncodedDecodeIsolation::test_routing_scans_past_fully_malformed_first_line`, `TestAst1062QualifyMeteorite::test_not_strict_encoded_batch_key`, `TestAst2126ZeroGradeRepliesAreDecodeFailures` `_normalize` cases (`test_bug_repro_one_job_zero_grades_is_decode_failure`, `test_every_entity_gets_one_failure`, `test_letter_pipe_with_grades_unchanged`, `test_company_task_zero_grades_keeps_row`). `test_require_complete_grade_set_reports_missing_and_unknown` stays. The older manifests above that list these nodes (AST-1996, AST-2126/2127, AST-2093) are historical and are superseded here. Manifest: [`agent.md`](agent.md) § AST-2180.
+
+### AST-2222 · AST-1201 (pointer)
+
+Stage-generic candidate consult routing (`REQUESTED_RESUME` / mid-hop resume → shared `run_requested_artifacts_dispatch`; persistable gate admits base-resume hops). Primary: [`candidate.md`](candidate.md) § AST-2222 — **`TestAst2222ConsultRoutesResumeStage`** + AC 6/7 source scans.

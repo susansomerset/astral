@@ -3,6 +3,7 @@
 Thin Flask wrapper over src.core.meteorite.land_meteorite.
 No admin UI; no email ingest; no Gmail I/O.
 AST-1748: candidate-scoped list + detail GET for Jobs → Meteorites.
+AST-2223: candidate overwrite edit PUT + detail edit envelope.
 """
 
 from __future__ import annotations
@@ -12,10 +13,15 @@ from typing import Any, Dict, Tuple
 from flask import Blueprint, jsonify, request
 
 from ui.auth import require_auth
-from src.core.meteorite import land_meteorite
+from src.core.meteorite import (
+    is_meteorite_editable,
+    land_meteorite,
+    save_candidate_meteorite_edit,
+)
 from src.external.telescope import run_one_shot
 from src.data.database import get_meteorite, list_meteorites_for_candidate
 from src.utils.config import (
+    CANDIDATE_METEORITE_EDIT_CONFIG,
     JOBS_METEORITES_LIST_COLUMNS,
     JOBS_METEORITES_MODAL_SECTIONS,
     METEORITE_CONFIG,
@@ -45,6 +51,19 @@ _DETAIL_KEYS: Tuple[str, ...] = (
 def _project_meteorite(row: dict, keys: tuple) -> dict:
     """Field mapping only — link / astral_job_id returned as stored (no rewrite)."""
     return {k: row.get(k) for k in keys}
+
+
+def _detail_payload(row: dict) -> dict:
+    """Detail projection plus AST-2223 edit envelope from config/core."""
+    cfg = CANDIDATE_METEORITE_EDIT_CONFIG
+    return {
+        "sections": list(JOBS_METEORITES_MODAL_SECTIONS),
+        "meteorite": _project_meteorite(row, _DETAIL_KEYS),
+        "editable": is_meteorite_editable(row),
+        "editable_fields": list(cfg["editable_fields"]),
+        "state_options": list(cfg["state_options"]),
+        "default_save_state": cfg["default_save_state"],
+    }
 
 
 def _land_request_payload(data: dict) -> Dict[str, Any]:
@@ -146,7 +165,7 @@ def meteorite_list_for_candidate(candidate_id: str):
 @meteorite_bp.route("/meteorites/<int:meteorite_id>", methods=["GET"])
 @require_auth
 def meteorite_detail(meteorite_id: int):
-    """Single meteorite detail for Jobs → Meteorites modal (AST-1748)."""
+    """Single meteorite detail for Jobs → Meteorites modal (AST-1748 / AST-2223)."""
     route = f"/api/meteorites/{meteorite_id}"
     try:
         logger.debug("Calling get_meteorite: [meteorite_id=%s]", meteorite_id)
@@ -154,10 +173,7 @@ def meteorite_detail(meteorite_id: int):
         logger.debug("Response from get_meteorite: %s", row)
         if row is None:
             return jsonify({"error": "meteorite not found"}), 404
-        return jsonify({
-            "sections": list(JOBS_METEORITES_MODAL_SECTIONS),
-            "meteorite": _project_meteorite(row, _DETAIL_KEYS),
-        })
+        return jsonify(_detail_payload(row))
     except Exception as exc:
         logger.exception(
             "%s | api %s detail failed\n  %s: %s\n  Returning 500; detail not delivered",
@@ -167,6 +183,51 @@ def meteorite_detail(meteorite_id: int):
             exc,
         )
         return jsonify({"error": "meteorite detail failed"}), 500
+
+
+@meteorite_bp.route("/meteorites/<int:meteorite_id>", methods=["PUT"])
+@require_auth
+def meteorite_candidate_edit(meteorite_id: int):
+    """Candidate overwrite edit for one meteorite (AST-2223)."""
+    route = f"/api/meteorites/{meteorite_id}"
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({"error": "JSON object required"}), 400
+    try:
+        result = save_candidate_meteorite_edit(meteorite_id, data)
+    except Exception as exc:
+        logger.exception(
+            "%s | api %s failed\n  %s: %s\n  Returning 500; meteorite unchanged",
+            "-",
+            route,
+            type(exc).__name__,
+            exc,
+        )
+        return jsonify({"error": "meteorite edit failed"}), 500
+
+    if result.get("ok"):
+        payload = _detail_payload(result["meteorite"])
+        logger.info(
+            "%s | api %s completed: PUT %s",
+            result["meteorite"].get("candidate_id") or "-",
+            route,
+            200,
+        )
+        return jsonify(payload), 200
+
+    err = result.get("error")
+    if err == "not_found":
+        return jsonify({"error": "meteorite not found"}), 404
+    if err == "locked":
+        return jsonify({"error": "meteorite is landed and not editable"}), 409
+    if err == "claimed":
+        return jsonify({"error": "meteorite is claimed by a running batch"}), 409
+    if err == "bad_state":
+        return jsonify({"error": "state is not in the editable pick-list"}), 400
+    if err == "empty_content":
+        return jsonify({"error": "content is empty after normalization"}), 400
+    # bad_field and any unknown core refuse
+    return jsonify({"error": "one or more fields are not editable"}), 400
 
 
 @meteorite_bp.route("/candidates/<candidate_id>/meteorite/land", methods=["POST"])

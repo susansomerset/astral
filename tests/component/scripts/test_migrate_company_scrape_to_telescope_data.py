@@ -61,8 +61,8 @@ def _rows(db) -> dict[str, tuple]:
 def _tele_count(db) -> int:
     conn = db._get_connection()
     try:
-        db._ensure_telescope_data_schema(conn)
-        return conn.execute("SELECT COUNT(*) FROM telescope_data").fetchone()[0]
+        db._ensure_web_data_schema(conn)
+        return conn.execute("SELECT COUNT(*) FROM web_data").fetchone()[0]
     finally:
         conn.close()
 
@@ -101,7 +101,7 @@ def _seed(db) -> None:
         "pjl_nav_links": "1: https://beta.io/stale",
     })
     # Written after AST-2134: ids already — nothing to move
-    rid = gazer.keep_telescope_data("cand-1", "https://gamma.dev", "VISIBLE_TEXT", "Gamma home")
+    rid = gazer.keep_web_data("cand-1", "https://gamma.dev", "VISIBLE_TEXT", "Gamma home")
     db.save_company("gamma", "WATCH", company_website="https://gamma.dev", candidate_id="cand-1",
                     company_data={"homepage_text": rid, "website_content": [{"url": "https://gamma.dev/c", "id": rid}]})
     # Shapes no reader writes: left as they are, warned
@@ -116,6 +116,8 @@ def _seed(db) -> None:
                              {"url": "https://eps.net/x", "visible_text": "odd", "note": "?"}],
         "possible_joblist_links": ["https://eps.net/jobs"],
     })
+    # Stored pjl_nav_links but no pjl_scrape_pages at all: still dropped (nothing else to move)
+    db.save_company("zeta", "WATCH", company_website="https://zeta.io", company_data={"pjl_nav_links": "1: https://zeta.io/x"})
 
 
 def _admin_previews(monkeypatch: pytest.MonkeyPatch, short_name: str) -> dict[str, str]:
@@ -143,9 +145,9 @@ class TestAst2135Export:
         assert _rows(db) == before and _tele_count(db) == count
         data = json.loads(out.read_text())
         assert data["db_path"] == str(db.DB_PATH)
-        assert set(data["companies"]) == {"acme", "beta", "epsilon"}  # gamma already ids; delta / empty nothing movable
+        assert set(data["companies"]) == {"acme", "beta", "epsilon", "zeta"}  # gamma already ids; delta / empty nothing movable
         printed = capsys.readouterr().out
-        assert "Companies scanned: 6  with changes: 3" in printed and f"Wrote {out}" in printed
+        assert "Companies scanned: 7  with changes: 4" in printed and f"Wrote {out}" in printed
 
     def test_export_refuses_existing_file(self, db, tmp_path: Path) -> None:
         out = tmp_path / "scrape.json"
@@ -178,15 +180,19 @@ class TestAst2135Export:
         # Derived PJL fields equal their rebuild -> NULL; prefilter notes never touched
         assert acme["pjl_assembled_content"]["value"] is None and acme["pjl_nav_links"]["value"] is None
         assert "prefilter_company_notes" not in acme
-        # beta: plain-string website_content -> one row; mismatched derived text kept stored (warned)
+        # beta: plain-string website_content -> one row; mismatched assembled text kept stored (warned);
+        # mismatched pjl_nav_links is dropped anyway — it is never migrated and never kept
         assert row(beta["website_content"]["value"]) == ("cand-1", "https://beta.io", "VISIBLE_TEXT", "Beta culture blob")
-        assert "pjl_assembled_content" not in beta and "pjl_nav_links" not in beta
+        assert "pjl_assembled_content" not in beta and beta["pjl_nav_links"]["value"] is None
+        # zeta: nav text with no pages -> only the nav drop, no telescope rows
+        assert set(data["companies"]["zeta"]["keys"]) == {"pjl_nav_links"}
+        assert data["companies"]["zeta"]["keys"]["pjl_nav_links"]["value"] is None
         # acme 8 (home, nav, 2 culture, job list, 2 pages + 1 links) + beta 2 (website_content, 1 page)
         assert len(rows) == 11  # + epsilon's one movable page
         eps = data["companies"]["epsilon"]["keys"]
         assert set(eps) == {"pjl_scrape_pages"}  # no derived fields stored -> none to clear
         assert eps["pjl_scrape_pages"]["value"][1] == {"url": "https://eps.net/x", "visible_text": "odd", "note": "?"}
-        assert "Warnings: 5" in capsys.readouterr().out  # beta asm + nav, delta homepage + website_content, epsilon odd page
+        assert "Warnings: 4" in capsys.readouterr().out  # beta asm, delta homepage + website_content, epsilon odd page
 
 
 class TestAst2135LoadClear:
@@ -207,9 +213,9 @@ class TestAst2135LoadClear:
         printed = capsys.readouterr().out
         assert f"inserted: 0  already present: {len(rows)}" in printed
         # Stored content round-trips through compression verbatim
-        assert db.get_telescope_data_for_ids(list(rows)) == {k: r["content"] for k, r in rows.items()}
+        assert db.get_web_data_for_ids(list(rows)) == {k: r["content"] for k, r in rows.items()}
 
-    def test_ac10_clear_refuses_on_empty_telescope_data(self, db, tmp_path: Path) -> None:
+    def test_ac10_clear_refuses_on_empty_web_data(self, db, tmp_path: Path) -> None:
         out = self._export(db, tmp_path)
         before = _rows(db)
         assert _mod._clear(out) == 1
@@ -221,7 +227,7 @@ class TestAst2135LoadClear:
         some_id = next(iter(json.loads(out.read_text())["rows"]))
         conn = db._get_connection()
         try:
-            conn.execute("DELETE FROM telescope_data WHERE telescope_data_id = ?", (some_id,))
+            conn.execute("DELETE FROM web_data WHERE web_data_id = ?", (some_id,))
             conn.commit()
         finally:
             conn.close()
@@ -233,7 +239,8 @@ class TestAst2135LoadClear:
         from src.core import gazer
 
         out = self._export(db, tmp_path)
-        names = ("acme", "beta", "gamma", "delta", "empty", "epsilon")
+        names = ("acme", "beta", "gamma", "delta", "empty", "epsilon", "zeta")
+        dropped = ("beta", "zeta")  # stored pjl_nav_links that a rebuild would not give: dropped by design
         views = {sn: _reader_view(db.get_company(sn)["company_data"] or {}) for sn in names}
         previews = {sn: _admin_previews(monkeypatch, sn) for sn in names}
         before = _rows(db)
@@ -241,10 +248,18 @@ class TestAst2135LoadClear:
         assert _mod._clear(out) == 0
         after = _rows(db)
 
-        # AC 6 / AC 11 across every company: reader view and admin previews byte-identical
+        # AC 6 / AC 11 across every company: reader view and admin previews byte-identical,
+        # except the dropped pjl_nav_links (readers now rebuild it, or have none)
         for sn in names:
-            assert _reader_view(db.get_company(sn)["company_data"] or {}) == views[sn], sn
-            assert _admin_previews(monkeypatch, sn) == previews[sn], sn
+            view = _reader_view(db.get_company(sn)["company_data"] or {})
+            if sn in dropped:
+                assert not view["pjl_nav_links"] and views[sn]["pjl_nav_links"], sn
+                view = {**view, "pjl_nav_links": views[sn]["pjl_nav_links"]}
+            assert view == views[sn], sn
+            now = _admin_previews(monkeypatch, sn)
+            # Only select_job_page reads the nav list, so it is the one preview allowed to differ
+            for task in (("prefilter_company", "gaze") if sn in dropped else tuple(now)):
+                assert now[task] == previews[sn][task], (sn, task)
         assert previews["acme"]["prefilter_company"] and previews["acme"]["gaze"]  # non-vacuous
 
         # AC 5: acme's scraped keys hold ids; derived PJL fields are NULL
@@ -265,8 +280,11 @@ class TestAst2135LoadClear:
         # Untouched companies byte-identical; updated_at kept on migrated ones
         for sn in ("gamma", "delta", "empty"):
             assert after[sn] == before[sn], sn
-        for sn in ("acme", "beta", "epsilon"):
+        for sn in ("acme", "beta", "epsilon", "zeta"):
             assert after[sn][1] == before[sn][1], sn
+        # The dropped copy is gone from the blob, not moved: zeta (nav text only) lost nothing but that key
+        assert db.get_company("zeta")["company_data"] == {"pjl_nav_links": None}
+        assert db.get_company("beta")["company_data"]["pjl_nav_links"] is None
 
     def test_clear_leaves_keys_changed_since_export(self, db, tmp_path: Path, capsys) -> None:
         out = self._export(db, tmp_path)
@@ -291,11 +309,123 @@ class TestAst2135LoadClear:
             conn.close()
         assert _mod._clear(out) == 0
         first = _rows(db)
-        assert "Companies updated: 2/3" in capsys.readouterr().out
+        assert "Companies updated: 3/4" in capsys.readouterr().out
         # Re-run: every key already swapped -> nothing written
         assert _mod._clear(out) == 0
         assert _rows(db) == first
-        assert "Companies updated: 0/3  keys swapped: 0" in capsys.readouterr().out
+        assert "Companies updated: 0/4  keys swapped: 0" in capsys.readouterr().out
+
+
+class TestAst2135Dump:
+    def _migrated(self, db, tmp_path: Path) -> Path:
+        _seed(db)
+        out = tmp_path / "scrape.json"
+        assert _mod._export(out) == 0 and _mod._load(out) == 0 and _mod._clear(out) == 0
+        return out
+
+    def test_dump_refuses_before_clear_and_writes_nothing(self, db, tmp_path: Path, capsys) -> None:
+        _seed(db)
+        out = tmp_path / "scrape.json"
+        _mod._export(out)
+        _mod._load(out)
+        dest = tmp_path / "files"
+        assert _mod._dump(out, dest, 4_000_000) == 1
+        assert not dest.exists()
+        assert "not in the cleared state — run clear first" in capsys.readouterr().out
+
+    def test_dump_refuses_non_empty_out_dir(self, db, tmp_path: Path) -> None:
+        out = self._migrated(db, tmp_path)
+        dest = tmp_path / "files"
+        dest.mkdir()
+        (dest / "keep.txt").write_text("x")
+        assert _mod._dump(out, dest, 4_000_000) == 2
+        assert [p.name for p in dest.iterdir()] == ["keep.txt"]
+
+    def test_dump_chunks_in_paste_order(self, db, tmp_path: Path, capsys) -> None:
+        out = self._migrated(db, tmp_path)
+        dest = tmp_path / "files"
+        assert _mod._dump(out, dest, 600) == 0  # tiny chunks -> several files per table
+        names = sorted(p.name for p in dest.iterdir())
+        tele = [n for n in names if n.startswith("1_web_data_")]
+        comp = [n for n in names if n.startswith("2_company_")]
+        assert len(tele) > 1 and len(comp) > 1 and names == tele + comp  # telescope files sort first
+        data = json.loads(out.read_text())
+        # Every telescope row, once, with the file's ids and verbatim content
+        rows = [r for n in tele for r in json.loads((dest / n).read_text())]
+        assert {r["web_data_id"]: r["content"] for r in rows} == {k: r["content"] for k, r in data["rows"].items()}
+        assert len(rows) == len(data["rows"])
+        # Every changed company, once, as the raw cleared row (company_data is its stored JSON text)
+        crow = [r for n in comp for r in json.loads((dest / n).read_text())]
+        assert sorted(r["short_name"] for r in crow) == sorted(data["companies"]) == ["acme", "beta", "epsilon", "zeta"]
+        acme = next(r for r in crow if r["short_name"] == "acme")
+        assert isinstance(acme["company_data"], str) and json.loads(acme["company_data"]) == db.get_company("acme")["company_data"]
+        assert f"web_data: {len(rows)} rows in {len(tele)} files" in capsys.readouterr().out
+
+    def test_dump_files_round_trip_through_the_copy_output_upsert(self, db, tmp_path: Path) -> None:
+        """Paste the files in order into the real upsert: same rows back, readers see the same content."""
+        from src.core.table_copy_upsert import apply_copy_output_table_upsert
+
+        out = self._migrated(db, tmp_path)
+        dest = tmp_path / "files"
+        _mod._dump(out, dest, 600)
+        data = json.loads(out.read_text())
+        company_before = _rows(db)
+        conn = db._get_connection()
+        try:
+            conn.execute("DELETE FROM web_data")  # prod starts with no rows
+            conn.commit()
+        finally:
+            conn.close()
+        for sn in data["companies"]:  # prod still holds the old blobs; the upsert must replace them
+            db.update_company(sn, company_data={"stale": True}, updated_at="2000-01-01 00:00:00")
+        done = {"inserted": 0, "updated": 0}
+        for f in sorted(dest.iterdir()):
+            table, counted = ("web_data", "inserted") if f.name.startswith("1_") else ("company", "updated")
+            res = apply_copy_output_table_upsert(table_name=table, json_payload=f.read_text())
+            assert res["ok"] and res["skipped"] == 0, (f.name, res)
+            done[counted] += res[counted]
+        assert done == {"inserted": len(data["rows"]), "updated": len(data["companies"])}
+        assert db.get_web_data_for_ids(list(data["rows"])) == {k: r["content"] for k, r in data["rows"].items()}
+        assert _rows(db) == company_before
+
+    def test_dump_accepts_a_key_changed_since_export(self, db, tmp_path: Path) -> None:
+        _seed(db)
+        out = tmp_path / "scrape.json"
+        _mod._export(out)
+        _mod._load(out)
+        cd = db.get_company("acme")["company_data"]
+        db.update_company("acme", company_data={**cd, "homepage_text": "Re-scraped since export"})
+        assert _mod._clear(out) == 0  # leaves the re-scraped key as text
+        assert _mod._dump(out, tmp_path / "files", 4_000_000) == 0
+
+    def test_dump_skips_a_company_deleted_since_export(self, db, tmp_path: Path) -> None:
+        out = self._migrated(db, tmp_path)
+        conn = db._get_connection()
+        try:
+            conn.execute("DELETE FROM company WHERE short_name='beta'")
+            conn.commit()
+        finally:
+            conn.close()
+        assert _mod._dump(out, tmp_path / "files", 4_000_000) == 0
+        names = {r["short_name"] for f in (tmp_path / "files").glob("2_company_*.json") for r in json.loads(f.read_text())}
+        assert names == {"acme", "epsilon", "zeta"}
+
+    def test_dump_of_an_empty_export_writes_no_files(self, db, tmp_path: Path, capsys) -> None:
+        out = tmp_path / "empty.json"
+        out.write_text(json.dumps({"rows": {}, "companies": {}}))
+        assert _mod._dump(out, tmp_path / "files", 4_000_000) == 0
+        assert list((tmp_path / "files").iterdir()) == []
+        assert "web_data: 0 rows in 0 files" in capsys.readouterr().out
+
+    def test_main_dump_needs_out_dir(self, db, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        out = self._migrated(db, tmp_path)
+        monkeypatch.setattr(sys, "argv", ["migrate", "dump", "--file", str(out), "--db-dir", str(tmp_path)])
+        with pytest.raises(SystemExit) as e:
+            _mod.main()
+        assert e.value.code == 2
+        monkeypatch.setattr(sys, "argv", ["migrate", "dump", "--file", str(out), "--out-dir", str(tmp_path / "f"),
+                                          "--chunk-mb", "0.001"])
+        assert _mod.main() == 0 and (tmp_path / "f").is_dir()
 
 
 class TestAst2135Cli:
@@ -334,4 +464,4 @@ class TestAst2135Cli:
         from src.core import gazer
         assert gazer.is_telescope_id(db.get_company("acme")["company_data"]["homepage_text"])
         assert not (decoy / "astral.db").exists() or sqlite3.connect(decoy / "astral.db").execute(
-            "SELECT COUNT(*) FROM sqlite_master WHERE name IN ('company', 'telescope_data')").fetchone()[0] == 0
+            "SELECT COUNT(*) FROM sqlite_master WHERE name IN ('company', 'web_data')").fetchone()[0] == 0

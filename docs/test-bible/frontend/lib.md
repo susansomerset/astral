@@ -434,7 +434,7 @@ Copied `/jobs/detail/<id>` opened logged-out → magic link completes in a **new
 | --- | --- | --- |
 | Return path survives new tab; tab-scoped keys unchanged | `sessionAuthMark.ts` | **`test_sessionAuthMark.test.ts`** — **`AST-1768 return path survives magic-link new tab`** (`[bug-repro]`) |
 | Magic-link new tab → captured deeplink (§6c routed page) | `Authenticate.tsx` (no product diff) | **`test_Authenticate.test.tsx`** — **`[bug-repro] AST-1768: magic link in a new tab…`** |
-| Login-email bind: match / verified-first / once-per-login / null+fail / unknown id / passthrough | `CandidateContext.tsx` | **`test_CandidateContext.test.tsx`** — **`CandidateProvider — AST-1768 login-email candidate bind`** |
+| Login-email bind: match / verified-first / once-per-login / null+fail / unknown id / passthrough / admin remount after setSelectedId (not the same-mount refresh()) | `CandidateContext.tsx` | **`test_CandidateContext.test.tsx`** — **`CandidateProvider — AST-1768 login-email candidate bind`** (`admin picker survives remount for the same login email`) |
 | Non-admin host waits for hydration (§6c routed page) | `JobsJobDetail.tsx` | **`test_JobsJobDetail.test.tsx`** — **`JobsJobDetail — AST-1768 non-admin waits for candidate hydration`** (`[bug-repro]`) |
 | `GET /api/candidates/by_email` | `src/ui/api/api_candidate.py` | **`test_api_candidate.py::TestAst1768CandidateByEmailApi`** (`test_bug_repro_*` + auth gate) — see [`../ui/api/api_candidate.md`](../ui/api/api_candidate.md) |
 
@@ -480,3 +480,15 @@ cd src/ui/frontend && npx tsc -b --noEmit && npm run test:component -- \
 New `printHtml.ts`. `fetchPrintHtml({kind, id})` reads `base` → `/candidate/resume/base?candidate_id=`, `job_resume` → `/candidate/resume/<id>`, and `cover` → `/candidate/cover/<id>`, with ids URL-encoded. It returns `{ok, html}` (the exact body) or `{ok: false, error}` and never throws. The error is the builder's `error` text, else `HTTP <status>`. A blank body becomes `HTML response was empty`, and a thrown non-Error becomes `Print failed`. For `base` only, the legacy `Candidate missing artifacts.base_resume` error is mapped to the operator copy. `openHtmlInNewTab(html)` opens a blob URL with `window.open(url, "_blank")` (no feature string), sets `opener = null`, revokes the URL after 60 s, and returns `POPUP_BLOCKED_MESSAGE` when the popup is blocked. The base page and JAR modal still use their own copies until **AST-2084**.
 
 **New:** **`tests/component/frontend/lib/test_printHtml.test.ts`** (8). Manifest: [`components.md`](components.md) § AST-2082.
+
+### AST-2234 · AST-2226 (shared Analysis helpers)
+
+**Parent:** AST-2226. **Publish:** `origin/sub/AST-2226/AST-2234-modal-panes-and-wiring`.
+
+Exports `totalScore` (was local in `JobsRecommended`), `phaseThermometerModel`, `jobGradablePercent`, `extractAgentPayloadText`. Retires `materialsPreviewVisible`.
+
+| Helper | Tests |
+| --- | --- |
+| `totalScore` / `phaseThermometerModel` / `jobGradablePercent` / `extractAgentPayloadText` | **`test_recommendedJobReport.test.tsx`** — **`recommendedJobReport — AST-2234 helpers`** |
+
+Manifest: [`components.md`](components.md) § AST-2234.

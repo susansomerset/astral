@@ -1,3 +1,134 @@
+<!-- linear-archive: AST-2083 archived 2026-10-16 -->
+
+## Linear archive (AST-2083)
+
+**Archived:** 2026-10-16  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-2083/dedicated-resume-editor-section-rows-searchaddswatchescompare-autosave  
+**Status at archive:** Archive  
+**Project:** Astral Interface  
+**Assignee:** katherine  
+**Priority / estimate:** None / 5  
+**Parent:** AST-2046 — Resume Edit Overhaul  
+**Blocked by / blocks / related:** parent: AST-2046; blocks: AST-2084
+
+### Description
+
+## What this implements
+
+After #1 and #2. Ships `ResumeContentEditor` and `ResumeSectionRow` for both base and job resumes: collapsed/expanded rows, search, Add Section, swatches, drag reorder, delete confirm, Compare to Base (differs / NEW SECTION / SECTION REMOVED + Add), autosave on field exit, Print, and the saved callback. Does not own page/modal composition (#4).
+
+## Citations
+
+`patt.artifact.ui-consistency` (as amended — Decision 7), `patt.artifact.read-current`, `patt.artifact.write-operative`.
+
+## Scope
+
+`src/ui/frontend/src/components/ResumeContentEditor.tsx` — **new** — the dedicated resume editor (left panel) for base and job resumes: header controls, section rows, autosave, Compare to Base, saved callback. `src/ui/frontend/src/components/ResumeSectionRow.tsx` — **new** — one section row: collapsed read-only header and expanded editable header + content block. `src/ui/frontend/src/components/ExperienceJobsEditor.tsx` — **modified** — job header text uses the section-header color. `src/ui/frontend/src/App.css` — **modified** — styles for the editor header, section rows, icons and tooltips, compare/new/removed blocks, thumbnails, and the experience job header color.
+
+Technical:
+
+* `ResumeContentEditor.tsx`: new component taking a target, either the candidate base resume or one job's resume.
+  * Loads the body (candidate GET for `base_resume`, or job GET for `job_resume`) and the structure payload (candidate or job structure GET).
+  * Renders the header: search, Add Section, accent swatches from `ui_config`, Compare to Base (job only), and Print via `printHtml.ts`.
+  * Renders `ResumeSectionRow`s filtered by search, with up/down, drag reorder, and delete.
+  * Saves on field exit and on any structure change. Base saves body and structure in one candidate `/data` PUT. Job saves the `job_resume` PUT plus the `job_resume_structure` PUT.
+  * Calls a saved callback after each successful save.
+  * Compare to Base fetches the candidate's current base resume and base structure, then derives the differs / NEW SECTION / SECTION REMOVED states by section id. Add re-inserts the base row and its base content into the job structure and body, then saves.
+* `ResumeSectionRow.tsx`: new component for one structure row and its body.
+  * Collapsed: title, a one-line value preview in the format's catalog font, flow icon + tooltip, format label + tooltip, up/down, drag handle, and delete with confirmation.
+  * Expanded: label input, format select, and flow-type select (Hidden maps to `enabled=false`; the other three set `enabled=true` and `page_break_policy`). Also up/down, delete, and Job Edit (base only).
+  * Content block: a single-line input for `line`, a text area otherwise, and `ExperienceJobsEditor` for experience.
+  * Fires field-exit callbacks. Renders the compare / NEW SECTION blocks when given them.
+* `ExperienceJobsEditor.tsx`: modify the job header markup/class so its text takes the section-header color.
+* `App.css`: new rules for the editor header, section rows, collapsed line, icons, tooltips, compare/new/removed blocks, thumbnails, and experience job header color. Remove rules used only by the retired structure-authoring header.
+
+## Acceptance criteria
+
+ 4. **Refresh on field exit, not per keystroke.** Typing 10 characters into a section body fires zero PUTs and zero HTML GETs. Leaving the field fires the save PUT(s), then exactly one HTML GET, and the new text appears in the preview. *Fail:* any request during typing, or no refresh after leaving.
+ 5. **No Save buttons.** Neither resume editor shows a Save, Cancel, or "Save sections" button, and `git grep -n "Save sections" -- src/ui/frontend/src` returns nothing. *Fail:* any of them present.
+ 6. **Search filters.** Typing a word that appears in exactly two sections' label or content (case-insensitive) leaves exactly those two rows visible. Clearing the box restores all rows. *Fail:* other rows visible, or matches hidden.
+ 7. **Add Section.** Clicking Add Section appends one expanded row at the bottom with the catalog's `new_extra_default_format`. After you give it a label and leave the field, the last `all_sections` entry from the matching structure GET (candidate or job) has that title. *Fail:* row elsewhere, wrong format, or not persisted.
+ 8. **Collapsed row content.** Each collapsed row shows `<title>: <value>` on one line, plus up/down arrows and (non-required only) delete. Its flow icon tooltip equals the catalog label for its state, and its format label tooltip equals the catalog description for its format. The value's computed `font-family` equals the catalog preview font for its format. *Fail:* any element missing, or text not from the catalog.
+ 9. **Flow type persists and renders.** Choosing Hidden sets `enabled=false` in `all_sections`, and the section disappears from the preview. Choosing New page before sets `enabled=true` + `page_break_policy=page_break_before`. Hidden is not offered on required sections. *Fail:* wrong stored values, preview unchanged, or Hidden offered on a required section.
+10. **Delete confirms.** Delete opens a confirmation. Cancelling keeps the row; confirming removes it from `all_sections` and the preview. Required sections show no delete. *Fail:* deletion without confirmation, or a delete control on a required section.
+11. **Reorder.** Moving a section with an arrow or by dragging changes its `order` in `all_sections` and its position in the preview HTML. *Fail:* order unchanged in either.
+12. **Line format end to end.** `line` is in the catalog's `body_formats`, and every format there today is still present. A Line section edits in a single-line input, and the preview shows its text as one line. *Fail:* a format removed, a multi-line editor, or the section skipped as "missing format".
+13. **Format text is config-driven.** `git grep -nE "Word Cloud|Bullet List|Flow uninterrupted" -- src/ui/frontend/src` returns nothing; those strings come from the catalog payload. *Fail:* any hardcoded hit.
+14. **Compare to Base.** Set up a job resume where one shared section differs from base, one section exists only on the job, and one base section was deleted from the job. With Compare on, the job shows exactly one read-only base block (under the differing section), one "NEW SECTION: Not found in base", and one "SECTION REMOVED: …" row with Add. Clicking Add restores that section with its base content in `GET /api/jobs/<id>/resume_structure` and in the job's `job_resume`. With Compare off, none of these appear, and the base resume page has no Compare toggle. *Fail:* any count wrong, Add not persisted, or a toggle on the base page.
+15. **Print.** Print opens a new tab whose HTML equals the preview's. If the popup is blocked, the existing "Popup blocked" toast appears. *Fail:* same-tab navigation, or different HTML.
+16. **Experience header color.** In the expanded Experience section, each job header's computed `color` equals the section header's computed `color`. *Fail:* different colors.
+
+## Boundaries
+
+Does not own page/modal composition (#4). Sibling slices under [AST-2046](https://linear.app/astralcareermatch/issue/AST-2046): #1: job-structure-line-format; #2: split-pane-preview; #4: wire-resume-surfaces.
+
+## Notes for planning
+
+Citations above; decisions 1–9 and the full architectural definition live on the parent [AST-2046](https://linear.app/astralcareermatch/issue/AST-2046). Estimate: 5.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/AST-2046-resume-edit-overhaul`,
+child `sub/AST-2046/AST-2083-resume-editor`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-10-09T04:22:29.448Z
+[code-rubric] PROCEED (Commit: 3346cef18) Autosave editor; canon clean
+
+#### katherine — 2026-10-09T04:21:03.473Z
+`origin/sub/AST-2046/AST-2083-resume-editor` @ `3346cef18` · tests passed
+
+Susan step 1 (option D): `sync(dev)` merge `ac13766f6` (parents `6af214f93` merge-tests + `origin/dev` `3d1cb13fc`); `test_config.py` resolved by `git checkout MERGE_HEAD --`; byte-identity check exit 0; `--no-verify` on that commit only. Fix `7dbde0c02` (`--accent-contrast`, `--paper-bg`) merged in at `3346cef18` with hooks on. Fast-forward push.
+
+Manifest (docs/test-bible/frontend/components.md § AST-2083):
+1. `npm run test:component -- …ResumeContentEditor …ExperienceJobsEditor …AdminThemeExamples` → 47 passed (47).
+2. Full `npm run test:component` → 48 failures, identical set to `origin/dev` `3d1cb13fc` baseline (48); no new failures.
+3. `npx tsc -b --noEmit` clean; eslint clean on both new files; `ExperienceJobsEditor.tsx` L65 baseline only.
+
+#### betty — 2026-10-09T03:39:10.279Z
+[check-linear] blocked: AST-2083 merge-tests re-delivery needs a policy call — handoff NOT cleared.
+
+Confirmed: `origin/sub/AST-2046/AST-2083-resume-editor` @ `6af214f93` conflicts with `origin/dev` only in `tests/component/utils/test_config.py`. Both sides add the same `TestAst2096AllXFailStates`, in different positions. Katherine's local branch does not contain `6af214f93`, so none of her work is at risk.
+
+Every re-delivery breaks a written rule:
+- Replace the delivery: force-push the sub back to `1c2a16f53`, then one fresh `merge-tests(AST-2083)` (class moved to dev's position on origin/tests). Blocked by `orch.git.no-cherry-pick-rebase-force`.
+- Add a second `merge-tests(AST-2083)`: `validate-sub-log.sh` fails merge-child on the duplicate.
+- Betty pushes a `sync(dev)` resolve merge onto the sub: not a Betty commit type, and it carries dev's src/.
+- Engineer finishes the dev merge with `--no-verify`: bypasses the hook.
+
+@susan please pick one; Betty re-delivers as soon as one is approved. Recommended: a one-time force-with-lease replace (sub ends with exactly one delivery and merges cleanly). Manifest is unchanged (47 tests). Katherine's CSS fix `7dbde0c02` stays unpushed until then.
+
+#### katherine — 2026-10-09T03:36:44.999Z
+[check-linear] blocked: publish rejected — `git push origin HEAD:sub/AST-2046/AST-2083-resume-editor` → non-fast-forward (remote tip `6af214f93`, local `7dbde0c02`).
+
+@Betty White — your `merge-tests(AST-2083)` delivery (`6af214f93`) conflicts with current `origin/dev` in `tests/component/utils/test_config.py`: both sides add `TestAst2096AllXFailStates` (dev after the AST-2069 class, the delivery after the AST-2081 class). Dev's copy is identical in content, but completing that merge stages tests/ + docs/test-bible paths and the engineer pre-commit hook rejects it, so I can't attach the publish ref. Please re-deliver `merge-tests(AST-2083)` on top of current `origin/dev` (drop the duplicate AST-2096 class) so the sub merges cleanly.
+
+Product fix is ready locally, pending push: `7dbde0c02` `test(AST-2083)` — `.resume-section-new` / `.print-preview-thumb:hover` use `var(--accent-contrast)`, `.print-preview-thumb` background uses `var(--paper-bg)`.
+
+Manifest run on that tree, with your `test_ResumeContentEditor.test.tsx` from `6af214f93` placed temporarily (not committed):
+1. `npm run test:component -- …ResumeContentEditor …ExperienceJobsEditor …AdminThemeExamples` → 47 passed (47).
+2. Full `npm run test:component` → 48 failures, the identical set to plain `origin/dev` (48), so no new failures.
+3. `npx tsc -b --noEmit` clean; eslint clean on both new files; `ExperienceJobsEditor.tsx` L65 baseline only.
+
+Once the re-delivered ref merges cleanly, I'll push `7dbde0c02`, rerun item 1, and set Tests Passed.
+
+#### betty — 2026-10-09T03:23:42.884Z
+`origin/sub/AST-2046/AST-2083-resume-editor` @ `6af214f93` · tests ready, 2 product reds
+
+Product bug (App.css §10e2, `354a93fa4`): `var(--accent-gold)` on `.resume-section-new` + `.print-preview-thumb:hover` — token retired on dev (now `--accent-contrast`); `background: #fff` on `.print-preview-thumb` is a hex outside token blocks. Red: `test_AdminThemeExamples` AST-2047 / AST-2049 gates (2). Manifest: `docs/test-bible/frontend/components.md` § QA test manifest — AST-2083 (47 tests).
+
+#### katherine — 2026-10-09T03:05:29.209Z
+`origin/sub/AST-2046/AST-2083-resume-editor` @ `1c2a16f53` · validate-sub-log flags `52d9749a3`/`7caff6333` (origin/dev history via §4d refresh, not sub commits) — clears once ftr absorbs dev.
+
+#### joan — 2026-10-09T03:01:42.665Z
+[plan-rubric] PROCEED (Commit: e94f8a6) Editor plan; canon clean.
+
+#### katherine — 2026-10-09T02:59:47.728Z
+`origin/sub/AST-2046/AST-2083-resume-editor` @ `e94f8a6` · plan ready for validation
+
+---
+
 # AST-2083 — Dedicated resume editor: section rows, search/add/swatches/compare, autosave (Resume Edit Overhaul)
 
 - **Parent:** [AST-2046 Resume Edit Overhaul](https://linear.app/astralcareermatch/issue/AST-2046)

@@ -843,11 +843,11 @@ Real SQLite (`sqlite_in_memory`). Only `_candidate_id_for_job` / `_candidate_dat
 
 **Parent:** [AST-2130](https://linear.app/astralcareermatch/issue/AST-2130). **Publish:** `origin/sub/AST-2130/AST-2133-composed-jd`. Plan: `docs/features/foundation/ast-2133-composed-read-only-job-description.md`. Capture storage / resolve: [`gazer.md`](gazer.md) § AST-2132.
 
-`compose_job_description(job)` = preamble (`job_data.job_description`) + `"\n\n"` + the `jd_telescope_data_id` capture run through `collapse_consecutive_blank_lines` then `_prune_jd(…, job_title)`; blank halves drop; no reference → the stored preamble exactly; reference whose row is gone → preamble alone. Read-only — never saved back. `get_job_data` JD key returns the composed JD (self-heal only when it is under `jd_min_chars` **and** a `job_link` exists (AST-2145: link-less → one warning, `None`); the heal calls `fetch_jd_batch(transition=False)` and never moves state; still short after the heal → `None`); non-JD falsy → `None`. `persist_skipped_job_edits` ignores `job_description`. Consumers: consult (§ [`consult.md`](consult.md) AST-2133), job APIs ([`../ui/api/api_jobs.md`](../ui/api/api_jobs.md) § AST-2133), modal ([`../frontend/components.md`](../frontend/components.md) § AST-2133).
+`compose_job_description(job)` = preamble (`job_data.job_description`) + `"\n\n"` + the `jd_web_data_id` capture run through `collapse_consecutive_blank_lines` then `_prune_jd(…, job_title)`; blank halves drop; no reference → the stored preamble exactly; reference whose row is gone → preamble alone. Read-only — never saved back. `get_job_data` JD key returns the composed JD (self-heal only when it is under `jd_min_chars` **and** a `job_link` exists (AST-2145: link-less → one warning, `None`); the heal calls `fetch_jd_batch(transition=False)` and never moves state; still short after the heal → `None`); non-JD falsy → `None`. `persist_skipped_job_edits` ignores `job_description`. Consumers: consult (§ [`consult.md`](consult.md) AST-2133), job APIs ([`../ui/api/api_jobs.md`](../ui/api/api_jobs.md) § AST-2133), modal ([`../frontend/components.md`](../frontend/components.md) § AST-2133).
 
 | AC | Component tests |
 | --- | --- |
-| AC7 compose rules (exact preamble, preamble + pruned capture, capture only, missing row, non-dict `job_data`, no write-back) | new **`TestAst2133ComposeJobDescription`** (7; real `telescope_data` rows via `gazer.keep_telescope_data` on core `sqlite_in_memory`) |
+| AC7 compose rules (exact preamble, preamble + pruned capture, capture only, missing row, non-dict `job_data`, no write-back) | new **`TestAst2133ComposeJobDescription`** (7; real `web_data` rows via `gazer.keep_web_data` on core `sqlite_in_memory`) |
 | AC7 `get_job_data` — long composed JD skips self-heal; self-heal writes the reference then returns composed | same class — `test_get_job_data_returns_long_composed_without_self_heal`, `test_self_heal_writes_reference_then_returns_composed`, `test_self_heal_still_short_returns_none`, `test_downstream_state_heal_keeps_state` (**bug-repro (AST-2146)**: real `fetch_jd_batch`, state stays `METEORITE_PASSED_JD`, no `transition_job_state`) |
 | AST-2145 `get_job_data` self-heal guard + delegation | **`TestGetJobData`** — `test_self_heals_short_job_description` (`transition=False`, single-job), `test_self_heal_failure_returns_none` (linked job → exception branch), `test_no_job_link_skips_self_heal_with_one_warning[empty,blank,absent]` (**bug-repro (AST-2146)**: AST-2145 repro job `4d9d1c79`, no fetch, one WARNING) |
 | AC7 API detail / list rows / virtual skips | `test_api_jobs.py` **`TestAst2133ComposedJdResponses`** |
@@ -856,7 +856,7 @@ Real SQLite (`sqlite_in_memory`). Only `_candidate_id_for_job` / `_candidate_dat
 
 **Broken / obsolete (revised, names kept for node-id stability):** `TestAst1453PersistSkippedJobEdits::test_writes_title_link_jd_then_transition` (order now `["save_job", "transition"]`, no `save_job_data`), `::test_empty_jd_persists_without_strip_whole_blob` (JD-only payloads `""` / `None` / text write nothing); `test_api_jobs.py::TestJobsRoutes::test_list_processing_filters_score_floor` (row now carries `job_data.job_description == ""`); `test_JobDetailModal.test.tsx` AST-1454 editable test (no JD tab / textarea; PUT body has no `job_description`). **AST-2146 (for AST-2145):** `TestGetJobData::test_self_heals_short_job_description` (link-less job now hits the guard → given a `job_link`; asserts `transition=False`, returns `None` with no reference); `TestGetJobData::test_self_heal_failure_returns_none` (passed only via the guard → given a `job_link` + `assert_awaited_once` so the exception branch runs); `TestAst2133ComposeJobDescription::test_self_heal_writes_reference_then_returns_composed` (fake fetch takes `transition=`; 23-char `_SCRAPED` is under `jd_min_chars` after the heal → 250-char body).
 
-**Isolation:** ui `conftest.py` `_DB_SCHEMA_FLAGS` gains **`_telescope_data_schema_ensured`**. Every new reference test stores captures in a tmp DB — never `data/astral.db` (live symlink in epic worktrees).
+**Isolation:** ui `conftest.py` `_DB_SCHEMA_FLAGS` gains **`_web_data_schema_ensured`**. Every new reference test stores captures in a tmp DB — never `data/astral.db` (live symlink in epic worktrees).
 
 **Coverage:** every new / modified `tracker.py` line and branch in `compose_job_description` / `get_job_data` is covered by `test_tracker.py` (no missed lines or partial branches in that range); `consult.py` / `api_jobs.py` modified lines covered.
 
@@ -870,7 +870,7 @@ Real SQLite (`sqlite_in_memory`). Only `_candidate_id_for_job` / `_candidate_dat
 2. No-regression: `tests/component/core/{test_agent,test_dispatcher,test_gazer}.py`, `tests/component/ui/api/{test_api_jobs_ast1694_listing_href,test_api_admin}.py` failure set equals the ftr baseline (`test_agent.py` compared alone).
 3. Modal: `cd src/ui/frontend && npm run test:component -- ../../../tests/component/frontend/components/test_JobDetailModal.test.tsx` — 23 passed, 1 pre-existing (AST-1695 null listing_href).
 4. AC8: `git grep -n -E "\.get\((jd_key|[\"']job_description[\"'])" -- src/core src/ui/api ':!src/core/tracker.py'` → only `src/ui/api/api_admin.py` (AST-2134). AC9: `git grep -n "job_description: e.target.value" -- src/ui/frontend` → empty.
-5. Live DB untouched: run with `ASTRAL_DB_DIR=<empty tmp dir>`; `telescope_data` row count in `~/astral/data/astral.db` is the same before and after items 1–2.
+5. Live DB untouched: run with `ASTRAL_DB_DIR=<empty tmp dir>`; `web_data` row count in `~/astral/data/astral.db` is the same before and after items 1–2.
 
 **Pass criterion:** items 1–5 — narrowed run, not the zero-arg harness / branch-lock gate (pre-existing reds on the ftr tip).
 
@@ -958,3 +958,56 @@ ASTRAL_DB_DIR=$(mktemp -d) ./scripts/testing/run_component_tests.sh \
 3. No-regression: `pytest tests/component/core/test_tracker.py tests/component/core/test_contact.py -q` → **24 failed, 389 passed**, the pre-existing set (AST-733, 551, 552, 562, 997, 1523, 1693 in `test_tracker.py`; AST-1073, 1101, 1207, 1515 in `test_contact.py`). None are in these two classes.
 
 Restore `data/contact_estelle_activity.json` (`git checkout --`) after running the suites. Do not commit it.
+
+### AST-2232 · AST-2226 (lifecycle helpers + Applied admission for detail)
+
+**Parent:** [AST-2226](https://linear.app/astralcareermatch/issue/AST-2226). **Publish:** `origin/sub/AST-2226/AST-2232-agent-name-detail-enrichment-tab-config`.
+
+Public helpers `job_discovered_at` / `job_first_state_history_at` / `job_recommended_at` / `job_applied_at` — discovered = `created_at`; recommended/applied = first matching `state_history.to_state` (list order; no reverse). Applied legality for detail is `job_state_admits_transition(state, "CANDIDATE_APPLIED")` (same prior-state query as Skip; `CANDIDATE_APPLIED` stays in its own priors). Route enrichment: **`docs/test-bible/ui/api/api_jobs.md`** § AST-2232. Config tabs / `agent_name` seed: **`docs/test-bible/utils/config.md`** § AST-2232. Story attach: **`docs/test-bible/core/agent.md`** § AST-2232. DB column: **`docs/test-bible/data/database/agents.md`** § AST-2232.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Lifecycle helpers | `src/core/tracker.py` | **`TestAst2232JobLifecycleDates`** |
+| Detail `can_apply` + company + dates | `src/ui/api/api_jobs.py` `detail` | **`test_api_jobs.py::TestAst2232DetailEnrichment`** |
+| AC1 tabs + Summary drop `raw_jd` + agent columns/seed names | `src/utils/config.py` + `data/admin/agent.json` | **`test_config.py`** — revised `test_ast565_recommended_report_manifest_tabs`, `TestAst1550DiscussionHopKeys::test_top_tabs_discussion_after_artifacts`, `TestAst1955PlainAgentSettings::test_agent_repo_json_columns_and_seed` |
+| Story `agent_name` | `src/core/agent.py` | **`TestAst2232AgentStoryAgentName`** |
+| DB `agent_name` | `src/data/database.py` | **`test_agents.py::TestAst2232AgentName`** |
+
+**Broken / obsolete (revised this pass):** config tab-order asserts that pinned Analysis→Summary (no `job_description`) and Summary `raw_jd`; agent repo-column tuple that omitted `agent_name` / `requires_structured_output`.
+
+**Out of scope (siblings):** `stateUiManifestFixture.ts` / `JobAnalysisReportModal` / header chrome — still carry pre-AST-2232 fixture tab order + Summary `raw_jd` until #2 / #3 land (same deferral pattern as AST-1872 → AST-1874).
+
+**Integration:** none — do not invent new scenarios.
+
+## QA test manifest
+
+1. **Component (narrowed — must be all green):**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_tracker.py::TestAst2232JobLifecycleDates \
+  tests/component/core/test_tracker.py::TestAst1872JobStateAdmitsTransition \
+  tests/component/ui/api/test_api_jobs.py::TestAst2232DetailEnrichment \
+  tests/component/ui/api/test_api_jobs.py::TestAst1872DetailCanSkip \
+  tests/component/core/test_agent.py::TestAst2232AgentStoryAgentName \
+  tests/component/core/test_agent.py::TestAst1550AgentStoryTaskName \
+  tests/component/utils/test_config.py::TestBuildStateUiManifest::test_ast565_recommended_report_manifest_tabs \
+  tests/component/utils/test_config.py::TestAst1550DiscussionHopKeys \
+  tests/component/utils/test_config.py::TestAst1691MeteoriteReportConfig \
+  tests/component/utils/test_config.py::TestAst1955PlainAgentSettings::test_agent_repo_json_columns_and_seed \
+  tests/component/data/database/test_agents.py::TestAst2232AgentName \
+  -q
+```
+
+2. **Scope gate:** `git diff origin/dev...origin/sub/AST-2226/AST-2232-agent-name-detail-enrichment-tab-config -- src/ui/frontend/` empty.
+
+**Pass criterion:** item 1 green + item 2 holds — narrowed run, not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/core/tracker.md` — `1a52d3f559bd7b21eb4a66ce3f2f4b7436b7b0fb`
+- `docs/test-bible/ui/api/api_jobs.md` — `e8b81aced6c1c20302f1ac60dd0f23ed9af721ad`
+- `docs/test-bible/core/agent.md` — `7269dd6ac08e8f38ac481a0281cdcc24b304cbb9`
+- `docs/test-bible/utils/config.md` — `39af4d0489823569da21764313412e54b93bf013`
+- `docs/test-bible/data/database/agents.md` — `9c005e15660ccb85f17ea9bd7fa27d147c89d856`
+
+*(shasums of tip `9d7a509f8` before this docs-only shasum record commit)*

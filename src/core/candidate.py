@@ -3,6 +3,7 @@ Core candidate: candidate lifecycle management (AST-216).
 
 In-scope: initiate_candidate, save_candidate_data, get_candidate,
 transition_candidate_state, parse_candidate_resume, check_context_complete,
+check_profile_complete, incomplete_profile, advance_candidate_readiness (AST-2229),
 contact uniqueness enforcement on save (AST-1080),
 get_new_candidate_batch / clear_candidate_batch (batch claim wrappers; AST-1259),
 operative save_candidate_data(candidate_id, artifact_key, blob) + hydrate via
@@ -27,6 +28,9 @@ Writing Preferences (candidate.context.writing_preferences) uses the same
 operative save + get_candidate_current hydrate path (AST-1665).
 Resume structure (candidate.artifacts.resume_structure) uses the same
 operative save + get_candidate_current hydrate path (AST-1679).
+Contact context commands (AST-2206): get_candidate_id_for_slack_channel (channel →
+the one candidate naming it in contact.slack_channel_id), contact_command_show_context
+(read-current reply) and contact_command_save_context (nh3 sanitize → operative save).
 All writes go through database.save_candidate (upsert) or save_artifact (operative);
 state transition logic lives here.
 
@@ -62,12 +66,15 @@ from src.utils.config import (
     CANDIDATE_CONTACT_UNIQUENESS_CONFIG,
     CANDIDATE_LIBRARY_CONFIG,
     CANDIDATE_LOOKUP_CONFIG,
+    CONTACT_CONFIG,
+    CONTACT_CONTEXT_COMMAND_CONFIG,
     COVER_FROM_BLOCK_CONFIG,
     TOKEN_SOURCES,
     TOPIC_MENU_CONFIG,
     SURFER_CONSENT_CONFIG,
     CANDIDATE_STATES,
     CANDIDATE_STAGE_DISPATCH,
+    remap_legacy_candidate_state,
     CRAFT_ARTIFACTS_CHAIN_TASK_TO_NAV_PATH,
     CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY,
     CRAFT_RUBRIC_UI_TASK_KEYS,
@@ -2048,19 +2055,30 @@ def hydrate_operative_writing_preferences_for_response(candidate_id: str, cd: di
 
     Miss → leave legacy context.writing_preferences blob untouched (parent AC6 migration window).
     Hit → write current string onto context.writing_preferences for the editor contract.
+    Dict bodies (legacy/agent rows) coerce for display only — prefer writing_general_instructions,
+    else stable json.dumps; do not rewrite the artifact row (AST-2243).
     """
     if not isinstance(cd, dict):
         return
     body = get_candidate_current(candidate_id, _WRITING_PREFERENCES_ARTIFACT_KEY)
     if body is None:
         return
-    if not isinstance(body, str):
+    if isinstance(body, str):
+        overlay = body
+    elif isinstance(body, dict):
+        # Display coerce only — plain_text catalog still stores strings on new writes.
+        instructions = body.get("writing_general_instructions")
+        if isinstance(instructions, str) and instructions.strip():
+            overlay = instructions
+        else:
+            overlay = json.dumps(body, sort_keys=True)
+    else:
         return
     ctx = cd.get("context")
     if not isinstance(ctx, dict):
         ctx = {}
         cd["context"] = ctx
-    ctx["writing_preferences"] = body
+    ctx["writing_preferences"] = overlay
 
 
 def _normalize_search_term_lines(val: str) -> list[str]:
@@ -2357,6 +2375,148 @@ def get_candidate_id_for_query(
     return None
 
 
+# AST-2206: Contact context commands. contact.slack_channel_id is not a uniqueness-gated field
+# (CANDIDATE_CONTACT_UNIQUENESS_CONFIG), so two candidates can name one channel — ambiguous → None.
+_SLACK_CHANNEL_ID_PATH = "contact.slack_channel_id"
+# Handler reply texts; {label} is the CONTACT_CONTEXT_COMMAND_CONFIG row label.
+_CONTACT_SHOW_EMPTY_REPLY = "No {label} saved yet for this candidate."
+_CONTACT_SAVE_ACK_REPLY = "Saved. That's now the current {label}."
+
+
+def get_candidate_id_for_slack_channel(
+    channel_id: str,
+    *,
+    debug: bool = False,
+) -> Optional[str]:
+    """The one non-deleted candidate whose contact.slack_channel_id is ``channel_id`` (AST-2206).
+
+    None when the channel is empty, unmapped, or named by more than one candidate.
+    """
+    if debug:
+        logger.set_debug_flag(True)
+    ch = (channel_id or "").strip()
+    if not ch:
+        return None
+    logger.debug("Calling list_candidates: [include_deleted=False]")
+    candidates = list_candidates(include_deleted=False)
+    logger.debug("Response from list_candidates: %s", candidates)
+    logger.debug("Beginning slack channel lookup loop on %s items", len(candidates))
+    hit_ids = sorted(
+        {
+            (c.get("astral_candidate_id") or "").strip()
+            for c in candidates
+            if _lookup_path_value(c, _SLACK_CHANNEL_ID_PATH) == ch
+        }
+        - {""}
+    )
+    logger.debug("End slack channel lookup loop after %s items", len(candidates))
+    if len(hit_ids) > 1:
+        logger.warning(
+            "%s | slack channel %s is named by %s candidates (%s)\n"
+            "  No candidate is mapped to this channel until only one names it",
+            hit_ids[0], ch, len(hit_ids), ", ".join(hit_ids),
+        )
+    return hit_ids[0] if len(hit_ids) == 1 else None
+
+
+def _contact_context_command(artifact_key: Optional[str]) -> Optional[Dict[str, Any]]:
+    """CONTACT_CONTEXT_COMMAND_CONFIG row whose artifact_key matches; None for any other key."""
+    key = (artifact_key or "").strip()
+    return next(
+        (m for m in CONTACT_CONTEXT_COMMAND_CONFIG.values() if m["artifact_key"] == key), None
+    )
+
+
+def contact_command_show_context(
+    candidate_id: str,
+    payload: str,
+    *,
+    source_id: str,
+    thread_ts: Optional[str] = None,
+    artifact_key: Optional[str] = None,
+    debug: bool = False,
+) -> dict:
+    """CONTACT_CONFIG["commands"] code handler for /show-<context> (AST-2206).
+
+    Read-only (patt.artifact.read-current); payload is ignored (payload_optional entry).
+    Returns {ok, meteorite_id (always None), error, reply_text}; Contact posts reply_text.
+    """
+    cid = (candidate_id or "").strip()
+    ctx = _contact_context_command(artifact_key)
+    if not cid:
+        # No reply_text → Contact's hear-ack path.
+        return {"ok": False, "meteorite_id": None, "error": "no_candidate", "reply_text": None}
+    if ctx is None:
+        logger.warning(
+            "%s | contact show handler got artifact_key %r, not a context command key\n"
+            "  Nothing was shown",
+            cid, artifact_key,
+        )
+        return {"ok": False, "meteorite_id": None, "error": "unknown_artifact_key", "reply_text": None}
+    logger.debug(
+        "Calling get_candidate_current: [candidate_id=%s, artifact_key=%s]", cid, ctx["artifact_key"]
+    )
+    body = get_candidate_current(cid, ctx["artifact_key"])
+    logger.debug("Response from get_candidate_current: %r", body)
+    reply = body if isinstance(body, str) and body.strip() else _CONTACT_SHOW_EMPTY_REPLY.format(label=ctx["label"])
+    return {"ok": True, "meteorite_id": None, "error": None, "reply_text": reply}
+
+
+def contact_command_save_context(
+    candidate_id: str,
+    payload: str,
+    *,
+    source_id: str,
+    thread_ts: Optional[str] = None,
+    artifact_key: Optional[str] = None,
+    debug: bool = False,
+) -> dict:
+    """CONTACT_CONFIG["commands"] code handler for /save-<context> <text> (AST-2206).
+
+    nh3-sanitizes payload (Contact's one sanitize helper), then write-operative through
+    save_candidate_data — identical-to-current is a no-op there. Contact's only artifact
+    write ("write artifact" pinhole kind). Returns {ok, meteorite_id (always None), error,
+    reply_text}; Contact posts reply_text.
+    """
+    cid = (candidate_id or "").strip()
+    ctx = _contact_context_command(artifact_key)
+    if not cid:
+        # No reply_text → Contact's hear-ack path.
+        return {"ok": False, "meteorite_id": None, "error": "no_candidate", "reply_text": None}
+    if ctx is None:
+        logger.warning(
+            "%s | contact save handler got artifact_key %r, not a context command key\n"
+            "  Nothing was saved",
+            cid, artifact_key,
+        )
+        return {"ok": False, "meteorite_id": None, "error": "unknown_artifact_key", "reply_text": None}
+    key = ctx["artifact_key"]
+    # Late import: meteorite imports candidate at module level.
+    from src.core.meteorite import sanitize_contact_text
+
+    logger.debug("Calling sanitize_contact_text: [payload=%r]", payload)
+    body = sanitize_contact_text(payload)
+    logger.debug("Response from sanitize_contact_text: %r", body)
+    if not body:
+        logger.warning(
+            "%s | contact save of %s rejected — the text is empty after sanitize\n  Nothing was saved",
+            cid, key,
+        )
+        # Same usage line the runner posts for an empty payload; own entry found by handler + key.
+        usage = next(
+            m["usage_reply_text"] for m in CONTACT_CONFIG["commands"].values()
+            if m["handler"] == f"{__name__}.contact_command_save_context" and m.get("artifact_key") == key
+        )
+        return {"ok": False, "meteorite_id": None, "error": "empty_after_sanitize", "reply_text": usage}
+    logger.debug("Calling save_candidate_data: [candidate_id=%s, artifact_key=%s]", cid, key)
+    artifact_uuid = save_candidate_data(cid, key, body, debug=debug)
+    logger.debug("Response from save_candidate_data: %s", artifact_uuid)
+    return {
+        "ok": True, "meteorite_id": None, "error": None,
+        "reply_text": _CONTACT_SAVE_ACK_REPLY.format(label=ctx["label"]),
+    }
+
+
 def preview_task_prompt(
     task_key: str,
     candidate_id: str = "",
@@ -2472,12 +2632,39 @@ def write_candidate_dispatch_hop_label(
     return label
 
 
-def requested_artifacts_dispatch_claim_states() -> List[str]:
-    """Bare trigger + retry + live-chain hop labels for craft_get_rubric @ REQUESTED_ARTIFACTS."""
-    trigger = CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["trigger_state"]
-    states: List[str] = list(dispatch_claim_states(trigger, "candidate"))
-    for tk in _walk_requested_artifacts_chain_task_keys():
-        states.append(dispatch_hop_label(trigger, tk))
+def _candidate_stage_for_trigger(bare_trigger: str) -> dict:
+    """CANDIDATE_STAGE_DISPATCH entry whose trigger_state matches bare_trigger."""
+    bare = (bare_trigger or "").strip()
+    for entry in CANDIDATE_STAGE_DISPATCH.values():
+        if entry.get("trigger_state") == bare:
+            return entry
+    raise ValueError(f"no CANDIDATE_STAGE_DISPATCH stage for trigger {bare!r}")
+
+
+def _walk_candidate_stage_chain_task_keys(stage: dict) -> list[str]:
+    """Live run_next walk from stage entry hop; defensive cycle bail (write-path is acyclic)."""
+    start = (stage.get("task_key") or "").strip()
+    out: list[str] = []
+    seen: set[str] = set()
+    key = start
+    while key:
+        if key in seen:
+            raise RuntimeError(f"craft run_next cycle at {key!r}")
+        seen.add(key)
+        out.append(key)
+        key = (_current_agent_task_run_next(key) or "").strip()
+    return out
+
+
+def candidate_stage_dispatch_claim_states(trigger_state: str) -> List[str]:
+    """Bare trigger + retry + live-chain hop labels for any CANDIDATE_STAGE_DISPATCH stage."""
+    raw = (trigger_state or "").strip()
+    parsed = parse_dispatch_hop_label(raw)
+    bare = parsed[0] if parsed else raw
+    stage = _candidate_stage_for_trigger(bare)
+    states: List[str] = list(dispatch_claim_states(bare, "candidate"))
+    for tk in _walk_candidate_stage_chain_task_keys(stage):
+        states.append(dispatch_hop_label(bare, tk))
     seen: set[str] = set()
     out: List[str] = []
     for s in states:
@@ -2485,6 +2672,24 @@ def requested_artifacts_dispatch_claim_states() -> List[str]:
             seen.add(s)
             out.append(s)
     return out
+
+
+def requested_artifacts_dispatch_claim_states() -> List[str]:
+    """Bare trigger + retry + live-chain hop labels for craft_get_rubric @ REQUESTED_ARTIFACTS."""
+    return candidate_stage_dispatch_claim_states(
+        CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["trigger_state"]
+    )
+
+
+def is_candidate_stage_chain_task(task_key: str) -> bool:
+    """True when task_key is on any CANDIDATE_STAGE_DISPATCH live run_next walk."""
+    tk = (task_key or "").strip()
+    if not tk:
+        return False
+    for stage in CANDIDATE_STAGE_DISPATCH.values():
+        if tk in _walk_candidate_stage_chain_task_keys(stage):
+            return True
+    return False
 
 
 def _start_candidate_reap_timer(candidate_id: str) -> None:
@@ -2613,17 +2818,9 @@ def start_requested_artifacts(candidate_id: str) -> str:
 
 def _walk_requested_artifacts_chain_task_keys() -> list[str]:
     """Live run_next walk from stage entry hop; defensive cycle bail (write-path is acyclic)."""
-    start = CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["task_key"]
-    out: list[str] = []
-    seen: set[str] = set()
-    key = (start or "").strip()
-    while key:
-        if key in seen:
-            raise RuntimeError(f"craft run_next cycle at {key!r}")
-        seen.add(key)
-        out.append(key)
-        key = (_current_agent_task_run_next(key) or "").strip()
-    return out
+    return _walk_candidate_stage_chain_task_keys(
+        CANDIDATE_STAGE_DISPATCH["requested_artifacts"]
+    )
 
 
 def requested_artifacts_chain_task_keys() -> list[str]:
@@ -2640,9 +2837,9 @@ def is_requested_artifacts_chain_ui_task(task_key: str) -> bool:
 
 
 def _artifacts_nav_label_for_path(path: str) -> str:
-    """Resolve Artifacts NAV_CONFIG child label for a path string."""
+    """Resolve NAV_CONFIG child label for a path (any group — Artifacts group dissolved)."""
     for section in NAV_CONFIG:
-        if not isinstance(section, dict) or section.get("label") != "Artifacts":
+        if not isinstance(section, dict):
             continue
         for item in section.get("items") or []:
             if isinstance(item, dict) and item.get("path") == path:
@@ -2671,16 +2868,49 @@ def requested_artifacts_chain_artifact_keys() -> list[str]:
     return keys
 
 
+def candidate_stage(state: str) -> int:
+    """Registry stage for a candidate state (incl. implicit {base}_RETRY)."""
+    base = registered_base(CANDIDATE_STATES, state)
+    if not base:
+        raise ValueError(f"Unknown candidate state: {state}")
+    return int(CANDIDATE_STATES[base]["stage"])
+
+
+_RETIRED_TOPIC_STATES = frozenset({
+    "REQUIRED_TOPICS_READY",
+    "REQUIRED_TOPICS_READY_STALE",
+    "ALL_TOPICS_READY",
+    "ALL_TOPICS_READY_STALE",
+})
+
+
+def migrate_retired_topic_candidate_states() -> int:
+    """Persist remap of live topic-ready(+stale) rows onto PROFILE_READY / CONTEXT_READY.
+    Returns count of rows rewritten."""
+    rewritten = 0
+    for row in list_candidates(include_deleted=False):
+        state = row.get("state") or ""
+        if state not in _RETIRED_TOPIC_STATES:
+            continue
+        cid = row.get("astral_candidate_id")
+        if not cid:
+            continue
+        to_state = remap_legacy_candidate_state(state)
+        transition_candidate_state(cid, to_state, force=True)
+        rewritten += 1
+    return rewritten
+
+
 def check_context_complete(candidate_id: str) -> bool:
     """True when all CANDIDATE_LIBRARY_CONFIG['context_completeness_keys'] are non-empty (no state write).
-    Already-advanced candidates (progress_rank >= ALL_TOPICS_READY) count as complete."""
+    Already-advanced candidates (progress_rank >= CONTEXT_READY) count as complete."""
     candidate = database.get_candidate(candidate_id)
     if not candidate:
         return False
     current_state = candidate.get("state", "")
     # {base}_RETRY carries its base's rank (AST-1806).
     rank = int((CANDIDATE_STATES.get(registered_base(CANDIDATE_STATES, current_state) or "") or {}).get("progress_rank", -1))
-    ready_rank = int(CANDIDATE_STATES["ALL_TOPICS_READY"]["progress_rank"])
+    ready_rank = int(CANDIDATE_STATES["CONTEXT_READY"]["progress_rank"])
     if rank >= ready_rank and rank >= 0:
         return True
     ctx = (candidate.get("candidate_data") or {}).get("context", {})
@@ -2692,9 +2922,108 @@ def check_context_complete(candidate_id: str) -> bool:
     return True
 
 
+def check_profile_complete(candidate_id: str) -> bool:
+    """True when required Profile pieces are present (no state write)."""
+    candidate = database.get_candidate(candidate_id)
+    if not candidate:
+        return False
+    first = str(candidate.get("first") or "").strip()
+    last = str(candidate.get("last") or "").strip()
+    if not first or not last:
+        return False
+    contact = (candidate.get("candidate_data") or {}).get("contact") or {}
+    if not isinstance(contact, dict):
+        contact = {}
+    return bool(str(contact.get("contact_email") or "").strip())
+
+
+def incomplete_profile(candidate_id: str) -> bool:
+    """True when required Profile pieces are missing (alert signal for nav siblings)."""
+    # Missing row → False so callers do not paint a ghost Profile alert.
+    if not database.get_candidate(candidate_id):
+        return False
+    return not check_profile_complete(candidate_id)
+
+
+def _raw_resume_ready(candidate_id: str) -> bool:
+    """Non-empty context.raw_resume — material for REQUESTED_RESUME craft."""
+    candidate = database.get_candidate(candidate_id)
+    if not candidate:
+        return False
+    ctx = (candidate.get("candidate_data") or {}).get("context") or {}
+    if not isinstance(ctx, dict):
+        return False
+    return bool(str(ctx.get("raw_resume") or "").strip())
+
+
+def _base_resume_ready(candidate_id: str) -> bool:
+    """Operative base_resume present for REQUESTED_ARTIFACTS hop."""
+    body = load_pilot_base_resume_for_candidate(candidate_id)
+    if body is None:
+        return False
+    if isinstance(body, str):
+        return bool(body.strip())
+    return bool(body)
+
+
+def _always_ready(_candidate_id: str) -> bool:
+    return True
+
+
+# Exact from-state → (to_state, predicate). Stale companions forward; no demote hops.
+_READINESS_HOPS: Dict[str, Tuple[str, Any]] = {
+    "INTAKE_INITIATED": ("PROFILE_READY", check_profile_complete),
+    "PROFILE_READY": ("CONTEXT_READY", check_context_complete),
+    "CONTEXT_READY": ("REQUESTED_RESUME", _raw_resume_ready),
+    "RESUME_READY": ("REQUESTED_ARTIFACTS", _base_resume_ready),
+    "RESUME_READY_STALE": ("REQUESTED_ARTIFACTS", _base_resume_ready),
+    "ARTIFACTS_READY": ("ACTIVE_SEARCH", _always_ready),
+    "ARTIFACTS_READY_STALE": ("ACTIVE_SEARCH", _always_ready),
+}
+
+
+def advance_candidate_readiness() -> int:
+    """Forward-only presence advance. Returns count of successful transitions."""
+    moved = 0
+    for row in list_candidates(include_deleted=False):
+        state = row.get("state") or ""
+        cid = row.get("astral_candidate_id")
+        if not cid:
+            continue
+        hop = _READINESS_HOPS.get(state)
+        if hop is None:
+            continue
+        to_state, predicate = hop
+        if to_state not in CANDIDATE_STATES:
+            continue
+        if not predicate(cid):
+            continue
+        try:
+            if candidate_stage(to_state) < candidate_stage(state):
+                continue
+        except ValueError:
+            continue
+        try:
+            transition_candidate_state(cid, to_state)
+        except (IllegalCandidateTransition, ValueError):
+            continue
+        # Joan: statute `state` event (not a custom readiness_advance token).
+        logger.info(
+            "%s | candidate state: %s -> %s (batch: %s)",
+            cid,
+            state,
+            to_state,
+            "-",
+        )
+        moved += 1
+    return moved
+
+
 def age_stale_candidate_states(*, now: Optional[datetime] = None) -> int:
     """Move waiting-stage candidates past stale_after_hours into stale_state.
     Returns count of successful transitions. No scheduler wiring (AST-972)."""
+    # AST-2228: heal retired topic rows before stale aging (no dispatcher/database touch).
+    migrate_retired_topic_candidate_states()
     clock = now if now is not None else datetime.now(timezone.utc)
     if clock.tzinfo is None:
         clock = clock.replace(tzinfo=timezone.utc)
@@ -3898,6 +4227,23 @@ def _persist_craft_dispatch_success(candidate_id: str, task_key: str, parsed: An
             raise ValueError("craft_company_search_terms search_terms must be a string")
         apply_company_search_terms_save(candidate_id, {"company_search_terms": terms})
         return
+    # AST-2222: terminal base-resume hop — contact field, not an artifact key.
+    if task_key == "draft_title_patterns":
+        if not isinstance(parsed, dict):
+            raise ValueError("draft_title_patterns parsed_response must be a dict")
+        raw = parsed.get("title_patterns")
+        if isinstance(raw, list):
+            text = "\n".join(str(x).strip() for x in raw if str(x).strip())
+        elif isinstance(raw, str):
+            text = raw.strip()
+        else:
+            raise ValueError(
+                f"draft_title_patterns title_patterns must be str or list, got {type(raw).__name__}"
+            )
+        if not text:
+            raise ValueError("draft_title_patterns title_patterns must be non-empty")
+        save_candidate_data(candidate_id, {"contact": {"title_patterns": text}})
+        return
     artifact_key = CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY.get(task_key)
     if artifact_key:
         if not isinstance(parsed, dict):
@@ -3915,6 +4261,10 @@ def _persist_craft_dispatch_success(candidate_id: str, task_key: str, parsed: An
         arts = {artifact_key: criteria}
         normalize_rubric_artifacts_on_save(arts)
         apply_rubric_vectors_save(candidate_id, arts)
+        return
+    # Intermediate stage hops: RESPONSE already in agent_data; no artifact write.
+    cfg = TASK_CONFIG.get(task_key) or {}
+    if cfg.get("entity_type") == "candidate" and not cfg.get("artifact_key"):
         return
     raise ValueError(f"unsupported craft task_key for dispatch persist: {task_key!r}")
 
@@ -3943,10 +4293,18 @@ async def run_requested_artifacts_dispatch(
     candidate = database.get_candidate(candidate_id)
     if not candidate:
         return {**zero, "total_processed": 1, "total_errors": 1}
-    stage = CANDIDATE_STAGE_DISPATCH["requested_artifacts"]
-    raw_trigger = (trigger_state or "").strip() or stage["trigger_state"]
-    parsed_trig = parse_dispatch_hop_label(raw_trigger)
+    # Resolve stage from bare trigger; omit → requested_artifacts. Non-stage bare keeps
+    # that stage's defaults so the unregistered-trigger fail path (warn, no hop ERROR) still works.
+    raw_trigger = (trigger_state or "").strip()
+    parsed_trig = parse_dispatch_hop_label(raw_trigger) if raw_trigger else None
     bare_trigger = parsed_trig[0] if parsed_trig else raw_trigger
+    stage_triggers = {e["trigger_state"] for e in CANDIDATE_STAGE_DISPATCH.values()}
+    if bare_trigger in stage_triggers:
+        stage = _candidate_stage_for_trigger(bare_trigger)
+    else:
+        stage = CANDIDATE_STAGE_DISPATCH["requested_artifacts"]
+        if not bare_trigger:
+            bare_trigger = stage["trigger_state"]
     pass_state = stage["pass_state"]
     current = (candidate.get("state") or "").strip()
     start_key = (task_key or "").strip() or (stage.get("task_key") or "").strip()

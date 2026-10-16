@@ -121,7 +121,11 @@ export default function JobsMeteorites() {
         emptyMessage="No meteorites yet"
         onRowClick={row => setViewingId(Number(row.id))}
       />
-      <MeteoriteDetailModal meteoriteId={viewingId} onClose={() => setViewingId(null)} />
+      <MeteoriteDetailModal
+        meteoriteId={viewingId}
+        onClose={() => setViewingId(null)}
+        onSaved={load}
+      />
       <JobAnalysisReportModal
         jobId={reportJobId}
         onClose={() => setReportJobId(null)}

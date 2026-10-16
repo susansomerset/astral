@@ -22,7 +22,7 @@ import re
 from typing import Any, Dict, List, Optional, Tuple
 
 from src.core import tracker
-from src.core.agent import _LINK_PREFIX_RE, _grade_segment, do_task
+from src.core.agent import do_task
 from src.data.database import ensure_batch_response_entity_ids
 from src.utils import rubric_text
 from src.utils.config import (
@@ -393,193 +393,6 @@ def _hydrate_response_jobs_grade_reasons(jobs: list, rubric_criteria: list) -> D
     return missing
 
 
-# AST-603: shared rubric response normalization (prefilter + future consult reuse).
-# _LINK_PREFIX_RE lives in agent beside _GRADE_SEG so decode and routing share one link guard (AST-2138).
-_ENCODED_LINE_RE = re.compile(r"^\d{1,3}\|")
-
-
-def _should_decode_as_encoded_line(text: str) -> bool:
-    """True when a pipe line has AST-357 encoded grade segments (e.g. RCA3), not letter-pipe grades."""
-    # Any line, not just the first — a fully malformed first line must not misroute the batch (AST-1996).
-    for line in (ln.strip() for ln in text.splitlines() if ln.strip()):
-        fields = [f.strip() for f in line.split("|")]
-        if fields and re.match(r"^\d{1,3}$", fields[0]):
-            fields = fields[1:]
-        for f in fields:
-            # Same classifier as _decode_payload, so a JOB:/CULT: field can't make a line look encoded (AST-2138).
-            if _grade_segment(f):
-                return True
-    return False
-
-
-def _parse_link_index_field(field: str) -> List[int]:
-    """Comma/bracket/JOB:/CULT: index lists → list[int]."""
-    if field is None:
-        return []
-    s = str(field).strip()
-    if not s:
-        return []
-    m = _LINK_PREFIX_RE.match(s)
-    if m:
-        s = m.group(1).strip()
-    if s.startswith("[") and s.endswith("]"):
-        s = s[1:-1]
-    out: List[int] = []
-    for part in re.split(r"[,;\s]+", s):
-        part = part.strip()
-        if not part:
-            continue
-        try:
-            out.append(int(part))
-        except ValueError:
-            continue
-    return out
-
-
-def _apply_prefilter_encoded_link_meta(job: dict, meta: list[str]) -> None:
-    """Map JOB:/CULT: prefixes and positional bracket link_set tails onto job row (AST-697)."""
-    possible: List[int] = []
-    culture: List[int] = []
-    positional: List[str] = []
-    for m in meta:
-        if re.match(r"^JOB:", m, re.I):
-            possible.extend(_parse_link_index_field(m))
-            continue
-        if re.match(r"^CULT:", m, re.I):
-            culture.extend(_parse_link_index_field(m))
-            continue
-        positional.append(m)
-    culture_pos: List[str]
-    if positional and not possible:
-        possible = _parse_link_index_field(positional[0])
-        culture_pos = positional[1:]
-    else:
-        # Prefix filled job links — remaining positionals map to culture (plan: JOB:16|[51,46]).
-        culture_pos = positional
-    for lf in culture_pos:
-        culture.extend(_parse_link_index_field(lf))
-    if possible:
-        job["possible_job_links"] = possible
-    if culture:
-        job["culture_links_to_explore"] = culture
-
-
-def _extract_grade_letter(val: Any) -> Optional[str]:
-    if isinstance(val, dict):
-        g = val.get("grade") or val.get("Grade")
-        if g is not None:
-            s = str(g).strip().upper()
-            return s[:1] if s else None
-    if val is None:
-        return None
-    s = str(val).strip().upper()
-    if len(s) == 1:
-        return s
-    return s[:1] if s else None
-
-
-def _extract_grade_confidence(val: Any) -> int:
-    if isinstance(val, dict):
-        conf = val.get("confidence") or val.get("Confidence")
-        if isinstance(conf, int):
-            return conf
-        if conf is not None:
-            try:
-                return int(conf)
-            except (TypeError, ValueError):
-                pass
-    return 3
-
-
-def _pascal_from_snake(snake: str) -> str:
-    return "".join(p.capitalize() for p in re.split(r"[_\s]+", snake) if p)
-
-
-def _criterion_json_keys(criterion: dict) -> List[str]:
-    keys: List[str] = []
-    code = (criterion.get("code") or "").strip()
-    label = (criterion.get("label") or "").strip()
-    if code:
-        keys.extend([code, code.lower(), code.upper()])
-    if label:
-        snake = re.sub(r"[^\w]+", "_", label).strip("_")
-        keys.extend([label, snake, snake.lower(), snake.upper(), _pascal_from_snake(snake)])
-    seen = set()
-    ordered: List[str] = []
-    for k in keys:
-        if k and k not in seen:
-            seen.add(k)
-            ordered.append(k)
-    return ordered
-
-
-def _grade_letter_for_criterion(obj: dict, criterion: dict) -> Optional[str]:
-    lower_map = {str(k).lower(): k for k in obj.keys() if isinstance(k, str)}
-    for ck in _criterion_json_keys(criterion):
-        raw = obj.get(ck)
-        if raw is None and ck.lower() in lower_map:
-            raw = obj.get(lower_map[ck.lower()])
-        letter = _extract_grade_letter(raw)
-        if letter and letter in ASTRAL_CONFIG.get("valid_grades", []):
-            return letter
-    return None
-
-
-def _coerce_link_list(val: Any) -> List[int]:
-    if val is None:
-        return []
-    if isinstance(val, int):
-        return [val]
-    if isinstance(val, list):
-        out: List[int] = []
-        for item in val:
-            out.extend(_coerce_link_list(item))
-        return out
-    return _parse_link_index_field(str(val))
-
-
-def _json_link_fields(obj: dict) -> Tuple[List[int], List[int]]:
-    lower_map = {str(k).lower(): k for k in obj.keys() if isinstance(k, str)}
-    job_keys = ("possible_job_links", "possiblejoblinks", "possible_job_link")
-    cult_keys = (
-        "culture_links_to_explore",
-        "culturelinkstoexplore",
-        "culture_links",
-    )
-    possible: List[int] = []
-    culture: List[int] = []
-    for variants, dest in ((job_keys, possible), (cult_keys, culture)):
-        for vk in variants:
-            raw = obj.get(vk)
-            if raw is None and vk.lower() in lower_map:
-                raw = obj.get(lower_map[vk.lower()])
-            if raw is not None:
-                dest.extend(_coerce_link_list(raw))
-                break
-    return possible, culture
-
-
-def _ensure_jobs_astral_ids(jobs: list, batch_entities: list) -> None:
-    for i, job in enumerate(jobs):
-        if not isinstance(job, dict):
-            continue
-        if job.get("astral_job_id"):
-            continue
-        if i < len(batch_entities):
-            job["astral_job_id"] = batch_entities[i].get("astral_job_id")
-
-
-def _ensure_companies_company_ids(companies: list, batch_entities: list) -> None:
-    """Fill missing company_id from batch_entities by position (AST-1723)."""
-    for i, company in enumerate(companies):
-        if not isinstance(company, dict):
-            continue
-        if company.get("company_id"):
-            continue
-        if i < len(batch_entities):
-            company["company_id"] = batch_entities[i].get("company_id")
-
-
 def _bind_response_jobs_to_claimed(response_jobs: list, claimed_jobs: list) -> None:
     """Rewrite placeholder / single-job mismatched astral_job_id to claimed ids (AST-1076).
 
@@ -690,138 +503,6 @@ def _bind_unmatched_empty_link_jobs_by_order(
         return
     for rj, row in zip(leftover_resp, leftover_claimed):
         rj["astral_job_id"] = row["astral_job_id"]
-
-
-def _job_from_rubric_json(obj: dict, task_config: dict, ctx: dict) -> dict:
-    rubric = _rubric_criteria_for_cfg(_candidate_id_from_ctx(ctx), task_config)
-    grade_rows: List[Dict[str, Any]] = []
-    for crit in rubric:
-        letter = _grade_letter_for_criterion(obj, crit)
-        if not letter:
-            continue
-        raw = None
-        for ck in _criterion_json_keys(crit):
-            if ck in obj:
-                raw = obj[ck]
-                break
-            lower_map = {str(k).lower(): k for k in obj.keys() if isinstance(k, str)}
-            if ck.lower() in lower_map:
-                raw = obj.get(lower_map[ck.lower()])
-                break
-        conf = _extract_grade_confidence(raw) if raw is not None else 3
-        grade_rows.append({"vector": crit["label"], "grade": letter, "confidence": conf})
-    possible, culture = _json_link_fields(obj)
-    job: Dict[str, Any] = {"grades": grade_rows}
-    if possible:
-        job["possible_job_links"] = possible
-    if culture:
-        job["culture_links_to_explore"] = culture
-    return job
-
-
-def _job_from_letter_pipe(text: str, task_config: dict, ctx: dict) -> dict:
-    valid = set(ASTRAL_CONFIG.get("valid_grades") or [])
-    rubric = _rubric_criteria_for_cfg(_candidate_id_from_ctx(ctx), task_config)
-    n = len(rubric)
-    line = next((ln.strip() for ln in text.splitlines() if ln.strip()), text.strip())
-    fields = [f.strip() for f in line.split("|")]
-    if fields and re.match(r"^\d{1,3}$", fields[0]):
-        fields = fields[1:]
-    grade_rows: List[Dict[str, Any]] = []
-    link_fields: List[str] = []
-    for f in fields:
-        if len(grade_rows) < n and len(f) == 1 and f.upper() in valid:
-            grade_rows.append(
-                {"vector": rubric[len(grade_rows)]["label"], "grade": f.upper(), "confidence": 3}
-            )
-        else:
-            link_fields.append(f)
-    job: Dict[str, Any] = {"grades": grade_rows}
-    if link_fields:
-        job["possible_job_links"] = _parse_link_index_field(link_fields[0])
-        culture: List[int] = []
-        for lf in link_fields[1:]:
-            culture.extend(_parse_link_index_field(lf))
-        if culture:
-            job["culture_links_to_explore"] = culture
-    return job
-
-
-def _normalize_rubric_task_response(task_key: str, task_config: dict, parsed: Any, ctx: dict) -> dict:
-    """Turn AST-602 repro shapes into response_schema jobs[]/companies[] before validation."""
-    batch_entities = (ctx or {}).get("batch_entities") or []
-    company_entity = (task_config.get("entity_type") or "") == "company"
-
-    if company_entity:
-        if isinstance(parsed, dict) and isinstance(parsed.get("companies"), list) and parsed["companies"]:
-            out = dict(parsed)
-            _ensure_companies_company_ids(out["companies"], batch_entities)
-            return out
-    elif isinstance(parsed, dict) and isinstance(parsed.get("jobs"), list) and parsed["jobs"]:
-        out = dict(parsed)
-        _ensure_jobs_astral_ids(out["jobs"], batch_entities)
-        return out
-
-    payload = parsed
-    if isinstance(parsed, dict) and "agent_payload" in parsed:
-        payload = parsed["agent_payload"]
-        if isinstance(payload, list):
-            payload = "\n".join(str(item) for item in payload)
-
-    if isinstance(payload, dict):
-        if company_entity:
-            if isinstance(payload.get("companies"), list) and payload["companies"]:
-                return _normalize_rubric_task_response(task_key, task_config, payload, ctx)
-            company = _job_from_rubric_json(payload, task_config, ctx)
-            if len(batch_entities) == 1 and not company.get("company_id"):
-                company["company_id"] = batch_entities[0].get("company_id")
-            return {"companies": [company]}
-        if isinstance(payload.get("jobs"), list) and payload["jobs"]:
-            return _normalize_rubric_task_response(task_key, task_config, payload, ctx)
-        job = _job_from_rubric_json(payload, task_config, ctx)
-        if len(batch_entities) == 1 and not job.get("astral_job_id"):
-            job["astral_job_id"] = batch_entities[0].get("astral_job_id")
-        return {"jobs": [job]}
-
-    if isinstance(payload, str):
-        text = payload.strip()
-        if not text:
-            raise ValueError(f"[{task_key}] empty agent_payload")
-        if text.startswith("{") or text.startswith("["):
-            try:
-                obj = json.loads(text)
-                if isinstance(obj, dict):
-                    return _normalize_rubric_task_response(task_key, task_config, obj, ctx)
-            except json.JSONDecodeError:
-                pass
-        first_line = next((ln.strip() for ln in text.splitlines() if ln.strip()), "")
-        if _ENCODED_LINE_RE.match(first_line) and _should_decode_as_encoded_line(text):
-            from src.core.agent import _decode_payload
-
-            output_type = task_config.get("output_type", "")
-            decoded = _decode_payload(task_key, output_type, text, ctx or {})
-            if company_entity:
-                _ensure_companies_company_ids(decoded.get("companies") or [], batch_entities)
-            else:
-                _ensure_jobs_astral_ids(decoded.get("jobs") or [], batch_entities)
-            return decoded
-        row = _job_from_letter_pipe(text, task_config, ctx)
-        if not company_entity and task_config.get("output_type") == "grades_encoded_notes" and not row.get("grades"):
-            # No decodable grades anywhere in the reply — every entity retries with the raw reply (AST-2126).
-            return {"jobs": [], "decode_failures": [
-                {"astral_job_id": e.get("astral_job_id"), "pos": i,
-                 "reason": f"[{task_key}] no grade segments in reply: {text!r}"}
-                for i, e in enumerate(batch_entities)
-            ]}
-        if company_entity:
-            if len(batch_entities) == 1:
-                row["company_id"] = batch_entities[0].get("company_id")
-            return {"companies": [row]}
-        if len(batch_entities) == 1:
-            row["astral_job_id"] = batch_entities[0].get("astral_job_id")
-        return {"jobs": [row]}
-
-    raise ValueError(f"[{task_key}] unrecognised rubric response shape: {type(parsed).__name__}")
 
 
 def _effective_no_signal_for_score(g: dict) -> bool:
@@ -1750,10 +1431,10 @@ async def _run_batch_consult(
     )
 
     live_content = assemble_fn(jobs)
-    # Build code→label map from candidate's rubric so _decode_payload can hydrate vector names
+    # Build code→label map from candidate's rubric: its codes build the grader tool schema and label the hydrated grades
     rubric_criteria = _rubric_criteria_for_cfg(_candidate_id_from_ctx(ctx), cfg)
     vector_labels = _vector_labels_map(rubric_criteria, debug=debug)
-    # batch_entities + vector_labels passed so do_task/_decode_payload can map pos→id and code→label
+    # batch_entities + vector_labels let do_task build schema rows/codes and map row id→entity, code→label (AST-2172)
     cid = _candidate_id_from_ctx(ctx)
     task_ctx = {**(ctx or {}), "batch_size": len(jobs), "batch_entities": jobs, "vector_labels": vector_labels}
     if row_indexes is not None:
@@ -2107,7 +1788,7 @@ async def qualify_job_listings(
 
     def assemble(jobs):
         # 0-based numbered format — astral_job_id is intentionally excluded from live content
-        # so the agent can't echo it back; position mapping is handled in _decode_payload.
+        # so the agent can't echo it back; row ids map back to entities in grade_schema's hydrate.
         lines = [
             f"{i:03d}: job_site: {j.get('job_site', '')}\nraw_job_listing: {j.get('job_data', {}).get('raw_job_listing', '')}"
             for i, j in enumerate(jobs)
@@ -3006,7 +2687,10 @@ async def run_consult_task(
             dispatch_chain_row_matches_job,
             parse_dispatch_hop_label,
         )
-        from src.core.candidate import run_requested_artifacts_dispatch
+        from src.core.candidate import (
+            is_candidate_stage_chain_task,
+            run_requested_artifacts_dispatch,
+        )
         tk = (dispatch_task_key or "").strip()
         cid = (entities[0].get("astral_candidate_id") or entities[0].get("candidate_id") or "")
         if tk == INFLOW_CONFIG["discovery"]["task_key"]:
@@ -3018,11 +2702,18 @@ async def run_consult_task(
         skip_daisy = bool(
             (ctx or {}).get("skip_daisy_chain") or (ctx or {}).get("suppress_run_next")
         )
+        # AC 6: named persist-gate allowlist only; other stage hops via is_candidate_stage_chain_task.
         persistable = (
             tk in CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY
-            or tk in ("craft_company_search_terms", "craft_resume_base")
+            or tk in (
+                "craft_company_search_terms",
+                "craft_resume_base",
+                "draft_title_patterns",
+                "draft_resume_base",
+            )
+            or is_candidate_stage_chain_task(tk)
         )
-        stage_tr = CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["trigger_state"]
+        stage_triggers = {e["trigger_state"] for e in CANDIDATE_STAGE_DISPATCH.values()}
         row_tr = (input_state or "").strip()
         parsed_row = parse_dispatch_hop_label(row_tr)
         registry_tr = parsed_row[0] if parsed_row else row_tr
@@ -3030,7 +2721,7 @@ async def run_consult_task(
         # patt.task.daisy-chain §4: resume when entity hop label + parent run_next → this row's task_key
         # (same helper as job BUILD_ARTIFACTS reclaim; not a walked hop membership list).
         if (
-            registry_tr == stage_tr
+            registry_tr in stage_triggers
             and tk in TASK_CONFIG
             and (
                 dispatch_chain_row_matches_job(row_tr, tk, cand_st)

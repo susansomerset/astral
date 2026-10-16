@@ -22,7 +22,7 @@ from src.data.database import (
     AGENT_SETTING_COLUMNS,
 )
 
-from src.core.consult import list_timesheets
+from src.core.consult import _rubric_criteria_for_cfg, _vector_labels_map, list_timesheets
 from src.core.task_performance import build_task_performance
 from src.core.inbox import count_inbox_bound_by_candidate
 from src.utils.deploy_status import ui_llm_debug
@@ -57,6 +57,7 @@ from src.utils.config import (
     BUILD_CONFIG,
     LLM_MODEL_CONFIG,
     get_llm_server,
+    get_structured_output_capability,
     resolve_agent_settings,
     get_manage_agents_tokens,
     get_manage_tasks_chain_tokens,
@@ -65,7 +66,7 @@ from src.utils.config import (
     resolve_tokens,
     empty_render_for_prompts,
     TASK_CONFIG,
-    TELESCOPE_DATA_CONFIG,
+    WEB_DATA_CONFIG,
     UI_CONFIG,
     JOB_STATES,
     COMPANY_STATES,
@@ -95,11 +96,12 @@ from src.utils.config import (
     rubric_owner_task_key,
 )
 from src.utils.rubric_feedback import hydrate_vector_review_strings
-# Direct import — AST-292-style admin helpers (`run_adhoc_workbench_test`, `_decode_payload`) plus public `resolved_task_system`
+# Direct import — AST-292-style admin helpers (`run_adhoc_workbench_test`, grader forced-tool helpers) plus public `resolved_task_system`
 from src.core.agent import (
     run_adhoc_workbench_test,
     list_agent_data_runs,
-    _decode_payload,
+    grade_call_codes,
+    grade_forced_tool,
     resolved_agent_content,
     resolved_task_system,
     _chain_context,
@@ -107,6 +109,7 @@ from src.core.agent import (
     _resolve_task_prompts,
     task_llm_server_id,
 )
+from src.core.grade_schema import hydrate_grade_tool_input
 from scripts.migrations.backfill_culture_links import run_backfill, EXCLUDE_STATES
 
 
@@ -142,6 +145,18 @@ def _agent_settings_from_body(body: Dict[str, Any]) -> Dict[str, Any]:
     """The plain agent settings present in a request body, passed as-is (AST-1957).
     Type checks live in the data layer (save_agent / update_agent raise ValueError → 400)."""
     return {k: body[k] for k in AGENT_SETTING_COLUMNS if k in body}
+
+
+def _structured_output_gate(requires: Any, model_id: Any) -> str | None:
+    """400 text when the agent requires structured output and its model can't take a forced tool (AST-2172).
+    Only None capability is refused — "advisory" hosts are allowed, the grade_schema light check covers them.
+    Raises ValueError on an unknown model id (callers turn it into a 400, same as the data layer)."""
+    if requires and model_id and get_structured_output_capability(model_id) is None:
+        return (
+            f"model {model_id!r} does not support structured output — "
+            "pick an enforced or advisory model, or turn off requires_structured_output"
+        )
+    return None
 
 
 @admin_bp.route("/agents")
@@ -210,6 +225,8 @@ def list_models():
             "server_id": m["server"],
             "server_label": get_llm_server(m["server"])["label"],
             "default_max_tokens": m["default_max_tokens"],
+            # "enforced" | "advisory" | None — the Manage Agents picker hides None while the agent requires it (AST-2172).
+            "structured_output_capability": get_structured_output_capability(mid),
         }
         for i, (mid, m) in enumerate(LLM_MODEL_CONFIG.items())
     })
@@ -235,6 +252,9 @@ def create_agent():
     if database.get_agent(agent_id):
         return jsonify({"error": f"Agent '{agent_id}' already exists"}), 409
     try:
+        gate = _structured_output_gate(body.get("requires_structured_output"), model_id)
+        if gate:
+            return jsonify({"error": gate}), 400
         # Data layer checks model_id against the catalog and type-checks the settings (AST-1955).
         database.save_agent(
             agent_id,
@@ -253,7 +273,8 @@ def create_agent():
 @require_admin
 def update_agent(agent_id):
     body = request.get_json(silent=True) or {}
-    if not database.get_agent(agent_id):
+    current = database.get_agent(agent_id)
+    if not current:
         return jsonify({"error": f"Agent not found: {agent_id}"}), 404
 
     kwargs = {
@@ -264,6 +285,13 @@ def update_agent(agent_id):
     if not kwargs:
         return jsonify({"error": "No updatable fields provided"}), 400
     try:
+        # Gate on the row as it would be after this PUT: body values win, absent keys keep the stored ones.
+        gate = _structured_output_gate(
+            kwargs.get("requires_structured_output", current.get("requires_structured_output")),
+            kwargs.get("model_id", current.get("model_id")),
+        )
+        if gate:
+            return jsonify({"error": gate}), 400
         # update_agent checks model_id and type-checks the settings before its UPDATE (AST-1955).
         database.update_agent(agent_id, **kwargs)
     except ValueError as e:
@@ -462,7 +490,7 @@ def _enrich_tasks(candidate_id: str) -> list:
             avg_live = avg_output = None
             if task_key_uuid:
                 r = conn.execute(
-                    "SELECT AVG(no_cache_live_tokens) AS avg_live, AVG(total_output_tokens) AS avg_output FROM agent_timesheets WHERE task_key_uuid = ?",
+                    "SELECT AVG(no_cache_live_tokens) AS avg_live, AVG(total_output_tokens) AS avg_output FROM service_timesheet WHERE task_key_uuid = ?",
                     (task_key_uuid,)
                 ).fetchone()
                 if r and r[0] is not None:
@@ -1433,7 +1461,7 @@ def _build_adhoc_live_content(task_key: str, entity_id: str, entity_ids: Optiona
     entity_ids: for batch-mode tasks (qualify_job_listings), pass a list of IDs.
     entity_id: for single-entity tasks, pass one ID.
     Returns empty string if entity not found or task doesn't use live_content."""
-    # telescope_data reads go through gazer (AST-2134)
+    # web_data reads go through gazer (AST-2134)
     from src.core.gazer import resolve_telescope_value
     from src.utils.formatting import enumerate_array
 
@@ -1448,7 +1476,7 @@ def _build_adhoc_live_content(task_key: str, entity_id: str, entity_ids: Optiona
         # Telescope row ids resolve via gazer; legacy text passes through unchanged (AST-2134).
         logger.debug("Calling resolve_telescope_value: [company=%s company_data=%s]", entity_id, cdata)
         cdata = {
-            k: (resolve_telescope_value(v) if k in TELESCOPE_DATA_CONFIG["company_data_id_keys"] else v)
+            k: (resolve_telescope_value(v) if k in WEB_DATA_CONFIG["company_data_id_keys"] else v)
             for k, v in cdata.items()
         }
         logger.debug("Response from resolve_telescope_value: %s", cdata)
@@ -1707,6 +1735,17 @@ def adhoc_test():
 
     task_cfg = TASK_CONFIG.get(task_key, {})
     task_response_format = task_cfg.get("response_format") or "text"
+    # AST-2172: a grader test sends the forced tool do_task would, from this candidate's rubric codes.
+    ids = entity_ids if entity_ids else ([entity_id] if entity_id else [])
+    id_key = "company_id" if task_cfg.get("entity_type") == "company" else "astral_job_id"
+    grade_ctx = {
+        "batch_entities": [{id_key: eid} for eid in ids],
+        "vector_labels": _vector_labels_map(_rubric_criteria_for_cfg(resolved["candidate_id"], task_cfg)),
+    }
+    try:
+        forced_tool = grade_forced_tool(task_key, grade_ctx)
+    except ValueError as e:
+        return jsonify({"success": False, "error": str(e)}), 400
 
     try:
         result = asyncio.run(run_adhoc_workbench_test(
@@ -1730,6 +1769,7 @@ def adhoc_test():
             candidate_api_keys=resolved["candidate_api_keys"],
             task_key_uuid=resolved["task_key_uuid"],
             debug=ui_llm_debug(),
+            forced_tool=forced_tool,
         ))
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
@@ -1748,14 +1788,13 @@ def adhoc_test():
     response_text = _caller_response_blob(body)
     timesheet = result.get("timesheet", {})
 
-    # Decode encoded payload if the task uses a compact encoded output_type
+    # Grader reply: hydrate the tool input exactly as do_task does (AST-2172).
     hydrated = None
-    output_type = TASK_CONFIG.get(task_key, {}).get("output_type", "")
-    if "_encoded" in output_type and response_text:
+    if forced_tool and isinstance(parsed, dict):
         try:
-            ids = entity_ids if entity_ids else ([entity_id] if entity_id else [])
-            batch_entities = [{"astral_job_id": jid} for jid in ids]
-            hydrated = _decode_payload(task_key, output_type, response_text, {"batch_entities": batch_entities})
+            hydrated = hydrate_grade_tool_input(
+                task_key, task_cfg["output_type"], parsed, grade_call_codes(task_key, grade_ctx), grade_ctx,
+            )
         except Exception as e:
             hydrated = {"error": str(e)}
 

@@ -1198,7 +1198,7 @@ def save_job_data(
 
 def compose_job_description(job: Dict[str, Any]) -> str:
     """The complete JD every consumer reads (AST-2130): preamble (job_data.job_description — email /
-    pasted / agent-parsed text), then the scraped capture referenced by jd_telescope_data_id run
+    pasted / agent-parsed text), then the scraped capture referenced by jd_web_data_id run
     through the same collapse + prune rules fetch_jd gates on. Read-only — never saved back.
 
     No reference -> exactly the stored preamble (pasted / meteorite / pre-AST-2130 jobs).
@@ -1209,7 +1209,7 @@ def compose_job_description(job: Dict[str, Any]) -> str:
     job_data = job.get("job_data") if isinstance(job.get("job_data"), dict) else {}
     keys = TRACKER_CONFIG["job_data_keys"]
     preamble = job_data.get(keys["job_description"]) or ""
-    ref = job_data.get(keys["jd_telescope_data_id"])
+    ref = job_data.get(keys["jd_web_data_id"])
     if not ref:
         return preamble
     logger.debug("Calling resolve_telescope_value: [%s]", ref)
@@ -1253,7 +1253,7 @@ async def get_job_data(job: Dict[str, Any], key: str) -> Any:
     except Exception as e:
         logger.warning(f"get_job_data: fetch_jd_batch self-heal failed for {astral_job_id}: {e}")
         return None
-    # fetch_jd_batch wrote the jd_telescope_data_id reference back into job["job_data"] on pass
+    # fetch_jd_batch wrote the jd_web_data_id reference back into job["job_data"] on pass
     healed = compose_job_description(job)
     return healed if len(healed) >= min_chars else None
 
@@ -1503,6 +1503,43 @@ def job_state_admits_transition(current_state: str, to_state: str) -> bool:
     Raises KeyError when to_state is not a registered JOB_STATES key (config error, fail loud).
     """
     return _job_state_matches_prior(current_state, state_prior_states(JOB_STATES, to_state))
+
+
+def job_discovered_at(job: Dict[str, Any]) -> Optional[str]:
+    """Date discovered = job.created_at (AST-2232)."""
+    value = job.get("created_at")
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+def job_first_state_history_at(job: Dict[str, Any], to_state: str) -> Optional[str]:
+    """Timestamp of the first state_history entry whose to_state equals to_state (AST-2232)."""
+    target = (to_state or "").strip()
+    if not target:
+        return None
+    for entry in job.get("state_history") or []:
+        if not isinstance(entry, dict):
+            continue
+        if (entry.get("to_state") or "").strip() != target:
+            continue
+        ts = entry.get("timestamp")
+        if ts is None:
+            return None
+        text = str(ts).strip()
+        return text or None
+    return None
+
+
+def job_recommended_at(job: Dict[str, Any]) -> Optional[str]:
+    """First RECOMMENDED timestamp in state_history (AST-2232)."""
+    return job_first_state_history_at(job, "RECOMMENDED")
+
+
+def job_applied_at(job: Dict[str, Any]) -> Optional[str]:
+    """First CANDIDATE_APPLIED timestamp in state_history, or None (AST-2232)."""
+    return job_first_state_history_at(job, "CANDIDATE_APPLIED")
 
 
 def legal_job_successor_states(from_state: str) -> List[str]:

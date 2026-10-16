@@ -183,19 +183,88 @@ _(generated from epic registry — do not hand-edit; edits are overwritten)_
 
 | Agent | Role | Thread |
 |--------|-------|--------|
-| Ada | engineer | `/home/susan/.cursor/chats/f7dd880d9a9b1c1012e259a01249275f/31b1f45c-753e-46d5-b1da-a0a7e2c0b212/store.db` |
-| Hedy | engineer | `/home/susan/.cursor/chats/f7dd880d9a9b1c1012e259a01249275f/843c5748-ae1b-4084-bc5a-86d36c17f9bf/store.db` |
-| Katherine | engineer | `/home/susan/.cursor/chats/f7dd880d9a9b1c1012e259a01249275f/46dbb980-72ab-40ae-85b8-1357187e43d3/store.db` |
-| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/63b8787d-68ab-4c8b-aaab-0dbc3e512544/store.db` |
-| Radia | review | `/home/susan/.cursor/chats/f7dd880d9a9b1c1012e259a01249275f/c318e3b7-8ec8-47c0-8e10-fc62999669ed/store.db` |
+| Hedy | engineer | `/home/susan/.cursor/chats/6059e9d5f6d9d6ab652330233c2a882d/65437978-9f1f-4376-a1cd-238ac8e3172a/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/6059e9d5f6d9d6ab652330233c2a882d/180a1cf6-e01f-467f-a740-38092bb04bd0/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/6059e9d5f6d9d6ab652330233c2a882d/eede5732-fb95-45be-bd43-fce67eb832e6/store.db` |
 
 ### Git
 
 | Ticket | `origin/…` |
 |--------|------------|
-| AST-1645 (parent) | ftr/AST-1645-migrate-writing-preferences-artifact-table |
-| AST-1664 | sub/AST-1645/AST-1664-catalog-plain-text-writing-preferences-token |
-| AST-1665 | sub/AST-1645/AST-1665-operative-save-hydrate-blob-retirement |
-| AST-1666 | sub/AST-1645/AST-1666-writing-preferences-contexttextpage-wire-up |
+| AST-2236 (parent) | ftr/AST-2236-wp-hydrate-dict-blank |
+| AST-2243 | sub/AST-2236/AST-2243-wp-hydrate-coerce |
+| AST-2244 | sub/AST-2236/AST-2244-wp-hydrate-coerce-tests |
 
-**Epic worktree:** `astral-AST-1645/` — one active sub checked out at a time.
+**Epic worktree:** `astral-AST-2236/` — one active sub checked out at a time.
+
+## Bug: AST-2243 — Coerce dict Writing Preferences on hydrate
+
+### As-is
+
+On candidate `miller`, Writing Preferences artifact rows store dict `artifact_data` (`writing_general_instructions` + nested `writing_style`). `hydrate_operative_writing_preferences_for_response` early-returns on `not isinstance(body, str)`, so GET detail never overlays `context.writing_preferences` and `ContextTextPage` shows a blank textarea for every version (including `current=1`). Version-nav move still lists uuids, then `loadBody()` hits the same hydrate path and blanks again.
+
+### To-be
+
+When a current (or selected-as-current) Writing Preferences row exists, hydrate overlays a readable string into `context.writing_preferences` so the editor is non-empty. Dict bodies coerce for display under the existing `plain_text` contract — no new `body_shape`, no structured editor. Operative saves continue to reject non-strings (`plain_text body must be a non-empty string`). Sibling plain_text hydrates (Strengths / Ideal Day / etc.) stay str-only.
+
+### Repro
+
+Fixture shape (miller-equivalent; not a DB seed — file/JSON persistence):
+
+```python
+# Deserialized get_candidate_current(...) return for candidate.context.writing_preferences
+body = {
+    "writing_general_instructions": "Prefer short sentences. Avoid jargon.",
+    "writing_style": {"observations": ["direct", "warm"]},
+}
+# Today: hydrate_operative_writing_preferences_for_response("miller", cd) leaves
+# cd["context"]["writing_preferences"] unset/empty → blank ContextTextPage textarea.
+# After fix: overlay is the non-empty writing_general_instructions string.
+```
+
+Steps: open Writing Preferences for a candidate whose current `writing_preferences` row deserializes to that dict → textarea blank; arrow-move to the other uuid → still blank after reload.
+
+### Root cause
+
+`hydrate_operative_writing_preferences_for_response` treats any non-`str` current body as a miss (`if not isinstance(body, str): return`). Miller's rows are dict-shaped (historical / pre-gate data). Tip hunt: the only candidate write into `database.save_artifact` is `save_candidate_data` str-path, which already rejects non-str `plain_text` — there is no live bypass writer under `src/core/` (or elsewhere) still inserting dict WP rows. The blank editor is a **read/hydrate** defect against legacy dict rows, not an active write regress.
+
+### Proposed change
+
+1. **`src/core/candidate.py` — `hydrate_operative_writing_preferences_for_response` only** (do not change Strengths / Priorities / Deal Breakers / bio_summary / Ideal Day / Backstory hydrates):
+   - Miss (`body is None`) → return unchanged (leave legacy blob).
+   - `isinstance(body, str)` → overlay `ctx["writing_preferences"] = body` unchanged.
+   - `isinstance(body, dict)` → coerce for **display overlay only** (do not rewrite the artifact row):
+     - If `body.get("writing_general_instructions")` is a non-empty `str` (after strip), use that string.
+     - Else `json.dumps(body, sort_keys=True)` (stable, readable fallback when instructions are missing/empty).
+     - Overlay the coerced string onto `ctx["writing_preferences"]`.
+   - Any other non-str type → keep today's early return (no inventing coercions).
+2. **Writer / AC4** — no code change. Tip confirms `save_candidate_data` plain_text branch already raises `ValueError("plain_text body must be a non-empty string")` before `save_artifact`; tracker `save_artifact` is job-scoped only. Document that finding in make-fix notes; do not add a `database.py` gate (out of this bug's Component scope / AST-1645 leaves database untouched).
+3. **`src/ui/api/api_candidate.py`** — confirm-only, no edit: GET `get_candidate_detail` already calls `hydrate_operative_writing_preferences_for_response`; version move (`PUT .../current`) leaves body untouched, then `ContextTextPage.loadBody()` re-GETs detail (same hydrate). No missing call site.
+4. **Frontend** — untouched (`ContextTextPage` / `CandidateWritingPreferences.tsx`). Client `coerceToString` does not understand WP dict keys; server overlay must supply a string.
+
+### Blast radius
+
+- Shared module: `src/core/candidate.py` hydrate helper used by GET detail and any other caller of `hydrate_operative_writing_preferences_for_response` (including `get_candidate` core hydrate if wired). Only the WP function changes.
+- Sibling plain_text leaves: identical str-guards remain — no shared helper refactor in this bug.
+- Tests that assert WP hydrate early-returns on non-str (AST-1665 suite around `hydrate_operative_writing_preferences_for_response`) will need Betty/qa-fix attention if they encoded the blanking behavior; engineer does not patch `tests/`.
+- Token / live assembly reading current WP: if they consume hydrated context string vs raw artifact body, display coerce is response-overlay only — raw artifact_data stays dict until an operator re-saves a string through operative PUT.
+
+### What must still hold
+
+From AST-1645 / AST-1665 (do not regress):
+
+1. Catalog key `candidate.context.writing_preferences` stays `body_shape: "plain_text"` — no new shape, no structured WP editor.
+2. Operative save via `save_candidate_data(..., "candidate.context.writing_preferences", body)` still rejects non-empty-string failures with `plain_text body must be a non-empty string`.
+3. Miss (no current row) still leaves the legacy `context.writing_preferences` blob untouched (migration window).
+4. True string current bodies overlay unchanged.
+5. Sibling context hydrates (Strengths, Priorities, Deal Breakers, bio_summary, Ideal Day, Backstory) keep str-only guards.
+6. UI stays on `ContextTextPage`; `ArtifactEditor` untouched.
+7. No bulk backfill / rewrite of historical dict artifact rows as part of this fix.
+8. Bug AC: miller current WP shows non-empty readable text after GET hydrate; both version uuids reload non-empty bodies after move; new dict writes cannot land without plain_text validation (already true on tip).
+
+## Radia review (AST-2243)
+
+[code-rubric] PROCEED (Commit: a8d074db4780b68550fd449557d9534658afe7fd) tests pin hydrate coerce
+
+Overall CLEAN. Fix-specific: [bug-repro] N/A (on-ticket Betty tests); What must still hold OK. Canon: patt.artifact.read-current / write-operative / manage-catalog — A. No fix-now.
+

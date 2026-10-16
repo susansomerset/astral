@@ -1,3 +1,94 @@
+<!-- linear-archive: AST-2087 archived 2026-10-16 -->
+
+## Linear archive (AST-2087)
+
+**Archived:** 2026-10-16  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-2087/persisted-row-remap-for-retired-terminal-names  
+**Status at archive:** Archive  
+**Project:** Astral Foundation  
+**Assignee:** hedy  
+**Priority / estimate:** None / 3  
+**Parent:** AST-2073 — Revise terminal states  
+**Blocked by / blocks / related:** parent: AST-2073
+
+### Description
+
+## What this implements
+
+Parent [AST-2073](https://linear.app/astralcareermatch/issue/AST-2073) Functional scope 9: After #1, existing job, company, candidate, and meteorite rows (and live `dispatch_task` rows) still sit on retired names. This ticket moves them to the new names with a dry-run-first operator migration. It uses #1's retired-name map. Multi-target names are resolved from `state_history` (trigger or hop label → task_key), or for meteorite `LINK_EXPIRED` from the `error` signal. Unresolvable rows and dead-state rows are left untouched and counted. It does **not** rename anything in config or core (#1 owns that), and it never rewrites `state_history` or `state_changed_at`.
+
+## Citations
+
+`stat.dispatch.entity-state-bound` — the live `dispatch_task.trigger_state` remap must land on a real registry state its runner claims by.
+
+## Scope (verbatim from parent)
+
+**Scope:**
+
+* `src/data/database.py` — **modified** — conn-bound remap of persisted entity `state` + `dispatch_task.trigger_state` from the retired-name map; one comment naming `NEW_EMAIL_ERROR`.
+* `scripts/migrations/migrate_terminal_state_names.py` — **new** — operator CLI (dry-run default, `--execute`) wrapping the database remap, same shape as `scripts/migrations/migrate_legacy_candidate_states.py`.
+* Technical:
+  * `src/data/database.py` — **new** conn-bound remap function. For each entity table, it rewrites `state` from the retired-name map. Where an old name maps to several new names, it picks the new name from the row's last `state_history` predecessor (trigger state or `.<hop>` label → task_key), or for meteorite `LINK_EXPIRED` from the `scrape_closed` / `scrape_missing` signal in `error`. It skips unresolvable rows and dead-state rows. It also rewrites `dispatch_task.trigger_state`, and returns per-(entity, old→new) counts plus skipped counts. It is dry-run capable and never called from schema-ensure, because content remaps are explicit ops.
+  * `scripts/migrations/migrate_terminal_state_names.py` — **new** CLI that runs dry-run by default, `--execute` to apply, and prints counts.
+
+## Acceptance criteria (parent AC 8 live half, AC 9)
+
+8. **Meteorite notify still bound.** **Pass:** `python3 -c "import json;print([r['trigger_state'] for r in json.load(open('data/admin/dispatch_task.json')) if r.get('task_key')=='meteorite_bot_blocked_notify'])"` prints `['BOT_BLOCKED_SCRAPE_METEORITE']`. After the migration's `--execute`, `sqlite3 data/astral.db "select trigger_state from dispatch_task where task_key='meteorite_bot_blocked_notify'"` prints the same. **Fail:** `BOT_BLOCKED` or anything else.
+9. **Migration is safe and complete.** `python scripts/migrations/migrate_terminal_state_names.py` (no flags) prints per-(entity, old→new) counts and per-name skipped counts. **Pass criteria:**
+   * The dry run changes no row: `select sum(length(state)) from job` is equal before and after.
+   * After `--execute`, each table (`job`, `company`, `candidate`, `meteorite`) has `select count(*) from <table> where state in (<retired-name map keys>)` equal to the dry run's skipped count for that table.
+   * Rows on `PREFILTER_UNKNOWN` / `HARD_PARSE` / `BUILD_FAILED` are unchanged.
+   * `select sum(length(state_history)) from <table>` is unchanged by `--execute`.
+
+   **Fail:** a dry run that writes, any retired count above the skipped count, a changed dead-state row, or a changed `state_history` total.
+
+AC 8 here covers the live `data/astral.db` `dispatch_task` row after `--execute`; the seed half is [AST-2086](https://linear.app/astralcareermatch/issue/AST-2086).
+
+## Boundaries
+
+* Does **not** rename anything in config or core (#1 owns that) — consume #1's retired-name map only.
+* Never rewrites `state_history` or `state_changed_at`; never called from schema-ensure.
+* Dead states (`PREFILTER_UNKNOWN`, `HARD_PARSE`, `BUILD_FAILED`) untouched and counted.
+
+## Notes for planning
+
+* Same CLI shape as `scripts/migrations/migrate_legacy_candidate_states.py`.
+
+## Git branch
+
+`sub/AST-2073/AST-2087-terminal-state-remap` off `ftr/AST-2073-revise-terminal-states`
+
+### Comments
+
+#### radia — 2026-10-10T02:16:30.512Z
+[code-rubric] PROCEED (Commit: ecb82170d) Persisted remap conforms
+
+#### hedy — 2026-10-10T02:15:25.580Z
+`origin/sub/AST-2073/AST-2087-terminal-state-remap` @ `ecb82170d` — manifest green, no product changes.
+
+1. `run_component_tests.sh tests/component/data/database/test_terminal_state_remap.py -q` → 37 passed.
+2. `tests/component/data` + `tests/component/scripts` (`--continue-on-collection-errors`): 64 failed + 2 collection errors, an identical set to the ftr baseline (ftr `database.py`, CLI removed). 0 new, 0 fixed.
+3. AC 8/9 on real data: the operator step on a copy, not run here.
+
+FYI @Betty White: bare `./scripts/testing/run_component_tests.sh` can't collect on this sub, ftr, or `origin/dev`. Five tests import product that isn't in `src/` (`src.core.surfer`, `page_intake`, `meteorite_email`, `SURFER_BATCH_CONFIG`, `METEORITE_STATES_RETENTION`). This is pre-existing and not AST-2087's. Runs used `ASTRAL_PYTHON=~/astral/.venv/bin/python` (no python3.10–3.12 on host) and a temp `ASTRAL_DB_DIR`, because `data/` here symlinks to the main DB.
+
+#### betty — 2026-10-10T02:12:44.856Z
+`origin/sub/AST-2073/AST-2087-terminal-state-remap` @ `ecb82170d` · remap tests, 37 green
+
+#### chuckles — 2026-10-10T02:12:19.389Z
+Resolved without Susan: `betty` pre-commit hook seeded for the astral-AST-2073 worktree only (per-worktree `core.hooksPath` via `extensions.worktreeConfig`); shared repo hook untouched. Betty resuming the commit.
+
+#### betty — 2026-10-10T02:12:00.021Z
+@susan qa-child blocked at commit: the epic worktree's pre-commit hook is still `engineer.sh` (shared `/home/susan/astral/.git/hooks/pre-commit`), so it rejects Betty's test/bible paths under the new commit-on-sub flow. `install-hook.sh` can't fix it here — it writes `$WT/.git/hooks`, but `.git` in a linked worktree is a file. Tests are ready and staged on the sub (new `test_terminal_state_remap.py`, 37 pass, full branch coverage of the remap, no regressions vs ftr; bible `data/database/terminal_state_remap.md` + manifest). Need the betty hook seeded (or an OK to swap the shared hook) before I commit and push; status stays Code Complete.
+
+#### joan — 2026-10-10T02:07:20.009Z
+[plan-rubric] PROCEED (Commit: 5c018fe77) migration plan ready
+
+#### hedy — 2026-10-10T02:05:51.722Z
+`origin/sub/AST-2073/AST-2087-terminal-state-remap` @ `5c018fe77` · plan ready, prototype verified
+
+---
+
 # AST-2087 — Persisted-row remap for retired terminal names
 
 - **Parent:** [AST-2073 — Revise terminal states](https://linear.app/astralcareermatch/issue/AST-2073)

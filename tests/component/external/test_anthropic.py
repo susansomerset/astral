@@ -55,6 +55,15 @@ class TestGetTimestampPrefix:
         monkeypatch.setattr(anthropic_mod, "datetime", _FixedDatetime)
         assert "12:00am" in anthropic_mod.getTimestampPrefix()
 
+    def test_structured_swaps_envelope_for_performance_rules(self, monkeypatch) -> None:
+        # AST-2179: forced-tool calls get prompt_prefix_structured instead of the two-key envelope sentence.
+        monkeypatch.setitem(anthropic_mod.ASTRAL_CONFIG, "prompt_prefix", "Envelope here.")
+        monkeypatch.setitem(anthropic_mod.ASTRAL_CONFIG, "prompt_prefix_structured", "Rules only.")
+        structured = anthropic_mod.getTimestampPrefix(structured=True)
+        assert structured.startswith("Today is ") and structured.endswith("Pacific time. Rules only.\n")
+        assert "Envelope here." not in structured
+        assert anthropic_mod.getTimestampPrefix().endswith("Pacific time. Envelope here.\n")
+
 
 # Branches: success path; missing/invalid response fields.
 class TestParseApiResponse:
@@ -105,14 +114,14 @@ class TestParseJsonResponse:
         payload = '{"a":1} trailing'
         assert anthropic_mod._parse_json_response(payload) == {"a": 1}
 
-    def test_wraps_top_level_json_string_encoded_grades(self) -> None:
-        out = anthropic_mod._parse_json_response('"000|DTA5|GCA4"')
-        assert out == {"agent_payload": "000|DTA5|GCA4"}
+    def test_top_level_json_string_is_not_wrapped(self) -> None:
+        # AST-2179: encoded-grade coercion removed — graders answer through the forced tool.
+        assert anthropic_mod._parse_json_response('"000|DTA5|GCA4"') == "000|DTA5|GCA4"
 
-    def test_wraps_bare_encoded_text_without_json(self) -> None:
-        text = "[evaluate_jd_batch_x]\n000|DTA5|GCA4"
-        out = anthropic_mod._parse_json_response(text)
-        assert out == {"agent_payload": "000|DTA5|GCA4"}
+    def test_bare_encoded_text_is_a_parse_failure(self) -> None:
+        # AST-2179: no {"agent_payload": …} rescue for encoded lines any more.
+        with pytest.raises(ValueError, match="Failed to parse JSON response"):
+            anthropic_mod._parse_json_response("[evaluate_jd_batch_x]\n000|DTA5|GCA4")
 
     def test_raises_when_json_cannot_be_recovered(self) -> None:
         with pytest.raises(ValueError, match="Failed to parse JSON response"):
@@ -538,3 +547,179 @@ class TestAst1956SettingsOnTheWire:
         assert client.calls[0]["extra_body"] == {"thinking": {"type": "disabled"}}
         assert out["success"] is False and msg in out["error"]
         assert "failure_class" not in out
+
+
+# AST-2179 — forced-tool transport. Branches: forced_tool None vs set (× response_format None / text / json);
+# reply has the named tool / another tool / text only / non-object input; stop_reason max_tokens; + web search guard.
+_TOOL = {"name": "submit_grades", "input_schema": {"type": "object", "properties": {"agent_performance": {"type": "object"}}}}
+_TOOL_INPUT = {"agent_performance": {"status": "success"}, "grades": [{"id": "000", "DTA": 5}]}
+
+
+def _tool_use(name: str = "submit_grades", tool_input=None) -> SimpleNamespace:
+    return SimpleNamespace(type="tool_use", id="toolu_1", name=name, input=_TOOL_INPUT if tool_input is None else tool_input)
+
+
+class _BlocksClient:
+    """messages.create records kwargs and answers with the given content blocks — never the network."""
+
+    def __init__(self, content, stop_reason: str = "tool_use") -> None:
+        self.calls: list = []
+        self._content = content
+        self._stop_reason = stop_reason
+        self.messages = self
+
+    def create(self, **kwargs):
+        self.calls.append(kwargs)
+        usage = SimpleNamespace(input_tokens=10, output_tokens=5, cache_read_input_tokens=0, cache_creation_input_tokens=0)
+        return SimpleNamespace(content=self._content, stop_reason=self._stop_reason, id="msg_tool", usage=usage)
+
+
+class TestAst2179ForcedToolTransport:
+    @staticmethod
+    def _client(monkeypatch, content=None, **kw) -> _BlocksClient:
+        client = _BlocksClient([_tool_use()] if content is None else content, **kw)
+        monkeypatch.setattr(anthropic_mod, "_get_client", lambda *_a, **_k: client)
+        return client
+
+    @staticmethod
+    async def _send(**kwargs):
+        kwargs.setdefault("forced_tool", _TOOL)
+        return await anthropic_mod.send_to_anthropic([{"type": "text", "text": "hi"}], model_code="claude-sonnet-4-6", **kwargs)
+
+    def test_forced_tool_body_is_one_tool_and_a_named_choice(self) -> None:
+        assert anthropic_mod._forced_tool_body(_TOOL) == {
+            "tools": [{"name": "submit_grades", "input_schema": _TOOL["input_schema"]}],
+            "tool_choice": {"type": "tool", "name": "submit_grades"},
+        }
+
+    @pytest.mark.asyncio
+    async def test_ac3_request_carries_exactly_one_tool_and_forcing_choice(self, monkeypatch) -> None:
+        client = self._client(monkeypatch)
+        await self._send(response_format="json")
+        call = client.calls[0]
+        assert call["tools"] == [{"name": "submit_grades", "input_schema": _TOOL["input_schema"]}]
+        assert call["tool_choice"] == {"type": "tool", "name": "submit_grades"}
+
+    @pytest.mark.asyncio
+    async def test_ac3_no_tool_keys_without_forced_tool(self, monkeypatch) -> None:
+        client = self._client(monkeypatch, content=[SimpleNamespace(text='{"ok": true}')], stop_reason="end_turn")
+        out = await self._send(forced_tool=None, response_format="json")
+        assert out["parsed_response"] == {"ok": True}
+        assert not {"tools", "tool_choice"} & set(client.calls[0])
+
+    @pytest.mark.asyncio
+    async def test_ac3_debug_logs_request_kwargs_and_response(self, monkeypatch, caplog) -> None:
+        import logging
+
+        from src.utils.logging import log_debug
+
+        self._client(monkeypatch)
+        # The project logger's debug() emits only while log_debug is on; dict args land JSON-encoded.
+        token = log_debug.set(True)
+        try:
+            with caplog.at_level(logging.DEBUG, logger="src.external.anthropic"):
+                await self._send()
+        finally:
+            log_debug.reset(token)
+        lines = [r.getMessage() for r in caplog.records if r.levelno == logging.DEBUG]
+        assert any("Calling messages.create:" in m and '"tool_choice": {"type": "tool", "name": "submit_grades"}' in m for m in lines)
+        assert any("Response from messages.create:" in m for m in lines)
+
+    @pytest.mark.asyncio
+    async def test_forced_tool_with_web_search_is_refused(self, monkeypatch) -> None:
+        client = self._client(monkeypatch)
+        with pytest.raises(ValueError, match="cannot be combined"):
+            await self._send(enable_web_search=True)
+        assert client.calls == []
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("response_format", [None, "text", "json"])
+    async def test_tool_input_is_parsed_response_whatever_format(self, monkeypatch, response_format) -> None:
+        # A stray text block next to the tool call is ignored — the tool input is the payload.
+        self._client(monkeypatch, content=[SimpleNamespace(type="text", text="preamble"), _tool_use()])
+        out = await self._send(response_format=response_format)
+        assert out["success"] is True
+        assert out["parsed_response"] == _TOOL_INPUT
+
+    @pytest.mark.asyncio
+    async def test_tool_input_agent_performance_reaches_timesheet(self, monkeypatch) -> None:
+        ap = {"status": "failure", "failure_note": "JD text missing"}
+        self._client(monkeypatch, content=[_tool_use(tool_input={"agent_performance": ap})])
+        recorded: list = []
+        await self._send(record_timesheet=lambda **kw: recorded.append(kw))
+        assert (recorded[0]["agent_performance"], recorded[0]["failure_note"]) == ("failure", "JD text missing")
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("content", "error"),
+        [
+            ([SimpleNamespace(type="text", text='{"agent_performance": "success"}')], "has no 'submit_grades' tool call"),
+            ([_tool_use(name="other_tool")], "has no 'submit_grades' tool call"),
+            ([_tool_use(tool_input="000|DTA5")], "input is not an object"),
+        ],
+        ids=["text_only", "other_tool", "non_object_input"],
+    )
+    async def test_missing_or_malformed_tool_call_is_a_failure(self, monkeypatch, content, error) -> None:
+        self._client(monkeypatch, content=content, stop_reason="end_turn")
+        recorded: list = []
+        out = await self._send(response_format="json", record_timesheet=lambda **kw: recorded.append(kw))
+        assert out["success"] is False and out["parsed_response"] is None
+        assert error in out["error"]
+        assert recorded and recorded[0]["agent_performance"] == "failure"
+
+    @pytest.mark.asyncio
+    async def test_max_tokens_fails_closed_even_without_json_format(self, monkeypatch) -> None:
+        self._client(monkeypatch, stop_reason="max_tokens")
+        out = await self._send(response_format=None)
+        assert out["success"] is False and out["failure_class"] == "max_tokens"
+        assert out["parsed_response"] is None
+
+    @pytest.mark.asyncio
+    async def test_debug_raw_text_falls_back_to_tool_input_json(self, monkeypatch) -> None:
+        # debug=True reads raw text off the reply; a tool-only reply must not break the call.
+        seen: list = []
+        monkeypatch.setattr(anthropic_mod, "emit_llm_call_debug", lambda **kw: seen.append(kw["raw_text"]))
+        self._client(monkeypatch)
+        out = await self._send(debug=True)
+        assert out["success"] is True and out["parsed_response"] == _TOOL_INPUT
+        assert seen == [json.dumps(_TOOL_INPUT)]
+
+class TestAst2217ReceiptStubAndAttribution:
+    """AST-2217 AC5 stub half + AC8 call-time attribution on Anthropic recorded rows."""
+
+    def test_get_receipt_zero_stub_shape_and_null_cost(self) -> None:
+        from src.utils.config import TIMESHEET_RECEIPT_FIELDS
+        receipts = anthropic_mod.get_receipt(["id-a", "id-b"], api_key="ignored")
+        assert len(receipts) == 2
+        for row in receipts:
+            assert set(row) == set(TIMESHEET_RECEIPT_FIELDS)
+            assert row["platform_cost"] is None
+            assert row["completion_status"] == "stub"
+            assert row["native_tokens_prompt"] == 0
+            assert row["native_tokens_completion"] == 0
+
+    @pytest.mark.asyncio
+    async def test_recorded_call_carries_attribution(self, monkeypatch, fake_anthropic_client) -> None:
+        client = fake_anthropic_client(
+            response_text='{"agent_performance":{"status":"success"},"agent_payload":{}}'
+        )
+        monkeypatch.setattr(anthropic_mod, "_get_client", lambda: client)
+        recorded: list = []
+        out = await anthropic_mod.send_to_anthropic(
+            [{"type": "text", "text": "hi"}],
+            model_code="claude-sonnet-4-6",
+            response_format="json",
+            record_timesheet=lambda **kw: recorded.append(kw),
+            request_type="DISPATCH_AGENT",
+            entity_type="job",
+            entity_id="job-1",
+        )
+        assert out["success"] is True
+        assert recorded
+        row = recorded[0]
+        assert row["request_type"] == "DISPATCH_AGENT"
+        assert (row["entity_type"], row["entity_id"]) == ("job", "job-1")
+        assert row["call_start"] and row["call_stop"]
+        assert row["call_stop"] >= row["call_start"]
+        assert row["response_char_length"] > 0
+        assert row["response_item_count"] == 1

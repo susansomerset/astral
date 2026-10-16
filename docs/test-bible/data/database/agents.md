@@ -103,3 +103,28 @@ The agent row carries seven optional settings — `quantization` TEXT, `temperat
 | Retired — AST-1878 per-model size checks | — | `TestAst1878AgentModelField::test_save_insert_rejects_size_model_lacks` · `::test_save_update_rechecks_effective_pair` · `::test_model_less_row_exposes_no_sku_and_uses_global_tiers` (→ `test_model_less_row_exposes_no_sku`) |
 
 **Integration:** none.
+
+### AST-2181 · AST-2172 (requires_structured_output column)
+
+The new bool agent setting lives in `_AGENT_SETTING_TYPES` and `_AGENT_BOOL_SETTINGS` (INTEGER in SQLite, read back as bool), the `CREATE TABLE` / ensure ALTER list, `save_agent` (new rows default `False`), the `list_agents` SQL, and the seed export (bool). **New:** **`TestAst2181RequiresStructuredOutput`** (6):
+- default `False` and a get/list round trip;
+- non-bool (`1`, `"true"`) rejected on save and update with nothing written;
+- seed apply stores it and export emits JSON bool;
+- ensure on the pre-2181 table adds the column, and existing rows read `None` (no backfill);
+- `resolve_agent_settings` output is identical with or without the flag, so it is never sent.
+
+**Revised:** `_agent_repo_row` carries `requires_structured_output: False` (fixes `TestAst782…::test_apply_upserts_updates_and_deletes_absent_agents` and `TestAst1878…::test_repo_json_requires_known_model`). Manifest: [`../../ui/api/api_admin.md`](../../ui/api/api_admin.md) § AST-2181.
+
+### AST-2232 · AST-2226 (agent_name column)
+
+**Parent:** [AST-2226](https://linear.app/astralcareermatch/issue/AST-2226). **Publish:** `origin/sub/AST-2226/AST-2232-agent-name-detail-enrichment-tab-config`.
+
+`agent.agent_name TEXT` — display metadata (not an `AGENT_SETTING`); `_AGENT_PUBLIC_COLUMNS` / `save_agent` / `update_agent` / `list_agents` / schema ensure. Primary manifest: **`docs/test-bible/core/tracker.md`** § AST-2232.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Round-trip + schema ensure | `src/data/database.py` | **`TestAst2232AgentName`** |
+
+**Broken / obsolete:** none.
+
+**Integration:** none.

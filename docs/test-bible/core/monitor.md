@@ -39,7 +39,7 @@ AUTO error alert subject replaces hardcoded `[Astral]` with `[{deploy_label}]` o
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Exact subject + body lines, `to` = support_email, `list_log_entries` not called | `provider_balance_outage` | **`tests/component/core/test_monitor.py::TestAst1867ProviderBalanceOutage::test_subject_names_provider_and_body_is_short`** |
+| Exact subject + body lines, `to` = admin (was support_email until **AST-2214**), `list_log_entries` not called | `provider_balance_outage` | **`tests/component/core/test_monitor.py::TestAst1867ProviderBalanceOutage::test_subject_names_provider_and_body_is_short`** |
 | `held == 0` → no `Held` line | same | **`…::test_held_line_omitted_when_zero`** |
 | `send_email` False → logged, no raise | same | **`…::test_logs_when_send_email_returns_false`** |
 | Unexpected exception swallowed, no send | same | **`…::test_swallows_unexpected_errors`** |
@@ -51,3 +51,40 @@ Dispatcher routing (outage alert vs `auto_run_error`): **`docs/test-bible/core/d
 ### AST-1880 · AST-1851 (pointer)
 
 `provider_balance_outage` labels the alert with `get_llm_server(task_llm_server_id(task_key))["label"]`, the refused task's own server, not a global setting. `TestAst1867ProviderBalanceOutage` stubs `task_llm_server_id`, so the expected subject and body read `DeepSeek`. New `test_provider_label_resolved_from_refused_task` checks the task key reaches the resolver and the label is `OpenRouter`. The swallow test raises from the resolver. Manifest: [`../ui/api/api_admin.md`](../ui/api/api_admin.md) § AST-1880.
+
+### AST-2214 · AST-2207
+
+**Parent:** [AST-2207 — Update error reporting from production](https://linear.app/astralcareermatch/issue/AST-2207). **Publish:** `origin/sub/AST-2207/AST-2214-alert-header-log-attachment`. Depends on **AST-2213** `send_email(..., attachments=...)` ([`../external/gmail.md`](../external/gmail.md) § AST-2213).
+
+`auto_run_error` body = six-line metadata header (`Deploy:` / `Candidate:` / `Task:` / `Batch:` / `Status:` / one-line counts, `-` for missing values) + a fenced WARNING/ERROR-only block (or `(no WARNING or ERROR entries for this batch)`, no fence). The full log at every level, oldest first, goes as `{"<batch_id>.txt": …}` from one `list_log_entries` fetch. `_format_log_body` is replaced by `_format_log_line` / `_format_full_log` / `_format_warning_error_block` + `_format_alert_header`. `provider_balance_outage` sends to `", ".join(sorted(AUTH_CONFIG["admin_emails"]))`, no attachment, no log fetch; with no admins it logs one WARNING and skips the send. Subject line unchanged.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Header before fence, WARNING/ERROR-only body, full-log attachment (AC 1/2/4) | `auto_run_error` | **`TestAutoRunError::test_sends_header_filtered_body_and_full_log_attachment`** |
+| Empty-filter notice, no fence (AC 3) | `auto_run_error` / `_format_warning_error_block` | **`TestAst2214AlertShape::test_info_only_rows_give_notice_not_empty_fence`** |
+| No rows → placeholder attachment still sent | `_format_full_log` | **`TestAst2214AlertShape::test_no_rows_still_attaches_placeholder`** |
+| Header `-` defaults; bare candidate id | `_format_alert_header` | **`TestAst2214AlertShape::test_header_dashes_for_missing_values`**, **`…::test_header_bare_candidate_id_without_last_name`** |
+| Fence outruns inner backticks (was `TestFormatLogBody`) | `_format_warning_error_block` | **`TestAst2214AlertShape::test_fence_outruns_backticks_inside_the_logs`** |
+| Admin recipient, no attachment, no log fetch (AC 5) | `provider_balance_outage` | revised **`TestAst1867ProviderBalanceOutage::test_subject_names_provider_and_body_is_short`** |
+| Empty admin → one WARNING, no send (AC 5) | same | **`TestAst1867ProviderBalanceOutage::test_no_admin_configured_warns_once_and_skips_send`** |
+| Multi-admin sorted join | same | **`TestAst1867ProviderBalanceOutage::test_multiple_admins_joined_in_sorted_order`** |
+
+**Broken / obsolete:**
+- `TestAutoRunError::test_sends_alert_with_log_body` (asserted a body that was only a fence) is replaced by the header/attachment test above.
+- `TestFormatLogBody` (3 tests on the removed `_format_log_body`) is retired; its fence case moved to `TestAst2214AlertShape`.
+- `TestAst1867ProviderBalanceOutage._stub` now patches `AUTH_CONFIG["admin_emails"]`. Without it, every send-path test early-returned on the empty test-env admin set.
+- `TestAutoRunErrorSubjectPrefix` `get_candidate` stubs nested the last name under `candidate_data.profile`. **AST-1014** moved it to the top-level `last` column, so 3 tests were red on `ftr` before this ticket. The stubs now return `{"last": …}`.
+
+**Integration:** none. No scenario exercises monitor; dispatcher tests mock `auto_run_error` / `provider_balance_outage` whole.
+
+**AC 6** (live forced AUTO error on the test deploy) is parent UAT, not pytest.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_monitor.py \
+  tests/component/core/test_dispatcher.py::TestDispatchOne::test_auto_run_error_on_auto_failures \
+  tests/component/core/test_dispatcher.py::TestAst1867ProviderBalanceOutage \
+  -q
+```
+
+**Pass criterion:** pytest green on narrowed args; `src/core/monitor.py` remains **LOCKED_AT_100** branch coverage.

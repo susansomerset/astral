@@ -7,22 +7,24 @@ import random
 import threading
 import time
 from contextlib import nullcontext
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Callable, Dict, List, Optional
 
 from anthropic import Anthropic, RateLimitError
 import httpx as _httpx
 
-from src.external.anthropic import _effort_body, _parse_api_response, _parse_json_response, _parse_python_code_response
+from src.external.anthropic import _effort_body, _forced_tool_body, _parse_api_response, _parse_json_response, _parse_python_code_response
 from src.external.openrouter import get_batch_host
 from src.utils.config import PROVIDER_EMPTY_RESPONSE, PROVIDER_PROBE_FAILURE, PROVIDER_RATE_LIMIT, get_llm_server, get_model_routing
 from src.utils.cost_calculator import CALC_COST_KEYS, calculate_cost_components_from_counts, usage_to_token_counts
 from src.utils.integration_io import require_controlled_external_io
 from src.utils.llm_external import (
+    extract_api_response_text,
     await_provider_call_with_budget,
     classify_provider_balance_refusal,
     classify_provider_call_timeout,
     classify_provider_rate_limit,
+    extract_tool_input,
     is_unusable_provider_response,
     normalize_provider_error,
     provider_call_http_timeout_seconds,
@@ -32,7 +34,7 @@ from src.utils.llm_external import (
 )
 from src.utils.logging import get_logger, log_batch_id, log_llm_batch_summary
 
-__all__ = ["send_to_llm_compat"]
+__all__ = ["send_to_llm_compat", "get_receipt"]
 
 logger = get_logger(__name__)
 
@@ -99,8 +101,15 @@ async def send_to_llm_compat(
     no_cache_live_tokens: int = 0,
     batch_size: int = 1,
     record_timesheet: Optional[Callable[..., None]] = None,
+    forced_tool: Optional[Dict[str, Any]] = None,
+    request_type: Optional[str] = None,
+    entity_type: Optional[str] = None,
+    entity_id: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Send blocks to the server's Anthropic-compatible API; timesheet via record_timesheet callback."""
+    """Send blocks to the server's Anthropic-compatible API; timesheet via record_timesheet callback.
+
+    forced_tool ({name, input_schema}) → only tool + tool_choice; OpenRouter-routed adds provider.require_parameters
+    (probe included); its input is parsed_response."""
     require_controlled_external_io("llm_compat.send_to_llm_compat")
     server = get_llm_server(server_id)
     if server["protocol"] != "anthropic_compat":
@@ -134,10 +143,17 @@ async def send_to_llm_compat(
         # collision, so the agent's provider object beats a server extra of the same name.
         if temperature is not None:
             api_kwargs["temperature"] = temperature
-        provider = {"provider": tier["provider"]} if tier.get("provider") else {}
+        provider_obj = dict(tier.get("provider") or {})
+        # Forced tool on OpenRouter (AST-2172): only route to hosts that honour tools/tool_choice. Set before the
+        # AST-1959 probe, which copies these kwargs, so the probed host can take the real call.
+        if forced_tool and get_model_routing(server_id, sku) == "openrouter":
+            provider_obj["require_parameters"] = True
+        provider = {"provider": provider_obj} if provider_obj else {}
         api_kwargs["extra_body"] = {**_effort_body(tier.get("reasoning_effort")), **server["request_extras"], **provider}
         if system_blocks:
             api_kwargs["system"] = system_blocks
+        if forced_tool:
+            api_kwargs.update(_forced_tool_body(forced_tool))
 
         async def _send(kwargs: Dict[str, Any]) -> Any:
             # One path to the wire for the probe and the real call: same client, same budget, same slots.
@@ -175,6 +191,8 @@ async def send_to_llm_compat(
                     cost_parts = dict.fromkeys(CALC_COST_KEYS, 0.0)
             else:
                 cost_parts = dict.fromkeys(CALC_COST_KEYS, 0.0)
+            _resp_text = extract_api_response_text(response) if getattr(response, "content", None) else ""
+            _call_start = start_time.astimezone(timezone.utc).isoformat() if start_time.tzinfo else start_time.replace(tzinfo=timezone.utc).isoformat()
             return dict(
                 agent_req_id=getattr(response, "id", None),
                 task_key_uuid=task_key_uuid,
@@ -193,6 +211,13 @@ async def send_to_llm_compat(
                 calc_cost_no_cache_input=cost_parts["calc_cost_no_cache_input"],
                 calc_cost_output=cost_parts["calc_cost_output"],
                 provider=server_id,
+                request_type=request_type,
+                entity_type=entity_type,
+                entity_id=entity_id,
+                call_start=_call_start,
+                call_stop=datetime.now(timezone.utc).isoformat(),
+                response_item_count=1 if _resp_text else 0,
+                response_char_length=len(_resp_text or ""),
             )
 
         def _record_probe(response: Any) -> None:
@@ -286,7 +311,7 @@ async def send_to_llm_compat(
 
             # JSON cut mid-string when output hits max_tokens — fail closed, do not heal (AST-903).
             stop_reason = getattr(response, "stop_reason", None)
-            if response_format == "json" and stop_reason == "max_tokens":
+            if (response_format == "json" or forced_tool) and stop_reason == "max_tokens":
                 trunc_err = "Generation truncated (max_tokens) before complete JSON"
                 log_llm_batch_summary(
                     logger, server_id, prompt_label, duration, error=trunc_err
@@ -311,12 +336,15 @@ async def send_to_llm_compat(
                 }
 
             parsed_response = None
-            if response_format:
-                if response_format not in ("text", "json", "python"):
+            if response_format or forced_tool:
+                if response_format and response_format not in ("text", "json", "python"):
                     raise ValueError(f"Invalid response_format: {response_format}")
                 response_dict = {"success": True, "api_response": response, "timesheet": timesheet}
                 try:
-                    if response_format == "text":
+                    if forced_tool:
+                        # The forced tool's input is the payload (AST-2172), whatever response_format says.
+                        parsed_response = extract_tool_input(response, forced_tool["name"])
+                    elif response_format == "text":
                         parsed_response = await _parse_api_response(response_dict)
                     elif response_format == "json":
                         parsed_response = _parse_json_response(await _parse_api_response(response_dict))
@@ -393,3 +421,22 @@ async def send_to_llm_compat(
             if fc:
                 out["failure_class"] = fc
         return out
+
+
+def get_receipt(external_ids: List[str], api_key: str) -> List[Dict[str, Any]]:
+    """Zero-stub receipts for direct servers (AST-2217). No network. platform_cost always None.
+    OpenRouter-routed generation ids are answered by openrouter.get_receipt (AST-2218)."""
+    from src.utils.config import TIMESHEET_RECEIPT_FIELDS
+    out: List[Dict[str, Any]] = []
+    for _eid in external_ids:
+        row = {k: None for k in TIMESHEET_RECEIPT_FIELDS}
+        row["native_tokens_prompt"] = 0
+        row["native_tokens_completion"] = 0
+        row["native_tokens_cached"] = 0
+        row["cache_write_tokens"] = 0
+        row["response_item_count"] = 0
+        row["response_char_length"] = 0
+        row["platform_cost"] = None
+        row["completion_status"] = "stub"
+        out.append(row)
+    return out

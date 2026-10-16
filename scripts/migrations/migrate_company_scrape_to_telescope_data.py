@@ -1,15 +1,20 @@
 #!/usr/bin/env python3
 """
-Move existing company scrape text out of company_data into telescope_data (AST-2135).
+Move existing company scrape text out of company_data into web_data (AST-2135).
 
 Three modes, run separately:
   export — read every company's scraped keys; write a JSON file of telescope rows (pre-assigned
            uuids) and, per company, the id-shaped value each key should hold. No DB writes.
-  load   — insert the file's rows into telescope_data by uuid; a re-run adds nothing.
+           pjl_nav_links is not migrated: any stored value is set to NULL (readers rebuild it).
+  load   — insert the file's rows into web_data by uuid; a re-run adds nothing.
   clear  — swap each exported key in company_data to its row id(s). Keys changed since export
            are left as they are.
 
+  dump   — after clear: write chunked JSON files (arrays of column-keyed rows) of the new web_data
+           rows and the changed company rows, for pasting into the admin Copy Output upsert. No DB writes.
+
 Run export → load → clear in that order; clear refuses while any referenced row is missing.
+dump refuses until clear has run.
 
 --db-dir pins ASTRAL_DB_DIR (the folder holding astral.db) for this run; without it the
 app's ASTRAL_DB_DIR is used. The DB path is printed first, before anything else happens.
@@ -18,6 +23,7 @@ Usage:
   python scripts/migrations/migrate_company_scrape_to_telescope_data.py export --file scrape.json
   python scripts/migrations/migrate_company_scrape_to_telescope_data.py load --file scrape.json
   python scripts/migrations/migrate_company_scrape_to_telescope_data.py clear --file scrape.json
+  python scripts/migrations/migrate_company_scrape_to_telescope_data.py dump --file scrape.json --out-dir upsert_files --chunk-mb 4
   python scripts/migrations/migrate_company_scrape_to_telescope_data.py export --file /tmp/x.json --db-dir /tmp/copy
 """
 
@@ -39,9 +45,9 @@ def _digest(value: Any) -> str:
 
 def _export(file_path: Path) -> int:
     from src.core.gazer import is_telescope_id
-    from src.core.roster import _assemble_pjl_content, _rebuilt_pjl_nav_links
+    from src.core.roster import _assemble_pjl_content
     from src.data.database import DB_PATH, _utc_now, list_companies
-    from src.utils.config import TELESCOPE_DATA_CONFIG
+    from src.utils.config import WEB_DATA_CONFIG
     from src.utils.logging import get_logger
 
     log = get_logger(__name__)
@@ -49,8 +55,8 @@ def _export(file_path: Path) -> int:
         # Never replace a file a load may already have used — its uuids are the stored ids.
         print(f"Refusing: {file_path} already exists")
         return 2
-    vt = TELESCOPE_DATA_CONFIG["data_types"]["VISIBLE_TEXT"]
-    pl = TELESCOPE_DATA_CONFIG["data_types"]["PAGE_LINKS"]
+    vt = WEB_DATA_CONFIG["data_types"]["VISIBLE_TEXT"]
+    pl = WEB_DATA_CONFIG["data_types"]["PAGE_LINKS"]
     created_at = _utc_now()
     rows: dict[str, dict[str, Any]] = {}
     companies: dict[str, dict[str, Any]] = {}
@@ -80,7 +86,7 @@ def _export(file_path: Path) -> int:
             return rid
 
         keys: dict[str, dict[str, Any]] = {}
-        for key in TELESCOPE_DATA_CONFIG["company_data_id_keys"]:
+        for key in WEB_DATA_CONFIG["company_data_id_keys"]:
             v = cd.get(key)
             if v is None:
                 continue
@@ -126,7 +132,7 @@ def _export(file_path: Path) -> int:
                 log.debug("%s %s: nothing to move", sn, key)
 
         if "pjl_scrape_pages" in keys:
-            # Derived fields go NULL only when rebuild-on-read gives today's text (AC 6 over AC 5).
+            # pjl_assembled_content goes NULL only when rebuild-on-read gives today's text (AC 6 over AC 5).
             pages = cd["pjl_scrape_pages"]
             stored_asm = cd.get("pjl_assembled_content")
             if stored_asm is not None:
@@ -139,17 +145,10 @@ def _export(file_path: Path) -> int:
                 else:
                     warnings += 1
                     log.warning("%s pjl_assembled_content: stored text differs from rebuild — left stored", sn)
-            stored_nav = cd.get("pjl_nav_links")
-            if stored_nav is not None:
-                log.debug("Calling _rebuilt_pjl_nav_links: %s", cd)
-                rebuilt_nav = _rebuilt_pjl_nav_links(cd)
-                log.debug("Response from _rebuilt_pjl_nav_links: %s", rebuilt_nav)
-                # Exact match — one reader uses it unstripped.
-                if stored_nav == rebuilt_nav:
-                    keys["pjl_nav_links"] = {"was": _digest(stored_nav), "value": None}
-                else:
-                    warnings += 1
-                    log.warning("%s pjl_nav_links: stored text differs from rebuild — left stored", sn)
+        # pjl_nav_links was only ever a small temporary copy: dropped whatever it holds, rebuilt-or-not,
+        # pages-or-not. Readers rebuild it from the page rows, or fall back to nav_links.
+        if cd.get("pjl_nav_links") is not None:
+            keys["pjl_nav_links"] = {"was": _digest(cd["pjl_nav_links"]), "value": None}
 
         if keys:
             companies[sn] = {"keys": keys}
@@ -170,30 +169,30 @@ def _export(file_path: Path) -> int:
 def _load(file_path: Path) -> int:
     from src.data.database import (
         _compress_payload,
-        _ensure_telescope_data_schema,
+        _ensure_web_data_schema,
         _get_connection,
     )
     from src.utils.logging import get_logger
 
     log = get_logger(__name__)
     rows = json.loads(file_path.read_text())["rows"]
-    # Raw INSERT, not save_telescope_data: that mints its own uuid, and the file's ids must be the
+    # Raw INSERT, not save_web_data: that mints its own uuid, and the file's ids must be the
     # stored ids — that is what makes a re-run add nothing.
     conn = _get_connection()
     try:
-        _ensure_telescope_data_schema(conn)
-        log.debug("Calling INSERT OR IGNORE telescope_data: %s", list(rows))
+        _ensure_web_data_schema(conn)
+        log.debug("Calling INSERT OR IGNORE web_data: %s", list(rows))
         inserted = 0
         for rid, r in rows.items():
             cur = conn.execute(
-                "INSERT OR IGNORE INTO telescope_data"
-                " (telescope_data_id, candidate_id, url, data_type, content, created_at)"
+                "INSERT OR IGNORE INTO web_data"
+                " (web_data_id, candidate_id, url, data_type, content, created_at)"
                 " VALUES (?, ?, ?, ?, ?, ?)",
                 (rid, r["candidate_id"], r["url"], r["data_type"], _compress_payload(r["content"]), r["created_at"]),
             )
             inserted += cur.rowcount
         conn.commit()
-        log.debug("Response from INSERT OR IGNORE telescope_data: inserted=%d", inserted)
+        log.debug("Response from INSERT OR IGNORE web_data: inserted=%d", inserted)
     finally:
         conn.close()
     print(f"Rows in file: {len(rows)}  inserted: {inserted}  already present: {len(rows) - inserted}")
@@ -203,7 +202,7 @@ def _load(file_path: Path) -> int:
 def _clear(file_path: Path) -> int:
     from src.data.database import (
         get_company,
-        get_telescope_data_for_ids,
+        get_web_data_for_ids,
         update_company,
     )
     from src.utils.logging import get_logger
@@ -219,15 +218,15 @@ def _clear(file_path: Path) -> int:
 
     wanted = {sn: [i for e in c["keys"].values() for i in _ids(e["value"])] for sn, c in companies.items()}
     all_ids = sorted({i for ids in wanted.values() for i in ids})
-    log.debug("Calling get_telescope_data_for_ids: %s", all_ids)
-    present = get_telescope_data_for_ids(all_ids)
-    log.debug("Response from get_telescope_data_for_ids: %s", present)
+    log.debug("Calling get_web_data_for_ids: %s", all_ids)
+    present = get_web_data_for_ids(all_ids)
+    log.debug("Response from get_web_data_for_ids: %s", present)
     missing = {sn: [i for i in ids if i not in present] for sn, ids in wanted.items()}
     missing = {sn: ids for sn, ids in missing.items() if ids}
     if missing:
         # Refuse before any company write — a swapped key whose row is gone would lose its text.
         for sn, ids in missing.items():
-            log.warning("%s clear refused: telescope_data rows missing %s", sn, ids)
+            log.warning("%s clear refused: web_data rows missing %s", sn, ids)
         print(f"Refused: {sum(map(len, missing.values()))} rows missing for {len(missing)} companies — run load first")
         return 1
 
@@ -263,11 +262,83 @@ def _clear(file_path: Path) -> int:
     return 0
 
 
+def _write_chunks(out_dir: Path, order: int, table: str, rows: list[dict[str, Any]], chunk_bytes: int) -> tuple[int, int]:
+    """Write rows as JSON arrays of column-keyed objects (the admin Copy Output upsert shape), each file
+    about chunk_bytes (a single row bigger than that gets its own file). Returns (files, bytes)."""
+    files = total = size = 0
+    batch: list[str] = []
+
+    def flush() -> None:
+        nonlocal files, total, size, batch
+        if not batch:
+            return
+        files += 1
+        text = "[" + ",".join(batch) + "]"
+        (out_dir / f"{order}_{table}_{files:03d}.json").write_text(text)
+        total += len(text)
+        batch, size = [], 0
+
+    for row in rows:
+        s = json.dumps(row, separators=(",", ":"))
+        if batch and size + len(s) > chunk_bytes:
+            flush()
+        batch.append(s)
+        size += len(s) + 1
+    flush()
+    return files, total
+
+
+def _dump(file_path: Path, out_dir: Path, chunk_bytes: int) -> int:
+    from src.data.database import _get_connection
+    from src.utils.logging import get_logger
+
+    log = get_logger(__name__)
+    if out_dir.exists() and any(out_dir.iterdir()):
+        # Never mix chunks from two runs in one folder — the paste order would be wrong.
+        print(f"Refusing: {out_dir} is not empty")
+        return 2
+    data = json.loads(file_path.read_text())
+    companies: dict[str, Any] = data["companies"]
+    # web_data rows straight from the export file: the same ids/content that load inserted.
+    tele = [{"web_data_id": rid, **r} for rid, r in data["rows"].items()]
+    company_rows: list[dict[str, Any]] = []
+    not_cleared: list[str] = []
+    conn = _get_connection()
+    try:
+        for sn, c in companies.items():
+            cur = conn.execute("SELECT * FROM company WHERE short_name = ?", (sn,))
+            fetched = cur.fetchone()
+            if fetched is None:
+                continue  # deleted since export; clear skips it too
+            row = dict(zip([d[0] for d in cur.description], tuple(fetched)))
+            cd = json.loads(row["company_data"] or "{}")
+            # A key still holding what export saw means clear hasn't run — dumping now would push legacy text.
+            # (A key changed since export is fine: clear leaves it, and the re-scrape wins.)
+            if any(_digest(cd.get(k)) == e["was"] for k, e in c["keys"].items()):
+                not_cleared.append(sn)
+            company_rows.append(row)
+    finally:
+        conn.close()
+    if not_cleared:
+        log.warning("dump refused: company_data not in the cleared state for %s", not_cleared[:20])
+        print(f"Refused: {len(not_cleared)} companies are not in the cleared state — run clear first")
+        return 1
+    out_dir.mkdir(parents=True, exist_ok=True)
+    tf, tb = _write_chunks(out_dir, 1, "web_data", tele, chunk_bytes)
+    cf, cb = _write_chunks(out_dir, 2, "company", company_rows, chunk_bytes)
+    print(f"web_data: {len(tele)} rows in {tf} files ({tb / 1e6:.1f} MB)")
+    print(f"company: {len(company_rows)} rows in {cf} files ({cb / 1e6:.1f} MB)")
+    print(f"Wrote {out_dir} — upsert the 1_web_data files first, then the 2_company files")
+    return 0
+
+
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Move company scrape text into telescope_data (AST-2135).")
-    parser.add_argument("mode", choices=("export", "load", "clear"))
-    parser.add_argument("--file", required=True, help="Export JSON path (written by export, read by load/clear).")
+    parser = argparse.ArgumentParser(description="Move company scrape text into web_data (AST-2135).")
+    parser.add_argument("mode", choices=("export", "load", "clear", "dump"))
+    parser.add_argument("--file", required=True, help="Export JSON path (written by export, read by load/clear/dump).")
     parser.add_argument("--db-dir", help="Folder holding astral.db; defaults to the app's ASTRAL_DB_DIR.")
+    parser.add_argument("--out-dir", help="dump only: folder for the chunked JSON files (must be empty or new).")
+    parser.add_argument("--chunk-mb", type=float, default=4.0, help="dump only: approximate size of each file (default 4).")
     args = parser.parse_args()
     if args.db_dir:
         # Must be set before any src import: config reads ASTRAL_DB_DIR at import time and the
@@ -278,6 +349,10 @@ def main() -> int:
 
     print(f"DB: {DB_PATH}")
     file_path = Path(args.file)
+    if args.mode == "dump":
+        if not args.out_dir:
+            parser.error("dump needs --out-dir")
+        return _dump(file_path, Path(args.out_dir), int(args.chunk_mb * 1_000_000))
     return {"export": _export, "load": _load, "clear": _clear}[args.mode](file_path)
 
 

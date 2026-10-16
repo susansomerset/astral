@@ -1,3 +1,70 @@
+<!-- linear-archive: AST-2170 archived 2026-10-16 -->
+
+## Linear archive (AST-2170)
+
+**Archived:** 2026-10-16  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-2170/select-all-checkbox-on-recommended-list-add-a-select-all-checkbox-and  
+**Status at archive:** Archive  
+**Project:** Astral Interface  
+**Assignee:** ada  
+**Priority / estimate:** None / 1  
+**Parent:** AST-2166 — Add a Select All checkbox (and unchecking it selects none) to Recommended list  
+**Blocked by / blocks / related:** parent: AST-2166
+
+### Description
+
+## What this implements
+
+Adds the header Select All / select-none checkbox to each section of the Recommended list page (Jobs → Review and Jobs → Ready), driving the existing selection and bulk bar. Does not change bulk actions, row actions, or any other page.
+
+## Citations
+
+none — no in-force directive governs frontend list pages (see Architectural definition).
+
+## Scope
+
+`src/ui/frontend/src/pages/JobsRecommended.tsx` — **modified function** (`Recommended` page component): render a checkbox in the currently empty select-column `<th>` of each section table; its checked state is derived from the section's rows against the existing page-level `selected` set (not stored separately); checking adds all of the section's `astral_job_id`s to `selected`, unchecking removes them. Reuses the existing `selected` state, so `selectedIds` / `generateIds` and the bulk bar need no change. The header checkbox's accessible name must not match the existing row-checkbox name pattern (`Select <job title>`), so row-checkbox queries keep counting rows only.
+
+## Acceptance criteria
+
+1. **Header checkbox exists.** On Jobs → Review with at least one job, each section table's first header cell contains exactly one checkbox. **Fail:** no checkbox in the select-column header, or more than one.
+2. **Select All.** With no rows selected, click the header checkbox: every row checkbox in that section is checked and the bulk bar shows `Skip (n)` / `Applied (n)` where n = the section's job count. **Fail:** any row in the section unchecked, or wrong n.
+3. **Select none.** With all rows selected via the header, click it again: every row checkbox in the section is unchecked and no bulk buttons render. **Fail:** any row still checked, or bulk bar still visible.
+4. **Partial → all.** Check one row only (header stays unchecked), then click the header: every row in the section becomes checked. **Fail:** header checked with only one row selected, or click clears instead of selecting all.
+5. **Manual all → header checked.** Tick every row in a section individually: the header checkbox shows checked. Untick one: it shows unchecked. **Fail:** header state does not follow the rows.
+6. **Bulk action clears it.** Select All, then run bulk Skip: after completion the header checkbox and all row checkboxes are unchecked. **Fail:** header still checked.
+7. **Row-checkbox queries unaffected.** In `tests/component/frontend/pages/test_JobsRecommended.test.tsx`, `getAllByRole("checkbox", { name: /^Select / })` still returns exactly one checkbox per job row (the header checkbox's name does not match it). **Fail:** count includes the header checkbox.
+8. **Same on Ready.** AC 2 and 3 pass on Jobs → Ready. **Fail:** either fails there.
+9. **Builds clean; no new lint.** In `src/ui/frontend`, `npm run build` exits 0 and `npm run lint` reports no problem absent on `origin/dev`. **Fail:** non-zero build or any new lint problem.
+
+## Boundaries
+
+Only child of this parent. Does not change bulk actions, row actions, sorting, the Analysis toggle, selection persistence, or any other list page. No indeterminate header state.
+
+## Notes for planning
+
+Parent: [AST-2166](https://linear.app/astralcareermatch/issue/AST-2166). Canon Scope is empty (see parent Architectural definition). Code precedent for a header select-all checkbox: `src/ui/frontend/src/pages/AdminManageEmail.tsx`. Existing `test_JobsRecommended.test.tsx` counts row checkboxes with `/^Select /` — the header checkbox's accessible name must not match it.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/AST-2166-select-all`, child `sub/AST-2166/AST-2170-select-all`. Created at dispatch-parent. Resolve the exact publish ref with `epic_registry.py show AST-2166 --ref AST-2170`.
+
+### Comments
+
+#### radia — 2026-10-12T22:37:45.448Z
+[code-rubric] PROCEED (Commit: a58e4c8e2) Select All matches plan
+
+#### betty — 2026-10-12T22:35:43.294Z
+`origin/sub/AST-2166/AST-2170-select-all` @ `a58e4c8e2` · 5 Select All cases
+
+#### joan — 2026-10-12T22:32:01.523Z
+[plan-rubric] PROCEED (Commit: ff5c157bf) Empty canon; plan faithful
+
+#### ada — 2026-10-12T22:30:23.169Z
+`origin/sub/AST-2166/AST-2170-select-all` @ `ff5c157bf` · one-stage header checkbox plan
+
+---
+
 # Select All checkbox on Recommended list
 
 - **Ticket:** [AST-2170](https://linear.app/astralcareermatch/issue/AST-2170)

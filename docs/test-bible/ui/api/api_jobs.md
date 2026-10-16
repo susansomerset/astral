@@ -461,6 +461,21 @@ python -c "import src.utils.config"                                             
 
 Every list row (`ready` / `review` / `applied` / `processing`) and `GET /api/jobs/<id>` return `job_data.job_description` = `tracker.compose_job_description(job)` on a new dict (stored `job_data` never written). `PUT /api/jobs/<id>` drops `job_description` from the accepted fields: JD-only body → 400 "No valid fields"; title + JD → title persists, `job_data` unchanged.
 
-**New:** **`TestAst2133ComposedJdResponses`** (9; real `telescope_data` rows on ui `sqlite_in_memory`), **`TestAst2133PutJdReadOnlyE2E`** (1; `seeded_db`, real tracker / data). **Revised:** `TestJobsRoutes::test_list_processing_filters_score_floor`. Manifest: [`../../core/tracker.md`](../../core/tracker.md) § AST-2133.
+**New:** **`TestAst2133ComposedJdResponses`** (9; real `web_data` rows on ui `sqlite_in_memory`), **`TestAst2133PutJdReadOnlyE2E`** (1; `seeded_db`, real tracker / data). **Revised:** `TestJobsRoutes::test_list_processing_filters_score_floor`. Manifest: [`../../core/tracker.md`](../../core/tracker.md) § AST-2133.
 
-**Amendment (PR #301, skipped view):** `skipped` rows, real and virtual, drop `job_data` and `state_history` after `_flatten_grades` (`_slim_list_row`), so they carry no composed JD and make no `telescope_data` read; lifted grades, scores and `virtual_skip` stay. **Revised:** `test_ac7_list_rows_compose_referenced_capture` drops the `skipped` param; `test_ac7_virtual_skip_rows_compose` → `test_skipped_rows_drop_job_data_and_skip_compose` (count unchanged at 9; parametrized cases 4 → 3).
+**Amendment (PR #301, skipped view):** `skipped` rows, real and virtual, drop `job_data` and `state_history` after `_flatten_grades` (`_slim_list_row`), so they carry no composed JD and make no `web_data` read; lifted grades, scores and `virtual_skip` stay. **Revised:** `test_ac7_list_rows_compose_referenced_capture` drops the `skipped` param; `test_ac7_virtual_skip_rows_compose` → `test_skipped_rows_drop_job_data_and_skip_compose` (count unchanged at 9; parametrized cases 4 → 3).
+
+### AST-2232 · AST-2226 (detail enrichment: company, lifecycle, can_apply)
+
+**Parent:** [AST-2226](https://linear.app/astralcareermatch/issue/AST-2226). **Publish:** `origin/sub/AST-2226/AST-2232-agent-name-detail-enrichment-tab-config`.
+
+`GET /api/jobs/<id>` adds `can_apply` (core `job_state_admits_transition` → `CANDIDATE_APPLIED`), `company_name` / `company_website` from `get_company` (null when missing — never short_name fallback), and `discovered_at` / `recommended_at` / `applied_at` via tracker helpers. Keeps `can_skip`. Primary manifest: **`docs/test-bible/core/tracker.md`** § AST-2232.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| AC9–12 detail fields | `src/ui/api/api_jobs.py` `detail` | **`TestAst2232DetailEnrichment`** |
+| Regression can_skip | same | **`TestAst1872DetailCanSkip`** |
+
+**Broken / obsolete:** none beyond config tab asserts owned under tracker/config § AST-2232.
+
+**Integration:** none.
