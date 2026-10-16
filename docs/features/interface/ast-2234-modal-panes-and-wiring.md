@@ -181,3 +181,40 @@ Each stage is one commit on the epic worktree, published to
 ## Estimate
 
 Confirm Chuckles estimate: 5 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-2234
+**Overall:** APPROVED
+**Corpus:** 65a2864973ecf09fd57732c2cfc9a4e1ff3e0b91 (tree `canon/` at publish tip; no `docs/canon-index.md` on ref)
+**Publish ref:** `origin/sub/AST-2226/AST-2234-modal-panes-and-wiring` @ `cd0a58a97f05070f8900a73c4d63a4487622dd65`
+
+## Canon scores
+
+patt.artifact.ui-consistency | A | |
+patt.artifact.read-current | A | |
+
+## Traceability
+
+AC 3 → Stage 3 (`can_skip` / `can_apply` gate header callbacks only); AC 4 → Stage 3 Applied notes + `postCandidateAction`; AC 5 → Stage 3 Artifacts Print (non-mobile); AC 6 → Stages 1–2 `extractAgentPayloadText` + Discussion body; AC 7 → Stage 2 header format + tz; AC 8 → Stages 3–4 mobile band ≤1023px no Edit; AC 9 → Stage 3 JD pane + manifest tab (config from #1); AC 10 → Stage 3 tab filter + header Generate mutual exclusion; AC 11 → Stages 1–3 thermometer fill/tooltip vs `jobScoreBreakdownForGradesField`; AC 12 → Stages 1–3 shared `totalScore` + job gradable % over four phase `*_grades`. Parent functional items 2–5, 10–13 (modal slice) addressed; Copy/header chrome strip partially depends on #2 but this plan correctly stops passing Copy/Print props from the modal.
+
+## Findings
+
+**discuss** — Linear assignee is Ada, not Joan; Chuckles should assign Joan before validate spawn convention — review completed per explicit spawn.
+
+**acceptable** — Prerequisite gate on AST-2232 detail fields, #2 prop contract table, UAT fitness (wrong-fix list), and explicit scope gate match parent partition; Files Changed stay inside ticket Scope; decision to duplicate notes wiring in-modal (not hook) matches Scope preference.
+
+**acceptable** — `patt.artifact.ui-consistency` Exception #2 (legacy job modal props) explicitly honored; no `bodyShape` rewrite. Print/mobile/read-only paths reuse existing artifact/print helpers — no parallel client storage (`read-current` intent).
+
+**discuss** — Stage 2 step 4 header fallback prose is tangled before the concrete `name`/`task`/`stamp` rule; executable once builder follows the final bullets — tighten in plan optional, not blocking.
+
+**discuss** — `extractAgentPayloadText` falls back to `JSON.stringify` when `agent_payload` is an object; AC 6 targets string prose — rare shape; note for Betty if fixtures use object payloads.
+
+**discuss** — Build ordering: Stage 3 expects #2 header props/CSS classes; plan documents stop-on-mismatch and temporary assertion escape — parallel landing with AST-2233 remains the main integration risk (execution, not plan gap).
+
+**discuss** — Canon Scope is only the two artifact patterns; `astral.ui.frontend-file-placement` / layer import rules are not frozen on the ticket — all touches stay in listed frontend paths (Archie convention only).
+
+**Definition fidelity (R6):** Stages map to Scope files; no backend/App.css/header component edits. Estimate confirm present. Plan Discuss rounds: 0.
+
+context_tokens≈52000
