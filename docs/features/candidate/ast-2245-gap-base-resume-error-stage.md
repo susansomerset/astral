@@ -128,3 +128,16 @@ AC1 → Stage 1 steps 1–2, 4 (every `CANDIDATE_STATES` value has `stage`; impo
 **R6 (summary):** Plan matches ticket Scope (`config.py` only). Publish tip confirms failure mode: `BASE_RESUME_CHAIN_ERROR_STATES` dict expansion lacks `"stage"` while the global `assert "stage" in _cfg` already runs (blocks import). Fix aligns with parent locked band (resume-request `ERROR_*` → stage **3**; craft `ERROR_*` stay **4**). No NAV, `candidate.py`, or dispatch edits. Estimate 1 — agree.
 
 context_tokens≈86000
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-2225/AST-2245-gap-base-resume-error-stage`
+**Plan path:** `docs/features/candidate/ast-2245-gap-base-resume-error-stage.md`
+
+**Built tip:** *(set after code commit)*
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | *(sha)* | `BASE_RESUME_CHAIN_ERROR_STATES` entries get `stage: 3` + import assert |
+
+**Betty note:** Config-only registry gap. No test-tree edits in build.
