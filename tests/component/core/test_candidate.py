@@ -7159,9 +7159,10 @@ class TestAst1665WritingPreferencesOperativeSaveHydrate:
         )
         assert legacy["context"]["writing_preferences"] == "legacy until re-save"
 
-    def test_hydrate_ignores_non_dict_cd_and_non_str_body(
+    def test_hydrate_ignores_non_dict_cd_and_coerces_dict_body(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        # AST-2243: non-dict cd is a no-op; dict bodies coerce for display (not blank).
         candidate_mod.hydrate_operative_writing_preferences_for_response(
             "c1", "not-a-dict"
         )  # type: ignore[arg-type]
@@ -7170,7 +7171,28 @@ class TestAst1665WritingPreferencesOperativeSaveHydrate:
         )
         cd: dict[str, Any] = {"context": {"writing_preferences": "keep"}}
         candidate_mod.hydrate_operative_writing_preferences_for_response("c1", cd)
-        assert cd["context"]["writing_preferences"] == "keep"
+        assert cd["context"]["writing_preferences"] == '{"not": "str"}'
+        # Other non-str types still skip overlay (leave legacy leaf).
+        monkeypatch.setattr(candidate_mod, "get_candidate_current", lambda cid, key: 123)
+        cd2: dict[str, Any] = {"context": {"writing_preferences": "keep-int"}}
+        candidate_mod.hydrate_operative_writing_preferences_for_response("c1", cd2)
+        assert cd2["context"]["writing_preferences"] == "keep-int"
+
+    def test_hydrate_dict_prefers_writing_general_instructions(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # AST-2243: miller-shaped dict → overlay writing_general_instructions string.
+        monkeypatch.setattr(
+            candidate_mod,
+            "get_candidate_current",
+            lambda cid, key: {
+                "writing_general_instructions": "Prefer short sentences.",
+                "writing_style": {"observations": ["direct"]},
+            },
+        )
+        cd: dict[str, Any] = {"context": {"writing_preferences": "stale"}}
+        candidate_mod.hydrate_operative_writing_preferences_for_response("miller", cd)
+        assert cd["context"]["writing_preferences"] == "Prefer short sentences."
 
     def test_get_candidate_hydrates_writing_preferences(self, seeded_db) -> None:
         candidate_mod.save_candidate_data(
