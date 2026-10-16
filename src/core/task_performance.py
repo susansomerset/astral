@@ -1,6 +1,6 @@
 """Task Performance roster — admin-grade script (NOT under the test bible).
 
-Rolls dispatch_ledger runs + agent_timesheets calls up the tree
+Rolls dispatch_ledger runs + service_timesheet calls up the tree
 Total > Task Group > Task Key > Version (agent_task row) > Candidate > Ledger line.
 
 Version link: dispatch_ledger has no task_key_uuid, so a batch's version comes from its
@@ -252,7 +252,7 @@ def build_task_performance(
         for r in conn.execute(
             "SELECT batch_id, task_key_uuid, created_at, agent_performance, cache_write_tokens, cache_read_tokens,"
             " total_no_cache_input_tokens, total_output_tokens, calc_cost_cache_write, calc_cost_cache_read,"
-            f" calc_cost_no_cache_input, calc_cost_output, platform_cost FROM agent_timesheets"
+            f" calc_cost_no_cache_input, calc_cost_output, platform_cost FROM service_timesheet"
             f" WHERE batch_id IN (SELECT batch_id FROM dispatch_ledger WHERE {w})", params):
             ts_by_batch.setdefault(r["batch_id"], []).append(dict(r))
     finally:

@@ -462,3 +462,52 @@ class TestAst1879EstelleTurnRoute:
                        # AST-1956: the brain / mode route is gone from the call path.
                        "resolve_model_brain", "brain_setting"):
             assert needle not in src, needle
+
+class TestAst2217CallTimeAttribution:
+    """AST-2217 AC8: do_task passes DISPATCH_AGENT + entity attribution into the recorded call;
+    multi-entity leaves entity_id empty.
+    """
+
+    @staticmethod
+    def _force_compat_route(agent_row: Dict[str, Any]) -> Dict[str, Any]:
+        # Pin a direct-compat SKU so _clients' send_to_llm_compat spy is the path under test.
+        agent_row = dict(agent_row)
+        agent_row["model_id"] = "kimi-k2.6"
+        return agent_row
+
+    @pytest.mark.asyncio
+    async def test_single_entity_passes_dispatch_agent_and_index(
+        self, monkeypatch: pytest.MonkeyPatch, batch_token: Any, no_storage: MagicMock
+    ) -> None:
+        agent_row, task_row = _seeded_rows("principal_recruiter_estelle")
+        agent_row = self._force_compat_route(agent_row)
+        monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda k: (agent_row, task_row))
+        anth, compat = _clients(monkeypatch)
+        out = await agent_mod.do_task(_TASK, index="somerset", ctx=_ctx({"kimi": "sk-kimi"}))
+        assert out["success"] is True
+        anth.assert_not_called()
+        compat.assert_awaited()
+        kw = compat.await_args.kwargs
+        assert kw["request_type"] == "DISPATCH_AGENT"
+        assert kw["entity_id"] == "somerset"
+        assert kw.get("entity_type")  # task-derived; non-empty on this path
+
+    @pytest.mark.asyncio
+    async def test_multi_entity_leaves_entity_id_empty(
+        self, monkeypatch: pytest.MonkeyPatch, batch_token: Any, no_storage: MagicMock
+    ) -> None:
+        agent_row, task_row = _seeded_rows("principal_recruiter_estelle")
+        agent_row = self._force_compat_route(agent_row)
+        monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda k: (agent_row, task_row))
+        anth, compat = _clients(monkeypatch)
+        ctx = _ctx({"kimi": "sk-kimi"})
+        ctx["batch_entities"] = [
+            {"company_id": "co-1"},
+            {"company_id": "co-2"},
+        ]
+        ctx["batch_size"] = 2
+        out = await agent_mod.do_task(_TASK, index="somerset", ctx=ctx)
+        assert out["success"] is True
+        kw = compat.await_args.kwargs
+        assert kw["request_type"] == "DISPATCH_AGENT"
+        assert kw["entity_id"] in (None, "")

@@ -28,10 +28,10 @@ from src.data.database import (
 
 from src.data import database
 from src.core.agent import _current_agent_task_run_next, compute_batch_cost, task_llm_server_id_or_none
-from src.core.timesheets import start_batch_openrouter_platform_reconcile
 from src.utils.deploy_status import is_local_deploy_env
 from src.utils.config import (
     ASTRAL_CONFIG,
+    FETCH_TIMESHEET_CONFIG,
     INFLOW_CONFIG,
     TASK_CONFIG,
     METEORITE_DISPATCH_TASKS,
@@ -45,6 +45,7 @@ from src.utils.config import (
     dispatch_chain_row_matches_job,
     dispatch_task_key_is_scored,
     is_dispatch_chain_trigger,
+    is_fetch_timesheet_task_key,
     is_meteorite_email_mailbox_task_key,
     template_candidate_id,
     parse_dispatch_hop_label,
@@ -584,6 +585,71 @@ def provision_meteorite_email_dispatch_tasks() -> Dict[str, Any]:
     }
 
 
+def ensure_fetch_timesheet_dispatch_task(candidate_id: str) -> Dict[str, Any]:
+    """Idempotent insert of candidate-bound fetch_timesheet dispatch_task (AST-2218)."""
+    cid = str(candidate_id or "").strip()
+    if not cid:
+        raise ValueError("candidate_id is required")
+    tk = str(FETCH_TIMESHEET_CONFIG["task_key"]).strip()
+    existing = None
+    for row in database.list_dispatch_tasks_for_candidate(cid):
+        if (row.get("task_key") or "").strip() == tk:
+            existing = row
+            break
+    if existing is not None:
+        return {
+            "candidate_id": cid,
+            "task_key": tk,
+            "added": 0,
+            "skipped": 1,
+            "id": existing.get("id"),
+        }
+    new_id = database.save_dispatch_task(
+        candidate_id=cid,
+        task_key=tk,
+        min_count=int(FETCH_TIMESHEET_CONFIG["min_count"]),
+        auto_mode=bool(FETCH_TIMESHEET_CONFIG["auto_mode"]),
+        entity_type=FETCH_TIMESHEET_CONFIG["entity_type"],
+        trigger_state=FETCH_TIMESHEET_CONFIG["trigger_state"],
+        batch_size=int(FETCH_TIMESHEET_CONFIG["batch_size"]),
+        freq_hrs=FETCH_TIMESHEET_CONFIG["freq_hrs"],  # None → SQL NULL (AC3)
+    )
+    return {
+        "candidate_id": cid,
+        "task_key": tk,
+        "added": 1,
+        "skipped": 0,
+        "id": new_id,
+    }
+
+
+def provision_fetch_timesheet_dispatch_tasks() -> Dict[str, Any]:
+    """Ensure template + every candidate has a fetch_timesheet row (AST-2218)."""
+    template_id = template_candidate_id()
+    if not template_id:
+        raise ValueError("ASTRAL_CONFIG template_candidate_id is empty")
+    tk = str(FETCH_TIMESHEET_CONFIG["task_key"]).strip()
+    added = skipped = candidates_touched = 0
+    # Template first, then every candidate (template may appear twice — ensure is idempotent).
+    for cid in [template_id] + [
+        str((c or {}).get("astral_candidate_id") or "").strip()
+        for c in database.list_candidates()
+    ]:
+        if not cid:
+            continue
+        stats = ensure_fetch_timesheet_dispatch_task(cid)
+        added += int(stats.get("added") or 0)
+        skipped += int(stats.get("skipped") or 0)
+        candidates_touched += 1
+    return {
+        "task_key": tk,
+        "template_candidate_id": template_id,
+        "candidates_touched": candidates_touched,
+        "added": added,
+        "skipped": skipped,
+    }
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # Batch runners call `database` directly (not via _db_ wrappers) because
@@ -709,14 +775,14 @@ async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
     claim_states: Optional[List[str]] = None
     if entity_type == "candidate":
         claim_states = dispatch_claim_states(input_state, "candidate")
-        stage = CANDIDATE_STAGE_DISPATCH["requested_artifacts"]
-        # AST-1388 / AST-1434: reclaim mid-chain REQUESTED_ARTIFACTS.<hop> for any hop's dispatch row.
+        # AST-1388 / AST-1434 / AST-2222: reclaim mid-chain hop labels for any stage trigger.
         raw_in = (input_state or "").strip()
         parsed_in = parse_dispatch_hop_label(raw_in)
-        stage_trigger = stage["trigger_state"]
-        if raw_in == stage_trigger or (parsed_in and parsed_in[0] == stage_trigger):
-            from src.core.candidate import requested_artifacts_dispatch_claim_states
-            claim_states = requested_artifacts_dispatch_claim_states()
+        bare = parsed_in[0] if parsed_in else raw_in
+        stage_triggers = {e["trigger_state"] for e in CANDIDATE_STAGE_DISPATCH.values()}
+        if bare in stage_triggers:
+            from src.core.candidate import candidate_stage_dispatch_claim_states
+            claim_states = candidate_stage_dispatch_claim_states(bare)
         logger.debug(
             "Calling get_new_candidate_batch: [state=%s, limit=%s, sort_by=%s, candidate_id=%s, batch_id=%s, states=%s]",
             input_state, limit, sort_by, candidate_id, bid, claim_states,
@@ -1063,6 +1129,7 @@ def _persist_dispatch_ledger_close(
         total_cost=total_cost,
         entity_cost=round(entity_cost, 7),
         **accumulated,
+        timesheet_state="NEW",  # after deploy closes only; historical null rows untouched
     )
     if final_status == "COMPLETED":
         _log_dispatch_task_completed(
@@ -1074,7 +1141,6 @@ def _persist_dispatch_ledger_close(
             accumulated.get("total_errors", 0),
             dispatch_ledger_id,
         )
-        start_batch_openrouter_platform_reconcile(dispatch_ledger_id)
 
 
 # Registry: task_id -> {thread, loop, asyncio_task, task_key, candidate_id, is_auto}
@@ -1271,6 +1337,102 @@ async def _dispatch_one_body(task: Dict, debug: bool) -> None:
             except Exception as e:
                 logger.error_exc(
                     "%s | dispatch %s %s task_id=%s\n  %s: %s\n  The run is over; this task's last-run time was not saved.",
+                    candidate_id or "-",
+                    task.get("entity_type") or "-",
+                    task_key,
+                    task_id,
+                    type(e).__name__,
+                    e,
+                )
+        return
+
+    # AST-2218: candidate-bound fetch_timesheet — receipt runner, no entity claim.
+    if is_fetch_timesheet_task_key(task_key):
+        from src.core.timesheets import run_fetch_timesheet
+
+        entity_batch_id = f"{task_key}-{uuid.uuid4()}"
+        ledger_cid = str(candidate_id or "").strip()
+        if not ledger_cid:
+            logger.debug(
+                "skipped — fetch_timesheet requires bound candidate_id task_key=%s candidate_id=%s",
+                task_key, candidate_id,
+            )
+            logger.warning(
+                "%s | dispatch %s skipped — fetch_timesheet requires bound candidate_id\n  This task is not starting",
+                candidate_id or "-",
+                task_key,
+            )
+            return
+        database.save_dispatch_ledger(
+            entity_batch_id,
+            task_key,
+            ledger_cid,
+            _now_iso(),
+            "RUNNING",
+            entity_type=None,
+        )
+        log_batch_id.set(entity_batch_id)
+        log_candidate_id.set(ledger_cid)
+        dispatch_ledger_id = entity_batch_id
+        with _registry_lock:
+            entry = _task_registry.get(task_id)
+            if entry:
+                entry["asyncio_task"] = asyncio.current_task()
+        accumulated = dict(_SUMMARY_ZERO)
+        final_status = "COMPLETED"
+        try:
+            logger.debug(
+                "Calling run_fetch_timesheet: [task_key=%s, entity_batch_id=%s, candidate_id=%s]",
+                task_key, entity_batch_id, ledger_cid,
+            )
+            summary = await asyncio.to_thread(run_fetch_timesheet, ledger_cid)
+            logger.debug("Response from run_fetch_timesheet: %s", summary)
+            for k in ("total_processed", "total_passed", "total_failed", "total_errors"):
+                accumulated[k] = int(summary.get(k, 0) or 0)
+        except asyncio.CancelledError:
+            final_status = "INTERRUPTED"
+            logger.warning(
+                "%s | dispatch %s %s\n  Killed by admin\n  The batch is stopping",
+                candidate_id or "-",
+                task.get("entity_type") or "-",
+                task_key,
+            )
+            accumulated["total_errors"] = accumulated.get("total_errors", 0) + 1
+        except Exception as exc:
+            final_status = "FAILED"
+            logger.error_exc(
+                "%s | dispatch %s %s\n  %s: %s\n  Truncating the batch",
+                candidate_id or "-",
+                task.get("entity_type") or "-",
+                task_key,
+                type(exc).__name__,
+                exc,
+            )
+            accumulated["total_errors"] = accumulated.get("total_errors", 0) + 1
+        finally:
+            if dispatch_ledger_id:
+                try:
+                    _persist_dispatch_ledger_close(
+                        dispatch_ledger_id, final_status, accumulated, candidate_id, task, task_key,
+                    )
+                except Exception as e:
+                    logger.error_exc(
+                        "%s | dispatch %s %s ledger=%s\n  %s: %s\n  The run is over; this batch was not recorded as finished.",
+                        candidate_id or "-",
+                        task.get("entity_type") or "-",
+                        task_key,
+                        dispatch_ledger_id,
+                        type(e).__name__,
+                        e,
+                    )
+            flush_log_buffer()
+            log_batch_id.set(None)
+            log_candidate_id.set(None)
+            try:
+                _db_update_dispatch_task(task_id, last_run_at=_now_iso())
+            except Exception as e:
+                logger.error_exc(
+                    "%s | dispatch %s %s task_id=%s\n  %s: %s\n  last_run_at was not updated",
                     candidate_id or "-",
                     task.get("entity_type") or "-",
                     task_key,
@@ -1939,6 +2101,28 @@ def _meteorite_email_due_tasks() -> List[Dict[str, Any]]:
     return due
 
 
+def _fetch_timesheet_due_tasks() -> List[Dict[str, Any]]:
+    """AUTO fetch_timesheet rows whose candidate has NEW ledger count ≥ min_count (AST-2218)."""
+    auto_rows = [
+        t for t in database.list_dispatch_tasks()
+        if is_fetch_timesheet_task_key(t.get("task_key") or "")
+        and bool(t.get("auto_mode"))
+        and str(t.get("candidate_id") or "").strip()
+    ]
+    due: List[Dict[str, Any]] = []
+    for task in auto_rows:
+        cid = str(task["candidate_id"]).strip()
+        avail = database.count_ledger_timesheet_state(cid, "NEW")
+        min_count = task.get("min_count") or 1
+        if avail < min_count:
+            continue
+        if not database.dispatch_task_freq_allows(task):
+            continue
+        task["available_count"] = avail
+        due.append(task)
+    return due
+
+
 def get_auto_thread_cap() -> int:
     """Effective cap on concurrent AUTO task threads: runtime override if set, else config default."""
     # Must NOT be called while holding _registry_lock (threading.Lock is not re-entrant).
@@ -1988,8 +2172,12 @@ def _tick_loop() -> None:
                     type(exc).__name__,
                     exc,
                 )
-            # Claim-queue AUTO rows from data; mailbox AUTO merged via live bind Avail (AST-1135).
-            due = list(database.get_due_tasks()) + _meteorite_email_due_tasks()
+            # Claim-queue AUTO rows from data; mailbox + fetch_timesheet merged via live Avail.
+            due = (
+                list(database.get_due_tasks())
+                + _meteorite_email_due_tasks()
+                + _fetch_timesheet_due_tasks()
+            )
             # AST-1829: one sweep-due debug site for claim-queue and mailbox (no debug in src/data/)
             for t in due:
                 if t.get("_scheduled_sweep"):

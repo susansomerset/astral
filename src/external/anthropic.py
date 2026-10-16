@@ -5,14 +5,14 @@ External service layer: pure API client only.
 Sends assembled content blocks to Anthropic; optional `record_timesheet` callback
 (from core) persists cost rows. No business logic.
 
-Public API: send_to_anthropic, getTimestampPrefix
+Public API: send_to_anthropic, get_receipt, getTimestampPrefix
 """
 
 import json
 import os
 import re
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Callable, Dict, List, Optional
 
 from src.utils.cost_calculator import calculate_cost_with_cache, calculate_cost_components
@@ -235,6 +235,9 @@ async def send_to_anthropic(
     batch_size: int = 1,
     record_timesheet: Optional[Callable[..., None]] = None,
     forced_tool: Optional[Dict[str, Any]] = None,
+    request_type: Optional[str] = None,
+    entity_type: Optional[str] = None,
+    entity_id: Optional[str] = None,
     ) -> Dict[str, Any]:
     """Send assembled content blocks to Anthropic; optional DB timesheet via record_timesheet.
 
@@ -316,6 +319,7 @@ async def send_to_anthropic(
 
             try:
                 cost_parts = calculate_cost_components(usage, model_code)
+                _resp_text = extract_api_response_text(response) if getattr(response, "content", None) else ""
                 _timesheet_kwargs = dict(
                     agent_req_id=getattr(response, "id", None),
                     task_key_uuid=task_key_uuid,
@@ -334,6 +338,13 @@ async def send_to_anthropic(
                     calc_cost_no_cache_input=cost_parts["calc_cost_no_cache_input"],
                     calc_cost_output=cost_parts["calc_cost_output"],
                     provider="anthropic",
+                    request_type=request_type,
+                    entity_type=entity_type,
+                    entity_id=entity_id,
+                    call_start=start_time.astimezone(timezone.utc).isoformat() if start_time.tzinfo else start_time.replace(tzinfo=timezone.utc).isoformat(),
+                    call_stop=datetime.now(timezone.utc).isoformat(),
+                    response_item_count=1 if _resp_text else 0,
+                    response_char_length=len(_resp_text or ""),
                 )
             except Exception:  # pragma: no cover
                 _timesheet_kwargs = None
@@ -547,3 +558,20 @@ async def send_to_anthropic(
             if fc:
                 out["failure_class"] = fc
         return out
+
+def get_receipt(external_ids: List[str], api_key: str) -> List[Dict[str, Any]]:
+    """Zero-stub receipts (AST-2217). No network. platform_cost always None."""
+    from src.utils.config import TIMESHEET_RECEIPT_FIELDS
+    out: List[Dict[str, Any]] = []
+    for _eid in external_ids:
+        row = {k: None for k in TIMESHEET_RECEIPT_FIELDS}
+        row["native_tokens_prompt"] = 0
+        row["native_tokens_completion"] = 0
+        row["native_tokens_cached"] = 0
+        row["cache_write_tokens"] = 0
+        row["response_item_count"] = 0
+        row["response_char_length"] = 0
+        row["platform_cost"] = None
+        row["completion_status"] = "stub"
+        out.append(row)
+    return out
