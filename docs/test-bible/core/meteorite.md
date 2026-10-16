@@ -938,3 +938,43 @@ AST-2061: content now passes through sanitize_contact_text — see § AST-2062.
 3. Regression: `tests/component/core/test_meteorite.py::TestAst2034InsertSlackMeteorite`, `TestAst1561ApplyPaste`
 
 Full AST-2062 command (all four pages): [`contact.md`](contact.md) § AST-2062.
+
+### AST-2223 · AST-2216
+
+**Parent:** [AST-2216 — Make meteorite text editable (not versioned)](https://linear.app/astralcareermatch/issue/AST-2216). **Publish:** `origin/sub/AST-2216/AST-2223-candidate-meteorite-edit`.
+
+`is_meteorite_editable` + `save_candidate_meteorite_edit`: overwrite candidate-supplied fields from `CANDIDATE_METEORITE_EDIT_CONFIG` without versioning, pipeline side-effects, or `agent_data`. Locked `LANDED`; claim (`batch_id`) is save-time refuse only. Config + API: **`docs/test-bible/utils/config.md`** § AST-2223 · **`docs/test-bible/ui/api/api_meteorite.md`** § AST-2223. Sibling modal UI: AST-2224.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Editable helper; default/pick-list persist; all fields; error clear; refuse gates; no pipeline / agent_data | `src/core/meteorite.py` | **`TestAst2223SaveCandidateMeteoriteEdit`** |
+| Slack paste recovery unchanged (AC 10) | same | **`TestAst1561ApplyPaste`** (unmodified) + contact paste routing |
+
+**Broken / obsolete:** none — additive core functions; `apply_paste` byte-identical.
+
+**Integration:** no existing scenario exercises candidate meteorite PUT / edit envelope — none revised; do not invent.
+
+## QA test manifest
+
+1. `tests/component/core/test_meteorite.py::TestAst2223SaveCandidateMeteoriteEdit`
+2. `tests/component/utils/test_config.py::TestAst2223CandidateMeteoriteEditConfig`
+3. `tests/component/ui/api/test_api_meteorite.py::TestAst2223CandidateMeteoriteEditApi`
+4. Regression (AC 10): `tests/component/core/test_meteorite.py::TestAst1561ApplyPaste` + `tests/component/core/test_contact.py::TestAst1561ContactPasteRouting`
+5. Docs-acceptance: `git diff origin/dev -- src/data/database.py` empty on publish tip; `rg -n '"NEW"|"LANDED"|"CHECK_UNIQUE"' src/ui/api/api_meteorite.py` shows no new literals vs `origin/dev`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_meteorite.py::TestAst2223SaveCandidateMeteoriteEdit \
+  tests/component/utils/test_config.py::TestAst2223CandidateMeteoriteEditConfig \
+  tests/component/ui/api/test_api_meteorite.py::TestAst2223CandidateMeteoriteEditApi \
+  tests/component/core/test_meteorite.py::TestAst1561ApplyPaste \
+  tests/component/core/test_contact.py::TestAst1561ContactPasteRouting \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible path shasums (publish tip `5de970a4a`):**
+- `docs/test-bible/core/meteorite.md` — `9fd6f92af6954e60b1ab6ef345dfed96182e3ae8`
+- `docs/test-bible/ui/api/api_meteorite.md` — `47169d10ce432f85c1212bbcef1706ff60429173`
+- `docs/test-bible/utils/config.md` — `fcc31904c7675fb535129a8c1ba7b99771a208a4`
