@@ -2399,3 +2399,123 @@ JD is display-only: no JD textarea, not in the draft / dirty check / Save payloa
 ## QA test manifest
 
 See **`docs/test-bible/frontend/pages.md`** § AST-2224 (shared numbered list).
+
+### AST-2233 · AST-2226 (report header chrome + triage actions)
+
+**Parent:** [AST-2226](https://linear.app/astralcareermatch/issue/AST-2226). **Publish:** `origin/sub/AST-2226/AST-2233-report-header-chrome-triage-actions`.
+
+`RecommendedJobReportHeader`: no Copy / header Print props or controls; company plain + optional ` · m/d/yy` from `discoveredAt`; website URL on its own line; date strip (applied only when `appliedAt`); action row **Skip This Job** / **Applied to this Job** / optional **Generate Artifacts**. `App.css`: responsive stack ≤1023px, date strip, thermometer green-on-neutral, total-gradable + Discussion hooks. Modal call-site wiring remains sibling **AST-2234** (expected `tsc` red until then).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| AC1–3 header chrome + dates + actions | `RecommendedJobReportHeader.tsx` | **`test_RecommendedJobReportHeader.test.tsx`** — **`RecommendedJobReportHeader — AST-2233 triage chrome`** (+ retained AST-1695 / 1704 / 1873 line / 1983) |
+| Modal header regression (Copy gone; Skip label/actions) | `JobAnalysisReportModal.tsx` → header | revised sticky-header + AST-1421/1696 absence; AST-1874 Skip → **Skip This Job** / `.recommended-report-header-actions` |
+| Print Resume via header | was header-mounted | **`it.skip`** AST-1546 / AST-1350 / AST-2084 Print Resume until AST-2234 remounts |
+
+**Broken / obsolete (revised this pass):** AST-1421 / AST-1696 / AST-1873 Copy+Skip-in-links asserts; modal sticky header company-as-website-link + Copy; Skip label `Skip this Job` / `.recommended-report-links`.
+
+**Out of scope:** editing `JobAnalysisReportModal.tsx` product (AST-2234). Backend / AST-2232 field shapes.
+
+**Integration:** none.
+
+## QA test manifest
+
+1. **Vitest (required):**
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_RecommendedJobReportHeader.test.tsx \
+  ../../../tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx
+```
+
+2. **AC greps (expect empty):**
+
+```bash
+grep -nE 'Copy Job Link|Copy Job JSON|Copy Application Email|Copy LinkedIn|onCopyDetailLink|onCopySnapshot|onCopyApplicationEmail|onCopyLinkedIn' src/ui/frontend/src/components/RecommendedJobReportHeader.tsx
+grep -n 'Print Resume\|Print Cover' src/ui/frontend/src/components/RecommendedJobReportHeader.tsx
+```
+
+3. **CSS hooks present:** `rg -n 'recommended-report-date-strip|recommended-report-thermometer-fill|max-width: 1023px' src/ui/frontend/src/App.css`
+
+4. **Boundaries:** `git diff origin/dev...HEAD -- src/ui/frontend/src/components/JobAnalysisReportModal.tsx` empty on this child's product commits (modal may still typecheck-red vs header Props until AST-2234).
+
+**Pass criterion:** items 1–3 green / empty / present; item 4 holds for product Files Changed. Not zero-arg harness.
+
+**Bible shasum (publish tip):** `docs/test-bible/frontend/components.md` — `c95aca8e8ab318efab0585b5ddd22f6039f5b6b7` *(content tip before this docs-only record)*
+
+### AST-2234 · AST-2226 (modal panes and wiring)
+
+**Parent:** [AST-2226 — Updates to Recommended Job Modal](https://linear.app/astralcareermatch/issue/AST-2226). **Publish:** `origin/sub/AST-2226/AST-2234-modal-panes-and-wiring`.
+
+Wires detail enrichment (#1) into the report modal: Job Description top tab; empty Artifacts tab filtered (Generate moves to header — **AST-2233**); Discussion `agent_payload` + named headers; Analysis thermometers + total/gradable row; Print on Artifacts; no Copy props from modal; mobile ≤1023px hides Edit. Tip still casts pre-2233 `RecommendedJobReportHeader` — Generate-in-header / Applied / website-as-line remain untestable until #2 merges (`it.skip` placeholder for AST-645 Generate in-flight).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Tabs / empty Artifacts / sticky no Copy / Print on Artifacts / JD tab / Summary without raw_jd / thermometers / mobile Edit | `JobAnalysisReportModal.tsx` | **`test_JobAnalysisReportModal.test.tsx`** — revised AST-948 / 949 / 951 / 1551 / 1599 / 1874; new AC9 JD, AC10 empty Artifacts, thermometer asserts, mobile Edit hide |
+| Discussion agent_payload + named headers | `JobDiscussionPane.tsx` | **`test_JobDiscussionPane.test.tsx`** — **`JobDiscussionPane — AST-1551 / AST-2234`** |
+| Mobile edit = Print + preview only | `JobArtifactEditModal.tsx` | **`test_JobArtifactEditModal.test.tsx`** — **`AST-2234: mobile ≤1023px…`** (+ `stubNavViewport` / `renderWithProviders`) |
+| `totalScore` / thermometer / payload helpers | `recommendedJobReport.tsx` | **`test_recommendedJobReport.test.tsx`** — **`recommendedJobReport — AST-2234 helpers`** (see [`lib.md`](lib.md)) |
+| §6c page: shared `totalScore` import | `JobsRecommended.tsx` | Existing **`test_JobsRecommended.test.tsx`** (no new asserts — extract-only) |
+
+**Broken / obsolete this pass (revised):**
+- Empty Artifacts always-on tab + Generate-in-tab / AST-645 in-flight (Generate now header-bound after 2233).
+- Summary Raw JD expand / body asserts; Copy Application Email / LinkedIn / Job JSON / Job Link modal wiring.
+- Discussion pretty-JSON RESPONSE bodies → `agent_payload` prose; hop titles → `Agent's <task>`.
+- Cover Print `noopener` URL open → shared blob HTML path.
+- `materialsPreviewVisible` retired (lib suite).
+- `stubNavViewport` now distinguishes min- vs max-width queries.
+
+**Integration:** none — do not invent.
+
+## QA test manifest — AST-2234
+
+1. Modal + Discussion + edit modal + helpers + §6c page:
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx \
+  ../../../tests/component/frontend/components/test_JobDiscussionPane.test.tsx \
+  ../../../tests/component/frontend/components/test_JobArtifactEditModal.test.tsx \
+  ../../../tests/component/frontend/lib/test_recommendedJobReport.test.tsx \
+  ../../../tests/component/frontend/pages/test_JobsRecommended.test.tsx
+```
+
+**Pass criterion:** Vitest green on the five files (narrowed run) — not zero-arg harness / branch-lock gate. Generate-in-header coverage remounts after AST-2233 merges.
+
+### AST-2230 · AST-2225 (JobsHomeRedirect → Job Opportunities)
+
+**Parent:** [AST-2225](https://linear.app/astralcareermatch/issue/AST-2225). **Publish:** `origin/sub/AST-2225/AST-2230-stage-gated-nav`. Primary: [`../ui/api/api_system.md`](../ui/api/api_system.md) § AST-2230.
+
+`JOBS_NAV_GROUP_LABEL = "Job Opportunities"`; mock nav fixture uses that label + new item order.
+
+| Area | Component tests |
+| --- | --- |
+| Landing picks first Job Opportunities item with count > 0 | revised **`test_JobsHomeRedirect.test.tsx`** |
+
+### AST-2231 · AST-2225 (candidate shell UX)
+
+**Parent:** [AST-2225](https://linear.app/astralcareermatch/issue/AST-2225). **Publish:** `origin/sub/AST-2225/AST-2231-candidate-shell-ux`. Plan: `docs/features/candidate/ast-2231-candidate-shell-ux.md`. API flags: sibling **AST-2230**.
+
+`NavigationShell` + `App.css`: non-admin omits candidate picker/menu/state line; admin unchanged; first visit (`nav:expanded` key absent) expands only groups with `recent === true` without writing storage; persisted `[]` stays collapsed; Profile `attention` yellow mark; disabled items stay visible spans; empty facing payload (stage 0) is non-interactive. No page-file product diff — §6c N/A. Integration API scenario unchanged (no shell/CSS contract).
+
+| Area | Component tests |
+| --- | --- |
+| AC9 picker hide (wide + narrow) | revised **`omits candidate select for non-admin users`**; revised **`narrow: non-admin omits candidate menu; deploy footer omitted`**; new **`AST-2231 candidate shell UX` → wide admin keeps picker; non-admin has none** |
+| Recent expand seed vs persisted `[]` | new **`null-key first visit expands only recent groups; persisted [] stays collapsed`** |
+| AC10 Profile attention + disabled-visible | new **`Profile attention mark when API attention true; disabled items stay visible`** |
+| AC8 stage-0 empty menu | new **`stage-0 empty facing menu is non-interactive`** |
+
+**Broken / obsolete this pass:** AST-612 / AST-1286 non-admin “disabled select / disabled checked list” cases — product now omits picker chrome for non-admins.
+
+**Integration:** none — `test_candidate_nav_api.py` is API-only; do not invent.
+
+## QA test manifest — AST-2231
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_NavigationShell.test.tsx
+```
+
+**Pass criterion:** Vitest green on the NavigationShell file (AST-2231 + existing shell cases). Not zero-arg harness / branch-lock gate.
+
+**Bible shasum (after publish):** `git show origin/sub/AST-2225/AST-2231-candidate-shell-ux:docs/test-bible/frontend/components.md | shasum`
