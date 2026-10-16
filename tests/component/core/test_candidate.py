@@ -746,9 +746,10 @@ class TestCheckContextCompleteExtended:
         monkeypatch.setattr(candidate_mod.database, "get_candidate", lambda candidate_id: None)
         assert candidate_mod.check_context_complete("missing") is False
 
-    def test_returns_true_when_already_at_or_past_all_topics_ready(
+    def test_returns_true_when_already_at_or_past_context_ready(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        # AST-2228: completeness gate is CONTEXT_READY progress_rank (was ALL_TOPICS_READY).
         monkeypatch.setattr(
             candidate_mod.database,
             "get_candidate",
@@ -1862,10 +1863,11 @@ class TestAst1253RequestedArtifactsHandoff:
         assert candidate_mod.is_requested_artifacts_chain_ui_task("craft_do_rubric") is True
         assert candidate_mod.is_requested_artifacts_chain_ui_task("craft_resume_base") is False
         labels = candidate_mod.requested_artifacts_chain_hop_labels()
+        # AST-2230: path→label across Criteria/Company (Artifacts group dissolved; labels renamed).
         assert labels == [
-            "Get Job Criteria",
-            "Do Job Criteria",
-            "Company Search Terms",
+            "Get the Job Criteria",
+            "Do the Job Criteria",
+            "Company Discovery Terms",
         ]
         # Rubric-only — table-backed search terms excluded from artifact keys.
         assert candidate_mod.requested_artifacts_chain_artifact_keys() == [
@@ -1885,11 +1887,12 @@ class TestAst1253RequestedArtifactsHandoff:
 
 # AST-970: prior_states enforcement, DELETED reap, stale aging helper
 class TestAst970CandidateStateMachine:
+    # AST-2228: happy path uses PROFILE_READY / CONTEXT_READY (topic states retired).
     _HAPPY = (
         "NEW_CANDIDATE",
         "INTAKE_INITIATED",
-        "REQUIRED_TOPICS_READY",
-        "ALL_TOPICS_READY",
+        "PROFILE_READY",
+        "CONTEXT_READY",
         "REQUESTED_RESUME",
         "RESUME_READY",
         "REQUESTED_ARTIFACTS",
@@ -1918,7 +1921,7 @@ class TestAst970CandidateStateMachine:
         assert saves == list(self._HAPPY[1:])
         assert state["cur"] == "ACTIVE_SEARCH"
 
-    def test_manual_topic_ready_from_intake(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_profile_ready_from_intake(self, monkeypatch: pytest.MonkeyPatch) -> None:
         save = MagicMock()
         monkeypatch.setattr(
             candidate_mod.database,
@@ -1926,21 +1929,22 @@ class TestAst970CandidateStateMachine:
             lambda _cid: {"state": "INTAKE_INITIATED", "state_history": []},
         )
         monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
-        candidate_mod.transition_candidate_state("somerset", "REQUIRED_TOPICS_READY")
-        assert save.call_args.kwargs["state"] == "REQUIRED_TOPICS_READY"
-        assert save.call_args.kwargs["state_history"][-1]["to_state"] == "REQUIRED_TOPICS_READY"
+        candidate_mod.transition_candidate_state("somerset", "PROFILE_READY")
+        assert save.call_args.kwargs["state"] == "PROFILE_READY"
+        assert save.call_args.kwargs["state_history"][-1]["to_state"] == "PROFILE_READY"
 
     def test_stale_companion_may_advance_to_next(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # AST-2228: resume waiting still has stale companion → REQUESTED_ARTIFACTS.
         save = MagicMock()
         monkeypatch.setattr(
             candidate_mod.database,
             "get_candidate",
-            lambda _cid: {"state": "REQUIRED_TOPICS_READY_STALE", "state_history": []},
+            lambda _cid: {"state": "RESUME_READY_STALE", "state_history": []},
         )
         monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
-        candidate_mod.transition_candidate_state("somerset", "ALL_TOPICS_READY")
-        assert save.call_args.kwargs["state"] == "ALL_TOPICS_READY"
-        assert save.call_args.kwargs["state_history"][-1]["to_state"] == "ALL_TOPICS_READY"
+        candidate_mod.transition_candidate_state("somerset", "REQUESTED_ARTIFACTS")
+        assert save.call_args.kwargs["state"] == "REQUESTED_ARTIFACTS"
+        assert save.call_args.kwargs["state_history"][-1]["to_state"] == "REQUESTED_ARTIFACTS"
 
     def test_inactive_and_deleted_from_any_state(self, monkeypatch: pytest.MonkeyPatch) -> None:
         save = MagicMock()
@@ -2001,33 +2005,34 @@ class TestAst970CandidateStateMachine:
         assert candidate_mod.candidate_reap_due_at({"state": "ACTIVE_SEARCH"}) is None
 
     def test_age_stale_moves_due_waiting_rows(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        old = (datetime.now(timezone.utc) - timedelta(hours=80)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        # AST-2228: RESUME_READY still ages; topic rows are migration's job (see TestAst2228).
+        old = (datetime.now(timezone.utc) - timedelta(hours=200)).strftime("%Y-%m-%dT%H:%M:%SZ")
         rows = [
             {
                 "astral_candidate_id": "due",
-                "state": "REQUIRED_TOPICS_READY",
+                "state": "RESUME_READY",
                 "state_changed_at": old,
             },
             {
                 "astral_candidate_id": "fresh",
-                "state": "REQUIRED_TOPICS_READY",
+                "state": "RESUME_READY",
                 "state_changed_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
             },
             {
                 "astral_candidate_id": "already",
-                "state": "REQUIRED_TOPICS_READY_STALE",
+                "state": "RESUME_READY_STALE",
                 "state_changed_at": old,
             },
         ]
         monkeypatch.setattr(candidate_mod, "list_candidates", lambda include_deleted=False: rows)
         moved: list[tuple[str, str]] = []
 
-        def _transition(cid, to_state):
+        def _transition(cid, to_state, **_kwargs):
             moved.append((cid, to_state))
 
         monkeypatch.setattr(candidate_mod, "transition_candidate_state", _transition)
         assert candidate_mod.age_stale_candidate_states() == 1
-        assert moved == [("due", "REQUIRED_TOPICS_READY_STALE")]
+        assert moved == [("due", "RESUME_READY_STALE")]
 
     def test_pause_search_round_trip(self, monkeypatch: pytest.MonkeyPatch) -> None:
         state = {"cur": "ACTIVE_SEARCH", "hist": []}
@@ -2047,6 +2052,260 @@ class TestAst970CandidateStateMachine:
         candidate_mod.transition_candidate_state("somerset", "PAUSE_SEARCH")
         candidate_mod.transition_candidate_state("somerset", "ACTIVE_SEARCH")
         assert state["cur"] == "ACTIVE_SEARCH"
+
+
+class TestAst2228CandidateStageAndTopicMigrate:
+    """AST-2228: candidate_stage resolver + retired-topic row migrate + CONTEXT_READY gate."""
+
+    def test_candidate_stage_resolver(self) -> None:
+        assert candidate_mod.candidate_stage("PAUSE_SEARCH") == 5
+        assert candidate_mod.candidate_stage("RESUME_READY") == 4
+        assert candidate_mod.candidate_stage("PROFILE_READY") == 2
+        assert candidate_mod.candidate_stage("DELETED") == 0
+        # Implicit {base}_RETRY inherits base stage.
+        assert candidate_mod.candidate_stage("REQUESTED_RESUME_RETRY") == 3
+        assert candidate_mod.candidate_stage("ERROR_CRAFT_GET_RUBRIC") == 4
+        with pytest.raises(ValueError, match="Unknown candidate state"):
+            candidate_mod.candidate_stage("REQUIRED_TOPICS_READY")
+
+    def test_migrate_retired_topic_candidate_states(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        rows = [
+            {"astral_candidate_id": "req", "state": "REQUIRED_TOPICS_READY"},
+            {"astral_candidate_id": "all_stale", "state": "ALL_TOPICS_READY_STALE"},
+            {"astral_candidate_id": "live", "state": "PROFILE_READY"},
+            {"astral_candidate_id": "blank", "state": ""},
+        ]
+        monkeypatch.setattr(candidate_mod, "list_candidates", lambda include_deleted=False: rows)
+        hops: list[tuple[str, str, dict]] = []
+
+        def _transition(cid, to_state, **kwargs):
+            hops.append((cid, to_state, kwargs))
+
+        monkeypatch.setattr(candidate_mod, "transition_candidate_state", _transition)
+        assert candidate_mod.migrate_retired_topic_candidate_states() == 2
+        assert hops == [
+            ("req", "PROFILE_READY", {"force": True}),
+            ("all_stale", "CONTEXT_READY", {"force": True}),
+        ]
+
+    def test_age_stale_runs_topic_migrate_first(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        rows = [
+            {"astral_candidate_id": "topic", "state": "ALL_TOPICS_READY", "state_changed_at": "2020-01-01T00:00:00Z"},
+        ]
+        monkeypatch.setattr(candidate_mod, "list_candidates", lambda include_deleted=False: rows)
+        hops: list[tuple[str, str, dict]] = []
+
+        def _transition(cid, to_state, **kwargs):
+            hops.append((cid, to_state, kwargs))
+
+        monkeypatch.setattr(candidate_mod, "transition_candidate_state", _transition)
+        # Migrate rewrites the topic row; stale loop sees no stale_state on ALL_TOPICS_READY (gone).
+        assert candidate_mod.age_stale_candidate_states() == 0
+        assert hops == [("topic", "CONTEXT_READY", {"force": True})]
+
+    def test_check_context_complete_uses_context_ready_rank(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # CONTEXT_READY (and later) count complete without filling context fields.
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda _cid: {"state": "CONTEXT_READY", "candidate_data": {"context": {}}},
+        )
+        assert candidate_mod.check_context_complete("somerset") is True
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda _cid: {"state": "PROFILE_READY", "candidate_data": {"context": {}}},
+        )
+        assert candidate_mod.check_context_complete("somerset") is False
+
+
+class TestAst2229ProfileSignalAndReadinessAdvance:
+    """AST-2229: incomplete_profile signal + forward-only advance_candidate_readiness."""
+
+    def test_profile_complete_and_incomplete_signal(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Missing row: complete False; incomplete False (no ghost alert).
+        monkeypatch.setattr(candidate_mod.database, "get_candidate", lambda _cid: None)
+        assert candidate_mod.check_profile_complete("ghost") is False
+        assert candidate_mod.incomplete_profile("ghost") is False
+
+        complete = {
+            "first": "Ada",
+            "last": "Lovelace",
+            "candidate_data": {"contact": {"contact_email": "ada@example.com"}},
+        }
+        monkeypatch.setattr(candidate_mod.database, "get_candidate", lambda _cid: complete)
+        assert candidate_mod.check_profile_complete("somerset") is True
+        assert candidate_mod.incomplete_profile("somerset") is False
+
+        incomplete = {
+            "first": "Ada",
+            "last": " ",
+            "candidate_data": {"contact": {"contact_email": "ada@example.com"}},
+        }
+        monkeypatch.setattr(candidate_mod.database, "get_candidate", lambda _cid: incomplete)
+        assert candidate_mod.check_profile_complete("somerset") is False
+        assert candidate_mod.incomplete_profile("somerset") is True
+
+    def test_profile_signal_never_writes_state(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda _cid: {"first": "A", "last": "B", "candidate_data": {}},
+        )
+        transition = MagicMock()
+        monkeypatch.setattr(candidate_mod, "transition_candidate_state", transition)
+        assert candidate_mod.incomplete_profile("somerset") is True
+        transition.assert_not_called()
+
+    def test_advance_intake_to_profile_when_complete(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Hop table binds the real check_profile_complete — drive it via get_candidate.
+        rows = [{"astral_candidate_id": "c1", "state": "INTAKE_INITIATED"}]
+        monkeypatch.setattr(candidate_mod, "list_candidates", lambda include_deleted=False: rows)
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda _cid: {
+                "first": "Ada",
+                "last": "Lovelace",
+                "candidate_data": {"contact": {"contact_email": "ada@example.com"}},
+            },
+        )
+        hops: list[tuple[str, str]] = []
+        monkeypatch.setattr(
+            candidate_mod,
+            "transition_candidate_state",
+            lambda cid, to_state, **_k: hops.append((cid, to_state)),
+        )
+        assert candidate_mod.advance_candidate_readiness() == 1
+        assert hops == [("c1", "PROFILE_READY")]
+
+    def test_advance_skips_when_predicate_false(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        rows = [{"astral_candidate_id": "c1", "state": "INTAKE_INITIATED"}]
+        monkeypatch.setattr(candidate_mod, "list_candidates", lambda include_deleted=False: rows)
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda _cid: {"first": "Ada", "last": "", "candidate_data": {"contact": {}}},
+        )
+        transition = MagicMock()
+        monkeypatch.setattr(candidate_mod, "transition_candidate_state", transition)
+        assert candidate_mod.advance_candidate_readiness() == 0
+        transition.assert_not_called()
+
+    def test_advance_artifacts_ready_to_active_search(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        rows = [
+            {"astral_candidate_id": "ok", "state": "ARTIFACTS_READY"},
+            {"astral_candidate_id": "stale", "state": "ARTIFACTS_READY_STALE"},
+            {"astral_candidate_id": "skip", "state": "REQUESTED_ARTIFACTS"},
+        ]
+        monkeypatch.setattr(candidate_mod, "list_candidates", lambda include_deleted=False: rows)
+        hops: list[tuple[str, str]] = []
+        monkeypatch.setattr(
+            candidate_mod,
+            "transition_candidate_state",
+            lambda cid, to_state, **_k: hops.append((cid, to_state)),
+        )
+        assert candidate_mod.advance_candidate_readiness() == 2
+        assert hops == [("ok", "ACTIVE_SEARCH"), ("stale", "ACTIVE_SEARCH")]
+
+    def test_advance_hop_targets_are_registry_trigger_states(self) -> None:
+        # AC13: hop destinations are real CANDIDATE_STATES keys — never stage integers.
+        claimable = {
+            entry["trigger_state"] for entry in CANDIDATE_STAGE_DISPATCH.values()
+        }
+        for from_state, (to_state, _pred) in candidate_mod._READINESS_HOPS.items():
+            assert to_state in CANDIDATE_STATES, (from_state, to_state)
+            assert isinstance(to_state, str) and not to_state.isdigit()
+            if to_state in ("REQUESTED_RESUME", "REQUESTED_ARTIFACTS"):
+                assert to_state in claimable
+
+    def test_advance_demote_ban_skips_transition(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        rows = [{"astral_candidate_id": "c1", "state": "INTAKE_INITIATED"}]
+        monkeypatch.setattr(candidate_mod, "list_candidates", lambda include_deleted=False: rows)
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda _cid: {
+                "first": "Ada",
+                "last": "Lovelace",
+                "candidate_data": {"contact": {"contact_email": "ada@example.com"}},
+            },
+        )
+        # Force a "lower stage" reading so demote ban fires without inventing a hop.
+        monkeypatch.setattr(
+            candidate_mod,
+            "candidate_stage",
+            lambda st: 9 if st == "INTAKE_INITIATED" else 1,
+        )
+        transition = MagicMock()
+        monkeypatch.setattr(candidate_mod, "transition_candidate_state", transition)
+        assert candidate_mod.advance_candidate_readiness() == 0
+        transition.assert_not_called()
+
+    def test_advance_swallows_illegal_transition(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        rows = [{"astral_candidate_id": "c1", "state": "INTAKE_INITIATED"}]
+        monkeypatch.setattr(candidate_mod, "list_candidates", lambda include_deleted=False: rows)
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda _cid: {
+                "first": "Ada",
+                "last": "Lovelace",
+                "candidate_data": {"contact": {"contact_email": "ada@example.com"}},
+            },
+        )
+
+        def _boom(_cid, _to, **_k):
+            raise candidate_mod.IllegalCandidateTransition("INTAKE_INITIATED", "PROFILE_READY")
+
+        monkeypatch.setattr(candidate_mod, "transition_candidate_state", _boom)
+        assert candidate_mod.advance_candidate_readiness() == 0
+
+    def test_advance_context_ready_needs_raw_resume(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        rows = [{"astral_candidate_id": "c1", "state": "CONTEXT_READY"}]
+        monkeypatch.setattr(candidate_mod, "list_candidates", lambda include_deleted=False: rows)
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda _cid: {"candidate_data": {"context": {"raw_resume": "  "}}},
+        )
+        transition = MagicMock()
+        monkeypatch.setattr(candidate_mod, "transition_candidate_state", transition)
+        assert candidate_mod.advance_candidate_readiness() == 0
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda _cid: {"candidate_data": {"context": {"raw_resume": "paste"}}},
+        )
+        hops: list[tuple[str, str]] = []
+        monkeypatch.setattr(
+            candidate_mod,
+            "transition_candidate_state",
+            lambda cid, to_state, **_k: hops.append((cid, to_state)),
+        )
+        assert candidate_mod.advance_candidate_readiness() == 1
+        assert hops == [("c1", "REQUESTED_RESUME")]
+
+    def test_advance_resume_ready_needs_base_resume(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        rows = [{"astral_candidate_id": "c1", "state": "RESUME_READY_STALE"}]
+        monkeypatch.setattr(candidate_mod, "list_candidates", lambda include_deleted=False: rows)
+        monkeypatch.setattr(candidate_mod, "load_pilot_base_resume_for_candidate", lambda _cid: None)
+        transition = MagicMock()
+        monkeypatch.setattr(candidate_mod, "transition_candidate_state", transition)
+        assert candidate_mod.advance_candidate_readiness() == 0
+        monkeypatch.setattr(
+            candidate_mod, "load_pilot_base_resume_for_candidate", lambda _cid: "body"
+        )
+        hops: list[tuple[str, str]] = []
+        monkeypatch.setattr(
+            candidate_mod,
+            "transition_candidate_state",
+            lambda cid, to_state, **_k: hops.append((cid, to_state)),
+        )
+        assert candidate_mod.advance_candidate_readiness() == 1
+        assert hops == [("c1", "REQUESTED_ARTIFACTS")]
 
 
 class TestAst971CandidateTransitionHistory:

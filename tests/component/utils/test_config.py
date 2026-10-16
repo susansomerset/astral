@@ -2462,13 +2462,15 @@ class TestAst970CandidateStateRegistry:
         for name, entry in cfg.CANDIDATE_STATES.items():
             assert "prior_states" in entry, name
             assert "progress_rank" in entry, name
+            assert "stage" in entry, name  # AST-2228: stage on every registry state
 
     def test_happy_path_keys_present(self) -> None:
+        # AST-2228: PROFILE_READY / CONTEXT_READY revived; topic-ready keys retired.
         for key in (
             "NEW_CANDIDATE",
             "INTAKE_INITIATED",
-            "REQUIRED_TOPICS_READY",
-            "ALL_TOPICS_READY",
+            "PROFILE_READY",
+            "CONTEXT_READY",
             "REQUESTED_RESUME",
             "RESUME_READY",
             "REQUESTED_ARTIFACTS",
@@ -2479,16 +2481,27 @@ class TestAst970CandidateStateRegistry:
             "DELETED",
         ):
             assert key in cfg.CANDIDATE_STATES
+        assert not (
+            {
+                "REQUIRED_TOPICS_READY",
+                "REQUIRED_TOPICS_READY_STALE",
+                "ALL_TOPICS_READY",
+                "ALL_TOPICS_READY_STALE",
+            }
+            & set(cfg.CANDIDATE_STATES)
+        )
 
     def test_stale_companions_and_hours(self) -> None:
-        assert cfg.CANDIDATE_STATES["REQUIRED_TOPICS_READY"]["stale_after_hours"] == 72
-        assert cfg.CANDIDATE_STATES["REQUIRED_TOPICS_READY"]["stale_state"] == "REQUIRED_TOPICS_READY_STALE"
+        # AST-2228: profile/context have no stale companions; resume/artifacts waiting still do.
+        assert "stale_state" not in cfg.CANDIDATE_STATES["PROFILE_READY"]
+        assert "stale_state" not in cfg.CANDIDATE_STATES["CONTEXT_READY"]
         assert cfg.CANDIDATE_STATES["RESUME_READY"]["stale_after_hours"] == 168
+        assert cfg.CANDIDATE_STATES["RESUME_READY"]["stale_state"] == "RESUME_READY_STALE"
         assert cfg.CANDIDATE_STATES["DELETED"]["reap_after_hours"] == 720
 
     def test_stale_to_next_priors(self) -> None:
-        assert "REQUIRED_TOPICS_READY_STALE" in cfg.CANDIDATE_STATES["ALL_TOPICS_READY"]["prior_states"]
-        assert "ALL_TOPICS_READY_STALE" in cfg.CANDIDATE_STATES["REQUESTED_RESUME"]["prior_states"]
+        # AST-2228: REQUESTED_RESUME priors = CONTEXT_READY only (no topic-stale).
+        assert cfg.CANDIDATE_STATES["REQUESTED_RESUME"]["prior_states"] == ["CONTEXT_READY"]
         assert "RESUME_READY_STALE" in cfg.CANDIDATE_STATES["REQUESTED_ARTIFACTS"]["prior_states"]
         assert "ARTIFACTS_READY_STALE" in cfg.CANDIDATE_STATES["ACTIVE_SEARCH"]["prior_states"]
 
@@ -2505,13 +2518,16 @@ class TestAst970CandidateStateRegistry:
         assert "REQUESTED_ARTIFACTS_ERROR" not in art_priors
 
     def test_nav_and_gen_states_use_new_vocab(self) -> None:
-        jobs = next(g for g in cfg.NAV_CONFIG if g.get("label") == "Jobs")
-        companies = next(g for g in cfg.NAV_CONFIG if g.get("label") == "Companies")
-        artifacts = next(g for g in cfg.NAV_CONFIG if g.get("label") == "Artifacts")
-        # AST-1449: group-level candidate-state "visible" is not a NAV_CONFIG key.
-        assert "visible" not in jobs
-        assert "visible" not in companies
-        assert "visible" not in artifacts
+        # AST-2230: candidate-facing groups are Candidate / Criteria / Company / Job Opportunities.
+        facing = [g for g in cfg.NAV_CONFIG if not g.get("admin_only")]
+        assert [g.get("label") for g in facing] == [
+            "Candidate",
+            "Criteria",
+            "Company",
+            "Job Opportunities",
+        ]
+        for g in facing:
+            assert "visible" not in g  # AST-1449: no group-level visible
         gen = cfg.build_state_ui_manifest()["candidate"]["artifact_generate_states"]
         # AST-1253: Generate/Regenerate available through search states (not while chain claimed).
         assert gen == [
@@ -2525,8 +2541,11 @@ class TestAst970CandidateStateRegistry:
         assert all(s in cfg.CANDIDATE_STATES for s in gen)
 
     def test_retired_four_step_names_absent(self) -> None:
-        for retired in ("NEW", "PROFILE_READY", "CONTEXT_READY", "LIVE_PROMPTS"):
+        # AST-2228: PROFILE_READY / CONTEXT_READY revived; NEW + LIVE_PROMPTS stay retired labels.
+        for retired in ("NEW", "LIVE_PROMPTS"):
             assert retired not in cfg.CANDIDATE_STATES
+        assert "PROFILE_READY" in cfg.CANDIDATE_STATES
+        assert "CONTEXT_READY" in cfg.CANDIDATE_STATES
 
 
 @pytest.mark.skipif(
@@ -2676,31 +2695,135 @@ class TestAst1375ArtifactGenerateInflightHideStates:
 
 
 class TestAst973LegacyCandidateRemap:
-    """AST-973: CANDIDATE_LEGACY_* map + remap_legacy_candidate_state."""
+    """AST-973: CANDIDATE_LEGACY_* map + remap_legacy_candidate_state (AST-2228 topic remap)."""
 
     def test_map_and_trigger_frozenset(self) -> None:
+        # AST-2228: topic labels → PROFILE_READY / CONTEXT_READY; live PROFILE/CONTEXT drop from map.
         assert cfg.CANDIDATE_LEGACY_STATE_MAP == {
             "LIVE_PROMPTS": "ACTIVE_SEARCH",
             "NEW": "NEW_CANDIDATE",
-            "PROFILE_READY": "NEW_CANDIDATE",
-            "CONTEXT_READY": "NEW_CANDIDATE",
+            "REQUIRED_TOPICS_READY": "PROFILE_READY",
+            "REQUIRED_TOPICS_READY_STALE": "PROFILE_READY",
+            "ALL_TOPICS_READY": "CONTEXT_READY",
+            "ALL_TOPICS_READY_STALE": "CONTEXT_READY",
         }
         assert "DELETED" not in cfg.CANDIDATE_LEGACY_STATE_MAP
+        assert "PROFILE_READY" not in cfg.CANDIDATE_LEGACY_STATE_MAP
+        assert "CONTEXT_READY" not in cfg.CANDIDATE_LEGACY_STATE_MAP
         assert cfg.CANDIDATE_LEGACY_TRIGGER_STATES == frozenset(
-            {"LIVE_PROMPTS", "PROFILE_READY", "CONTEXT_READY"}
+            {
+                "LIVE_PROMPTS",
+                "REQUIRED_TOPICS_READY",
+                "REQUIRED_TOPICS_READY_STALE",
+                "ALL_TOPICS_READY",
+                "ALL_TOPICS_READY_STALE",
+            }
         )
         assert all(v in cfg.CANDIDATE_STATES for v in cfg.CANDIDATE_LEGACY_STATE_MAP.values())
 
     def test_remap_helper(self) -> None:
         assert cfg.remap_legacy_candidate_state("LIVE_PROMPTS") == "ACTIVE_SEARCH"
         assert cfg.remap_legacy_candidate_state("NEW") == "NEW_CANDIDATE"
-        assert cfg.remap_legacy_candidate_state("PROFILE_READY") == "NEW_CANDIDATE"
-        assert cfg.remap_legacy_candidate_state("CONTEXT_READY") == "NEW_CANDIDATE"
+        # AST-2228: revived keys are live registry members → identity; topics land on revived path.
+        assert cfg.remap_legacy_candidate_state("PROFILE_READY") == "PROFILE_READY"
+        assert cfg.remap_legacy_candidate_state("CONTEXT_READY") == "CONTEXT_READY"
+        assert cfg.remap_legacy_candidate_state("REQUIRED_TOPICS_READY") == "PROFILE_READY"
+        assert cfg.remap_legacy_candidate_state("ALL_TOPICS_READY_STALE") == "CONTEXT_READY"
         assert cfg.remap_legacy_candidate_state("ACTIVE_SEARCH") == "ACTIVE_SEARCH"
         assert cfg.remap_legacy_candidate_state("") == cfg.CANDIDATE_CONFIG["initial_state"]
         assert cfg.remap_legacy_candidate_state("totally_unknown") == "NEW_CANDIDATE"
         # DELETED is a live registry key — remap is identity; Phase B never selects it
         assert cfg.remap_legacy_candidate_state("DELETED") == "DELETED"
+
+
+class TestAst2228CandidateStageRegistry:
+    """AST-2228: stage on every CANDIDATE_STATES entry + locked bands (AC 1–3)."""
+
+    def test_locked_stage_bands(self) -> None:
+        assert cfg.CANDIDATE_STATES["PAUSE_SEARCH"]["stage"] == 5
+        assert cfg.CANDIDATE_STATES["RESUME_READY"]["stage"] == 4
+        assert cfg.CANDIDATE_STATES["PROFILE_READY"]["stage"] == 2
+        assert cfg.CANDIDATE_STATES["DELETED"]["stage"] == 0
+        assert cfg.CANDIDATE_STATES["CONTEXT_READY"]["stage"] == 3
+        assert cfg.CANDIDATE_STATES["REQUESTED_RESUME"]["stage"] == 3
+        # Craft ERROR_* share artifact-craft waiting band (stage 4).
+        for name, entry in cfg.CANDIDATE_STATES.items():
+            if name.startswith("ERROR_CRAFT_"):
+                assert entry["stage"] == 4, name
+
+
+class TestAst2245BaseResumeErrorStage:
+    """AST-2245: BASE_RESUME_CHAIN_ERROR_STATES inherit stage 3 (resume-request band)."""
+
+    def test_every_registry_entry_has_stage(self) -> None:
+        assert all("stage" in v for v in cfg.CANDIDATE_STATES.values())
+
+    def test_base_resume_error_states_are_stage_3(self) -> None:
+        assert cfg.BASE_RESUME_CHAIN_ERROR_STATES
+        for st in cfg.BASE_RESUME_CHAIN_ERROR_STATES:
+            assert cfg.CANDIDATE_STATES[st]["stage"] == 3, st
+            # Priors / rank unchanged from AST-2221 — stage is the gap this ticket fills.
+            assert cfg.CANDIDATE_STATES[st]["prior_states"] == ["REQUESTED_RESUME"], st
+            assert cfg.CANDIDATE_STATES[st]["progress_rank"] == 4, st
+        # Artifact craft ERROR_* stay stage 4 (do not retarget).
+        for name, entry in cfg.CANDIDATE_STATES.items():
+            if name.startswith("ERROR_CRAFT_"):
+                assert entry["stage"] == 4, name
+
+
+class TestAst2230StageGatedNavConfig:
+    """AST-2230: NAV_CONFIG regroup + NAV_GROUP_RECENT_DEFAULTS (AC 5–6, AC 8 knobs)."""
+
+    _DROPPED = (
+        "Intake",
+        "Surfer",
+        "Surfer Consent",
+        "Watch History",
+        "New List",
+        "Inactive List",
+        "Processing",
+        "Review",
+    )
+
+    def test_candidate_facing_group_order_and_min_stages(self) -> None:
+        facing = [g for g in cfg.NAV_CONFIG if not g.get("admin_only")]
+        assert [g["label"] for g in facing] == [
+            "Candidate",
+            "Criteria",
+            "Company",
+            "Job Opportunities",
+        ]
+        criteria = next(g for g in facing if g["label"] == "Criteria")
+        assert all(it.get("enabled") == 4 for it in criteria["items"])
+        jobs = next(g for g in facing if g["label"] == "Job Opportunities")
+        assert [(it["label"], it["path"], it["enabled"]) for it in jobs["items"]] == [
+            ("Meteorites", "/jobs/meteorites", 5),
+            ("Recommendations", "/jobs/review", 5),
+            ("Ready to Apply", "/jobs/ready", 5),
+            ("Submitted Applications", "/jobs/applied", 5),
+            ("Skipped", "/jobs/skipped", 5),
+        ]
+
+    def test_dropped_labels_absent_from_candidate_facing(self) -> None:
+        labels = {
+            it.get("label")
+            for g in cfg.NAV_CONFIG
+            if not g.get("admin_only")
+            for it in g.get("items", [])
+        }
+        for gone in self._DROPPED:
+            assert gone not in labels, gone
+        assert "Jobs" not in {g.get("label") for g in cfg.NAV_CONFIG}
+        assert "Companies" not in {g.get("label") for g in cfg.NAV_CONFIG}
+        assert "Artifacts" not in {g.get("label") for g in cfg.NAV_CONFIG}
+
+    def test_nav_group_recent_defaults(self) -> None:
+        assert cfg.NAV_GROUP_RECENT_DEFAULTS == {
+            "Candidate": {"when": "incomplete_profile"},
+            "Criteria": {"when": "never"},
+            "Company": {"when": "any_item_count"},
+            "Job Opportunities": {"when": "any_item_count"},
+        }
 
 
 class TestAst996ExperienceJobArrayConfig:
@@ -5510,8 +5633,10 @@ class TestAst1386ThreeSegmentAdminNav:
 
     def test_three_admin_only_groups_order_membership_and_paste_labels(self) -> None:
         labels = [g.get("label") for g in cfg.NAV_CONFIG]
-        cand_i = labels.index("Candidate")
-        assert labels[cand_i + 1 : cand_i + 4] == ["Operations", "Admin", "Tools"]
+        # AST-2230: four candidate-facing groups precede Operations / Admin / Tools.
+        assert labels[:4] == ["Candidate", "Criteria", "Company", "Job Opportunities"]
+        ops_i = labels.index("Operations")
+        assert labels[ops_i : ops_i + 3] == ["Operations", "Admin", "Tools"]
         expected = {
             "Operations": self._OPS_PATHS,
             "Admin": self._ADMIN_PATHS,
@@ -5532,10 +5657,10 @@ class TestAst1386ThreeSegmentAdminNav:
         )
 
     def test_non_admin_candidate_groups_still_present(self) -> None:
-        # Jobs / Companies / Artifacts / Candidate unchanged for this ticket.
+        # AST-2230: Candidate / Criteria / Company / Job Opportunities (not Jobs/Companies/Artifacts).
         labels = {g.get("label") for g in cfg.NAV_CONFIG}
-        assert {"Jobs", "Companies", "Artifacts", "Candidate"} <= labels
-        for name in ("Jobs", "Companies", "Artifacts", "Candidate"):
+        assert {"Candidate", "Criteria", "Company", "Job Opportunities"} <= labels
+        for name in ("Candidate", "Criteria", "Company", "Job Opportunities"):
             group = next(g for g in cfg.NAV_CONFIG if g.get("label") == name)
             assert not group.get("admin_only")
 
@@ -5554,44 +5679,46 @@ class TestAst1479AppliedJobStatesAndNav:
         assert all(s in cfg.JOB_STATES for s in cfg.APPLIED_JOB_STATES)
 
     def test_jobs_applied_nav_enabled(self) -> None:
-        jobs = next(g for g in cfg.NAV_CONFIG if g.get("label") == "Jobs")
+        # AST-2230: path stays under Job Opportunities; label → Submitted Applications.
+        jobs = next(g for g in cfg.NAV_CONFIG if g.get("label") == "Job Opportunities")
         applied = next(it for it in jobs["items"] if it.get("path") == "/jobs/applied")
-        assert applied.get("label") == "Applied"
-        assert applied.get("enabled") is not False
+        assert applied.get("label") == "Submitted Applications"
+        assert applied.get("enabled") == 5
 
 
 class TestAst1495MeteoriteCompaniesNav:
-    """AST-1495: Companies → Meteorite nav item for meteorite_list view."""
+    """AST-1495: Companies → Meteorite — dropped from candidate-facing nav (AST-2230 AC6)."""
 
     def test_companies_meteorite_nav_item(self) -> None:
-        companies = next(g for g in cfg.NAV_CONFIG if g.get("label") == "Companies")
-        paths = [it.get("path") for it in companies.get("items", [])]
-        assert "/companies/meteorite_list" in paths
-        meteorite = next(
-            it for it in companies["items"] if it.get("path") == "/companies/meteorite_list"
-        )
-        assert meteorite.get("label") == "Meteorite"
+        paths = [
+            it.get("path")
+            for g in cfg.NAV_CONFIG
+            for it in g.get("items", [])
+            if not g.get("admin_only")
+        ]
+        assert "/companies/meteorite_list" not in paths
 
 
 class TestAst1749JobsMeteoritesNav:
-    """AST-1749: Jobs → Meteorites nav; Companies → Meteorite untouched."""
+    """AST-1749: Jobs → Meteorites under Job Opportunities; Companies → Meteorite dropped (AST-2230)."""
 
     def test_jobs_meteorites_nav_enabled(self) -> None:
-        jobs = next(g for g in cfg.NAV_CONFIG if g.get("label") == "Jobs")
+        jobs = next(g for g in cfg.NAV_CONFIG if g.get("label") == "Job Opportunities")
         item = next(it for it in jobs["items"] if it.get("path") == "/jobs/meteorites")
         assert item.get("label") == "Meteorites"
-        assert item.get("enabled") is not False
+        assert item.get("enabled") == 5
         labels = [it.get("label") for it in jobs["items"]]
-        assert labels.index("Meteorites") > labels.index("Applied")
-        # AST-1974: Responded retired; Meteorites is the last Jobs item.
-        assert labels[-1] == "Meteorites"
+        assert labels[0] == "Meteorites"
+        assert labels[-1] == "Skipped"
 
     def test_companies_meteorite_still_present(self) -> None:
-        companies = next(g for g in cfg.NAV_CONFIG if g.get("label") == "Companies")
-        meteorite = next(
-            it for it in companies["items"] if it.get("path") == "/companies/meteorite_list"
-        )
-        assert meteorite.get("label") == "Meteorite"
+        paths = [
+            it.get("path")
+            for g in cfg.NAV_CONFIG
+            for it in g.get("items", [])
+            if not g.get("admin_only")
+        ]
+        assert "/companies/meteorite_list" not in paths
 
 class TestAst1534AdhocImportConfigKeys:
     """AST-1534: UI_CONFIG import-list cap + picker visible-row literals."""
@@ -7466,6 +7593,8 @@ class TestAst1808RetryRegistryPurge:
         for name, entity in (("JOB_STATES", "job"), ("COMPANY_STATES", "company"), ("CANDIDATE_STATES", "candidate")):
             pinned[name] = self._ast2086_translate(pinned[name], cfg.RETIRED_TERMINAL_STATE_MAP[entity])
         self._ast2086_additions(pinned)
+        # AST-2228: retire topic-ready(+stale) keys; revive PROFILE_READY / CONTEXT_READY on the happy path.
+        self._ast2228_candidate_topic_cutover(pinned)
         for name in self._REGISTRIES:
             reg = getattr(cfg, name)
             targets = list(reg) + [cfg.retry_of(b) for b in reg]
@@ -7541,6 +7670,39 @@ class TestAst1808RetryRegistryPurge:
         for b in ("BOT_BLOCKED_FETCH_WEBSITE", "BOT_BLOCKED_FETCH_JOB_PAGES", "ERROR_PARSE_JOB_LIST"):
             cs[b] = None
             cs[f"{b}_RETRY"] = [b, f"{b}_RETRY"]
+
+    @staticmethod
+    def _ast2228_candidate_topic_cutover(pinned: dict) -> None:
+        """AST-2228: drop topic-ready keys; pin PROFILE/CONTEXT + REQUESTED_RESUME priors."""
+        cs = pinned["CANDIDATE_STATES"]
+        for dead in (
+            "REQUIRED_TOPICS_READY",
+            "REQUIRED_TOPICS_READY_RETRY",
+            "REQUIRED_TOPICS_READY_STALE",
+            "REQUIRED_TOPICS_READY_STALE_RETRY",
+            "ALL_TOPICS_READY",
+            "ALL_TOPICS_READY_RETRY",
+            "ALL_TOPICS_READY_STALE",
+            "ALL_TOPICS_READY_STALE_RETRY",
+        ):
+            cs.pop(dead, None)
+        cs["PROFILE_READY"] = [
+            "INTAKE_INITIATED",
+            "INTAKE_INITIATED_RETRY",
+            "PROFILE_READY_RETRY",
+        ]
+        cs["PROFILE_READY_RETRY"] = ["PROFILE_READY", "PROFILE_READY_RETRY"]
+        cs["CONTEXT_READY"] = [
+            "PROFILE_READY",
+            "PROFILE_READY_RETRY",
+            "CONTEXT_READY_RETRY",
+        ]
+        cs["CONTEXT_READY_RETRY"] = ["CONTEXT_READY", "CONTEXT_READY_RETRY"]
+        cs["REQUESTED_RESUME"] = [
+            "CONTEXT_READY",
+            "CONTEXT_READY_RETRY",
+            "REQUESTED_RESUME_RETRY",
+        ]
 
 
 class TestAst1877LlmCatalogConfig:
@@ -7955,15 +8117,14 @@ class TestAst1974JobsListPartition:
     """AC 1 nav shape, AC 5 Skipped build-failure states, AC 7 disjoint lists + derived priors."""
 
     def test_nav_jobs_items_exact(self) -> None:
-        # AC 1 — labels / paths / order; In Review / Recommended / Responded gone.
-        jobs = next(g for g in cfg.NAV_CONFIG if g.get("label") == "Jobs")
+        # AST-2230: Job Opportunities labels/order; Processing / New List dropped from sidebar.
+        jobs = next(g for g in cfg.NAV_CONFIG if g.get("label") == "Job Opportunities")
         assert [(it["label"], it["path"]) for it in jobs["items"]] == [
-            ("Ready", "/jobs/ready"),
-            ("Review", "/jobs/review"),
-            ("Applied", "/jobs/applied"),
-            ("Processing", "/jobs/processing"),
-            ("Skipped", "/jobs/skipped"),
             ("Meteorites", "/jobs/meteorites"),
+            ("Recommendations", "/jobs/review"),
+            ("Ready to Apply", "/jobs/ready"),
+            ("Submitted Applications", "/jobs/applied"),
+            ("Skipped", "/jobs/skipped"),
         ]
 
     def test_ready_review_lists_and_retired_constants(self) -> None:
@@ -8884,6 +9045,8 @@ class TestAst2221BaseResumeChainConfig:
             assert cfg.TASK_CONFIG[k]["error_state"] == st, k
             assert cfg.CANDIDATE_STATES[st]["prior_states"] == ["REQUESTED_RESUME"], k
             assert cfg.CANDIDATE_STATES[st]["progress_rank"] == 4, k
+            # AST-2245: resume-request ERROR_* inherit stage 3 (REQUESTED_RESUME band).
+            assert cfg.CANDIDATE_STATES[st]["stage"] == 3, k
 
     def test_requested_resume_stage_entry(self) -> None:
         assert cfg.CANDIDATE_STAGE_DISPATCH["requested_resume"] == {

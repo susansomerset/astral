@@ -579,6 +579,15 @@ body {
   opacity: 0.5;
 }
 
+/* AST-2231: Profile incomplete attention mark (API attention flag). */
+.nav-link-attention {
+  color: var(--warning);
+  margin-left: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  pointer-events: none;
+}
+
 .nav-footer-spacer {
   display: block;
   height: 80px;
