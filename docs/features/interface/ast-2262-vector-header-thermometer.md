@@ -174,3 +174,52 @@ The plan is binding. Execute steps in order within a stage, and stages in order.
 ## Estimate
 
 Confirm Chuckles estimate: 3 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-2262
+**Overall:** APPROVED
+**Corpus:** b7ab2203048ce0beb2869a12200ab7fa696c8066
+**Publish ref:** `sub/AST-2257/AST-2262-vector-header-thermometer` @ `b9a26183ed0b841e8f10da37f9e70faf3a909aa1`
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.artifact.ui-consistency | A | | |
+
+## Traceability
+
+`1 → Stage 2 (metadata `run_count` from `grade_rollup`); `2 → Stage 1 (`flexGrow` segments, `seg-*` + `--grade-*` tokens, zero/filter); `3 → Stage 1 (`title` with letter, count, `last_seen.slice(0,10)`); `4 → Stage 2 (`reloadFromServer` after `moveVersion` PUT + `refreshGradeRollup`); `5 → Scope gate + single `RubricGradeThermometer` in `ArtifactEditor`; parent AC `5–6` → N/A (nav rollup AST-2261); parent AC `7` → same as child AC `5`**
+
+## Findings
+
+### discuss — Pattern body still marked draft
+
+- **Severity:** discuss
+- **Location:** `patt.artifact.ui-consistency` corpus text
+- **Finding:** Expanded directive body includes “**Status:** draft — Archie approval required before active,” while the id is in `canon/directives/active/` and frozen on this ticket’s Citations list.
+- **Recommendation:** Archie/process hygiene only; plan behavior matches the pattern’s rubric exception (chrome on shared `ArtifactEditor`, no `pages/` fork). Do not widen Canon Scope on this pass.
+
+### acceptable — Failed rollup read hides chrome
+
+- **Severity:** acceptable
+- **Location:** Stage 2 step 3 (`setGradeRollup(null)` on non-OK / throw)
+- **Finding:** While `gradeRollup === null`, metadata (run count + bar) is omitted, which can look like a missing count until a successful load.
+- **Recommendation:** Matches the plan’s no-toast read failure style; acceptable if Betty/UAT exercise a happy path with AST-2261 rollup present (already on `origin/ftr/AST-2257-update-criteria-screens` and this sub tip).
+
+### acceptable — Native `title` tooltips
+
+- **Severity:** acceptable
+- **Location:** Stage 1 step 3
+- **Finding:** Segment hover uses the HTML `title` attribute, not a shared tooltip component.
+- **Recommendation:** Satisfies AC 3 (letter, count, calendar date on hover); no plan change required.
+
+## R6 checklist (summary)
+
+- Definition fidelity: three files only; explicit scope gate matches ticket **## Scope**; rollup/nav explicitly out of scope (AST-2261).
+- DRY / scope: no duplicate bar under `pages/`; distinct from AST-2233/2234 report thermometer CSS/classes.
+- Self-assessment: **Estimate** confirm `3 — agree` fits two focused stages.
+
+context_tokens≈31000
