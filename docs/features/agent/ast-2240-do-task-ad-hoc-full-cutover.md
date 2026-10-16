@@ -140,3 +140,42 @@ Parent AC **1–3, 9–11** → **N/A** (service tree, fence, claim lifecycle, s
 ## Estimate
 
 Confirm Chuckles estimate: 5 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-2240
+**Overall:** APPROVED
+**Corpus:** b7ab2203048ce0beb2869a12200ab7fa696c8066
+**Publish ref:** `ed16ca81734253e9a6e4a8294b287e0c69b74212` (`origin/sub/AST-2235/AST-2240-do-task-ad-hoc-full-cutover`)
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| astral.agent.do-task-delegation | A | | |
+| patt.task.daisy-chain | A | | |
+| patt.task.dispatch-retry | A | | |
+| astral.batch.entity-agent-responses-latest-only | A | | |
+| astral.standards.debug-contract-gated | A | | |
+| patt.agent.provider-io-via-queue | X | | pending Archie / not in `canon_clerk` active corpus; plan id-only |
+
+(Worst grade **A** on roll-up ids. Statutes/patterns resolved from `canon/statutes/**` and `canon/directives/active/**` at corpus tip.)
+
+## Traceability
+
+Child AC: **4→S1 step 6 + await in step 3**; **5→S1 steps 1, 3, 6**; **6→S1 step 6** (`get_entity_agent_story` untouched); **7→scope** (no `database.py`); **8→S1 step 6** (`run_next`/hop ledger untouched); **9→S1** (`run_adhoc` → `_send_to_server`). Parent AC **1–3, 9–11** N/A per plan table (parent numbering — service/fence/claim/service-secrets/console logs). Single stage; no orphans.
+
+## Findings
+
+**acceptable** — **Parent vs child AC 9:** traceability N/A line refers to **parent** AC 9 (service secrets); child AC 9 (Ad Hoc queue path) is mapped in the table.
+
+**acceptable** — **`_effort_body` / parse helpers** imported from `src.external.anthropic`; plan stop-gate if AST-2239 removes them.
+
+**acceptable** — **`AstralAgentError` → failure dict** preserves `patt.task.dispatch-retry` hop routing without new exception paths in `do_task`.
+
+## R6 (summary)
+
+Faithful to child #4 scope (single-file cutover); prerequisites AST-2238/2239 explicit; prompt-before / post-return store/decode/chain preserved. DRY: one `_send_to_server` choke for production + Ad Hoc. No **D**/**F**; no `fix-now`.
+
+context_tokens≈58000
