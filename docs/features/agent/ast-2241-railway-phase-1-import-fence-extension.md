@@ -135,6 +135,18 @@ limitOverride = { containers = { memoryBytes = 1073741824 } }
 
 Confirm Chuckles estimate: 2 — agree
 
+## Review stub (Katherine / build)
+
+**Publish ref:** `origin/sub/AST-2235/AST-2241-railway-phase-1-import-fence-extension`  
+**Product commits:** `7a8c3b990` (Stage 1 — railway.toml), `791cd963b` (Stage 2 — fence script + workflow)
+
+**Implemented:**
+- `service/astral_agent/railway.toml` — Phase 1 `numReplicas = 1`, Dockerfile paths, 1 GiB, `/healthz`, drain/restart
+- `scripts/ci/check-service-src-import-fence.sh` — scans all `service/**/*.py` ↔ `src`
+- `.github/workflows/service-src-import-fence.yml` — step renamed to full service↔src fence
+
+**Tests:** Betty at Code Complete (`qa-child`) — engineers do not land test-tree changes.
+
 ## Joan validate
 
 [plan-rubric]
