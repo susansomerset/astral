@@ -2482,3 +2482,40 @@ cd src/ui/frontend && npm run test:component -- \
 
 **Pass criterion:** Vitest green on the five files (narrowed run) — not zero-arg harness / branch-lock gate. Generate-in-header coverage remounts after AST-2233 merges.
 
+### AST-2230 · AST-2225 (JobsHomeRedirect → Job Opportunities)
+
+**Parent:** [AST-2225](https://linear.app/astralcareermatch/issue/AST-2225). **Publish:** `origin/sub/AST-2225/AST-2230-stage-gated-nav`. Primary: [`../ui/api/api_system.md`](../ui/api/api_system.md) § AST-2230.
+
+`JOBS_NAV_GROUP_LABEL = "Job Opportunities"`; mock nav fixture uses that label + new item order.
+
+| Area | Component tests |
+| --- | --- |
+| Landing picks first Job Opportunities item with count > 0 | revised **`test_JobsHomeRedirect.test.tsx`** |
+
+### AST-2231 · AST-2225 (candidate shell UX)
+
+**Parent:** [AST-2225](https://linear.app/astralcareermatch/issue/AST-2225). **Publish:** `origin/sub/AST-2225/AST-2231-candidate-shell-ux`. Plan: `docs/features/candidate/ast-2231-candidate-shell-ux.md`. API flags: sibling **AST-2230**.
+
+`NavigationShell` + `App.css`: non-admin omits candidate picker/menu/state line; admin unchanged; first visit (`nav:expanded` key absent) expands only groups with `recent === true` without writing storage; persisted `[]` stays collapsed; Profile `attention` yellow mark; disabled items stay visible spans; empty facing payload (stage 0) is non-interactive. No page-file product diff — §6c N/A. Integration API scenario unchanged (no shell/CSS contract).
+
+| Area | Component tests |
+| --- | --- |
+| AC9 picker hide (wide + narrow) | revised **`omits candidate select for non-admin users`**; revised **`narrow: non-admin omits candidate menu; deploy footer omitted`**; new **`AST-2231 candidate shell UX` → wide admin keeps picker; non-admin has none** |
+| Recent expand seed vs persisted `[]` | new **`null-key first visit expands only recent groups; persisted [] stays collapsed`** |
+| AC10 Profile attention + disabled-visible | new **`Profile attention mark when API attention true; disabled items stay visible`** |
+| AC8 stage-0 empty menu | new **`stage-0 empty facing menu is non-interactive`** |
+
+**Broken / obsolete this pass:** AST-612 / AST-1286 non-admin “disabled select / disabled checked list” cases — product now omits picker chrome for non-admins.
+
+**Integration:** none — `test_candidate_nav_api.py` is API-only; do not invent.
+
+## QA test manifest — AST-2231
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_NavigationShell.test.tsx
+```
+
+**Pass criterion:** Vitest green on the NavigationShell file (AST-2231 + existing shell cases). Not zero-arg harness / branch-lock gate.
+
+**Bible shasum (after publish):** `git show origin/sub/AST-2225/AST-2231-candidate-shell-ux:docs/test-bible/frontend/components.md | shasum`

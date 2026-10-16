@@ -46,6 +46,7 @@ _SCHEMA_FLAGS = (
     "_company_search_terms_schema_ensured",
     "_company_search_terms_migration_swept",
     "_meteorite_schema_ensured",  # AST-1974: nav meteorite count reads the table on fresh DBs
+    "_artifact_schema_ensured",  # AST-2230: nav_config→get_candidate hydrates base_resume via artifact
 )
 
 

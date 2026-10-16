@@ -13,12 +13,12 @@ vi.mock("../../../../src/ui/frontend/src/lib/api", async (importOriginal) => {
 
 const mockedApi = vi.mocked(api)
 
-// NAV_CONFIG shape (AST-1974 counts): Jobs group in nav order — Ready, Review, Applied, Processing, Skipped.
+// AST-2230: Job Opportunities group — Meteorites, Recommendations, Ready to Apply, Submitted, Skipped.
 const jobsNav = (counts: Record<string, number>) => [
   { label: "Candidate", items: [{ path: "/candidate/profile", count: 9 }] },
   {
-    label: "Jobs",
-    items: ["ready", "review", "applied", "processing", "skipped"].map(v => ({
+    label: "Job Opportunities",
+    items: ["meteorites", "review", "ready", "applied", "skipped"].map(v => ({
       path: `/jobs/${v}`,
       count: counts[v] ?? 0,
     })),
@@ -55,11 +55,11 @@ describe("JobsHomeRedirect — AST-1975 landing page", () => {
   })
 
   it.each([
-    [{ ready: 2, review: 3 }, "/jobs/ready"],
-    // Ready 0 is skipped; later non-zero items don't outrank Review.
-    [{ review: 3, processing: 5 }, "/jobs/review"],
+    [{ meteorites: 2, review: 3 }, "/jobs/meteorites"],
+    // Meteorites 0; first non-zero is Recommendations (review).
+    [{ review: 3, ready: 5 }, "/jobs/review"],
     [{ skipped: 1 }, "/jobs/skipped"],
-    [{}, "/jobs/ready"],
+    [{}, "/jobs/meteorites"],
   ])("counts %j land on %s", async (counts, expected) => {
     installBaseApiMocks(mockedApi, url =>
       url.startsWith("/api/nav_config") ? jsonResponse(jobsNav(counts)) : jsonResponse([]))

@@ -140,35 +140,54 @@ Prompt tokens (`{$TOKEN_NAME}`) resolve via `TOKEN_SOURCES` in `config.py`. Name
 
 ## State machine
 
-Runtime vocabulary in `CANDIDATE_STATES` (`config.py`). No `PROSPECT` (conceptual only). Transitions enforced by `transition_candidate_state()` against each state’s `prior_states` (job-style; no parallel transitions list). Successful transitions append `state_history` (prior/new + timestamp) for time-in-state; Progress UI remains AST-869.
+Runtime vocabulary in `CANDIDATE_STATES` (`config.py`). Includes `PROSPECT` (Slack-created entry; stage 1). Transitions enforced by `transition_candidate_state()` against each state’s `prior_states` (job-style; no parallel transitions list). Successful transitions append `state_history` (prior/new + timestamp) for time-in-state; Progress UI remains AST-869.
 
-Happy path:
+Happy path (AST-2228 — topic-ready states retired):
 
 ```
-NEW_CANDIDATE → INTAKE_INITIATED → REQUIRED_TOPICS_READY → ALL_TOPICS_READY
+NEW_CANDIDATE → INTAKE_INITIATED → PROFILE_READY → CONTEXT_READY
   → REQUESTED_RESUME → RESUME_READY → REQUESTED_ARTIFACTS → ARTIFACTS_READY
   → ACTIVE_SEARCH
 ```
 
-Side paths: `PAUSE_SEARCH` ↔ `ACTIVE_SEARCH`; unrestricted entry to `INACTIVE` / `DELETED`. Waiting stages carry `*_STALE` companions (`stale_after_hours` / `stale_state`); `REQUESTED_RESUME` / `REQUESTED_ARTIFACTS` carry `*_RETRY` / `*_ERROR`. Topic-ready hops are manual until Topic Menu (AST-953).
+Side paths: `PAUSE_SEARCH` ↔ `ACTIVE_SEARCH`; unrestricted entry to `INACTIVE` / `DELETED`. Waiting stages carry `*_STALE` companions (`stale_after_hours` / `stale_state`); `REQUESTED_RESUME` / `REQUESTED_ARTIFACTS` carry implicit `{base}_RETRY`; craft-chain failures land on per-hop `ERROR_<HOP>` (stage 4).
+
+### Stage bands (AST-2228)
+
+Each `CANDIDATE_STATES` entry carries an integer `stage`. Stage is **registry metadata on `state` only** — there is **no** `candidate.stage` (or equivalent) table column. Entity metadata columns remain the shared set (`state`, `state_history`, `state_changed_at`, `batch_id`, `batch_created_at`, `created_at`, `updated_at`). Resolve with `candidate_stage(state)` in `src/core/candidate.py` (`{base}_RETRY` inherits the base state’s stage).
+
+| Stage | States |
+|------:|--------|
+| 0 | `DELETED`, `INACTIVE` |
+| 1 | `PROSPECT`, `NEW_CANDIDATE`, `INTAKE_INITIATED` |
+| 2 | `PROFILE_READY` |
+| 3 | `CONTEXT_READY`, `REQUESTED_RESUME` |
+| 4 | `RESUME_READY`, `RESUME_READY_STALE`, `REQUESTED_ARTIFACTS`, `ARTIFACTS_READY`, `ARTIFACTS_READY_STALE`, craft `ERROR_*` |
+| 5 | `ACTIVE_SEARCH`, `PAUSE_SEARCH` |
+
+Nav regroup and scheduled forward-only advancement (siblings) consume these bands; they do not redefine them.
 
 **DELETED reap:** entering `DELETED` writes `candidate_data.lifecycle.reap_started_at` + `reap_after_hours` from the registry. Hard-delete / legacy row remap is AST-973.
 
-`check_context_complete()` only reports whether the gated context fields (`CANDIDATE_LIBRARY_CONFIG["context_completeness_keys"]`, including Ideal Day) are populated — it does **not** write state.
+`check_context_complete()` only reports whether the gated context fields (`CANDIDATE_LIBRARY_CONFIG["context_completeness_keys"]`, including Ideal Day) are populated — it does **not** write state. Candidates already at `progress_rank` ≥ `CONTEXT_READY` count as complete.
 
 
-### Legacy cutover (AST-973)
+### Legacy cutover (AST-973 + AST-2228)
 
 | Legacy state | Remap |
 | -- | -- |
 | `LIVE_PROMPTS` | `ACTIVE_SEARCH` |
 | `NEW` | `NEW_CANDIDATE` |
-| `PROFILE_READY` | `NEW_CANDIDATE` |
-| `CONTEXT_READY` | `NEW_CANDIDATE` |
+| `REQUIRED_TOPICS_READY` | `PROFILE_READY` (AST-2228) |
+| `REQUIRED_TOPICS_READY_STALE` | `PROFILE_READY` (AST-2228) |
+| `ALL_TOPICS_READY` | `CONTEXT_READY` (AST-2228) |
+| `ALL_TOPICS_READY_STALE` | `CONTEXT_READY` (AST-2228) |
+
+`PROFILE_READY` / `CONTEXT_READY` are live registry keys again (not remapped to `NEW_CANDIDATE`). Live topic rows are healed by `migrate_retired_topic_candidate_states()` (invoked from the stale-aging tick path).
 
 - Pre-cutover `DELETED` (no `candidate_data.lifecycle.reap_started_at`) → hard-deleted by CLI Phase A only (`scripts/migrations/migrate_legacy_candidate_states.py --execute`). Not remapped.
 - Post-cutover `DELETED` (with reap metadata) kept until reap-due purge.
-- `dispatch_task.trigger_state`: `LIVE_PROMPTS` / `PROFILE_READY` / `CONTEXT_READY` remapped on any `entity_type`; `NEW` → `NEW_CANDIDATE` only when `entity_type='candidate'`.
+- `dispatch_task.trigger_state`: retired topic labels and `LIVE_PROMPTS` remapped via `CANDIDATE_LEGACY_*`; `NEW` → `NEW_CANDIDATE` only when `entity_type='candidate'`.
 - Schema-ensure runs Phase B/C remaps only; operator CLI runs Phase ABC after Susan OK.
 
 ## Relationships to other tables
