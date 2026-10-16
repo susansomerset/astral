@@ -383,3 +383,74 @@ Parent AC 1–2: no Copy controls and no Print Resume/Cover in the header; Skip 
 [board-joan] CANON: OK
 
 Plan-fix for AST-2268 is a UAT regression restore: header identity/links/date labels (2233 patch) and Analysis labels, mobile grade dots, show-rubric content preference (2234 patch). No statute or pattern text change, carve-out, or new directive. Rubric resolution still uses existing API/read paths; it only fixes empty live row winning over job-carried content. Report-scoped CSS stays inside the AST-2233 boundary (no shared .modal-title / .modal-header / .modal-body edits). Parent AST-2226 canon scope does not require an amendment for this shape.
+
+## Radia review AST-2268
+
+[code-rubric]
+**Ticket:** AST-2268
+**Publish ref:** `origin/sub/AST-2226/AST-2268-recommended-modal-header-score-labels-and-show-rubric-miss-uat` @ `b53ef9c267200fd3ac4100acc436f716ac61da80`
+**Diff base:** `origin/ftr/AST-2226-updates-to-recommended-job-modal` @ `c58774be6a5dec062fef3c5f58fe671a58f8ef5f` (three-dot vs sub includes stacked merges from other work; **canon + fix review scoped to** `cf7439838..b53ef9c26` — 10 files, AST-2268 product + tests + bible)
+**Corpus:** _(no frozen directive ids on ticket; Joan board CANON: OK)_
+**Overall:** CLEAN
+
+## Canon scores
+
+_(Frozen Citations: none — Joan `[board-joan] CANON: OK`; no statute/pattern ids to score.)_
+
+## Column diff vs plan stage
+
+no plan-stage canon scores attached (board-only CANON: OK)
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+**[bug-repro]** OK — Two tagged tests pin concrete **To-be** behavior (not tautologies):
+- `test_JobAnalysisReportModal.test.tsx` — `[bug-repro] AST-2268 JD header is score and gradable percent` asserts `JD Analysis - 3.7 (83% gradable)`, rejects earned/possible template, and `Total Score:` in `.recommended-report-total-gradable` (items 1–2).
+- `test_AgentAnalysisHeader.test.tsx` — `[bug-repro] AST-2268: job-carried rubric content beats a blank live row` mocks live detail row without usable `content`, job-carried `rubricItems` with `Job carried body`; expects body text and not `No rubric found for this vector.` (item 4). Would fail pre-fix preference order.
+
+**## What must still hold** — OK (both plan-fix patches):
+- **2233 patch:** No Copy/Print props or controls reintroduced; Skip/Applied/Generate still callback-gated; `company_name` drives identity; website remains separate `<a target="_blank">` with `https://` prefix when needed; date strip uses `discoveredAt` / `recommendedAt` / `appliedAt` with applied omitted when null; report-scoped CSS only (`.recommended-report-job-title-secondary`, phase-grade `nowrap` media query) — no shared `.modal-title` / `.modal-header` / `.modal-body` rule edits.
+- **2234 patch:** `jobGradablePercent` still feeds total parenthetical; phase titles use breakdown `possible/max` (not job-level %); thermometer block untouched in diff; `buildPhaseSectionGradeConfidenceRow(..., isMobile)` adds letterless dots at ≤1023px; rubric still uses existing GET + `RubricModal` loading gate; Skip/`can_*`, tab filter, JD pane, Artifacts/mobile paths not removed in fix commits.
+
+## Findings
+
+**fix-now**
+
+(none)
+
+**discuss**
+
+- **Duplicate company block:** After AST-2268, `.recommended-report-title` and `.recommended-report-company-line` both show `companyName` (+ date on each). Plan-fix primary identity moved to `.recommended-report-title` but did not drop the older company line. @susan — intentional double line or follow-up cosmetic trim? **Default:** leave for UAT; remove `.recommended-report-company-line` duplicate in a tiny follow-up if Susan flags it.
+- **Empty modal title:** When `company_name` and `company` are both empty, `modalTitle` is `""` (no `Recommended Job Report` fallback). **Default:** accept over the wrong literal; only revisit if empty `<h2>` is worse in practice.
+
+**advisory**
+
+- **Diff base width:** `ftr...sub` three-dot stat is huge (other epics merged onto sub); scoring used AST-2268 commits only — expected for fix-lane sub stacked above advancing `ftr`.
+- **Item 3 (mobile dots):** Implemented via `letterless` + CSS `flex-wrap: nowrap`; no dedicated `[bug-repro]` — coverage is code + CSS, not a viewport assertion (Betty manifest lists modal/header tests).
+- **Engineer thread:** `b53ef9c26` notes two Generate-hidden asserts stale — header on this tip is AST-2233-shaped; optional Betty tidy, not merge-blocking.
+
+## Plan fidelity (§5.4)
+
+- Items 1–7 map to `JobAnalysisReportModal`, `RecommendedJobReportHeader`, `AgentAnalysisHeader`, `RubricModal`, `recommendedJobReport.tsx`, `App.css` — matches amended scope (including `AgentAnalysisHeader` / `RubricModal` after `[scope-gate]`).
+- `jobLink` / `jobLinkText` fall back to `job_link` when `listing_href` is not http(s); modal title `company · m/d/yy`; show-rubric job-before-blank-live content order per plan.
+
+## What's solid
+
+- `rubricContentFor` matches plan resolution (usable job content first; live only when job missing/blank).
+- `RubricModal` trims before not-found string.
+- Revised AST-1695/1704/1983/2233 tests align with company-primary identity.
+
+## Chuckles (read-only — you do not act)
+
+| Gate | Parent | Next |
+|------|--------|------|
+| **PROCEED** (clean, C7 complete) | AST-2226 live | → **Review Posted** → fix-lane clean shortcut → **User Testing** (`resolve-child` skipped) |
+
+```
+[code-rubric] PROCEED (Commit: b53ef9c26) UAT regressions restored
+```
+
+context_tokens≈24000
