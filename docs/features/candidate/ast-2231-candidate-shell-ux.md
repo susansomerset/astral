@@ -171,3 +171,42 @@ AC8 → Stage 1 step 6 (rely on #3 omitting stage-0 groups; no client stage math
 **R6 (summary):** Scope gate matches ticket (NavigationShell + App.css only). Picker hide, disabled-but-visible, Profile attention, stage-0 via empty API groups, and prerequisite on #3 are otherwise faithful to parent shell slice. Estimate 2 — agree once expand-seed rule is tightened.
 
 context_tokens≈95000
+
+## Joan validate (round 2 — APPROVED)
+
+[plan-rubric]
+**Ticket:** AST-2231
+**Overall:** APPROVED
+**Corpus:** b7ab2203048ce0beb2869a12200ab7fa696c8066
+**Publish ref tip:** `f3a0f1dd3d80573cf4e0b44416695a9e27b0d73d` (`origin/sub/AST-2225/AST-2231-candidate-shell-ux`)
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| stat.logging.info.api | X | | Frontend-only; no `src/ui/api/**` changes |
+
+## Traceability
+
+AC8 → Stage 1 step 6 (stage-0 groups omitted by #3; no client stage math). AC9 → Stage 1 step 2 (`isAdmin`-only picker/menu). AC10 → Stage 1 step 4 + Stage 2 (`attention` affordance). Parent recent-expand → Stage 1 step 3 (null-key seed from group `recent`; #3 API). Parent AC 1–7, 11–13 → N/A.
+
+## Findings
+
+### discuss
+- **Location:** Stage 1 step 3 vs step 7 — null-key seed
+- **Finding:** Step 7 requires `setExpanded` at most once per browser until the user writes storage, but step 3 only gates on `getItem === null`, which stays true on every poll until the first toggle — implementer should use a one-shot ref (or equivalent) so the 30s poll does not keep re-applying `recent`.
+- **Recommendation:** Optional one-line in step 3 naming `useRef` / `expandedSeededFromApi`; step 7 already states the intent — build can proceed.
+
+### acceptable
+- **Location:** Revision 1 / Plan Discuss round 1
+- **Finding:** Prior fix-now (empty `loadExpanded()` vs persisted `[]`) is addressed: null-key-only seed, persisted `[]` stays collapsed, poll must not reset `expanded` except that seed.
+- **Recommendation:** None.
+
+### acceptable
+- **Location:** Prerequisite AST-2230
+- **Finding:** Stop gate if `recent` / `attention` / stage-0 omit missing; no client heuristics or API edits.
+- **Recommendation:** None.
+
+**R6 (summary):** Scope gate holds (NavigationShell + App.css). Picker hide, disabled-but-visible, Profile attention, stage-0 via empty candidate-facing groups, and #3 prerequisite remain faithful. Estimate 2 — agree.
+
+context_tokens≈102000
