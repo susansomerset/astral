@@ -328,3 +328,10 @@ Do not change list rows (`buildPhaseListGradeRow` stays letterless at every widt
 ### What must still hold
 
 Parent AC 15: thermometer fill is `list_score / max`, green on neutral, tooltip unchanged. Parent AC 16: the percent beside the total is still `jobGradablePercent` (`round(100 * (n - x) / n)`), hidden when `n === 0`. Phase header percent is the breakdown `possible/max` figure, not a second copy of the job-level percent. Opening the modal still lands on Analysis. Skip/Applied, Discussion, JD tab, Artifacts visibility, and mobile edit ban from the original AST-2234 stages stay.
+
+
+## Joan board AST-2268
+
+[board-joan] CANON: OK
+
+Plan-fix for AST-2268 is a UAT regression restore: header identity/links/date labels (2233 patch) and Analysis labels, mobile grade dots, show-rubric content preference (2234 patch). No statute or pattern text change, carve-out, or new directive. Rubric resolution still uses existing API/read paths; it only fixes empty live row winning over job-carried content. Report-scoped CSS stays inside the AST-2233 boundary (no shared .modal-title / .modal-header / .modal-body edits). Parent AST-2226 canon scope does not require an amendment for this shape.

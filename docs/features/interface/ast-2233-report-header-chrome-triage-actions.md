@@ -376,3 +376,10 @@ Skip / Applied / Generate callbacks and labels stay. Copy and header Print stay 
 Parent AC 1–2: no Copy controls and no Print Resume/Cover in the header; Skip and Applied still render only when their callbacks are passed. Parent AC 7: `company_name` is the company label (not short_name alone when `company_name` is non-empty); website is an `<a target="_blank">` on its own line under the job-link line. Parent AC 8: discovered = `discoveredAt`, recommended = `recommendedAt`, applied only when non-null. Parent AC 9: at ≤1023px Skip/Applied still wrap instead of clipping.
 
 ```
+
+
+## Joan board AST-2268
+
+[board-joan] CANON: OK
+
+Plan-fix for AST-2268 is a UAT regression restore: header identity/links/date labels (2233 patch) and Analysis labels, mobile grade dots, show-rubric content preference (2234 patch). No statute or pattern text change, carve-out, or new directive. Rubric resolution still uses existing API/read paths; it only fixes empty live row winning over job-carried content. Report-scoped CSS stays inside the AST-2233 boundary (no shared .modal-title / .modal-header / .modal-body edits). Parent AST-2226 canon scope does not require an amendment for this shape.
