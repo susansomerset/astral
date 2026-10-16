@@ -330,3 +330,12 @@ context_tokens≈24000
 ```
 [code-rubric] PROCEED (Commit: af06670da) Service provider wrappers landed
 ```
+
+## Resolution
+
+2026-10-16 — Radia **CLEAN**, no fix-now. Discuss defaults taken (no product change):
+
+- **AC 6:** score against the plan and parent locked dumb I/O. Provider keys stay on assembled `request["api_key"]`. `ASTRAL_DATABASE_URL` stays the Postgres secret from AST-2237. Description text not rewritten here (no live checkboxes; AC wording is Chuckles/Susan).
+- **Merge order:** stubs stay. Isolated AST-2239 must not land on `dev` ahead of AST-2240; epic rollup owns that.
+
+Advisory left as written (sibling carry on the three-dot diff, logging statute path, OpenRouter helpers until AST-2240).
