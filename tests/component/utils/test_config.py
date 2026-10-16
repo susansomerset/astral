@@ -2462,13 +2462,15 @@ class TestAst970CandidateStateRegistry:
         for name, entry in cfg.CANDIDATE_STATES.items():
             assert "prior_states" in entry, name
             assert "progress_rank" in entry, name
+            assert "stage" in entry, name  # AST-2228: stage on every registry state
 
     def test_happy_path_keys_present(self) -> None:
+        # AST-2228: PROFILE_READY / CONTEXT_READY revived; topic-ready keys retired.
         for key in (
             "NEW_CANDIDATE",
             "INTAKE_INITIATED",
-            "REQUIRED_TOPICS_READY",
-            "ALL_TOPICS_READY",
+            "PROFILE_READY",
+            "CONTEXT_READY",
             "REQUESTED_RESUME",
             "RESUME_READY",
             "REQUESTED_ARTIFACTS",
@@ -2479,16 +2481,27 @@ class TestAst970CandidateStateRegistry:
             "DELETED",
         ):
             assert key in cfg.CANDIDATE_STATES
+        assert not (
+            {
+                "REQUIRED_TOPICS_READY",
+                "REQUIRED_TOPICS_READY_STALE",
+                "ALL_TOPICS_READY",
+                "ALL_TOPICS_READY_STALE",
+            }
+            & set(cfg.CANDIDATE_STATES)
+        )
 
     def test_stale_companions_and_hours(self) -> None:
-        assert cfg.CANDIDATE_STATES["REQUIRED_TOPICS_READY"]["stale_after_hours"] == 72
-        assert cfg.CANDIDATE_STATES["REQUIRED_TOPICS_READY"]["stale_state"] == "REQUIRED_TOPICS_READY_STALE"
+        # AST-2228: profile/context have no stale companions; resume/artifacts waiting still do.
+        assert "stale_state" not in cfg.CANDIDATE_STATES["PROFILE_READY"]
+        assert "stale_state" not in cfg.CANDIDATE_STATES["CONTEXT_READY"]
         assert cfg.CANDIDATE_STATES["RESUME_READY"]["stale_after_hours"] == 168
+        assert cfg.CANDIDATE_STATES["RESUME_READY"]["stale_state"] == "RESUME_READY_STALE"
         assert cfg.CANDIDATE_STATES["DELETED"]["reap_after_hours"] == 720
 
     def test_stale_to_next_priors(self) -> None:
-        assert "REQUIRED_TOPICS_READY_STALE" in cfg.CANDIDATE_STATES["ALL_TOPICS_READY"]["prior_states"]
-        assert "ALL_TOPICS_READY_STALE" in cfg.CANDIDATE_STATES["REQUESTED_RESUME"]["prior_states"]
+        # AST-2228: REQUESTED_RESUME priors = CONTEXT_READY only (no topic-stale).
+        assert cfg.CANDIDATE_STATES["REQUESTED_RESUME"]["prior_states"] == ["CONTEXT_READY"]
         assert "RESUME_READY_STALE" in cfg.CANDIDATE_STATES["REQUESTED_ARTIFACTS"]["prior_states"]
         assert "ARTIFACTS_READY_STALE" in cfg.CANDIDATE_STATES["ACTIVE_SEARCH"]["prior_states"]
 
@@ -2525,8 +2538,11 @@ class TestAst970CandidateStateRegistry:
         assert all(s in cfg.CANDIDATE_STATES for s in gen)
 
     def test_retired_four_step_names_absent(self) -> None:
-        for retired in ("NEW", "PROFILE_READY", "CONTEXT_READY", "LIVE_PROMPTS"):
+        # AST-2228: PROFILE_READY / CONTEXT_READY revived; NEW + LIVE_PROMPTS stay retired labels.
+        for retired in ("NEW", "LIVE_PROMPTS"):
             assert retired not in cfg.CANDIDATE_STATES
+        assert "PROFILE_READY" in cfg.CANDIDATE_STATES
+        assert "CONTEXT_READY" in cfg.CANDIDATE_STATES
 
 
 @pytest.mark.skipif(
@@ -2676,31 +2692,61 @@ class TestAst1375ArtifactGenerateInflightHideStates:
 
 
 class TestAst973LegacyCandidateRemap:
-    """AST-973: CANDIDATE_LEGACY_* map + remap_legacy_candidate_state."""
+    """AST-973: CANDIDATE_LEGACY_* map + remap_legacy_candidate_state (AST-2228 topic remap)."""
 
     def test_map_and_trigger_frozenset(self) -> None:
+        # AST-2228: topic labels → PROFILE_READY / CONTEXT_READY; live PROFILE/CONTEXT drop from map.
         assert cfg.CANDIDATE_LEGACY_STATE_MAP == {
             "LIVE_PROMPTS": "ACTIVE_SEARCH",
             "NEW": "NEW_CANDIDATE",
-            "PROFILE_READY": "NEW_CANDIDATE",
-            "CONTEXT_READY": "NEW_CANDIDATE",
+            "REQUIRED_TOPICS_READY": "PROFILE_READY",
+            "REQUIRED_TOPICS_READY_STALE": "PROFILE_READY",
+            "ALL_TOPICS_READY": "CONTEXT_READY",
+            "ALL_TOPICS_READY_STALE": "CONTEXT_READY",
         }
         assert "DELETED" not in cfg.CANDIDATE_LEGACY_STATE_MAP
+        assert "PROFILE_READY" not in cfg.CANDIDATE_LEGACY_STATE_MAP
+        assert "CONTEXT_READY" not in cfg.CANDIDATE_LEGACY_STATE_MAP
         assert cfg.CANDIDATE_LEGACY_TRIGGER_STATES == frozenset(
-            {"LIVE_PROMPTS", "PROFILE_READY", "CONTEXT_READY"}
+            {
+                "LIVE_PROMPTS",
+                "REQUIRED_TOPICS_READY",
+                "REQUIRED_TOPICS_READY_STALE",
+                "ALL_TOPICS_READY",
+                "ALL_TOPICS_READY_STALE",
+            }
         )
         assert all(v in cfg.CANDIDATE_STATES for v in cfg.CANDIDATE_LEGACY_STATE_MAP.values())
 
     def test_remap_helper(self) -> None:
         assert cfg.remap_legacy_candidate_state("LIVE_PROMPTS") == "ACTIVE_SEARCH"
         assert cfg.remap_legacy_candidate_state("NEW") == "NEW_CANDIDATE"
-        assert cfg.remap_legacy_candidate_state("PROFILE_READY") == "NEW_CANDIDATE"
-        assert cfg.remap_legacy_candidate_state("CONTEXT_READY") == "NEW_CANDIDATE"
+        # AST-2228: revived keys are live registry members → identity; topics land on revived path.
+        assert cfg.remap_legacy_candidate_state("PROFILE_READY") == "PROFILE_READY"
+        assert cfg.remap_legacy_candidate_state("CONTEXT_READY") == "CONTEXT_READY"
+        assert cfg.remap_legacy_candidate_state("REQUIRED_TOPICS_READY") == "PROFILE_READY"
+        assert cfg.remap_legacy_candidate_state("ALL_TOPICS_READY_STALE") == "CONTEXT_READY"
         assert cfg.remap_legacy_candidate_state("ACTIVE_SEARCH") == "ACTIVE_SEARCH"
         assert cfg.remap_legacy_candidate_state("") == cfg.CANDIDATE_CONFIG["initial_state"]
         assert cfg.remap_legacy_candidate_state("totally_unknown") == "NEW_CANDIDATE"
         # DELETED is a live registry key — remap is identity; Phase B never selects it
         assert cfg.remap_legacy_candidate_state("DELETED") == "DELETED"
+
+
+class TestAst2228CandidateStageRegistry:
+    """AST-2228: stage on every CANDIDATE_STATES entry + locked bands (AC 1–3)."""
+
+    def test_locked_stage_bands(self) -> None:
+        assert cfg.CANDIDATE_STATES["PAUSE_SEARCH"]["stage"] == 5
+        assert cfg.CANDIDATE_STATES["RESUME_READY"]["stage"] == 4
+        assert cfg.CANDIDATE_STATES["PROFILE_READY"]["stage"] == 2
+        assert cfg.CANDIDATE_STATES["DELETED"]["stage"] == 0
+        assert cfg.CANDIDATE_STATES["CONTEXT_READY"]["stage"] == 3
+        assert cfg.CANDIDATE_STATES["REQUESTED_RESUME"]["stage"] == 3
+        # Craft ERROR_* share artifact-craft waiting band (stage 4).
+        for name, entry in cfg.CANDIDATE_STATES.items():
+            if name.startswith("ERROR_CRAFT_"):
+                assert entry["stage"] == 4, name
 
 
 class TestAst996ExperienceJobArrayConfig:
@@ -7466,6 +7512,8 @@ class TestAst1808RetryRegistryPurge:
         for name, entity in (("JOB_STATES", "job"), ("COMPANY_STATES", "company"), ("CANDIDATE_STATES", "candidate")):
             pinned[name] = self._ast2086_translate(pinned[name], cfg.RETIRED_TERMINAL_STATE_MAP[entity])
         self._ast2086_additions(pinned)
+        # AST-2228: retire topic-ready(+stale) keys; revive PROFILE_READY / CONTEXT_READY on the happy path.
+        self._ast2228_candidate_topic_cutover(pinned)
         for name in self._REGISTRIES:
             reg = getattr(cfg, name)
             targets = list(reg) + [cfg.retry_of(b) for b in reg]
@@ -7541,6 +7589,39 @@ class TestAst1808RetryRegistryPurge:
         for b in ("BOT_BLOCKED_FETCH_WEBSITE", "BOT_BLOCKED_FETCH_JOB_PAGES", "ERROR_PARSE_JOB_LIST"):
             cs[b] = None
             cs[f"{b}_RETRY"] = [b, f"{b}_RETRY"]
+
+    @staticmethod
+    def _ast2228_candidate_topic_cutover(pinned: dict) -> None:
+        """AST-2228: drop topic-ready keys; pin PROFILE/CONTEXT + REQUESTED_RESUME priors."""
+        cs = pinned["CANDIDATE_STATES"]
+        for dead in (
+            "REQUIRED_TOPICS_READY",
+            "REQUIRED_TOPICS_READY_RETRY",
+            "REQUIRED_TOPICS_READY_STALE",
+            "REQUIRED_TOPICS_READY_STALE_RETRY",
+            "ALL_TOPICS_READY",
+            "ALL_TOPICS_READY_RETRY",
+            "ALL_TOPICS_READY_STALE",
+            "ALL_TOPICS_READY_STALE_RETRY",
+        ):
+            cs.pop(dead, None)
+        cs["PROFILE_READY"] = [
+            "INTAKE_INITIATED",
+            "INTAKE_INITIATED_RETRY",
+            "PROFILE_READY_RETRY",
+        ]
+        cs["PROFILE_READY_RETRY"] = ["PROFILE_READY", "PROFILE_READY_RETRY"]
+        cs["CONTEXT_READY"] = [
+            "PROFILE_READY",
+            "PROFILE_READY_RETRY",
+            "CONTEXT_READY_RETRY",
+        ]
+        cs["CONTEXT_READY_RETRY"] = ["CONTEXT_READY", "CONTEXT_READY_RETRY"]
+        cs["REQUESTED_RESUME"] = [
+            "CONTEXT_READY",
+            "CONTEXT_READY_RETRY",
+            "REQUESTED_RESUME_RETRY",
+        ]
 
 
 class TestAst1877LlmCatalogConfig:
