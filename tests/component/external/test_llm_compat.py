@@ -18,6 +18,10 @@ from src.external import llm_compat, openrouter
 from src.utils import config as cfg
 from src.utils.logging import log_batch_id
 
+_SEND_RETIRED = pytest.mark.skip(
+    reason="AST-2239: send_to_llm_compat retired (thin stub); wire coverage moved to service/astral_agent/providers"
+)
+
 
 class _Msg:
     def __init__(self, text: str, stop_reason: str = "end_turn") -> None:
@@ -70,6 +74,7 @@ async def _send(**overrides: Any) -> dict:
     return await llm_compat.send_to_llm_compat([{"type": "text", "text": "hi"}], **kwargs)
 
 
+@_SEND_RETIRED
 class TestAst1877RequestExtras:
     """AC 9: server request_extras reach the outbound body; shipped OpenRouter sends no provider.zdr."""
 
@@ -93,6 +98,7 @@ class TestAst1877RequestExtras:
         assert "zdr" not in repr(client.calls[0]) and "order" not in body["provider"]
 
 
+@_SEND_RETIRED
 class TestAst1877OutboundBody:
     @pytest.mark.asyncio
     async def test_body_shape_with_temperature_and_system(self, client: _RecordingClient) -> None:
@@ -129,6 +135,7 @@ class TestAst1877OutboundBody:
 # AST-1956: the agent's settings go on the wire exactly as stored — nothing derived, nothing gated by model.
 # Branches: temperature None vs set (0.0 included); effort empty / "none" / other; provider object
 # present (OpenRouter) vs None (direct servers); a rejected setting returns the plain failure envelope.
+@_SEND_RETIRED
 class TestAst1956SettingsOnTheWire:
     @pytest.mark.asyncio
     async def test_ac1_provider_object_from_the_agent_row(self, client: _RecordingClient) -> None:
@@ -207,6 +214,7 @@ class TestAst1956SettingsOnTheWire:
         assert "failure_class" not in out
 
 
+@_SEND_RETIRED
 class TestAst1877Guards:
     """Bad server / sku / key raise before any client is built or request sent."""
 
@@ -245,6 +253,7 @@ class TestAst1877GetClient:
         assert ({"api_key", "auth_token"} - {cred_key}).isdisjoint(seen)
 
 
+@_SEND_RETIRED
 class TestAst1877ResultContract:
     @pytest.mark.asyncio
     async def test_success_shape_and_timesheet_kwargs(self, client: _RecordingClient) -> None:
@@ -344,6 +353,7 @@ class _FlakyClient:
         return "resp"
 
 
+@_SEND_RETIRED
 class TestAst1877ServerConcurrency:
     """_create: no cap when concurrency is None; per-server slot + 429 backoff otherwise."""
 
@@ -392,6 +402,7 @@ def _rate_limit_2009() -> RateLimitError:
 # AST-2010 — retry-only block (no max_concurrent / backoff_max_seconds) doubles with jitter and
 # no cap; OpenRouter (exhausted_stops_batch) tags an exhausted 429 provider_rate_limit; DeepSeek
 # (retry block, no opt-in) and Kimi (no block) keep today's untagged result; balance wins a tie.
+@_SEND_RETIRED
 class TestAst2010OpenRouterRateLimit:
     FC = "provider_rate_limit"
 
@@ -484,6 +495,7 @@ class _HostClient(_RecordingClient):
 # AST-1959 — AC 1–6 through send_to_llm_compat with the stubbed client.
 # Branches: probe flag on + batch id → probe / lock; remembered probe failure → no request; flag off
 # (kimi, deepseek) or no batch id → today's request; host = response provider, else server label.
+@_SEND_RETIRED
 class TestAst1959ProbeHostLock:
     BF16 = dict(quantization="bf16", provider_allow_fallbacks=True)
 
@@ -650,6 +662,7 @@ class _HollowRealClient(_RecordingClient):
 # AST-2098 — a non-429 probe failure is tagged provider_probe_failure (the caller holds state); a missing
 # usage reads as zero tokens with no ERROR traceback, on the probe row and on a hollow real call.
 # Literals only (no AST-2098 imports) so these fail by assertion on the pre-fix tree.
+@_SEND_RETIRED
 class TestAst2098ProbeFailureTagged:
     FC = "provider_probe_failure"
     BF16 = TestAst1959ProbeHostLock.BF16
@@ -718,6 +731,7 @@ class TestAst2098ProbeFailureTagged:
 
 # AST-1966: every call gets a timesheet row. Branches (_timesheet_kwargs_for): token counts raise → zero tokens,
 # logged once; direct routing + catalog price raises → zero calc_cost_*, logged once; openrouter routing skips catalog.
+@_SEND_RETIRED
 class TestAst1966UnpricedRowRecorded:
     _ZERO_CALC = dict.fromkeys(("calc_cost_cache_write", "calc_cost_cache_read", "calc_cost_no_cache_input", "calc_cost_output"), 0.0)
 
@@ -842,6 +856,7 @@ class _ToolClient(_HostClient):
         return msg
 
 
+@_SEND_RETIRED
 class TestAst2179ForcedToolTransport:
     @pytest.fixture(autouse=True)
     def _fresh_host_map(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -939,6 +954,7 @@ class TestAst2217ReceiptStubAndAttribution:
             assert row["completion_status"] == "stub"
 
     @pytest.mark.asyncio
+    @_SEND_RETIRED
     async def test_recorded_call_carries_attribution(self, client: _RecordingClient) -> None:
         recorded: list = []
         out = await _send(
@@ -958,6 +974,7 @@ class TestAst2217ReceiptStubAndAttribution:
         assert row["call_start"] and row["call_stop"]
         assert row["provider"] == "kimi"
 
+    @_SEND_RETIRED
     @pytest.mark.asyncio
     async def test_probe_row_carries_same_attribution(self, monkeypatch: pytest.MonkeyPatch) -> None:
         # OpenRouter + batch → probe records its own timesheet row with the outer attribution.
@@ -981,3 +998,18 @@ class TestAst2217ReceiptStubAndAttribution:
             assert all(r["entity_type"] == "job" for r in recorded)
         finally:
             log_batch_id.reset(token)
+
+
+class TestAst2239SendToLlmCompatRetired:
+    @pytest.mark.asyncio
+    async def test_send_to_llm_compat_raises_retired(self) -> None:
+        with pytest.raises(RuntimeError, match="send_to_llm_compat retired \(AST-2239\)"):
+            await llm_compat.send_to_llm_compat(
+                [{"type": "text", "text": "hi"}],
+                server_id="openrouter",
+                sku="moonshotai/kimi-k2.6",
+                tier=_tier(),
+                api_key="sk-candidate",
+                max_tokens=10,
+                response_format="text",
+            )

@@ -34,6 +34,7 @@ fi
 
 # Astral-agent service component tests (AST-2237+) — FastAPI + asyncpg import.
 # Same uvicorn skip as Telescope; asyncpg needed for jobqueue/worker imports.
+# AST-2239 provider wrappers also need anthropic SDK for import/collection.
 if [[ -f "$ROOT/service/astral_agent/requirements.txt" ]]; then
-  "$VENV/bin/pip" install -q 'fastapi>=0.115.0,<1' 'pydantic>=2,<3' 'httpx>=0.27' 'asyncpg>=0.30.0,<1'
+  "$VENV/bin/pip" install -q 'fastapi>=0.115.0,<1' 'pydantic>=2,<3' 'httpx>=0.27' 'asyncpg>=0.30.0,<1' 'anthropic>=0.7.0,<1.0.0'
 fi
