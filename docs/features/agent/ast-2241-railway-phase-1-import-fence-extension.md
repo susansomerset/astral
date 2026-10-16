@@ -186,3 +186,65 @@ Scope gate: three paths only; no `src/**` product edits, no autoscaler, no AST-2
 context_tokens≈58000
 
 [plan-rubric] PROCEED (Commit: 00d00a57) CI fence plus Railway toml
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-2241
+**Publish ref:** `44db14e6e33e084d6a70fb762aa8a40c2f6ad701` (`origin/sub/AST-2235/AST-2241-railway-phase-1-import-fence-extension`)
+**Corpus:** `b7ab2203048ce0beb2869a12200ab7fa696c8066`
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| astral.layers.import-direction | A | | |
+| stat.logging.info | B | | |
+| astral.config.secrets-and-env-specific-from-environ | A | | |
+
+(Worst **B** → roll-up **CLEAN**. `astral.layers.import-direction` and `astral.config.*` resolved from `canon/statutes/astral/` on corpus tip; not in `canon_clerk expand` roster. `stat.logging.info` via `canon_clerk expand`.)
+
+## Column diff vs plan stage
+
+(aligned) — Joan worst **B** on `stat.logging.info`; code matches (succinct `echo` on fence pass/fail, not `src.utils.logging`).
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+- **Child AC traceability (optional product-doc tweak)** — Linear **Acceptance criteria** only checkbox **#2** (import fence); **Stage 1** `railway.toml` is a full deliverable with component coverage (`test_astral_agent_deploy_ci.py`). **@susan:** add an explicit child AC for Phase 1 toml (present + key deploy fields), or leave as plan-only traceability? **Default:** leave Description as-is; UAT relies on plan **Stage 1 Done when** + deploy-ci tests (no `resolve-child` doc work unless Susan wants the AC row).
+
+### advisory
+
+- **sibling product + test carry on `origin/dev...` three-dot diff:** entire **AST-2237** `service/astral_agent/{app,worker,jobqueue,…}` tree, **AST-2237** issue doc, and Betty harness (`test_astral_agent_*.py`, bible, `ensure_component_venv.sh`) ride this publish ref after **ftr** sync — expected epic stacking; **AST-2241 product commits** `7a8c3b990` + `791cd963b` touch only `railway.toml`, fence script, and workflow.
+- **`test_telescope_deploy_ci.py`:** healthcheck assert updated to match live Telescope toml + widened fence ok-line — companion to AST-2241 fence wording; not AST-2241 ## Scope product paths.
+- **Territory:** `astral.layers.import-direction` `applies_when.paths` is `src/**`; this ticket changes CI + deploy toml only (no `src/**` edits). Plan Canon notes lock **A** as fence-family enforcement, not src layer graph edits.
+
+## What's solid
+
+- `service/astral_agent/railway.toml` matches plan: monorepo-root Dockerfile path, `watchPatterns`, Phase 1 `numReplicas = 1`, `/healthz` healthcheck, drain/restart, **1 GiB** (`1073741824`), operator comments for `ASTRAL_DATABASE_URL` / no committed secrets, no Phase-2 autoscaler keys.
+- `scripts/ci/check-service-src-import-fence.sh` widens `SRC_IN_SERVICE` to all `service/**/*.py`; keeps `SERVICE_IN_SRC` on `src`; generic failure/success messages; current tree has no violating import lines under `service/astral_agent/` or `src/`.
+- `.github/workflows/service-src-import-fence.yml` step renamed to **Check service ↔ src import fence**; same script invocation and triggers.
+- Plan fidelity for **2241-owned deltas** vs scoped diff: three paths only; parent AC **2** enforceable for astral-agent; estimate **2** fits (toml + CI + deploy-ci harness, not worker/provider work).
+- Component harness (`test_astral_agent_deploy_ci.py`) runs fence script green, probe fail path, and toml key locks.
+
+## Recommended actions (downstream only — not executed in this session)
+
+- Chuckles: append artifact, `docs(AST-2241): Radia review — clean`, push publish ref, post slim upshot `--as radia`, **Review Posted** → datt **PROCEED** to **User Testing** (no `resolve-child` unless Susan opts into the optional AC Description tweak).
+
+context_tokens≈22000
+
+---
+
+```
+[code-rubric] PROCEED (Commit: 44db14e6e) Railway toml plus CI fence
+```
