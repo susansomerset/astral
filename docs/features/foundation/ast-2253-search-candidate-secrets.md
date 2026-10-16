@@ -234,8 +234,8 @@ CSE client `1f1760f87`. Timesheet lookup `75be4ede9`. Roster call sites `3874479
 
 ## Frame diff
 
-- [ ] **Acceptance criteria — AC 6:** Confirm no production `search_google_cse` caller remains on process-wide `GOOGLE_CSE_*` (client + roster + spike only).
-- [ ] **Plan Stage 3 — missing creds on `resolve_company_website`:** UAT confirms `success: False`, `state: None`, `error: None` with warnings only is acceptable when search secrets are unset (Joan discuss).
+- [x] **Acceptance criteria — AC 6:** Confirm no production `search_google_cse` caller remains on process-wide `GOOGLE_CSE_*` (client + roster + spike only).
+- [x] **Plan Stage 3 — missing creds on `resolve_company_website`:** UAT confirms `success: False`, `state: None`, `error: None` with warnings only is acceptable when search secrets are unset (Joan discuss).
 
 ## Findings
 
@@ -283,3 +283,11 @@ CSE client `1f1760f87`. Timesheet lookup `75be4ede9`. Roster call sites `3874479
 ```
 
 context_tokens≈42000
+
+## Resolution
+
+2026-10-16 — Radia overall CLEAN. No fix-now items. No product edits.
+
+Discuss "Missing search creds on website resolve": Susan had not answered. Took the finding **Default** — soft skip stays (`success: False`, `state: None`, `error: None`, warnings only, no CSE call). No code change.
+
+Advisory: three-dot diff includes sibling AST-2250–2251; this child is scored on `google_cse.py`, `timesheets.py`, `roster.py`, and the AST-489 spike only. Off-list statutes stay off the citation list. Inflow re-fetch per term stays as Stage 3 wrote it. Frame-diff AC 6 and Stage 3 rows ticked. Production `search_google_cse` callers are roster (two sites) and the spike; the client does not read `GOOGLE_CSE_API_KEY` / `GOOGLE_CSE_ID`.
