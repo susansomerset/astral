@@ -208,3 +208,78 @@ context_tokens≈52000
 **Built:** `ae8d354d6c0ccdbfbab3c2836328f91aa0446c7a` on `sub/AST-2246/AST-2253-search-candidate-secrets`
 
 CSE client `1f1760f87`. Timesheet lookup `75be4ede9`. Roster call sites `387447915`. Spike flags `ae8d354d6`. No test-tree edits. Missing search secrets warn with candidate id and secret id and do not include the value.
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-2253
+**Publish ref:** `420ea9e36a333ce1534faf42b3aca9bd25275326` (`origin/sub/AST-2246/AST-2253-search-candidate-secrets`)
+**Corpus:** `65a2864973ecf09fd57732c2cfc9a4e1ff3e0b91`
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| stat.logging.warning | A | | |
+| new candidate-secret pattern (pending Archie) | A | | |
+
+## Column diff vs plan stage
+
+| slug | Joan | Radia | note |
+|------|------|-------|------|
+| new candidate-secret pattern (pending Archie) | B | A | Plan-stage B reflected pending corpus; diff delivers AC 6 (caller credentials, hydrate catalog ids on roster/timesheet paths). |
+
+(stat.logging.warning: aligned at A)
+
+## Frame diff
+
+- [ ] **Acceptance criteria — AC 6:** Confirm no production `search_google_cse` caller remains on process-wide `GOOGLE_CSE_*` (client + roster + spike only).
+- [ ] **Plan Stage 3 — missing creds on `resolve_company_website`:** UAT confirms `success: False`, `state: None`, `error: None` with warnings only is acceptable when search secrets are unset (Joan discuss).
+
+## Findings
+
+### advisory — Epic rollup in three-dot diff
+
+- **Location:** Diff vs `origin/dev` includes AST-2250–2251 product/tests/docs (`railway.py`, `database.py`, `candidate.py`, migration script, etc.)
+- **Finding:** Publish ref stacks prior siblings; expected for serial epic children on one sub tip.
+- **Recommendation:** Note once in the issue doc; score AST-2253 only on Scope files (`google_cse.py`, `timesheets.py`, `roster.py`, AST-489 spike).
+
+### advisory — Off-list statutes (do not score)
+
+- **Location:** `_search_credentials` → `get_candidate`; warnings in `roster.py` / `timesheets.py`
+- **Finding:** `astral.layers.import-direction` and `astral.standards.data-raises-caller-logs` are not on the frozen Citations list; warnings stay in core, data does not log on read.
+- **Recommendation:** Archie may widen parent Canon Scope; do not insert ids on this pass.
+
+### discuss — Missing search creds on website resolve
+
+- **Severity:** discuss
+- **Location:** `resolve_company_website` when `_search_credentials` returns `None`
+- **Finding:** No CSE call; per-id warnings already emitted; return shape leaves company without a new transition.
+- **Question (@susan):** Is this equivalent to “search did not run” for dispatch/UAT?
+- **Default:** Treat as acceptable soft skip (same as Joan plan finding); no code change unless UAT shows companies stuck in a state that needs an explicit error transition.
+
+### advisory — Inflow loop re-fetches creds per term
+
+- **Location:** `run_inflow_discovery_batch` — `_search_credentials(candidate_id)` inside `for term in terms`
+- **Finding:** Matches plan Stage 3 step 3; redundant DB reads but within ticket scope.
+- **Recommendation:** None unless a later perf pass wants caching (out of scope).
+
+## What's solid
+
+- **`search_google_cse`:** No `os` / `os.environ`; blank `api_key` or `cx` → `ValueError` before HTTP; params use caller arguments (`tests/component/external/test_google_cse.py` asserts env vars are not used when caller passes keys).
+- **`timesheets.py`:** `google_cse` provider uses catalog id `google_cse_api_key` via `_api_key_for_server`; missing key uses existing warning shape and skips (no empty-key stub).
+- **`roster.py`:** `_search_credentials` warns per missing secret id without values; both CSE sites pass `api_key` and `cx` into `search_google_cse`.
+- **Spike:** Required `--api-key` / `--cx`; unpacks `result["hits"]`; docstring examples updated.
+- **Tests:** `TestAst2253SearchCredentials`, revised timesheet/CSE tests, roster autouse fixture to avoid breaking legacy mocks.
+
+## Recommended actions (downstream only — not in Radia lane)
+
+- Chuckles: append this artifact to `docs/features/foundation/ast-2253-search-candidate-secrets.md`, commit `docs(AST-2253): Radia review — clean`, post slim upshot `--as radia`, move to **Review Posted**.
+- UAT: tick frame-diff rows; if Susan is silent on the resolve-hop **Default**, proceed without blocking.
+
+```
+[code-rubric] PROCEED (Commit: 420ea9e) Candidate CSE from hydrate
+```
+
+context_tokens≈42000
