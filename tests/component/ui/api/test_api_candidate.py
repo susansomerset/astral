@@ -3434,3 +3434,55 @@ class TestAst2067CandidateVersionRoutes:
         assert res.get_json()["exception_type"] == "RuntimeError"
         errors = [r for r in caplog.records if r.levelname == "ERROR" and "failed" in r.getMessage()]
         assert len(errors) == 1 and "Returning 500" in errors[0].getMessage()
+
+
+class TestAst2261GradeRollupApi:
+    def test_get_returns_rollup_and_leaves_candidate_document(
+        self, candidate_client: FlaskClient, auth_headers, seeded_db, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        caplog.set_level("INFO")
+        got = candidate_client.get(
+            "/api/candidates/cand-1/rubric/do_rubric/grade_rollup", headers=auth_headers
+        )
+        assert got.status_code == 200
+        assert got.get_json() == {"artifact_key": "do_rubric", "vectors": []}
+        assert not any("grade_rollup" in r.getMessage() for r in caplog.records if r.levelname == "INFO")
+        doc = candidate_client.get("/api/candidates/cand-1", headers=auth_headers)
+        assert doc.status_code == 200
+        assert "grade_rollup" not in doc.get_json()
+
+    def test_missing_candidate_404(self, candidate_client: FlaskClient, auth_headers, seeded_db) -> None:
+        res = candidate_client.get(
+            "/api/candidates/missing/rubric/do_rubric/grade_rollup", headers=auth_headers
+        )
+        assert res.status_code == 404
+        assert res.get_json()["error"] == "Candidate not found: missing"
+
+    def test_bad_key_400(self, candidate_client: FlaskClient, auth_headers, seeded_db) -> None:
+        res = candidate_client.get(
+            "/api/candidates/cand-1/rubric/base_resume/grade_rollup", headers=auth_headers
+        )
+        assert res.status_code == 400
+        assert "not a rubric criteria key" in res.get_json()["error"]
+
+    def test_unexpected_error_logged_once_500(
+        self,
+        candidate_client: FlaskClient,
+        auth_headers,
+        seeded_db,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        def _boom(*_a, **_k):
+            raise RuntimeError("db down")
+
+        monkeypatch.setattr(candidate_mod, "rollup_current_vector_grades", _boom)
+        caplog.set_level("ERROR")
+        res = candidate_client.get(
+            "/api/candidates/cand-1/rubric/do_rubric/grade_rollup", headers=auth_headers
+        )
+        assert res.status_code == 500
+        assert res.get_json()["exception_type"] == "RuntimeError"
+        errors = [r for r in caplog.records if r.levelname == "ERROR" and "failed" in r.getMessage()]
+        assert len(errors) == 1
+        assert "the criteria editor has no grade rollup" in errors[0].getMessage()
