@@ -218,3 +218,10 @@ AC 3 → Stage 3 (`can_skip` / `can_apply` gate header callbacks only); AC 4 →
 **Definition fidelity (R6):** Stages map to Scope files; no backend/App.css/header component edits. Estimate confirm present. Plan Discuss rounds: 0.
 
 context_tokens≈52000
+
+## Review
+
+- **Publish ref:** `origin/sub/AST-2226/AST-2234-modal-panes-and-wiring`
+- **Tip:** `95bf9db39d1b28c844afea3a4a975311b7e039d9`
+- **Stages landed:** 1 helpers · 2 Discussion · 3 modal panes · 4 mobile JobArtifactEditModal
+- **Note:** Header props cast to AST-2233 contract (`TriageHeader`); #2 not yet on ftr at build time — runtime chrome lands when AST-2233 merges.
