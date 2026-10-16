@@ -1,4 +1,6 @@
-"""OpenRouter host discovery (AST-1959): one probe per batch key, then the batch is pinned to that host.
+"""Chat HTTP lives in service/astral_agent/providers/. This module keeps probe and receipt helpers for platform callers.
+
+OpenRouter host discovery (AST-1959): one probe per batch key, then the batch is pinned to that host.
 
 OpenRouter routes every call on its own and prompt caches live on one host, so a batch whose warm call
 and gather calls land on different hosts pays full input on every call. Servers opt in via the
