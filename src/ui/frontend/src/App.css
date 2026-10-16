@@ -1091,6 +1091,32 @@ body {
   color: var(--accent-contrast);
 }
 
+/* AST-2233: website URL line under job-link (not the company-name link). */
+.recommended-report-website-line {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.recommended-report-website-link {
+  color: inherit;
+  text-decoration: underline;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.recommended-report-website-link:hover {
+  color: var(--accent-contrast);
+}
+
+.recommended-report-company-line {
+  font-size: 14px;
+}
+
+.recommended-report-company-date {
+  font-weight: 400;
+  color: var(--text-secondary);
+}
+
 .recommended-report-external-link {
   margin-left: 10px;
   font-size: 13px;
@@ -1116,6 +1142,61 @@ body {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+/* AST-2233: lifecycle date strip under triage actions. */
+.recommended-report-date-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.recommended-report-date-strip-item {
+  white-space: nowrap;
+}
+
+/* AST-2233: phone-first header — stack title + keep Skip/Applied reachable. */
+@media (max-width: 1023px) {
+  .recommended-report-header-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .recommended-report-header-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+}
+
+/* AST-2233: Analysis phase thermometer + job total/gradable (#3 mounts these). */
+.recommended-report-thermometer {
+  width: 100%;
+  margin: 6px 0 4px;
+}
+
+.recommended-report-thermometer-track {
+  height: 8px;
+  border-radius: 4px;
+  background: var(--border-subtle, var(--border));
+  overflow: hidden;
+}
+
+.recommended-report-thermometer-fill {
+  height: 100%;
+  background: var(--success);
+  border-radius: 4px;
+}
+
+.recommended-report-total-gradable {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  margin: 8px 0;
+  font-weight: 600;
 }
 
 .materials-preview-iframe {
@@ -1155,6 +1236,13 @@ body {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+/* AST-2233: Discussion / section headers — long agent_name's task @ stamp lines. */
+.recommended-report-section-list .collapsible-panel-label-wrap {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.35;
 }
 
 .recommended-report-artifacts-actions {
