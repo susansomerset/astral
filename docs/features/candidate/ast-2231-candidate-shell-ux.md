@@ -67,15 +67,16 @@ All other ids: id-only.
 
 3. **Default-collapse + recent expand (parent recent chrome; API half is #3).** Keep `NAV_STORAGE_KEY = "nav:expanded"` and `toggleGroup` / `saveExpanded` as today.
 
-   - After a successful `nav_config` fetch that yields `data: NavGroup[]`, if `loadExpanded()` is **empty** (fresh session / never toggled), set expanded to:
+   - **Seed gate (null key only):** After a successful `nav_config` fetch that yields `data: NavGroup[]`, seed expand **only when** `localStorage.getItem(NAV_STORAGE_KEY) === null` (key never written — true first visit / cleared storage). Then:
 
      ```ts
-     new Set(data.filter(g => g.recent === true).map(g => g.label))
+     setExpanded(new Set(data.filter(g => g.recent === true).map(g => g.label)))
      ```
 
      Do **not** call `saveExpanded` for this seed — user toggle remains the only writer to localStorage.
-   - If `loadExpanded()` is **non-empty**, keep that Set; do not overwrite with API `recent` on poll/refresh.
-   - ⚠️ **Decision:** Seed only when storage is empty so a user’s collapses/expands survive the 30s silent poll. Fresh browser / cleared storage → API `recent` drives the first paint.
+   - **Persisted empty is intentional:** If the key exists and parses to `[]` (user collapsed every group), `loadExpanded()` returns an empty `Set` — **do not** re-seed from `recent`. Treat that as all-collapsed.
+   - If the key exists with any labels, keep that Set; never overwrite with API `recent` on later fetches.
+   - ⚠️ **Decision:** Distinguish “key absent” from “key present with `[]`”. Empty-Set-from-`loadExpanded()` alone is **not** a seed signal (Joan round=1).
 
 4. **Incomplete Profile alert (AC 10 — UI half).** When rendering Candidate group items, if `item.path === "/candidate/profile"` and `item.attention === true`, append a yellow attention affordance next to the label (both enabled `NavLink` and disabled `span` paths). Use a dedicated class (e.g. `nav-link-attention`) — not an emoji sticker. If `attention` is absent/false, render nothing extra.
 
@@ -83,7 +84,7 @@ All other ids: id-only.
 
 6. **Stage 0 (AC 8).** Do not special-case state names in the shell. When the API returns no Candidate/Criteria/Company/Job Opportunities groups (stage 0 omit from #3), the sidebar simply has no those groups — already non-interactive. Do not invent client-side stage math. Admin-only groups may still appear for admins when the API includes them.
 
-7. Keep auth gate (`authLoading`), `selectedId` refetch, silent 30s poll, hamburger/drawer, search, logo theme, and `AdminDeployFooter` behavior unchanged aside from the picker visibility rule.
+7. Keep auth gate (`authLoading`), `selectedId` refetch, silent 30s poll, hamburger/drawer, search, logo theme, and `AdminDeployFooter` behavior unchanged aside from the picker visibility rule. The silent poll / refetch path updates `navGroups` (and loading/error) only — it must **not** call `setExpanded` except when the step-3 null-key seed rule fires (once per browser until the user toggles and writes storage).
 
 8. Do **not** add API routes, config maps, or progress logging.
 
@@ -112,6 +113,12 @@ All other ids: id-only.
 ## Estimate
 
 Confirm Chuckles estimate: 2 — agree
+
+## Revisions
+
+### Revision 1 — 2026-10-16
+Driven by: Joan `[plan-discuss] round=1 concern` / fix-now — recent-expand seed cannot tell fresh session from persisted `[]`.
+Changes: Stage 1 step 3 seeds only when `localStorage.getItem(NAV_STORAGE_KEY) === null`; persisted `[]` stays all-collapsed; step 7 states silent poll must not reset `expanded` except that one-shot seed.
 
 ## Execution contract
 
