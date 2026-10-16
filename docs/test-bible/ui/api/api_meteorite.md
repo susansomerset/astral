@@ -67,7 +67,7 @@
 
 **Parent:** [AST-1741 — Add "Meteorites" to the Jobs navigation](https://linear.app/astralcareermatch/issue/AST-1741/add-meteorites-to-the-jobs-navigation). **Publish:** `origin/sub/AST-1741/AST-1748-candidate-meteorite-list-detail-api`.
 
-Authenticated `GET /api/candidates/<candidate_id>/meteorites` → `{columns, meteorites}` (list projection, no `content`); `GET /api/meteorites/<id>` → `{sections, meteorite}` or 404. `link` / `astral_job_id` returned as stored. No `logger.info` on either GET. Data helper: **`docs/test-bible/data/database/meteorites.md`** § AST-1748.
+Authenticated `GET /api/candidates/<candidate_id>/meteorites` → `{columns, meteorites}` (list projection, no `content`); `GET /api/meteorites/<id>` → `{sections, meteorite}` or 404 (**AST-2223** adds top-level edit envelope keys — see § AST-2223). `link` / `astral_job_id` returned as stored. No `logger.info` on either GET. Data helper: **`docs/test-bible/data/database/meteorites.md`** § AST-1748.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
@@ -150,3 +150,21 @@ Expect all green.
 **Pass criterion:** items 1–3 hold. Narrowed runs, not the zero-arg harness. Full `test_config.py` shows only the baseline reds above.
 
 **Bible shasum (after publish):** `git show origin/sub/AST-1971/AST-1980-created-col:docs/test-bible/ui/api/api_meteorite.md | shasum`
+
+### AST-2223 · AST-2216
+
+**Parent:** [AST-2216 — Make meteorite text editable (not versioned)](https://linear.app/astralcareermatch/issue/AST-2216). **Publish:** `origin/sub/AST-2216/AST-2223-candidate-meteorite-edit`.
+
+Authenticated `PUT /api/meteorites/<id>` maps `save_candidate_meteorite_edit` outcomes to 200/400/404/409; one completing info line on 200 only (`^<candidate_id> \| api /api/meteorites/<id> completed: PUT 200$`). Detail GET gains top-level edit envelope (`editable`, `editable_fields`, `state_options`, `default_save_state`) from config/core — LANDED → `editable: false`. Core: **`docs/test-bible/core/meteorite.md`** § AST-2223. Config: **`docs/test-bible/utils/config.md`** § AST-2223.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Detail envelope; PUT persist + refuse map; completing info; auth | `src/ui/api/api_meteorite.py` | **`TestAst2223CandidateMeteoriteEditApi`** |
+
+**Broken / obsolete:** AST-1748 detail prose said `{sections, meteorite}` only — envelope keys are additive; existing **`TestAst1748MeteoriteListDetailApi`** detail cases stay green (they do not forbid extra keys). Keeper note updated below.
+
+**Integration:** none — no scenario hits meteorite PUT; do not invent.
+
+## QA test manifest
+
+See **`docs/test-bible/core/meteorite.md`** § AST-2223 (shared numbered list).
