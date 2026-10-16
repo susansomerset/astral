@@ -144,3 +144,45 @@ The plan is binding. Execute steps in order within a stage, and stages in order.
 ## Estimate
 
 Confirm Chuckles estimate: 5 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-2261
+**Overall:** APPROVED
+**Corpus:** b7ab2203048ce0beb2869a12200ab7fa696c8066
+**Publish ref:** `sub/AST-2257/AST-2261-version-scoped-grade-rollup` @ `de0b2b919fab87342afbf0d6848a06d8dbd7d996`
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.artifact.read-current | A | | |
+
+## Traceability
+
+`5 → Stage 3 (_CRITERIA_NAV_PATH_ARTIFACT` + `_get_criteria_nav_counts` merged into `_resolve_nav`, count `0` included); `6 → Stage 3 (map omits `/artifacts/company_search_terms`); parent AC `1–4` → N/A — thermometer / header UI sibling AST-2257 #2; child rollup + `grade_rollup` GET → Stages `1–2`
+
+## Findings
+
+### discuss — `list_vector_feedback` owner expansion
+
+- **Severity:** discuss
+- **Location:** Stage 1 step 5
+- **Finding:** `database.list_vector_feedback(..., owner_task_key=owner)` expands via `task_keys_for_rubric_owner` (owner + craft). The plan correctly re-filters to the step-4 consumer set and drops craft / unpinned rows; behavior matches AC intent but the double filter is easy to mis-implement.
+- **Recommendation:** Keep the explicit consumer-set filter in step 5 when building; no plan rewrite — worth a sharp comment in code at the call site during Stage 1.
+
+### acceptable — Label-matching helper duplication
+
+- **Severity:** acceptable
+- **Location:** Stage 1 step 7
+- **Finding:** Inline `_strip_code` duplicates `consult.py` to avoid `consult` ↔ `candidate` import cycle.
+- **Recommendation:** As documented in the plan; no change.
+
+## R6 checklist (summary)
+
+- Definition fidelity: scope-limited to three files; explicit scope gate matches ticket **## Scope**; boundaries exclude thermometer sibling.
+- DRY / scope: no sibling scope creep; `task_keys_for_rubric_owner` pit called out with a concrete alternative.
+- Self-assessment: **Estimate** confirm `5 — agree` matches stage depth (detailed rollup + API + nav).
+
+context_tokens≈24000
