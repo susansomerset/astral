@@ -285,3 +285,18 @@ cd src/ui/frontend && npm run test:component -- \
 **Pass criterion:** Python narrowed green; Vitest JobsHomeRedirect green. Not the zero-arg harness.
 
 **Bible shasum (after publish):** `git show origin/sub/AST-2225/AST-2230-stage-gated-nav:docs/test-bible/ui/api/api_system.md | shasum`; same for `utils/config.md`, `core/candidate.md`, `frontend/components.md`, `integration/README.md`.
+
+### AST-2261 · AST-2257 (criteria nav counts)
+
+**Publish:** `origin/sub/AST-2257/AST-2261-version-scoped-grade-rollup`. Primary: [`../../core/candidate.md`](../../core/candidate.md) § AST-2261.
+
+`_get_criteria_nav_counts` sets `count` on the seven criteria paths to `len(rubric_criteria_for_task)` for that path's owner, including `0`. `/artifacts/company_search_terms` is not in the map, so Company Discovery Terms has no `count` key. Empty candidate id returns `{}`. Exceptions are swallowed. Job and company badges are unchanged.
+
+Company Gazing Criteria lives under the Company group, not Criteria. Do the Job Criteria is the Criteria item whose count is the current-vector length.
+
+| Area | Component tests |
+| --- | --- |
+| Empty id and swallowed error | **`TestAst2261CriteriaNavCounts::test_empty_candidate_and_swallowed_error`** |
+| Seven paths (Do the Job = 2, the other six = 0); terms uncounted; Ready badge still 2 | **`…::test_seven_paths_count_current_vectors_terms_stay_uncounted`** |
+
+**Broken / obsolete:** none. Manifest command: [`../../core/candidate.md`](../../core/candidate.md) § QA test manifest — AST-2261.

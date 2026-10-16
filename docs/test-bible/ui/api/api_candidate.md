@@ -558,3 +558,18 @@ cd src/ui/frontend && npm run test:component -- \
 **Bible shasum (after publish):** `git show origin/sub/AST-2246/AST-2252-admin-secret-expiry:docs/test-bible/ui/api/api_candidate.md | shasum`
 
 `git show origin/sub/AST-2246/AST-2252-admin-secret-expiry:docs/test-bible/frontend/pages.md | shasum`
+
+### AST-2261 · AST-2257 (grade_rollup GET)
+
+**Publish:** `origin/sub/AST-2257/AST-2261-version-scoped-grade-rollup`. Primary: [`../../core/candidate.md`](../../core/candidate.md) § AST-2261.
+
+`GET /api/candidates/<id>/rubric/<artifact_key>/grade_rollup` returns `rollup_current_vector_grades`. Missing candidate → 404. `ValueError` → 400, no log. Other exceptions → one ERROR line ending `the criteria editor has no grade rollup`, then 500. Success does not log. `GET /api/candidates/<id>` has no `grade_rollup` key.
+
+| Area | Component tests |
+| --- | --- |
+| 200 empty do rubric; no info line; candidate document unchanged | **`TestAst2261GradeRollupApi::test_get_returns_rollup_and_leaves_candidate_document`** |
+| 404 / 400 / 500 | **`…::test_missing_candidate_404`**, **`…::test_bad_key_400`**, **`…::test_unexpected_error_logged_once_500`** |
+
+**Fixture:** `tests/component/ui/conftest.py` `_DB_SCHEMA_FLAGS` includes `_vector_feedback_schema_ensured` so a fresh SQLite file creates `vector_feedback` (same leak class as AST-2067's rubric flag).
+
+**Broken / obsolete:** none. Manifest command: [`../../core/candidate.md`](../../core/candidate.md) § QA test manifest — AST-2261.
