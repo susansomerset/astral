@@ -187,8 +187,52 @@ Confirm Chuckles estimate: 5 — agree
 
 context_tokens≈24000
 
-## Review
+## Radia review
 
-- **Publish ref:** `origin/sub/AST-2257/AST-2261-version-scoped-grade-rollup`
-- **Tip:** `a7483a11d93c25c908ed69b8ffeee0dbdf4fc86e`
-- **Stages landed:** 1 rollup · 2 grade_rollup GET · 3 criteria nav counts
+[code-rubric] PROCEED
+**Ticket:** AST-2261
+**Publish ref:** `0b7806459fa58b36b04c97c0fda80efbc5f1e3c0`
+**Corpus:** b7ab2203048ce0beb2869a12200ab7fa696c8066
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.artifact.read-current | A | | |
+
+## Column diff vs plan stage
+
+(aligned)
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### advisory — feedback query shape vs plan step 5
+
+- **Severity:** advisory
+- **Location:** `src/core/candidate.py` — `rollup_current_vector_grades`
+- **Finding:** Tip `0b7806459` queries `list_vector_feedback` per consumer `task_key` instead of a single `owner_task_key=owner` call. That closes the twin-consumer gap Joan flagged at plan (`owner_task_key` expands owner+craft only). Behavior matches AC; no rewrite needed.
+
+### advisory — prior issue-doc Review stub
+
+- **Severity:** advisory
+- **Location:** `docs/features/interface/ast-2261-version-scoped-grade-rollup.md` § Review
+- **Finding:** An earlier partial Radia stub cites tip `a7483a11`. Chuckles should replace that section with this artifact when writing back.
+
+## What's solid
+
+- **Current vectors:** `rubric_criteria_for_task` / `list_rubric_vectors(..., current_only=True)` drives vector list and nav counts; version pins come from `vector_feedback.rubric_vector_uuid`, not `candidate_data` / `job_data` / `company_data` blobs.
+- **Historical letters:** Tallies decode per-run `RESPONSE` JSON (`jobs` / `companies`), including twin consumers (`meteorite_grade_do`, etc.) and excluding craft, blank pins, and retired uuids — covered by `TestAst2261GradeRollup`.
+- **API surface:** `GET .../grade_rollup` matches plan (404/400/500 logging, no candidate-document change); `_CRITERIA_NAV_PATH_ARTIFACT` + merge into `_resolve_nav` implements AC 5–6 (seven paths, zero included, Company Discovery Terms uncounted).
+- **Scope:** Product diff limited to the three scoped `src/` files; no thermometer / `ArtifactEditor` / `App.css` / database churn.
+
+## Recommended actions (downstream only — not for Radia)
+
+- Chuckles: append this verdict to the issue doc, push `docs(AST-2261): Radia review — clean`, post slim upshot, move to **Review Posted**.
+- No `resolve-child` product work required from canon or plan fidelity on this tip.
+
+context_tokens≈52000
