@@ -122,3 +122,63 @@ Required candidate metadata columns stay as they are (`stat.entity.required-meta
 ## Estimate
 
 Confirm Chuckles estimate: 5 — agree
+
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-2251
+**Overall:** APPROVED
+**Corpus:** 65a2864973ecf09fd57732c2cfc9a4e1ff3e0b91
+**Publish ref:** `sub/AST-2246/AST-2251-secret-status-hydrate` @ `54e0161e0600aa0e0414dd8115a30cf683c589c5`
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| stat.entity.required-metadata | A | | |
+| stat.logging.warning | A | | |
+| new candidate-secret pattern (pending Archie) | B | | |
+
+## Traceability
+
+`1 → Stage 3 (--execute clears ciphertext; legacy rows preserved until migrate); 2 → Stage 2 (EXPIRED omits server from candidate_api_keys; dispatch gate unchanged); 3 → Stage 2 (local via unset ASTRAL_RAILWAY_TOKEN, shared stub, no railway import); 4 → Stage 1–2 (update_candidate_api_keys never encrypt_value)`
+
+## Findings
+
+### discuss — Canon Scope gap (layers / config)
+
+- **Severity:** discuss
+- **Location:** Stage 2 step 4 — `_parse_candidate_row` lazy-imports `hydrate_candidate_secrets` from `src.core.candidate`
+- **Finding:** `astral.layers.import-direction` (data → utils only) and `astral.config.config-source-of-truth` / `astral.config.secrets-and-env-specific-from-environ` govern this footprint but are not on the frozen Citations list. The lazy data→core import mirrors an existing `database.py` pattern (`ensure_company_search_terms_table_synced`) but is still a layer stretch; catalog/env reads in hydrate match the parent secret pattern.
+- **Recommendation:** Archie may amend Canon Scope for comparability with Radia; do not widen this pass. If build hits import-cycle pain, prefer hydrating from `candidate.get_candidate` / list wrappers without scoring off-list statutes here.
+
+### discuss — Pattern not in corpus
+
+- **Severity:** discuss
+- **Location:** Citations / Stages 1–3
+- **Finding:** Candidate-secret Railway + row status + environ hydrate is still “pending Archie” with no `canon/patterns/**` file.
+- **Recommendation:** Same as sibling AST-2250 — plan text tracks the parent architectural proposal (status not stored as EXPIRED, no secret in row, production vs local naming, migration without deploy trigger).
+
+### discuss — Migration deploy vs running process
+
+- **Severity:** discuss
+- **Location:** Stage 3 decisions (no `trigger_service_deploy`)
+- **Finding:** Upserts run with `skipDeploys`; values appear in the process only after a later deploy. Epic admin flow always deploys after write; one-shot migration does not.
+- **Recommendation:** Acceptable for AC 1 (column cleared) if operators expect a deploy after migration — call out in runbook when executing `--execute`; not a plan rewrite.
+
+### acceptable — Hard dependency on AST-2250
+
+- **Severity:** acceptable
+- **Location:** Stage 2 imports from `src.utils.config` / catalog helpers
+- **Finding:** Build assumes AST-2250 catalog symbols exist; ticket boundary and blockedBy order say “after Railway variable client.”
+- **Recommendation:** Merge or roll up #1 before implementing #2.
+
+### acceptable — Admin API unchanged until AST-2252
+
+- **Severity:** acceptable
+- **Location:** Scope check
+- **Finding:** `expires_at` required on non-empty `key` in core wrapper; `api_candidate.py` unchanged — set-with-key without expiry fails until Admin sibling wires expiry.
+- **Recommendation:** Matches dispatch partition; AC 2–3 testable via core/database paths and stubs.
+
+context_tokens≈42000
