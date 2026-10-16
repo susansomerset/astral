@@ -284,3 +284,62 @@ context_tokens≈56000
 **Canon (self-check):** External owns queue I/O (`astral.layers.core-vs-external-bright-line`). Secrets stay in environ (`astral.config.secrets-and-env-specific-from-environ`); wake base URL `.get` is the documented optional exception. Soft fails use `warning`/`debug`; terminal `done` is one `info` line without the request body. `patt.agent.provider-io-via-queue` still pending — id-only.
 
 **Tests:** Betty at Code Complete (`qa-child`). No test-tree edits in this build.
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-2238
+**Publish ref:** `c4a8b3f8119f907efdd37a7b6554f867b8b76bb5` (`origin/sub/AST-2235/AST-2238-platform-astral-agent-client-enqueue-await`)
+**Corpus:** `b7ab2203048ce0beb2869a12200ab7fa696c8066`
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| astral.layers.core-vs-external-bright-line | A | | |
+| astral.config.secrets-and-env-specific-from-environ | A | | |
+| stat.logging.error | A | | |
+| stat.logging.warning | A | | |
+| stat.logging.info | A | | |
+| stat.logging.debug | A | | |
+| patt.agent.provider-io-via-queue | X | | pending Archie / skeleton queue client only; id-only per plan |
+
+(Worst grade **A** on roll-up ids. `astral.layers.core-vs-external-bright-line` and `astral.config.*` from `canon/statutes/astral/` at corpus tip; logging ids via `canon_clerk expand`.)
+
+## Column diff vs plan stage
+
+(aligned) — Joan post-revision column is all **A** / **X**; code review matches.
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **sibling product + test carry on `origin/dev...` three-dot diff:** full **AST-2237** `service/astral_agent/**`, **AST-2237** issue doc, service component harness, and `docs/features/agent/ast-2239-*.md` ride this publish ref after **ftr** sync — expected epic stacking; **AST-2238 product commits** `04ae0ce79` + `39e000a14` touch only `src/utils/config.py` and `src/external/astral_agent.py`.
+- **Dependency:** spawn `Relations: blockedBy AST-2237 (User Testing)`; branch carries merged **2237** worker tree so client contract tests can run against real table names — not **2238** scope creep in product commits.
+- **DSN strictness vs Telescope client:** `_dsn()` uses `os.environ[KEY]` + empty-strip fail; Telescope still uses `.get` — intentional per plan Decision; aligns with `astral.config.secrets-and-env-specific-from-environ` on this module.
+
+## What's solid
+
+- **`ASTRAL_AGENT_CONFIG`** matches plan: `database_url_env` only (no DSN literal), deadline **900**, `worker_stale_seconds` **90**, wake throttle/timeout, optional `base_url_envs`; `TELESCOPE_CONFIG` untouched.
+- **`src/external/astral_agent.py`:** contract constants match **AST-2237** (`agent_job`, channels, terminal statuses); insert + `pg_notify`, LISTEN/poll await, throttled multi-replica `/wake`, `AstralAgentError` vocabulary, public `submit` / `close_loop_resources` / `run_one_shot`; `require_controlled_external_io("astral_agent.submit")`; no `service.*` / `src.core` imports.
+- **Logging:** `get_logger(__name__)` throughout; succinct `info` on terminal `done` (provider/model/task_key only, not full request); `warning` for listener/poll/cancel/deadline/wake-skipped; `debug` at enqueue/wake joints (Telescope-shaped, including wake `resp.text[:200]` mirror).
+- **Plan fidelity:** two-file scope gate; no `agent.py` cutover, no provider wrappers, no `database.py`; estimate **3** fits; Linear AC **1–6** traceable to stages (Joan round-1 gap closed in plan @ `00930a45`).
+
+## Recommended actions (downstream only — not executed in this session)
+
+- Chuckles: append artifact, `docs(AST-2238): Radia review — clean`, push publish ref, post slim upshot `--as radia`, **Review Posted** → datt **PROCEED** toward **User Testing**.
+
+context_tokens≈24000
