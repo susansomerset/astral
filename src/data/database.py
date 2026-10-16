@@ -4215,6 +4215,55 @@ def update_candidate_api_keys(candidate_id: str, entries: List[Dict[str, Any]]) 
     _run_with_retry(_with_conn)
 
 
+def candidate_secret_rows_from_column(raw: Any) -> List[Dict[str, Any]]:
+    """Public read of api_keys JSON for the migration script. Does not decrypt."""
+    return _candidate_secret_rows(raw)
+
+
+def list_candidate_api_key_columns() -> List[Dict[str, Any]]:
+    """Raw api_keys text for every candidate. Does not decrypt or hydrate."""
+    def _with_conn() -> List[Dict[str, Any]]:
+        conn = _get_connection()
+        try:
+            _ensure_candidate_schema(conn)
+            found = conn.execute(
+                "SELECT astral_candidate_id, api_keys FROM candidate"
+            ).fetchall()
+            return [
+                {"astral_candidate_id": r["astral_candidate_id"], "api_keys": r["api_keys"]}
+                for r in found
+            ]
+        finally:
+            conn.close()
+
+    return _run_with_retry(_with_conn)
+
+
+def replace_candidate_secret_rows(candidate_id: str, rows: List[Dict[str, Any]]) -> None:
+    """Overwrite api_keys with the given rows. No encrypt. Migration execute path."""
+    cid = str(candidate_id or "").strip()
+    if not cid:
+        raise ValueError("candidate_id is required")
+    payload = json.dumps(rows)
+    now = _utc_now()
+
+    def _with_conn() -> None:
+        conn = _get_connection()
+        try:
+            _ensure_candidate_schema(conn)
+            cur = conn.execute(
+                "UPDATE candidate SET api_keys = ?, updated_at = ? WHERE astral_candidate_id = ?",
+                (payload, now, cid),
+            )
+            if cur.rowcount != 1:
+                raise LookupError(f"Candidate not found: {cid}")
+            conn.commit()
+        finally:
+            conn.close()
+
+    _run_with_retry(_with_conn)
+
+
 def get_candidate(candidate_id: str) -> Optional[Dict[str, Any]]:
     """Select single candidate by astral_candidate_id. Returns parsed dict (with candidate_api_keys server → key map) or None."""
     if not candidate_id or not candidate_id.strip():
