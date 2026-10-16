@@ -2519,3 +2519,32 @@ cd src/ui/frontend && npm run test:component -- \
 **Pass criterion:** Vitest green on the NavigationShell file (AST-2231 + existing shell cases). Not zero-arg harness / branch-lock gate.
 
 **Bible shasum (after publish):** `git show origin/sub/AST-2225/AST-2231-candidate-shell-ux:docs/test-bible/frontend/components.md | shasum`
+
+### AST-2268 · AST-2226 (score labels, header identity, show-rubric content)
+
+**Parent:** AST-2226. **Publish:** `origin/sub/AST-2226/AST-2268-recommended-modal-header-score-labels-and-show-rubric-miss-uat`.
+
+Pre-fix tree still renders the AST-1874/AST-1348 phase title template, job title as `.recommended-report-title`, and `Date discovered` / `Date recommended` / `Date applied`. Show rubric prefers a live row with no `content` over job-carried `rubricItems` content (`No rubric found for this vector.`).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Phase title `JD Analysis - N (P% gradable)`; plain label when score absent; `Total Score:` | `JobAnalysisReportModal.tsx` | **`test_JobAnalysisReportModal.test.tsx`** — **`[bug-repro] AST-2268 JD header is score and gradable percent`**; revised AST-1348 title + AST-1874 absent-score case |
+| Identity is company; job title on `.recommended-report-job-title-secondary`; date strip `Discovered:` / `Recommended:` / `Applied:` | `RecommendedJobReportHeader.tsx` | **`test_RecommendedJobReportHeader.test.tsx`** — revised AST-2233 date strip, AST-1695 / AST-1704 identity, AST-1983 cut on the secondary line |
+| Modal identity + http `job_link` when `listing_href` is not http(s) | `JobAnalysisReportModal.tsx` | revised AST-1695 null `listing_href` + AST-1704 crumb title |
+| Job-carried rubric content beats a blank live row | `AgentAnalysisHeader.tsx` | **`test_AgentAnalysisHeader.test.tsx`** — **`[bug-repro] AST-2268: job-carried rubric content beats a blank live row`** |
+
+**Red on the pre-fix tree (right reason):** old template / `Analyst` identity / `Date discovered` / modal body `No rubric found for this vector.` `test-fix` confirms the flip after make-fix.
+
+**Integration:** none.
+
+## QA test manifest — AST-2268
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx \
+  ../../../tests/component/frontend/components/test_RecommendedJobReportHeader.test.tsx \
+  ../../../tests/component/frontend/components/test_AgentAnalysisHeader.test.tsx \
+  --testNamePattern="AST-2268|AST-1348 Analysis score|date strip|null listing_href|AST-1704|AST-1983 title cut|AST-1695 listing title"
+```
+
+**[bug-repro] nodes:** `AST-2268 JD header is score and gradable percent`; `AST-2268: job-carried rubric content beats a blank live row`.

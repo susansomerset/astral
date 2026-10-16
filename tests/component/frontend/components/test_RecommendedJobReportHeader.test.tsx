@@ -111,9 +111,9 @@ describe("RecommendedJobReportHeader — AST-2233 triage chrome", () => {
       />,
     )
     const strip = document.querySelector(".recommended-report-date-strip") as HTMLElement
-    expect(within(strip).getByText(/Date discovered/)).toBeInTheDocument()
-    expect(within(strip).getByText(/Date recommended/)).toBeInTheDocument()
-    expect(within(strip).queryByText(/Date applied/)).not.toBeInTheDocument()
+    expect(within(strip).getByText(/Discovered:/)).toBeInTheDocument()
+    expect(within(strip).getByText(/Recommended:/)).toBeInTheDocument()
+    expect(within(strip).queryByText(/Applied:/)).not.toBeInTheDocument()
     rerender(
       <RecommendedJobReportHeader
         {...base}
@@ -124,7 +124,7 @@ describe("RecommendedJobReportHeader — AST-2233 triage chrome", () => {
     )
     expect(
       within(document.querySelector(".recommended-report-date-strip") as HTMLElement).getByText(
-        /Date applied/,
+        /Applied:/,
       ),
     ).toBeInTheDocument()
   })
@@ -142,7 +142,8 @@ describe("RecommendedJobReportHeader — AST-1695 listing title", () => {
     )
     rerender(<RecommendedJobReportHeader {...base} jobLink={null} />)
     expect(screen.queryByRole("link", { name: "Analyst" })).not.toBeInTheDocument()
-    expect(document.querySelector(".recommended-report-title")).toHaveTextContent("Analyst")
+    expect(document.querySelector(".recommended-report-title")).toHaveTextContent("Globex")
+    expect(screen.getByText("Analyst")).toHaveClass("recommended-report-job-title-secondary")
   })
 })
 
@@ -161,7 +162,8 @@ describe("RecommendedJobReportHeader — AST-1704 http(s)-only href", () => {
     const crumb = "From:a@x.com 9/17 14:05 Eastern To:b@y.com"
     renderWithProviders(<RecommendedJobReportHeader {...base} jobLink={crumb} />)
     expect(screen.queryByRole("link", { name: "Analyst" })).not.toBeInTheDocument()
-    expect(screen.getByText("Analyst")).toHaveClass("recommended-report-title")
+    expect(document.querySelector(".recommended-report-title")).toHaveTextContent("Globex")
+    expect(screen.getByText("Analyst")).toHaveClass("recommended-report-job-title-secondary")
     expect(screen.getByText(crumb)).toHaveClass("recommended-report-job-link-text")
   })
 })
@@ -201,16 +203,18 @@ describe("RecommendedJobReportHeader — AST-1873 title row / job-link line (rev
 
 // AST-1983 AC 5: .recommended-report-title renders through JobTitleText.
 describe("RecommendedJobReportHeader — AST-1983 title cut", () => {
-  it("long title: first 50 chars + … with the full-title tooltip, outside the header", async () => {
+  it("long title: first 50 chars + … on the secondary line; identity is the company", async () => {
     renderWithProviders(<RecommendedJobReportHeader {...base} jobTitle={LONG_TITLE} />)
-    const title = document.querySelector<HTMLElement>(".recommended-report-title")!
+    expect(document.querySelector(".recommended-report-title")).toHaveTextContent("Globex")
+    const title = document.querySelector<HTMLElement>(".recommended-report-job-title-secondary")!
     expect(title.textContent).toBe(CUT_TITLE)
     await expectFullTitleTooltip(within(title).getByText(CUT_TITLE), title.closest(".recommended-report-header-row")!)
   })
 
-  it("50-char title: shown exactly, no tooltip, no title attribute", async () => {
+  it("50-char title: shown exactly on the secondary line, no tooltip", async () => {
     renderWithProviders(<RecommendedJobReportHeader {...base} jobTitle={EDGE_TITLE} />)
-    const title = document.querySelector<HTMLElement>(".recommended-report-title")!
+    expect(document.querySelector(".recommended-report-title")).toHaveTextContent("Globex")
+    const title = document.querySelector<HTMLElement>(".recommended-report-job-title-secondary")!
     expect(title.textContent).toBe(EDGE_TITLE)
     expect(title.querySelector("[title]")).toBeNull()
     await userEvent.hover(title)
