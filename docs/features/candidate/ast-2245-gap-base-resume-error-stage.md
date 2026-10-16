@@ -93,3 +93,38 @@ Confirm Chuckles estimate: 1 — agree
 - One stage, one `code(AST-2245):` commit on the epic worktree; push to `origin/sub/AST-2225/AST-2245-gap-base-resume-error-stage`.
 - Do not add files outside **Files Changed**.
 - On ambiguity → stop and comment on parent AST-2225 with the Stage N blocked template.
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-2245
+**Overall:** APPROVED
+**Corpus:** b7ab2203048ce0beb2869a12200ab7fa696c8066
+**Publish ref tip:** `f7d6d6fa03d4ff6755b47a1147a5b3998459fd50` (`origin/sub/AST-2225/AST-2245-gap-base-resume-error-stage`)
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| astral.entity.required-metadata | A | | |
+| astral.dispatch.entity-state-bound | A | | |
+
+## Traceability
+
+AC1 → Stage 1 steps 1–2, 4 (every `CANDIDATE_STATES` value has `stage`; import succeeds). AC2 → Stage 1 steps 1, 3–4 (`BASE_RESUME_CHAIN_ERROR_STATES` keys all `stage == 3` + dedicated assert). Parent AC 1–4 / epic nav/readiness → N/A (vocabulary gap only; no NAV/readiness/UI). Sibling unblock → merge-child to ftr after land (ticket Notes; not scored as parent AC).
+
+## Findings
+
+### acceptable
+- **Location:** Linear assignee at fetch
+- **Finding:** Assignee Ada Lovelace (validate-plan §1 expects Joan during the pass).
+- **Recommendation:** Chuckles handoff convention only; stdout recommendation stands.
+
+### acceptable
+- **Location:** Gap vs AST-2228 #1 slice
+- **Finding:** Resume-chain `ERROR_*` from AST-2221 were omitted when AST-2228 added `stage` to craft `ERROR_*`; a dedicated gap child is the right partition vs reopening #1 scope.
+- **Recommendation:** Land on `sub/AST-2245` then `merge-child` so #2/#3 import gates clear.
+
+**R6 (summary):** Plan matches ticket Scope (`config.py` only). Publish tip confirms failure mode: `BASE_RESUME_CHAIN_ERROR_STATES` dict expansion lacks `"stage"` while the global `assert "stage" in _cfg` already runs (blocks import). Fix aligns with parent locked band (resume-request `ERROR_*` → stage **3**; craft `ERROR_*` stay **4**). No NAV, `candidate.py`, or dispatch edits. Estimate 1 — agree.
+
+context_tokens≈86000
