@@ -1,7 +1,8 @@
 """Console-only logging for astral-agent — Railway-native JSON to stdout.
 
-No app_log / SQLite. Debug lines from own modules only when ASTRAL_AGENT_LOG_LEVEL=DEBUG
-(_job_debug stays False until a later sibling wires job context).
+No platform SQLite or product log writers. Debug lines from own modules only when
+ASTRAL_AGENT_LOG_LEVEL=DEBUG (_job_debug stays False until a later sibling wires
+job context).
 """
 
 from __future__ import annotations
