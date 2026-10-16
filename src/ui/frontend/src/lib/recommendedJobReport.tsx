@@ -271,6 +271,7 @@ export function buildPhaseSectionGradeConfidenceRow(
   gradesRaw: unknown,
   job: Record<string, unknown>,
   gradesField: string,
+  letterless = false,
 ): ReactNode {
   const cells = phaseGradeCells(gradesRaw, job, gradesField)
   if (!cells.length) return null
@@ -278,7 +279,7 @@ export function buildPhaseSectionGradeConfidenceRow(
     <div className="recommended-report-phase-grade-row">
       {cells.map(c => (
         <span key={c.key} className="recommended-report-phase-grade-cell">
-          <GradeMark grade={c.grade} tooltip={c.tooltip} />
+          <GradeMark grade={c.grade} tooltip={c.tooltip} letterless={letterless} />
           <ConfidenceBullets confidence={c.confidence} />
         </span>
       ))}

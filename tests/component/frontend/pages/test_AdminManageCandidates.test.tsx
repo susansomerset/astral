@@ -171,9 +171,13 @@ describe("AdminManageCandidates", () => {
     await userEvent.click(within(deepseek).getByRole("button", { name: "Show" }))
     expect(dsInput.type).toBe("text")
     fireEvent.change(dsInput, { target: { value: "  sk-ds-new  " } })
+    const kimiExpiry = kimi.querySelectorAll("input")[1] as HTMLInputElement
+    expect(kimiExpiry.type).toBe("date")
+    expect(kimiExpiry).toHaveValue("2999-01-01")
     const expiry = deepseek.querySelectorAll("input")[1] as HTMLInputElement
-    await userEvent.type(expiry, "2999-01-02 03:04:05")
-    expect(expiry).toHaveValue("2999-01-02 03:04:05")
+    expect(expiry.type).toBe("date")
+    fireEvent.change(expiry, { target: { value: "2999-01-02" } })
+    expect(expiry).toHaveValue("2999-01-02")
     await userEvent.click(within(kimi).getByRole("button", { name: "Clear" }))
     const clearDialog = await screen.findByRole("alertdialog", { name: "Clear Kimi API key" })
     await userEvent.click(within(clearDialog).getByRole("button", { name: "Clear key" }))
@@ -181,7 +185,7 @@ describe("AdminManageCandidates", () => {
     await waitFor(() => expect(screen.getByText("Candidate updated")).toBeInTheDocument())
     expect(putBodies.at(-1)?.api_keys).toEqual([
       { server: "kimi", key: "" },
-      { server: "deepseek", key: "sk-ds-new", expires_at: "2999-01-02 03:04:05" },
+      { server: "deepseek", key: "sk-ds-new", expires_at: "2999-01-02 00:00:00" },
     ])
     expect(putBodies.at(-1)).not.toHaveProperty("api_key")
 
@@ -202,7 +206,7 @@ describe("AdminManageCandidates", () => {
     expect(row.textContent).not.toContain("Not set")
   })
 
-  it("AST-2252: a secret without a valid expiry does not save", async () => {
+  it("AST-2265: a typed secret without a calendar date does not save", async () => {
     mockApi()
     renderWithProviders(<ManageCandidates />)
     await waitFor(() => expect(screen.getByText("doe_jane")).toBeInTheDocument())
@@ -210,9 +214,11 @@ describe("AdminManageCandidates", () => {
     const editModal = screen.getByText(/Edit: doe_jane/).closest(".modal-card") as HTMLElement
     const deepseek = keyFieldByLabel(editModal, "DeepSeek · NOT SET")
     fireEvent.change(deepseek.querySelector("input") as HTMLInputElement, { target: { value: "sk-ds" } })
-    fireEvent.change(deepseek.querySelectorAll("input")[1] as HTMLInputElement, { target: { value: "tomorrow" } })
+    const expiry = deepseek.querySelectorAll("input")[1] as HTMLInputElement
+    expect(expiry.type).toBe("date")
+    expect(expiry).toHaveValue("")
     await userEvent.click(within(editModal).getByRole("button", { name: "Save" }))
-    expect(screen.getByText("Expiry must be YYYY-MM-DD HH:MM:SS UTC")).toBeInTheDocument()
+    expect(screen.getByText("Expiry date is required")).toBeInTheDocument()
     expect(putBodies).toEqual([])
   })
 

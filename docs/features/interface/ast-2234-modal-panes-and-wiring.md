@@ -280,3 +280,129 @@ patt.artifact.read-current | A | |
 
 - Chuckles: append artifact, `docs(AST-2234): Radia review — clean`, push, post slim upshot `--as radia`, **Review Posted**.
 - Before parent UT: ensure `ftr` includes AST-2233 so header/CSS match modal props (no `resolve-child` header edits on 2234).
+
+## Bug: AST-2268 — Analysis score labels, grade dots, show rubric
+
+Items 1–4 only. Items 5–7 are in `docs/features/interface/ast-2233-report-header-chrome-triage-actions.md`.
+
+### As-is
+
+Analysis total is a bare score plus a separate `{n}% gradable` span. Each phase section title still uses `formatPhaseSectionScoreTitle` (long earned/possible template). Grade letters and confidence wrap off one line on a narrow viewport. Show rubric opens `RubricModal` with "No rubric found for this vector."
+
+### To-be
+
+Analysis header reads `Total Score: ` plus bold `41.2 (76% gradable)`. Each phase header reads like `JD Analysis - 11.0 (92% gradable)`. At ≤1023px the phase grade row stays one line of the existing unlettered dots plus confidence. Show rubric shows that vector's rubric text.
+
+### Repro
+
+Open a Recommended job whose four phase list scores sum to 41.2, job-level gradable is 76 (`jobGradablePercent`), and JD list score is 11.0 with breakdown `possible/max` rounding to 92. Analysis tab: total line is not `Total Score: 41.2 (76% gradable)`; JD section title is not `JD Analysis - 11.0 (92% gradable)`. Narrow the viewport to ≤1023px: lettered grade dots plus confidence wrap. Click **show rubric** on a phase vector whose job-carried rubric row has `content` but the candidate artifact row does not: modal body is `No rubric found for this vector.`
+
+### Root cause
+
+`renderAnalysisTotalRow` prints `formatPhaseScore(total)` and a sibling `% gradable` span with no "Total Score:" label and no single `score (% gradable)` phrase. `analysisSections` sets `nav_label` from `formatPhaseSectionScoreTitle`, which is not `{phase} - {one decimal} ({phase gradable}%)`. Phase gradable for that header is `round(100 * possible / max)` from `jobScoreBreakdownForGradesField`, not the job-level `(n - x) / n` percent. `buildPhaseSectionGradeConfidenceRow` always mounts lettered `GradeMark` (no `letterless`), and `.recommended-report-phase-grade-row` is `flex-wrap: wrap`. Show rubric: `JobAnalysisReportModal` already passes `rubricItems` (`jobRubricForField`) and `rubricArtifact`. `AgentAnalysisHeader` prefers a candidate-artifact row from `GET /api/candidates/:id` and only then the job-carried row; a live row with empty `content` wins over job-carried `content`, and `RubricModal` prints the not-found string when `content` is null.
+
+### Proposed change
+
+1. In `src/ui/frontend/src/components/JobAnalysisReportModal.tsx` `renderAnalysisTotalRow`, render one line: the text `Total Score: ` then a `<strong>` whose text is `` `${formatPhaseScore(total)}${gradable != null ? ` (${gradable}% gradable)` : ""}` ``. Do not render a second sibling span for the percent. When `total` is null, `formatPhaseScore` stays the em dash; when `gradable` is null, omit the parenthetical (same omit rule as today).
+
+2. In the same file `analysisSections`, stop calling `formatPhaseSectionScoreTitle` for the visible title. When `jobScoreBreakdownForGradesField` returns a breakdown with `max > 0` and the phase list score (`grades_field` with `_grades` → `_score`) is a finite number, set `nav_label` to `` `${base} - ${formatPhaseScore(score)} (${Math.round((100 * breakdown.possible) / breakdown.max)}% gradable)` ``. Otherwise leave `nav_label` as `base`. Keep the thermometer in `renderAnalysisMetadata` (tooltip unchanged).
+
+3. In `src/ui/frontend/src/lib/recommendedJobReport.tsx` `buildPhaseSectionGradeConfidenceRow`, add an optional argument `letterless = false`. When true, pass `letterless` to each `GradeMark`. In `JobAnalysisReportModal`, the existing `(max-width: 1023px)` `isMobile` flag is passed as that argument. In `src/ui/frontend/src/App.css`, under the report phase-grade rules, add:
+
+```css
+@media (max-width: 1023px) {
+  .recommended-report-phase-grade-row {
+    flex-wrap: nowrap;
+  }
+}
+```
+
+Do not change list rows (`buildPhaseListGradeRow` stays letterless at every width). Do not change confidence bullets.
+
+4. Show rubric. In `src/ui/frontend/src/components/AgentAnalysisHeader.tsx`, when `rubricVector` is set, resolve the string passed to `RubricModal` as follows. Job-carried row: `findRubricRow(labelList, rubricVector)` (today's `labelRow`). Live row: `findRubricRow(contentLiveList, rubricVector)`, then if that misses and `labelRow.code` is set, `findRubricRow(contentLiveList, labelRow.code)`. A string is usable only when `trim()` is non-empty. Use the job-carried row's `content` when usable; otherwise the live row's `content` when usable; otherwise `null`. Do not let a live row with blank `content` win over usable job-carried `content`. Pass that value as `content`. Leave the candidate GET and the loading flag as they are. In `src/ui/frontend/src/components/RubricModal.tsx`, render `content` when `content.trim()` is non-empty; when `content` is null, undefined, or whitespace-only, render `No rubric found for this vector.` (same sentence as today). While `loading` is true, keep `Loading rubric…`.
+
+### Blast radius
+
+`formatPhaseSectionScoreTitle` stays exported for other callers; only the Analysis section `nav_label` stops using it. List Total still uses `totalScore` / `formatPhaseScore` and must not gain a "Total Score:" prefix. Thermometer tooltip formula stays `Score {one decimal}, {round(100 * possible / max)}% gradable`. Betty's modal/lib tests that pin the old phase title template, lettered header dots, or show-rubric content order will go red; do not edit `tests/` here. Other `AgentAnalysisHeader` callers keep the same props; only content preference changes.
+
+### What must still hold
+
+Parent AC 15: thermometer fill is `list_score / max`, green on neutral, tooltip unchanged. Parent AC 16: the percent beside the total is still `jobGradablePercent` (`round(100 * (n - x) / n)`), hidden when `n === 0`. Phase header percent is the breakdown `possible/max` figure, not a second copy of the job-level percent. Opening the modal still lands on Analysis. Skip/Applied, Discussion, JD tab, Artifacts visibility, and mobile edit ban from the original AST-2234 stages stay.
+
+
+## Joan board AST-2268
+
+[board-joan] CANON: OK
+
+Plan-fix for AST-2268 is a UAT regression restore: header identity/links/date labels (2233 patch) and Analysis labels, mobile grade dots, show-rubric content preference (2234 patch). No statute or pattern text change, carve-out, or new directive. Rubric resolution still uses existing API/read paths; it only fixes empty live row winning over job-carried content. Report-scoped CSS stays inside the AST-2233 boundary (no shared .modal-title / .modal-header / .modal-body edits). Parent AST-2226 canon scope does not require an amendment for this shape.
+
+## Radia review AST-2268
+
+[code-rubric]
+**Ticket:** AST-2268
+**Publish ref:** `origin/sub/AST-2226/AST-2268-recommended-modal-header-score-labels-and-show-rubric-miss-uat` @ `b53ef9c267200fd3ac4100acc436f716ac61da80`
+**Diff base:** `origin/ftr/AST-2226-updates-to-recommended-job-modal` @ `c58774be6a5dec062fef3c5f58fe671a58f8ef5f` (three-dot vs sub includes stacked merges from other work; **canon + fix review scoped to** `cf7439838..b53ef9c26` — 10 files, AST-2268 product + tests + bible)
+**Corpus:** _(no frozen directive ids on ticket; Joan board CANON: OK)_
+**Overall:** CLEAN
+
+## Canon scores
+
+_(Frozen Citations: none — Joan `[board-joan] CANON: OK`; no statute/pattern ids to score.)_
+
+## Column diff vs plan stage
+
+no plan-stage canon scores attached (board-only CANON: OK)
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+**[bug-repro]** OK — Two tagged tests pin concrete **To-be** behavior (not tautologies):
+- `test_JobAnalysisReportModal.test.tsx` — `[bug-repro] AST-2268 JD header is score and gradable percent` asserts `JD Analysis - 3.7 (83% gradable)`, rejects earned/possible template, and `Total Score:` in `.recommended-report-total-gradable` (items 1–2).
+- `test_AgentAnalysisHeader.test.tsx` — `[bug-repro] AST-2268: job-carried rubric content beats a blank live row` mocks live detail row without usable `content`, job-carried `rubricItems` with `Job carried body`; expects body text and not `No rubric found for this vector.` (item 4). Would fail pre-fix preference order.
+
+**## What must still hold** — OK (both plan-fix patches):
+- **2233 patch:** No Copy/Print props or controls reintroduced; Skip/Applied/Generate still callback-gated; `company_name` drives identity; website remains separate `<a target="_blank">` with `https://` prefix when needed; date strip uses `discoveredAt` / `recommendedAt` / `appliedAt` with applied omitted when null; report-scoped CSS only (`.recommended-report-job-title-secondary`, phase-grade `nowrap` media query) — no shared `.modal-title` / `.modal-header` / `.modal-body` rule edits.
+- **2234 patch:** `jobGradablePercent` still feeds total parenthetical; phase titles use breakdown `possible/max` (not job-level %); thermometer block untouched in diff; `buildPhaseSectionGradeConfidenceRow(..., isMobile)` adds letterless dots at ≤1023px; rubric still uses existing GET + `RubricModal` loading gate; Skip/`can_*`, tab filter, JD pane, Artifacts/mobile paths not removed in fix commits.
+
+## Findings
+
+**fix-now**
+
+(none)
+
+**discuss**
+
+- **Duplicate company block:** After AST-2268, `.recommended-report-title` and `.recommended-report-company-line` both show `companyName` (+ date on each). Plan-fix primary identity moved to `.recommended-report-title` but did not drop the older company line. @susan — intentional double line or follow-up cosmetic trim? **Default:** leave for UAT; remove `.recommended-report-company-line` duplicate in a tiny follow-up if Susan flags it.
+- **Empty modal title:** When `company_name` and `company` are both empty, `modalTitle` is `""` (no `Recommended Job Report` fallback). **Default:** accept over the wrong literal; only revisit if empty `<h2>` is worse in practice.
+
+**advisory**
+
+- **Diff base width:** `ftr...sub` three-dot stat is huge (other epics merged onto sub); scoring used AST-2268 commits only — expected for fix-lane sub stacked above advancing `ftr`.
+- **Item 3 (mobile dots):** Implemented via `letterless` + CSS `flex-wrap: nowrap`; no dedicated `[bug-repro]` — coverage is code + CSS, not a viewport assertion (Betty manifest lists modal/header tests).
+- **Engineer thread:** `b53ef9c26` notes two Generate-hidden asserts stale — header on this tip is AST-2233-shaped; optional Betty tidy, not merge-blocking.
+
+## Plan fidelity (§5.4)
+
+- Items 1–7 map to `JobAnalysisReportModal`, `RecommendedJobReportHeader`, `AgentAnalysisHeader`, `RubricModal`, `recommendedJobReport.tsx`, `App.css` — matches amended scope (including `AgentAnalysisHeader` / `RubricModal` after `[scope-gate]`).
+- `jobLink` / `jobLinkText` fall back to `job_link` when `listing_href` is not http(s); modal title `company · m/d/yy`; show-rubric job-before-blank-live content order per plan.
+
+## What's solid
+
+- `rubricContentFor` matches plan resolution (usable job content first; live only when job missing/blank).
+- `RubricModal` trims before not-found string.
+- Revised AST-1695/1704/1983/2233 tests align with company-primary identity.
+
+## Chuckles (read-only — you do not act)
+
+| Gate | Parent | Next |
+|------|--------|------|
+| **PROCEED** (clean, C7 complete) | AST-2226 live | → **Review Posted** → fix-lane clean shortcut → **User Testing** (`resolve-child` skipped) |
+
+```
+[code-rubric] PROCEED (Commit: b53ef9c26) UAT regressions restored
+```
+
+context_tokens≈24000

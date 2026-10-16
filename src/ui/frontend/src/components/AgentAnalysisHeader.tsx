@@ -24,6 +24,25 @@ interface Props {
   rubricArtifact?: string
 }
 
+function usableContent(value: unknown): string | null {
+  if (typeof value !== "string") return null
+  const text = value.trim()
+  return text || null
+}
+
+function rubricContentFor(
+  labelRow: RubricRow | null,
+  liveList: RubricRow[],
+  vector: string,
+): string | null {
+  const jobContent = usableContent(labelRow?.content)
+  if (jobContent) return jobContent
+  const liveRow =
+    findRubricRow(liveList, vector) ||
+    (labelRow?.code ? findRubricRow(liveList, labelRow.code) : null)
+  return usableContent(liveRow?.content)
+}
+
 function findRubricRow(list: RubricRow[], vector: string): RubricRow | null {
   const gv = normalizeRubricVectorKey(vector || "")
   return (
@@ -95,12 +114,8 @@ export default function AgentAnalysisHeader({ grades, rubricItems, rubricArtifac
   const orderedGrades = sortGradesByRubricDisplayOrder(grades, rubricItems)
 
   const labelRow = rubricVector ? findRubricRow(labelList, rubricVector) : null
-  // Content: prefer live row matched by vector/code from the label identity.
-  const contentRow = rubricVector
-    ? findRubricRow(contentLiveList, rubricVector) ||
-      (labelRow?.code ? findRubricRow(contentLiveList, labelRow.code) : null) ||
-      labelRow
-    : null
+  // Job-carried content wins; a blank live row must not hide it (AST-2268).
+  const rubricContent = rubricVector ? rubricContentFor(labelRow, contentLiveList, rubricVector) : null
 
   return (
     <div className="analysis-header">
@@ -132,7 +147,7 @@ export default function AgentAnalysisHeader({ grades, rubricItems, rubricArtifac
           open
           onClose={closeRubric}
           vector={rubricVector}
-          content={contentRow?.content ?? null}
+          content={rubricContent}
           loading={contentLoading}
         />
       )}

@@ -22,7 +22,6 @@ import {
   artifactsTabPrimaryActions,
   buildPhaseSectionGradeConfidenceRow,
   formatPhaseScore,
-  formatPhaseSectionScoreTitle,
   gradesForHeader,
   isArtifactsBuildInProgress,
   jobGradablePercent,
@@ -42,6 +41,18 @@ function httpListingHref(raw: string | null | undefined): string | null {
   const s = String(raw).trim()
   if (s.startsWith("http://") || s.startsWith("https://")) return s
   return null
+}
+
+function formatReportDate(value: string | null | undefined): string | null {
+  const raw = value?.trim()
+  if (!raw) return null
+  const d = new Date(raw)
+  if (Number.isNaN(d.getTime())) return null
+  return new Intl.DateTimeFormat("en-US", {
+    year: "2-digit",
+    month: "numeric",
+    day: "numeric",
+  }).format(d)
 }
 
 /** AST-2233 header contract — cast until #2 merges onto this tip (AST-2234). */
@@ -242,16 +253,21 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
   ]), [])
 
   const analysisSections = useMemo((): ReportSectionDef[] => {
-    const template = manifest?.jobs.recommended.phase_score_header_title_template ?? ""
     const jobRec = job as unknown as Record<string, unknown> | null
     return (manifest?.jobs.recommended.report_phase_tabs ?? []).map(p => {
       const base = p.nav_label
       let nav_label = base
       if (jobRec) {
         const breakdown = jobScoreBreakdownForGradesField(jobRec, p.grades_field)
-        if (breakdown) {
-          const score = jobRec[p.grades_field.replace(/_grades$/, "_score")]
-          nav_label = formatPhaseSectionScoreTitle(base, breakdown, template, score)
+        const score = jobRec[p.grades_field.replace(/_grades$/, "_score")]
+        if (
+          breakdown
+          && breakdown.max > 0
+          && typeof score === "number"
+          && Number.isFinite(score)
+        ) {
+          const gradable = Math.round((100 * breakdown.possible) / breakdown.max)
+          nav_label = `${base} - ${formatPhaseScore(score)} (${gradable}% gradable)`
         }
       }
       return {
@@ -364,10 +380,10 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
     const jobRec = job as unknown as Record<string, unknown>
     const total = totalScore(jobRec, phaseScoreFields)
     const gradable = jobGradablePercent(jobRec)
+    const scoreText = `${formatPhaseScore(total)}${gradable != null ? ` (${gradable}% gradable)` : ""}`
     return (
       <div className="recommended-report-total-gradable">
-        <span>{formatPhaseScore(total)}</span>
-        {gradable != null ? <span>{gradable}% gradable</span> : null}
+        Total Score: <strong>{scoreText}</strong>
       </div>
     )
   }
@@ -393,7 +409,7 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
             </div>
           </div>
         )}
-        {buildPhaseSectionGradeConfidenceRow(gradesRaw, jobRec, phase.grades_field)}
+        {buildPhaseSectionGradeConfidenceRow(gradesRaw, jobRec, phase.grades_field, isMobile)}
       </>
     )
   }
@@ -579,18 +595,27 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
     if (generate) void runPrimaryAction(generate)
   }
 
-  const jobTitleDisplay = job?.job_title?.trim() || job?.company || "Recommended Job Report"
+  const jobTitleDisplay = job?.job_title?.trim() || ""
   const companyNameDisplay = job?.company_name?.trim() || job?.company || ""
+  const discoveredLabel = formatReportDate(job?.discovered_at)
+  const modalTitle = companyNameDisplay
+    ? `${companyNameDisplay}${discoveredLabel ? ` · ${discoveredLabel}` : ""}`
+    : ""
   const companyWebsite =
     (typeof job?.company_website === "string" && job.company_website.trim())
       ? job.company_website.trim()
       : null
+  const jobHref = job
+    ? (httpListingHref(job.listing_href) ?? httpListingHref(job.job_link))
+    : null
+  const rawJobLink = job?.job_link?.trim() || (typeof job?.listing_href === "string" ? job.listing_href.trim() : "")
+  const jobLinkText = jobHref || rawJobLink || null
 
   return (
     <Modal
       open={!!jobId}
       onClose={onClose}
-      title={companyNameDisplay || "Recommended Job Report"}
+      title={modalTitle}
       size="wide"
       showFooter={false}
     >
@@ -601,8 +626,8 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
           <div className="recommended-report-chrome">
             <TriageHeader
               jobTitle={jobTitleDisplay}
-              jobLink={httpListingHref(job.listing_href)}
-              jobLinkText={httpListingHref(job.listing_href) ?? job.job_link ?? null}
+              jobLink={jobHref}
+              jobLinkText={jobLinkText}
               companyName={companyNameDisplay}
               companyWebsite={companyWebsite}
               discoveredAt={job.discovered_at}
