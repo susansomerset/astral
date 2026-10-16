@@ -3359,6 +3359,32 @@ for _ms, _mcfg in METEORITE_STATES.items():
     if _priors is not None:
         assert all(p in METEORITE_STATES for p in _priors), _ms
 
+# AST-2223: candidate overwrite edit on non-landed meteorite rows (Jobs → Meteorites modal).
+# Not versioned — plain update_meteorite; pick-list is every registry key minus locked.
+CANDIDATE_METEORITE_EDIT_CONFIG = {
+    "locked_states": ("LANDED",),
+    "editable_fields": (
+        "state",
+        "content",
+        "link",
+        "job_title",
+        "employer_name",
+        METEORITE_CONFIG["electronic_contact_column"],
+    ),
+    "state_options": tuple(
+        s for s in METEORITE_STATES if s not in ("LANDED",)
+    ),
+    "default_save_state": "CHECK_UNIQUE",
+}
+_cme = CANDIDATE_METEORITE_EDIT_CONFIG
+assert all(s in METEORITE_STATES for s in _cme["locked_states"])
+assert all(s in METEORITE_STATES for s in _cme["state_options"])
+assert _cme["default_save_state"] in _cme["state_options"]
+assert set(_cme["locked_states"]).isdisjoint(_cme["state_options"])
+assert set(_cme["state_options"]) == set(METEORITE_STATES) - set(_cme["locked_states"])
+assert "state" in _cme["editable_fields"] and "content" in _cme["editable_fields"]
+assert METEORITE_CONFIG["electronic_contact_column"] in _cme["editable_fields"]
+
 # AST-1560: dispatcher-driven meteorite row transitions (not Ruth classify — inline in check_inbox).
 # AST-1773: check_unique hop between stage/scrape success and land (land stays READY).
 METEORITE_INGRESS_DISPATCH_CONFIG = {

@@ -5185,3 +5185,20 @@ Config + seed only (no `src/core/*`). `BASE_RESUME_CHAIN_TASK_KEYS` / `BASE_RESU
 
 **Bible shasum (after publish):** `git show origin/sub/AST-1201/AST-2221-base-resume-chain-registry-and-seed-prompts:docs/test-bible/utils/config.md | shasum`; same for `docs/test-bible/core/repo_admin_json.md`.
 
+### AST-2223 · AST-2216
+
+**Parent:** [AST-2216 — Make meteorite text editable (not versioned)](https://linear.app/astralcareermatch/issue/AST-2216). **Publish:** `origin/sub/AST-2216/AST-2223-candidate-meteorite-edit`.
+
+`CANDIDATE_METEORITE_EDIT_CONFIG`: locked `LANDED`, editable columns (incl. `METEORITE_CONFIG["electronic_contact_column"]`), `state_options` = every `METEORITE_STATES` key minus locked, `default_save_state` `CHECK_UNIQUE`, load-time asserts. Core/API: **`docs/test-bible/core/meteorite.md`** · **`docs/test-bible/ui/api/api_meteorite.md`** § AST-2223.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Config block shape + asserts | `src/utils/config.py` | **`TestAst2223CandidateMeteoriteEditConfig`** |
+
+**Broken / obsolete:** none — additive config block.
+
+**Integration:** none — do not invent.
+
+## QA test manifest
+
+See **`docs/test-bible/core/meteorite.md`** § AST-2223 (shared numbered list).
