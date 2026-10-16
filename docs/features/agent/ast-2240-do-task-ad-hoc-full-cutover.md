@@ -179,3 +179,17 @@ Child AC: **4→S1 step 6 + await in step 3**; **5→S1 steps 1, 3, 6**; **6→S
 Faithful to child #4 scope (single-file cutover); prerequisites AST-2238/2239 explicit; prompt-before / post-return store/decode/chain preserved. DRY: one `_send_to_server` choke for production + Ad Hoc. No **D**/**F**; no `fix-now`.
 
 context_tokens≈58000
+
+## Review stub (Ada / build)
+
+**Publish ref:** `origin/sub/AST-2235/AST-2240-do-task-ad-hoc-full-cutover`
+**Product commit:** `96c9500c3` — `_send_to_server` enqueues via `astral_agent.submit`
+
+**Implemented:**
+- `src/core/agent.py` only. Prompt store stays before the call; RESPONSE / failure-audit, hop ledger, and `run_next` stay after. `get_entity_agent_story` and `database.py` untouched.
+- Queue result text is parsed with the existing anthropic helpers. `AstralAgentError` becomes the existing failure dict (no timesheet row). Soft fails and successes record `record_timesheet_entry`.
+- Ad Hoc workbench failure-audit also uses `_provider_answer_text` (same string-vs-SDK extract as the two `do_task` sites).
+
+**Canon (self-check):** `do_task` remains the entry; HTTP stays in the external client. Daisy-chain and retry routing unchanged. Latest refs still SQLite. Debug lines do not include the request body or `api_key`.
+
+**Tests:** Betty at Code Complete. No test-tree edits.
