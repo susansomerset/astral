@@ -1480,5 +1480,24 @@
     "task_seq": 1,
     "updated_at": "2026-10-15 21:04:48",
     "user_prompt": ""
+  },
+  {
+    "agent_id": "telescope",
+    "cache_prompt": "",
+    "cache_prompt_b": "",
+    "cache_prompt_c": "",
+    "cache_prompt_d": "",
+    "current": 1,
+    "nocache_prompt": "",
+    "run_next": "",
+    "system_prompt": "",
+    "task_group_name": "Land Meteorite",
+    "task_group_order": "4200",
+    "task_key": "check_unique_meteorite",
+    "task_key_uuid": "f582dad4-0a0a-4df1-ad5c-a27e6cf81955",
+    "task_name": "check_unique_meteorite",
+    "task_seq": 3.2,
+    "updated_at": "2026-09-19 22:51:13",
+    "user_prompt": ""
   }
 ]
