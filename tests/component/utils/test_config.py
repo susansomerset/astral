@@ -8805,6 +8805,42 @@ class TestAst2177StructuredOutputConfig:
         assert "agent_payload" not in structured
         assert structured.startswith("agent_performance refers ONLY") and "failure_note" in structured
 
+class TestAst2217FetchTimesheetRegistries:
+    """AST-2217: fetch_timesheet dispatch-row defaults + request/receipt/ledger registries."""
+
+    def test_fetch_timesheet_config_poller_defaults(self) -> None:
+        from src.utils import config as cfg
+        ft = cfg.FETCH_TIMESHEET_CONFIG
+        assert ft["task_key"] == "fetch_timesheet"
+        assert ft["entity_type"] is None and ft["trigger_state"] is None and ft["freq_hrs"] is None
+        assert ft["auto_mode"] is False
+        assert ft["min_count"] == 1 and ft["batch_size"] == 1
+
+    def test_request_receipt_ledger_registries(self) -> None:
+        from src.utils import config as cfg
+        assert set(cfg.TIMESHEET_REQUEST_TYPES) == {"DISPATCH_AGENT", "DISPATCH_SEARCH", "CONTACT_AGENT"}
+        assert set(cfg.LEDGER_TIMESHEET_STATES) == {"NEW", "FETCHING", "RECEIPTED"}
+        assert "platform_cost" in cfg.TIMESHEET_RECEIPT_FIELDS
+        assert cfg.TIMESHEET_SEARCH_SERVER_ID == "google_cse"
+        # Reconcile constants left in place for AST-2218 (byte-stable shape).
+        assert hasattr(cfg, "TIMESHEET_RECONCILE_ENABLED")
+        assert hasattr(cfg, "TIMESHEET_BATCH_RECONCILE_ENABLED")
+
+class TestAst2218FetchTimesheetAdminDefaults:
+    """AST-2218: dispatch_task_admin_defaults fold + is_fetch_timesheet_task_key."""
+
+    def test_fold_returns_null_entity_trigger(self) -> None:
+        from src.utils import config as cfg
+        d = cfg.dispatch_task_admin_defaults("fetch_timesheet")
+        assert d["entity_type"] is None and d["trigger_state"] is None
+        assert d["sort_by"] is None and d["batch_call_mode"] == 0
+
+    def test_is_fetch_timesheet_task_key(self) -> None:
+        from src.utils import config as cfg
+        assert cfg.is_fetch_timesheet_task_key("fetch_timesheet") is True
+        assert cfg.is_fetch_timesheet_task_key(" fetch_timesheet ") is True
+        assert cfg.is_fetch_timesheet_task_key("evaluate_jd") is False
+
 
 class TestAst2223CandidateMeteoriteEditConfig:
     """AST-2223: CANDIDATE_METEORITE_EDIT_CONFIG — locked / pick-list / default / editable fields."""

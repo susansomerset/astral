@@ -3507,6 +3507,24 @@ assert set(METEORITE_EMAIL_MAILBOX_CONFIG["subject_url_schemes"]) == {"http", "h
 assert METEORITE_EMAIL_MAILBOX_CONFIG["debug_func"] == "inbox.check_email"
 assert METEORITE_EMAIL_MAILBOX_CONFIG["auto_mode"] is False
 
+# AST-2217 / AST-2215: candidate-bound fetch_timesheet dispatch-row defaults.
+# entity_type / trigger_state None — poller, not ENTITY_TYPES claim (stat.dispatch.entity-state-bound).
+# freq_hrs None, auto_mode False — Susan 2026-10-15. Provision/due path is AST-2218.
+FETCH_TIMESHEET_CONFIG = {
+    "task_key": "fetch_timesheet",
+    "entity_type": None,
+    "trigger_state": None,
+    "freq_hrs": None,
+    "auto_mode": False,
+    "min_count": 1,
+    "batch_size": 1,
+}
+assert FETCH_TIMESHEET_CONFIG["task_key"] == "fetch_timesheet"
+assert FETCH_TIMESHEET_CONFIG["entity_type"] is None
+assert FETCH_TIMESHEET_CONFIG["trigger_state"] is None
+assert FETCH_TIMESHEET_CONFIG["freq_hrs"] is None
+assert FETCH_TIMESHEET_CONFIG["auto_mode"] is False
+
 # AST-1559: inbox already-ingested outcome (row/classify line templates retired).
 METEORITE_MONITORING_CONFIG = {
     "outcome_already_ingested": "already_ingested",
@@ -3671,6 +3689,11 @@ def is_meteorite_email_mailbox_task_key(task_key: str) -> bool:
     tk = (task_key or "").strip()
     cfg = METEORITE_EMAIL_PARSE_CONFIG
     return tk == cfg["task_key"] or tk == cfg["legacy_agent_task_key"]
+
+
+def is_fetch_timesheet_task_key(task_key: str) -> bool:
+    """True for the candidate-bound fetch_timesheet poller (AST-2218)."""
+    return (task_key or "").strip() == FETCH_TIMESHEET_CONFIG["task_key"]
 
 # AST-1054: meteorite dispatch_task row specs (unique per candidate on task_key+trigger_state).
 # score_floor 0 on score-gated triggers — claim never excludes for low latest_score.
@@ -4391,6 +4414,14 @@ def dispatch_task_admin_defaults(
         return {
             "entity_type": METEORITE_EMAIL_PARSE_CONFIG["admin_entity_type"],
             "trigger_state": None,
+            "sort_by": None,
+            "batch_call_mode": 0,
+        }
+    # AST-2218: fetch_timesheet poller — entity/trigger null (stat.dispatch.entity-state-bound).
+    if tk == FETCH_TIMESHEET_CONFIG["task_key"]:
+        return {
+            "entity_type": FETCH_TIMESHEET_CONFIG["entity_type"],
+            "trigger_state": FETCH_TIMESHEET_CONFIG["trigger_state"],
             "sort_by": None,
             "batch_call_mode": 0,
         }
@@ -5856,6 +5887,41 @@ LLM_PROBE_MESSAGE = "Respond with 1."
 
 # Timesheet rows (database ledgers): provider string validated on insert = a server id.
 ALLOWED_TIMESHEET_PROVIDERS = tuple(LLM_SERVER_CONFIG)
+# Search timesheet rows (AST-2219 writer); not an LLM_SERVER_CONFIG id.
+TIMESHEET_SEARCH_SERVER_ID = "google_cse"
+
+TIMESHEET_REQUEST_TYPES = (
+    "DISPATCH_AGENT",
+    "DISPATCH_SEARCH",
+    "CONTACT_AGENT",
+)
+# Vendor half filled by get_receipt; Astral half (request_type, candidate_id, entity_*)
+# comes from the recorded call. Shared shape for every billing external (AST-2215 AC5).
+TIMESHEET_RECEIPT_FIELDS = (
+    "request_type",
+    "call_start",
+    "call_stop",
+    "platform_cost",
+    "candidate_id",
+    "entity_type",
+    "entity_id",
+    "native_tokens_prompt",
+    "native_tokens_completion",
+    "native_tokens_cached",  # cache read
+    "cache_write_tokens",
+    "response_item_count",
+    "response_char_length",
+    "completion_status",
+)
+LEDGER_TIMESHEET_STATES = (
+    "NEW",
+    "FETCHING",
+    "RECEIPTED",
+)
+assert set(TIMESHEET_REQUEST_TYPES) == {"DISPATCH_AGENT", "DISPATCH_SEARCH", "CONTACT_AGENT"}
+assert set(LEDGER_TIMESHEET_STATES) == {"NEW", "FETCHING", "RECEIPTED"}
+assert "platform_cost" in TIMESHEET_RECEIPT_FIELDS
+
 # Platform cost reconcile for openrouter-routed timesheet rows (AST-1963). OpenRouter 404s the
 # generation record for about 30s after the call, so the first lookup waits INITIAL_WAIT. A not-ready
 # or failed lookup is tried RETRIES times in total; the wait before the 2nd try is the base, doubled

@@ -53,3 +53,14 @@
 ```
 
 **Pass criterion:** pytest green on narrowed args — not zero-arg harness / branch-lock gate.
+
+### AST-2219 · AST-2215 (zero-stub `get_receipt` + `GoogleCseSearchResult`)
+
+Parent AC **5** search half + Stage 1 return shape. `get_receipt(ids, key)` → shared `TIMESHEET_RECEIPT_FIELDS`, `platform_cost=None`, `completion_status="stub"`, no HTTP. `search_google_cse` returns `{hits, call_start, call_stop, hit_count}` (not a bare list).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| New — stub shape / no HTTP / timing keys | `get_receipt` / `search_google_cse` | `TestAst2219GetReceiptAndSearchResult` |
+| Revised — all former list assertions use `["hits"]` | `search_google_cse` | `TestGoogleCseSearchGoogleCse` / `TestGoogleCseAst837*` / AST-839 HTTP lines |
+
+**Primary manifest:** [`../core/roster.md`](../core/roster.md) § AST-2219 (AC10) + this file for stub.

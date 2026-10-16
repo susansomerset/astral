@@ -226,3 +226,15 @@ Expect **all passed** with the AST-2010 fix. The AST-897 / AST-1867 / AST-1877 /
 | New — other-named tool → failure + timesheet `failure`; `max_tokens` fails closed with a text format | `send_to_llm_compat` | **`::test_missing_tool_call_is_a_failure`** · **`::test_max_tokens_fails_closed_even_with_text_format`** |
 
 **Broken / obsolete:** none. **Integration:** none — do not invent.
+
+### AST-2217 · AST-2215 (zero-stub `get_receipt` + real/probe attribution)
+
+Parent AC **5** stub half (direct-server stub; OpenRouter billed receipts are AST-2218) + AC **8** attribution on real and probe timesheet rows.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| New — stub receipt shape + null platform cost | `get_receipt` | `TestAst2217ReceiptStubAndAttribution::test_get_receipt_zero_stub_shape_and_null_cost` |
+| New — real call carries attribution | `send_to_llm_compat` | `…::test_recorded_call_carries_attribution` |
+| New — probe row shares outer attribution | `_record_probe` / `send_to_llm_compat` | `…::test_probe_row_carries_same_attribution` |
+
+**Primary manifest:** [`../data/database/timesheets.md`](../data/database/timesheets.md) § AST-2217. **Integration:** none.
