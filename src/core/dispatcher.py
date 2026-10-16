@@ -775,14 +775,14 @@ async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
     claim_states: Optional[List[str]] = None
     if entity_type == "candidate":
         claim_states = dispatch_claim_states(input_state, "candidate")
-        stage = CANDIDATE_STAGE_DISPATCH["requested_artifacts"]
-        # AST-1388 / AST-1434: reclaim mid-chain REQUESTED_ARTIFACTS.<hop> for any hop's dispatch row.
+        # AST-1388 / AST-1434 / AST-2222: reclaim mid-chain hop labels for any stage trigger.
         raw_in = (input_state or "").strip()
         parsed_in = parse_dispatch_hop_label(raw_in)
-        stage_trigger = stage["trigger_state"]
-        if raw_in == stage_trigger or (parsed_in and parsed_in[0] == stage_trigger):
-            from src.core.candidate import requested_artifacts_dispatch_claim_states
-            claim_states = requested_artifacts_dispatch_claim_states()
+        bare = parsed_in[0] if parsed_in else raw_in
+        stage_triggers = {e["trigger_state"] for e in CANDIDATE_STAGE_DISPATCH.values()}
+        if bare in stage_triggers:
+            from src.core.candidate import candidate_stage_dispatch_claim_states
+            claim_states = candidate_stage_dispatch_claim_states(bare)
         logger.debug(
             "Calling get_new_candidate_batch: [state=%s, limit=%s, sort_by=%s, candidate_id=%s, batch_id=%s, states=%s]",
             input_state, limit, sort_by, candidate_id, bid, claim_states,
