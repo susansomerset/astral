@@ -161,18 +161,15 @@ def run_fetch_timesheet(candidate_id: str) -> Dict[str, int]:
             ids = [str(r.get("agent_req_id") or "") for r in group if r.get("agent_req_id")]
             if not ids:
                 continue
-            # CSE uses GOOGLE_CSE_* env, not candidate_api_keys — stub with empty key.
-            if provider == TIMESHEET_SEARCH_SERVER_ID:
-                key = _api_key_for_server(cid, provider) or ""
-            else:
-                key = _api_key_for_server(cid, provider)
-                if not key:
-                    logger.warning(
-                        "fetch_timesheet | candidate %s has no API key for server %s — skipping %s id(s)",
-                        cid, provider, len(ids),
-                    )
-                    summary["total_failed"] += len(ids)
-                    continue
+            secret_id = "google_cse_api_key" if provider == TIMESHEET_SEARCH_SERVER_ID else provider
+            key = _api_key_for_server(cid, secret_id)
+            if not key:
+                logger.warning(
+                    "fetch_timesheet | candidate %s has no API key for server %s — skipping %s id(s)",
+                    cid, secret_id, len(ids),
+                )
+                summary["total_failed"] += len(ids)
+                continue
             get_receipt = _get_receipt_fn(provider)
             logger.debug("Calling get_receipt: provider=%s ids=%s", provider, ids)
             receipts = get_receipt(ids, key)
