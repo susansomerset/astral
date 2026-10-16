@@ -233,3 +233,41 @@ Linear child lists **only AC 9** (parent/service wording: service env secrets + 
 Definition fidelity: matches AST-2235 child #2 scope and boundaries; no `agent.py`/provider/cutover creep. DRY: explicit mirror of telescope queue half. Self-assessment: Estimate confirm only; stage **Done when** and Decision callouts are specific. Canon list has no **D**/**F**.
 
 context_tokens≈48000
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-2238
+**Overall:** APPROVED
+**Corpus:** b7ab2203048ce0beb2869a12200ab7fa696c8066
+**Publish ref:** `00930a45f6ac5900e35580fcecafa420cd2e2779` (`origin/sub/AST-2235/AST-2238-platform-astral-agent-client-enqueue-await`)
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| astral.layers.core-vs-external-bright-line | A | | |
+| astral.config.secrets-and-env-specific-from-environ | A | | |
+| stat.logging.error | A | | |
+| stat.logging.warning | A | | |
+| stat.logging.info | A | | |
+| stat.logging.debug | A | | |
+| patt.agent.provider-io-via-queue | X | | pending Archie / not in `canon_clerk` active corpus; plan id-only |
+
+(Worst grade **A** on roll-up ids.)
+
+## Traceability
+
+Child AC **1→S1**; **2→S2** (`submit`, `AstralAgentError`, `close_loop_resources`, `run_one_shot`); **3→S2** `_dsn()`; **4→S2** + execution contract; **5→contract mirror** + S2 SQL/notify; **6→S1+S2** (platform DSN; service keys/Stytch **N/A** per table). Parent AC outliers marked N/A in plan **## Traceability**; no orphan stages. Round-1 R5 gap closed (Linear AC 1–6 + plan table @ `00930a45`).
+
+## Findings
+
+**acceptable** — Plan Discuss **round=1** concern/reply complete; revision note documents traceability add.
+
+**acceptable** — DSN stricter than Telescope documented as intentional Decision.
+
+## R6 (summary)
+
+Matches AST-2235 child #2 scope; two-file gate; Telescope queue-half mirror; no cutover/provider/service edits. Self-assessment and stage **Done when** clauses are specific. No **D**/**F**; no `fix-now` / blocking `discuss`.
+
+context_tokens≈56000
