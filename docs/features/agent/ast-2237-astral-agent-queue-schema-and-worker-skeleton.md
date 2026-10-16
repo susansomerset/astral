@@ -247,3 +247,63 @@ Definition fidelity: matches AST-2235 child #1 and ticket **## Scope** / **Bound
 
 context_tokens≈42000
 
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-2237
+**Publish ref:** `8c6e53b22a94ad95f018e8af8bb2417f4506a708` (`origin/sub/AST-2235/AST-2237-astral-agent-queue-schema-and-worker-skeleton`)
+**Corpus:** `b7ab2203048ce0beb2869a12200ab7fa696c8066`
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.entity.batch-processing | A | | |
+| stat.logging.error | B | | |
+| stat.logging.warning | B | | |
+| stat.logging.info | B | | |
+| stat.logging.debug | B | | |
+| patt.agent.provider-io-via-queue | X | | pending Archie / skeleton only; not active scoring law this pass |
+| astral.config.secrets-and-env-specific-from-environ | A | | |
+
+(Worst grade **B** → roll-up **CLEAN**. `astral.config.*` and `patt.agent.provider-io-via-queue` are outside `canon_clerk expand` roster; resolved `astral.config` from `canon/statutes/astral/config/` on corpus tip.)
+
+## Column diff vs plan stage
+
+(aligned) — Joan worst **B** on logging statutes; code review matches her column (stdlib/Railway JSON console logging vs `src.utils.logging.get_logger`).
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **sibling test carry:** `tests/component/service/test_astral_agent_*.py`, `tests/component/service/conftest.py`, `docs/test-bible/service/astral_agent.md`, `scripts/testing/ensure_component_venv.sh` — expected Betty/qa-child + test-child footprint; product scope stays under `service/astral_agent/`.
+- **Territory note (not a grade):** `stat.logging.*` and `astral.config.secrets-and-env-specific-from-environ` `applies_when.paths` are `src/**` (and `scripts/**` for config), not `service/astral_agent/`. Ticket Canon notes + plan lock intentional semantic mapping; **B** on logging reflects Telescope-shaped variance, not a fence breach.
+
+## What's solid
+
+- `service/astral_agent/` delivers planned Telescope mirror: `agent_job` / `agent_worker`, distinct advisory lock `0xA6E47A6E`, NOTIFY channels, claim/lease/heartbeat/maintain, stub `execute` → `complete` / `fail(stub_error)`, FastAPI `/healthz` + `/wake`, slim Dockerfile/requirements (fastapi/uvicorn/asyncpg only).
+- `settings.load_settings()` uses `os.environ["ASTRAL_DATABASE_URL"].strip()` with no DSN fallback; optional non-secret overrides match plan.
+- AC3/AC5 ban greps clean on `service/astral_agent/`; no `src/**` in diff.
+- Exception paths use single `logger.exception` at handlers (`worker._run_job`, `app.wake`); soft DB/listener/claim failures use `warning`; progress uses succinct `info`; maintenance prune uses `debug`.
+- Plan fidelity: issue doc stages 1–3 and Files Changed table match the published tip; estimate **5** still fits (new microservice package + component harness, not sibling client/provider work).
+
+## Recommended actions (downstream only — not executed in this session)
+
+- Chuckles: append this artifact to `docs/features/agent/ast-2237-astral-agent-queue-schema-and-worker-skeleton.md`, commit `docs(AST-2237): Radia review — clean`, push publish ref, post slim upshot `--as radia`, move **Review Posted**; datt **§3h** → **PROCEED** path toward **User Testing** (no `resolve-child` unless Susan wants logging-statute **B** tightened to **A** before UT — optional, not gated here).
+
+context_tokens≈28000
+
