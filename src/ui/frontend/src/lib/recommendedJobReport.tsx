@@ -84,15 +84,71 @@ export function printCoverVisible(artifacts: unknown): boolean {
   return artifactHasContent(artifacts, "cover_letter")
 }
 
-export function materialsPreviewVisible(
-  jobState: string,
-  artifacts: unknown,
-): boolean {
-  if (jobState === "CANDIDATE_REVIEW") return true
-  return (
-    printResumeVisible(artifacts)
-    || printCoverVisible(artifacts)
-  )
+/** Sum of phase list scores; null if any phase score is missing (AST-1968 / AST-2234). */
+export function totalScore(
+  job: Record<string, unknown>,
+  phaseFields: string[],
+): number | null {
+  if (!phaseFields.length) return null
+  let sum = 0
+  for (const field of phaseFields) {
+    const v = job[field]
+    if (typeof v !== "number" || !Number.isFinite(v)) return null
+    sum += v
+  }
+  return sum
+}
+
+export type PhaseThermometerModel = { fillRatio: number; tooltip: string }
+
+/** Green-fill thermometer for one Analysis phase (AST-2234). */
+export function phaseThermometerModel(
+  score: unknown,
+  breakdown: { earned: number; possible: number; max: number } | null,
+): PhaseThermometerModel | null {
+  if (!breakdown) return null
+  if (typeof score !== "number" || !Number.isFinite(score)) return null
+  const { possible, max } = breakdown
+  if (!(max > 0)) return null
+  const fillRatio = Math.min(1, Math.max(0, score / max))
+  const tooltip =
+    `Score ${formatPhaseScore(score)}, ${Math.round((100 * possible) / max)}% gradable`
+  return { fillRatio, tooltip }
+}
+
+const ANALYSIS_GRADES_FIELDS = ["jd_grades", "do_grades", "get_grades", "like_grades"] as const
+
+/** Job-level gradable % = round(100 * (n - x) / n) over Analysis phase grade vectors (AST-2234). */
+export function jobGradablePercent(job: Record<string, unknown>): number | null {
+  let n = 0
+  let xCount = 0
+  for (const field of ANALYSIS_GRADES_FIELDS) {
+    const grades = jobGradesForField(job, field)
+    if (!Array.isArray(grades)) continue
+    for (const row of grades) {
+      if (!row || typeof row !== "object" || Array.isArray(row)) continue
+      n += 1
+      if ((row as { grade?: unknown }).grade === "X") xCount += 1
+    }
+  }
+  if (n === 0) return null
+  return Math.round((100 * (n - xCount)) / n)
+}
+
+/** Unescaped RESPONSE agent_payload prose for Discussion (AST-2234). */
+export function extractAgentPayloadText(responseContent: string): string {
+  try {
+    const parsed: unknown = JSON.parse(responseContent)
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return ""
+    const payload = (parsed as { agent_payload?: unknown }).agent_payload
+    if (typeof payload === "string") return payload
+    if (payload != null && typeof payload === "object") {
+      return JSON.stringify(payload, null, 2)
+    }
+    return ""
+  } catch {
+    return ""
+  }
 }
 
 interface GradeCell {

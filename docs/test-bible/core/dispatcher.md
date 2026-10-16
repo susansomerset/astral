@@ -873,3 +873,23 @@ Parent AC **3** (exactly one row per candidate), **4** (due on `NEW` ledger coun
 | New — `_persist_dispatch_ledger_close` sets timesheet_state NEW | `_persist_dispatch_ledger_close` | `…::test_persist_close_sets_timesheet_state_new` |
 
 **Primary manifest:** [`timesheets.md`](timesheets.md) § AST-2218.
+
+### AST-2229 · AST-2225 (tick → advance_candidate_readiness after stale)
+
+**Parent:** [AST-2225](https://linear.app/astralcareermatch/issue/AST-2225). **Publish:** `origin/sub/AST-2225/AST-2229-readiness-advancement`. Core advance/signal: [`candidate.md`](candidate.md) § AST-2229.
+
+`_tick_loop` late-imports and calls `advance_candidate_readiness()` immediately after `age_stale_candidate_states()`. Readiness is not a dispatch task (no `stat.logging.info.dispatcher` task-completed line).
+
+| Area | Component tests |
+| --- | --- |
+| Tick order stale → readiness | new **`TestAst972CandidateStageDispatch::test_tick_loop_invokes_readiness_after_stale`** |
+| Existing stale stub still green | **`…::test_tick_loop_invokes_stale_aging`** |
+| Unit ticks stay DB-free | revised **`_run_one_tick`** stubs `advance_candidate_readiness` (peer of AST-972 age_stale stub) |
+
+**Broken / obsolete this pass:** `_run_one_tick` without readiness stub would call real `list_candidates` on every scheduler unit tick.
+
+**Integration:** none — do not invent.
+
+## QA test manifest — AST-2229
+
+Primary command + pass criterion: [`candidate.md`](candidate.md) § QA test manifest — AST-2229.

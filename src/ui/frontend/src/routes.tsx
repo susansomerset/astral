@@ -1,7 +1,7 @@
-// SYNC: Every route here must have a matching nav item in src/utils/config.py NAV_CONFIG.
-//       Deeplink-only routes (e.g. jobs/detail/:jobId) use JOBS_DETAIL_ROUTE_PREFIX — not NAV_CONFIG.
-//       search (AST-2174) is deeplink-only too — reached from the sidebar search box, no NAV_CONFIG item.
-//       If you add/remove/rename a route, update NAV_CONFIG to match.
+// SYNC: Every sidebar path in src/utils/config.py NAV_CONFIG must have a matching route here.
+//       Deeplink-only (no NAV_CONFIG item): jobs/detail/:jobId, search (AST-2174), and paths
+//       dropped from the sidebar by AST-2230 (Intake, Surfer, Processing, New List, …) — routes stay.
+//       If you add/remove/rename a sidebar nav item, update NAV_CONFIG to match.
 import { Outlet, type RouteObject } from "react-router-dom"
 import AdminRoute from "./components/AdminRoute"
 import JobsHomeRedirect from "./components/JobsHomeRedirect"
@@ -90,24 +90,24 @@ const routes: RouteObject[] = [
         children: [
           { index: true, element: <JobsHomeRedirect /> },
 
-          // Jobs
-          { path: "jobs/ready", element: <Recommended key="ready" view="ready" title="Ready" /> },
-          { path: "jobs/review", element: <Recommended key="review" view="review" title="Review" /> },
+          // Job Opportunities (sidebar) + deeplink-only Processing
+          { path: "jobs/ready", element: <Recommended key="ready" view="ready" title="Ready to Apply" /> },
+          { path: "jobs/review", element: <Recommended key="review" view="review" title="Recommendations" /> },
           { path: "jobs/applied", element: <Applied /> },
-          { path: "jobs/processing", element: <Processing /> },
+          { path: "jobs/processing", element: <Processing /> }, // deeplink-only — not in NAV_CONFIG
           { path: "jobs/skipped", element: <Skipped /> },
           { path: "jobs/meteorites", element: <JobsMeteorites /> },
           { path: "jobs/detail/:jobId", element: <JobsJobDetail /> },
 
-          // Companies
+          // Company (sidebar) + deeplink-only New/Inactive/Meteorite/Watch History lists
           { path: "companies/watch_list", element: <WatchList /> },
-          { path: "companies/new_list", element: <NewList /> },
-          { path: "companies/inactive_list", element: <InactiveList /> },
+          { path: "companies/new_list", element: <NewList /> }, // deeplink-only
+          { path: "companies/inactive_list", element: <InactiveList /> }, // deeplink-only
           { path: "companies/ignored", element: <Ignored /> },
-          { path: "companies/meteorite_list", element: <Meteorite /> },
-          { path: "companies/watch_history", element: <WatchHistory /> },
+          { path: "companies/meteorite_list", element: <Meteorite /> }, // deeplink-only
+          { path: "companies/watch_history", element: <WatchHistory /> }, // deeplink-only
 
-          // Artifacts
+          // Criteria / Company / Candidate artifact paths (sidebar labels live in NAV_CONFIG)
           { path: "artifacts/base_resume_content", element: <BaseResumeContent /> },
           { path: "artifacts/company_watch_criteria", element: <CompanyWatchCriteria /> },
           { path: "artifacts/company_search_terms", element: <CompanySearchTerms /> },
@@ -118,10 +118,10 @@ const routes: RouteObject[] = [
           { path: "artifacts/do_job_criteria", element: <DoJobCriteria /> },
           { path: "artifacts/like_job_criteria", element: <LikeJobCriteria /> },
 
-          // Candidate
+          // Candidate (sidebar) + deeplink-only Intake / Surfer / Surfer Consent
           { path: "candidate/profile", element: <Profile /> },
-          { path: "candidate/surfer", element: <CandidateSurfer /> },
-          { path: "candidate/intake", element: <CandidateIntake /> },
+          { path: "candidate/surfer", element: <CandidateSurfer /> }, // deeplink-only
+          { path: "candidate/intake", element: <CandidateIntake /> }, // deeplink-only
           { path: "candidate/strengths", element: <Strengths /> },
           { path: "candidate/bio_summary", element: <BioSummary /> },
           { path: "candidate/priorities", element: <Priorities /> },
@@ -129,7 +129,7 @@ const routes: RouteObject[] = [
           { path: "candidate/backstory", element: <Backstory /> },
           { path: "candidate/ideal_day", element: <IdealDay /> },
           { path: "candidate/writing_preferences", element: <WritingPreferences /> },
-          { path: "candidate/surfer_consent", element: <CandidateSurferConsent /> },
+          { path: "candidate/surfer_consent", element: <CandidateSurferConsent /> }, // deeplink-only
 
           // Admin
           { path: "admin/scheduled_actions", element: <AdminRoute><ScheduledActions /></AdminRoute> },

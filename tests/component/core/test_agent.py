@@ -8491,6 +8491,59 @@ class TestAst1550AgentStoryTaskName:
         assert "task_name" not in story[0]
 
 
+class TestAst2232AgentStoryAgentName:
+    """AST-2232: get_entity_agent_story attaches agent_name when non-empty; omits when blank."""
+
+    def _wire(
+        self, monkeypatch: pytest.MonkeyPatch, *, task_row: dict, agent_row: dict | None,
+    ) -> None:
+        monkeypatch.setattr(
+            agent_mod.database,
+            "list_entity_latest_agent_refs",
+            lambda et, eid: [
+                {
+                    "task_key": "contemplate_job",
+                    "prompt_blocks": [{"type": "RESPONSE", "id": "block-1"}],
+                }
+            ],
+        )
+        monkeypatch.setattr(
+            agent_mod,
+            "_get_agent_data_row",
+            lambda bid: {"block_data": "{}"},
+        )
+        monkeypatch.setattr(agent_mod, "get_agent_task", lambda tk: task_row)
+        monkeypatch.setattr(agent_mod, "get_agent", lambda aid: agent_row)
+
+    def test_attaches_agent_name_when_set(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._wire(
+            monkeypatch,
+            task_row={"task_name": "Contemplate Job", "agent_id": "job_analyst_grace"},
+            agent_row={"agent_name": "Grace"},
+        )
+        story = agent_mod.get_entity_agent_story({"astral_job_id": "job-2232"})
+        assert story[0]["task_name"] == "Contemplate Job"
+        assert story[0]["agent_name"] == "Grace"
+
+    def test_omits_agent_name_when_blank(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._wire(
+            monkeypatch,
+            task_row={"task_name": "Contemplate Job", "agent_id": "job_analyst_grace"},
+            agent_row={"agent_name": "   "},
+        )
+        story = agent_mod.get_entity_agent_story({"astral_job_id": "job-2232b"})
+        assert "agent_name" not in story[0]
+
+    def test_omits_agent_name_when_no_agent_id(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._wire(
+            monkeypatch,
+            task_row={"task_name": "Contemplate Job"},
+            agent_row={"agent_name": "Grace"},
+        )
+        story = agent_mod.get_entity_agent_story({"astral_job_id": "job-2232c"})
+        assert "agent_name" not in story[0]
+
+
 class TestEntityAgentStory:
     def test_returns_empty_without_entries(self) -> None:
         assert agent_mod.get_entity_agent_story({}) == []

@@ -5149,6 +5149,24 @@ Config only, no handlers. `CONTACT_CONTEXT_COMMAND_CONFIG` (six suffixes → `ar
 
 **Bible shasum (after publish):** `git show origin/sub/AST-2206/AST-2210-registry-estelle-prompts:docs/test-bible/utils/config.md | shasum`; same for `docs/test-bible/core/repo_admin_json.md`.
 
+### AST-2232 · AST-2226 (agent_name column + Job Description top tab)
+
+**Parent:** [AST-2226](https://linear.app/astralcareermatch/issue/AST-2226). **Publish:** `origin/sub/AST-2226/AST-2232-agent-name-detail-enrichment-tab-config`.
+
+`REPO_ADMIN_JSON_CONFIG` agent columns insert `agent_name` after `agent_id` (keeps AST-2181 `requires_structured_output`). `JOBS_RECOMMENDED_REPORT_TOP_TABS` = analysis → **job_description** → summary → artifacts → discussion → meteorite (first entry still default). Summary sections drop `raw_jd`. Seed `data/admin/agent.json` every row has non-empty `agent_name` and exact column key set. Primary manifest: **`docs/test-bible/core/tracker.md`** § AST-2232.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Tab order + Summary sections (manifest) | `build_state_ui_manifest` | **`TestBuildStateUiManifest::test_ast565_recommended_report_manifest_tabs`** (revised) |
+| Constant tab order | `JOBS_RECOMMENDED_REPORT_TOP_TABS` | **`TestAst1550DiscussionHopKeys::test_top_tabs_discussion_after_artifacts`** (revised) · **`TestAst1691MeteoriteReportConfig`** (unchanged, holds) |
+| Columns + seed names | `REPO_ADMIN_JSON_CONFIG` + `data/admin/agent.json` | **`TestAst1955PlainAgentSettings::test_agent_repo_json_columns_and_seed`** (revised) |
+
+**Broken / obsolete (revised):** Analysis→Summary without `job_description`; Summary `raw_jd`; agent column tuple without `agent_name` / `requires_structured_output`; AST-1955 seed model pin (models drifted on later tickets — pin is now names + column contract).
+
+**Frontend fixture deferral:** `stateUiManifestFixture.ts` still pre-2232 until siblings #2/#3.
+
+**Integration:** none.
+
 ### AST-2221 · AST-1201 (base resume chain registry + stage-generic resolvers)
 
 **Parent:** [AST-1201](https://linear.app/astralcareermatch/issue/AST-1201). **Publish:** `origin/sub/AST-1201/AST-2221-base-resume-chain-registry-and-seed-prompts`. Plan: `docs/features/artifacts/ast-2221-base-resume-chain-registry-and-seed-prompts.md`.
@@ -5224,3 +5242,87 @@ Mailbox-twin fold: `fetch_timesheet` → `{entity_type, trigger_state}=None`, `s
 ## QA test manifest
 
 See **`docs/test-bible/core/meteorite.md`** § AST-2223 (shared numbered list).
+### AST-2228 · AST-2225 (candidate stage registry + topic vocabulary cutover)
+
+**Parent:** [AST-2225](https://linear.app/astralcareermatch/issue/AST-2225). **Publish:** `origin/sub/AST-2225/AST-2228-candidate-stage-registry`. Plan: `docs/features/candidate/ast-2228-candidate-stage-registry.md`. Core resolver/migrate: [`../core/candidate.md`](../core/candidate.md) § AST-2228.
+
+`stage` on every `CANDIDATE_STATES` entry; revive `PROFILE_READY` / `CONTEXT_READY`; delete four topic-ready(+stale) keys; locked bands (`PAUSE_SEARCH` 5, `RESUME_READY` 4, `PROFILE_READY` 2, `DELETED` 0; craft `ERROR_*` → 4); `CANDIDATE_LEGACY_STATE_MAP` remaps topics onto the revived path (live PROFILE/CONTEXT drop from the map); import-time asserts. No `candidate.stage` column (AC 4 — registry metadata only). Does **not** regroup `NAV_CONFIG` (sibling #3).
+
+| Area | Component tests |
+| --- | --- |
+| Stage on every entry; happy path keys; no topic keys; no profile/context stale; REQUESTED_RESUME priors = CONTEXT_READY; NEW/LIVE_PROMPTS stay retired | revised **`TestAst970CandidateStateRegistry`** |
+| Locked AC 1–3 bands + craft ERROR stage 4 | new **`TestAst2228CandidateStageRegistry`** |
+| Legacy map + remap (topics → PROFILE/CONTEXT; live keys identity) | revised **`TestAst973LegacyCandidateRemap`** |
+| AST-1806 prior snapshot: drop topic keys; pin PROFILE/CONTEXT + REQUESTED_RESUME priors | revised **`TestAst1808RetryRegistryPurge::test_prior_snapshot_pinned`** (`_ast2228_candidate_topic_cutover`) |
+
+**Broken / obsolete this pass:** AST-970 happy-path / stale / retired-name asserts that still named topic states or claimed PROFILE/CONTEXT absent; AST-973 map that remapped PROFILE/CONTEXT → NEW_CANDIDATE; AST-1808 snapshot set equality without topic cutover.
+
+**Integration:** none — no existing scenario asserts topic-ready labels or `CANDIDATE_STATES[*].stage`; do not invent.
+
+## QA test manifest — AST-2228
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst970CandidateStateRegistry \
+  tests/component/utils/test_config.py::TestAst973LegacyCandidateRemap \
+  tests/component/utils/test_config.py::TestAst2228CandidateStageRegistry \
+  tests/component/utils/test_config.py::TestAst1808RetryRegistryPurge::test_prior_snapshot_pinned \
+  tests/component/core/test_candidate.py::TestAst970CandidateStateMachine \
+  tests/component/core/test_candidate.py::TestAst2228CandidateStageAndTopicMigrate \
+  tests/component/core/test_candidate.py::TestCheckContextCompleteExtended::test_returns_true_when_already_at_or_past_context_ready \
+  -q
+```
+
+**Pass criterion:** 28 passed on the narrowed run. Not the zero-arg harness.
+
+**Bible shasum (after publish):** `git show origin/sub/AST-2225/AST-2228-candidate-stage-registry:docs/test-bible/utils/config.md | shasum`; same for `docs/test-bible/core/candidate.md`.
+
+### AST-2245 · AST-2225 (gap — BASE_RESUME_CHAIN_ERROR_STATES stage 3)
+
+**Parent:** [AST-2225](https://linear.app/astralcareermatch/issue/AST-2225). **Publish:** `origin/sub/AST-2225/AST-2245-gap-base-resume-error-stage`. Plan: `docs/features/candidate/ast-2245-gap-base-resume-error-stage.md`.
+
+After AST-2228 × AST-2221 merge, `BASE_RESUME_CHAIN_ERROR_STATES` expansion omitted `"stage"` (import assert red on `ERROR_SHAPE_THE_STORY`, …). Gap adds `"stage": 3` (resume-request prior band). Craft `ERROR_CRAFT_*` stay stage 4. No NAV / readiness / UI / data-model.
+
+| Area | Component tests |
+| --- | --- |
+| Every `CANDIDATE_STATES` entry has `stage`; every `BASE_RESUME_CHAIN_ERROR_STATES` key is stage 3 (+ priors/rank unchanged); craft ERROR stay 4 | new **`TestAst2245BaseResumeErrorStage`** |
+| AST-2221 error registry row also asserts stage 3 | revised **`TestAst2221BaseResumeChainConfig::test_error_states_and_priors`** |
+
+**Broken / obsolete this pass:** AST-2221 `test_error_states_and_priors` omitted stage (revised). **Keeper:** restored **`### AST-2228`** block above (lost on ftr `sync(dev)` of sibling epics).
+
+**Integration:** none — do not invent.
+
+## QA test manifest — AST-2245
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst2245BaseResumeErrorStage \
+  tests/component/utils/test_config.py::TestAst2221BaseResumeChainConfig::test_error_states_and_priors \
+  tests/component/utils/test_config.py::TestAst2228CandidateStageRegistry \
+  -q
+```
+
+**Pass criterion:** 4 passed on the narrowed run. Not the zero-arg harness.
+
+**Bible shasum (after publish):** `git show origin/sub/AST-2225/AST-2245-gap-base-resume-error-stage:docs/test-bible/utils/config.md | shasum`.
+
+### AST-2230 · AST-2225 (stage-gated NAV_CONFIG regroup + recent defaults)
+
+**Parent:** [AST-2225](https://linear.app/astralcareermatch/issue/AST-2225). **Publish:** `origin/sub/AST-2225/AST-2230-stage-gated-nav`. Plan: `docs/features/candidate/ast-2230-stage-gated-nav.md`. API gates: [`../ui/api/api_system.md`](../ui/api/api_system.md) § AST-2230. Hop labels: [`../core/candidate.md`](../core/candidate.md) § AST-2230. Frontend redirect: [`../frontend/components.md`](../frontend/components.md) § AST-2230.
+
+Candidate-facing groups → **Candidate / Criteria / Company / Job Opportunities** (order locked); item `"enabled"` = min stage int; drop Intake/Surfer/Processing/…; `NAV_GROUP_RECENT_DEFAULTS` knobs. Admin Operations/Admin/Tools unchanged. Does **not** edit `CANDIDATE_STATES` vocabulary (#1) or shell chrome (#4).
+
+| Area | Component tests |
+| --- | --- |
+| Facing order + Criteria stage 4 + Job Opportunities rows; dropped labels; recent defaults | new **`TestAst2230StageGatedNavConfig`** |
+| Facing foursome (no Jobs/Companies/Artifacts); no group `visible` | revised **`TestAst970CandidateStateRegistry::test_nav_and_gen_states_use_new_vocab`** |
+| Admin segments after facing foursome | revised **`TestAst1386ThreeSegmentAdminNav`** |
+| Applied / Meteorites under Job Opportunities; meteorite_list dropped | revised **`TestAst1479…`**, **`TestAst1495…`**, **`TestAst1749…`**, **`TestAst1974…::test_nav_jobs_items_exact`** |
+
+**Broken / obsolete this pass:** every assert looking up `NAV_CONFIG` groups labeled Jobs / Companies / Artifacts (listed above).
+
+**Integration:** revised `tests/integration/scenarios/test_candidate_nav_api.py` — see [`../integration/README.md`](../integration/README.md).
+
+## QA test manifest — AST-2230
+
+Primary command: [`../ui/api/api_system.md`](../ui/api/api_system.md) § QA test manifest — AST-2230.
