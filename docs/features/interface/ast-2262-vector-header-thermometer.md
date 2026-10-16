@@ -236,3 +236,54 @@ context_tokens≈31000
 | `ec5bbe45c` | 2 | Run count and bar on each rubric vector header; reload after version move |
 
 **Built @ `ec5bbe45c`**
+
+## Radia review
+
+[code-rubric] PROCEED
+**Ticket:** AST-2262
+**Publish ref:** `1b10b104aa228873cc752c53fc2e03825480a093`
+**Corpus:** b7ab2203048ce0beb2869a12200ab7fa696c8066
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.artifact.ui-consistency | A | | |
+
+## Column diff vs plan stage
+
+(aligned)
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### advisory — sibling merge on publish ref
+
+- **Severity:** advisory
+- **Location:** `origin/sub/AST-2257/AST-2262-vector-header-thermometer` vs `origin/dev`
+- **Finding:** Three-dot diff includes AST-2261 rollup (`src/core/candidate.py`, `src/ui/api/*`, 2261 tests/docs) via `merge-child(AST-2261)`. Expected stacked sub; AST-2262 product commits touch only the three scoped frontend files.
+
+### advisory — Joan plan discuss (pattern draft banner)
+
+- **Severity:** advisory
+- **Location:** `patt.artifact.ui-consistency` corpus body
+- **Finding:** Expanded text still says “draft — Archie approval required” while the id lives under `directives/active/` and is frozen on this ticket. Process hygiene only; implementation matches the rubric chrome exception (bar on shared `ArtifactEditor`, no `pages/` fork).
+
+### advisory — failed rollup read hides chrome
+
+- **Severity:** advisory
+- **Location:** `ArtifactEditor.tsx` — `refreshGradeRollup` sets `gradeRollup` to `null` on non-OK / throw; metadata omitted until success
+- **Finding:** Matches plan (no toast). UAT should exercise criteria screens with AST-2261 rollup available (present on this branch after merge-child).
+
+## What's solid
+
+- **Single bar path:** `RubricGradeThermometer` is only imported from `ArtifactEditor.tsx`; repo test walks `pages/` and callers to enforce AC 5.
+- **Thermometer behavior:** Filters to A–F–X with `count > 0`, sorts by grade order, `flexGrow: count`, `title` = letter + count + `last_seen.slice(0, 10)`; CSS uses `var(--grade-a)` … `var(--grade-x)`.
+- **Wiring:** `refreshGradeRollup` hits `GET .../grade_rollup` when `criterionVersionsOn && selectedId` (shapes editors skip via `tabChromeEditable = !shapesKey`); metadata shows run count + bar in rubric mode; `reloadFromServer` on the candidate branch refreshes rollup after `moveVersion` → AC 1–4 covered by component + `ArtifactsDoJobCriteria` tests.
+- **Scope:** No edits under `src/ui/frontend/src/pages/` product code; estimate **3** matches footprint.
+
+context_tokens≈48000
