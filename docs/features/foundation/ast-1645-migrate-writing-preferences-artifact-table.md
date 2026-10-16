@@ -199,3 +199,68 @@ _(generated from epic registry — do not hand-edit; edits are overwritten)_
 | AST-1666 | sub/AST-1645/AST-1666-writing-preferences-contexttextpage-wire-up |
 
 **Epic worktree:** `astral-AST-1645/` — one active sub checked out at a time.
+
+## Bug: AST-2243 — Coerce dict Writing Preferences on hydrate
+
+### As-is
+
+On candidate `miller`, Writing Preferences artifact rows store dict `artifact_data` (`writing_general_instructions` + nested `writing_style`). `hydrate_operative_writing_preferences_for_response` early-returns on `not isinstance(body, str)`, so GET detail never overlays `context.writing_preferences` and `ContextTextPage` shows a blank textarea for every version (including `current=1`). Version-nav move still lists uuids, then `loadBody()` hits the same hydrate path and blanks again.
+
+### To-be
+
+When a current (or selected-as-current) Writing Preferences row exists, hydrate overlays a readable string into `context.writing_preferences` so the editor is non-empty. Dict bodies coerce for display under the existing `plain_text` contract — no new `body_shape`, no structured editor. Operative saves continue to reject non-strings (`plain_text body must be a non-empty string`). Sibling plain_text hydrates (Strengths / Ideal Day / etc.) stay str-only.
+
+### Repro
+
+Fixture shape (miller-equivalent; not a DB seed — file/JSON persistence):
+
+```python
+# Deserialized get_candidate_current(...) return for candidate.context.writing_preferences
+body = {
+    "writing_general_instructions": "Prefer short sentences. Avoid jargon.",
+    "writing_style": {"observations": ["direct", "warm"]},
+}
+# Today: hydrate_operative_writing_preferences_for_response("miller", cd) leaves
+# cd["context"]["writing_preferences"] unset/empty → blank ContextTextPage textarea.
+# After fix: overlay is the non-empty writing_general_instructions string.
+```
+
+Steps: open Writing Preferences for a candidate whose current `writing_preferences` row deserializes to that dict → textarea blank; arrow-move to the other uuid → still blank after reload.
+
+### Root cause
+
+`hydrate_operative_writing_preferences_for_response` treats any non-`str` current body as a miss (`if not isinstance(body, str): return`). Miller's rows are dict-shaped (historical / pre-gate data). Tip hunt: the only candidate write into `database.save_artifact` is `save_candidate_data` str-path, which already rejects non-str `plain_text` — there is no live bypass writer under `src/core/` (or elsewhere) still inserting dict WP rows. The blank editor is a **read/hydrate** defect against legacy dict rows, not an active write regress.
+
+### Proposed change
+
+1. **`src/core/candidate.py` — `hydrate_operative_writing_preferences_for_response` only** (do not change Strengths / Priorities / Deal Breakers / bio_summary / Ideal Day / Backstory hydrates):
+   - Miss (`body is None`) → return unchanged (leave legacy blob).
+   - `isinstance(body, str)` → overlay `ctx["writing_preferences"] = body` unchanged.
+   - `isinstance(body, dict)` → coerce for **display overlay only** (do not rewrite the artifact row):
+     - If `body.get("writing_general_instructions")` is a non-empty `str` (after strip), use that string.
+     - Else `json.dumps(body, sort_keys=True)` (stable, readable fallback when instructions are missing/empty).
+     - Overlay the coerced string onto `ctx["writing_preferences"]`.
+   - Any other non-str type → keep today's early return (no inventing coercions).
+2. **Writer / AC4** — no code change. Tip confirms `save_candidate_data` plain_text branch already raises `ValueError("plain_text body must be a non-empty string")` before `save_artifact`; tracker `save_artifact` is job-scoped only. Document that finding in make-fix notes; do not add a `database.py` gate (out of this bug's Component scope / AST-1645 leaves database untouched).
+3. **`src/ui/api/api_candidate.py`** — confirm-only, no edit: GET `get_candidate_detail` already calls `hydrate_operative_writing_preferences_for_response`; version move (`PUT .../current`) leaves body untouched, then `ContextTextPage.loadBody()` re-GETs detail (same hydrate). No missing call site.
+4. **Frontend** — untouched (`ContextTextPage` / `CandidateWritingPreferences.tsx`). Client `coerceToString` does not understand WP dict keys; server overlay must supply a string.
+
+### Blast radius
+
+- Shared module: `src/core/candidate.py` hydrate helper used by GET detail and any other caller of `hydrate_operative_writing_preferences_for_response` (including `get_candidate` core hydrate if wired). Only the WP function changes.
+- Sibling plain_text leaves: identical str-guards remain — no shared helper refactor in this bug.
+- Tests that assert WP hydrate early-returns on non-str (AST-1665 suite around `hydrate_operative_writing_preferences_for_response`) will need Betty/qa-fix attention if they encoded the blanking behavior; engineer does not patch `tests/`.
+- Token / live assembly reading current WP: if they consume hydrated context string vs raw artifact body, display coerce is response-overlay only — raw artifact_data stays dict until an operator re-saves a string through operative PUT.
+
+### What must still hold
+
+From AST-1645 / AST-1665 (do not regress):
+
+1. Catalog key `candidate.context.writing_preferences` stays `body_shape: "plain_text"` — no new shape, no structured WP editor.
+2. Operative save via `save_candidate_data(..., "candidate.context.writing_preferences", body)` still rejects non-empty-string failures with `plain_text body must be a non-empty string`.
+3. Miss (no current row) still leaves the legacy `context.writing_preferences` blob untouched (migration window).
+4. True string current bodies overlay unchanged.
+5. Sibling context hydrates (Strengths, Priorities, Deal Breakers, bio_summary, Ideal Day, Backstory) keep str-only guards.
+6. UI stays on `ContextTextPage`; `ArtifactEditor` untouched.
+7. No bulk backfill / rewrite of historical dict artifact rows as part of this fix.
+8. Bug AC: miller current WP shows non-empty readable text after GET hydrate; both version uuids reload non-empty bodies after move; new dict writes cannot land without plain_text validation (already true on tip).
