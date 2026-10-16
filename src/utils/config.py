@@ -297,6 +297,19 @@ CANDIDATE_CRAFT_CHAIN_TASK_KEYS = (
     "craft_jobdesc_rubric", "craft_prefilter_rubric", "craft_company_search_terms", "craft_joblist_rubric",
 )
 CANDIDATE_CRAFT_CHAIN_ERROR_STATES = tuple(error_state_for(k) for k in CANDIDATE_CRAFT_CHAIN_TASK_KEYS)
+# Base resume chain (REQUESTED_RESUME entry shape_the_story, run_next order). AST-2221.
+BASE_RESUME_CHAIN_TASK_KEYS = (
+    "shape_the_story",
+    "draft_resume_experiences",
+    "draft_supporting_sections",
+    "draft_highlights",
+    "draft_core_competencies",
+    "draft_professional_summary",
+    "draft_keywords",
+    "draft_resume_base",
+    "draft_title_patterns",
+)
+BASE_RESUME_CHAIN_ERROR_STATES = tuple(error_state_for(k) for k in BASE_RESUME_CHAIN_TASK_KEYS)
 
 
 def is_registered_state(registry: Dict[str, Any], state: Optional[str]) -> bool:
@@ -508,6 +521,90 @@ TASK_CONFIG = {
         },
         "response_format": "json",
         "entity_type": None,
+        "requires_candidate_key": True,
+        "trigger_state": None,
+    },
+    # AST-2221 base resume chain (REQUESTED_RESUME → RESUME_READY; succession via agent_task.run_next).
+    "shape_the_story": {
+        "response_schema": {
+            "story": {"type": "str", "required": True},
+        },
+        "response_format": "json",
+        "entity_type": "candidate",
+        "requires_candidate_key": True,
+        "trigger_state": None,
+    },
+    "draft_resume_experiences": {
+        "response_schema": {
+            "experience": _EXPERIENCE_JOB_ARRAY_FIELD,
+        },
+        "response_format": "json",
+        "entity_type": "candidate",
+        "requires_candidate_key": True,
+        "trigger_state": None,
+    },
+    "draft_supporting_sections": {
+        "response_schema": {
+            "education_certifications": {"type": "str", "required": False},
+            "technical_skills": {"type": "str", "required": False},
+            "prior_experience": {"type": "str", "required": False},
+            "publications": {"type": "str", "required": False},
+        },
+        "response_format": "json",
+        "entity_type": "candidate",
+        "requires_candidate_key": True,
+        "trigger_state": None,
+    },
+    "draft_highlights": {
+        "response_schema": {
+            "highlights": {"type": "str", "required": True},
+        },
+        "response_format": "json",
+        "entity_type": "candidate",
+        "requires_candidate_key": True,
+        "trigger_state": None,
+    },
+    "draft_core_competencies": {
+        "response_schema": {
+            "core_competencies": {"type": "str", "required": True},
+        },
+        "response_format": "json",
+        "entity_type": "candidate",
+        "requires_candidate_key": True,
+        "trigger_state": None,
+    },
+    "draft_professional_summary": {
+        "response_schema": {
+            "professional_summary": {"type": "str", "required": True},
+        },
+        "response_format": "json",
+        "entity_type": "candidate",
+        "requires_candidate_key": True,
+        "trigger_state": None,
+    },
+    "draft_keywords": {
+        "response_schema": {
+            "keywords": {"type": "str", "required": True},
+        },
+        "response_format": "json",
+        "entity_type": "candidate",
+        "requires_candidate_key": True,
+        "trigger_state": None,
+    },
+    "draft_resume_base": {
+        "response_schema": _CRAFT_RESUME_BASE_RESPONSE_SCHEMA,
+        "response_format": "json",
+        "entity_type": "candidate",
+        "requires_candidate_key": True,
+        "trigger_state": None,
+        "artifact_key": "candidate.artifacts.base_resume",
+    },
+    "draft_title_patterns": {
+        "response_schema": {
+            "title_patterns": {"type": "str", "required": True},
+        },
+        "response_format": "json",
+        "entity_type": "candidate",
         "requires_candidate_key": True,
         "trigger_state": None,
     },
@@ -1332,8 +1429,8 @@ assert TASK_CONFIG["qualify_meteorite"]["company_stem_response_key"] in (
 )
 assert TASK_CONFIG["qualify_meteorite"]["email_link_prefix"] == "email-"
 assert TASK_CONFIG["qualify_meteorite"]["bot_blocked_state"] == bot_blocked_state_for("qualify_meteorite")
-# AST-2086: every artifact / candidate craft chain hop names its own failure (ERROR_<HOP>).
-for _hop in (*BUILD_ARTIFACTS_CHAIN_TASK_KEYS, *CANDIDATE_CRAFT_CHAIN_TASK_KEYS):
+# AST-2086: every artifact / candidate craft / base-resume chain hop names its own failure (ERROR_<HOP>).
+for _hop in (*BUILD_ARTIFACTS_CHAIN_TASK_KEYS, *CANDIDATE_CRAFT_CHAIN_TASK_KEYS, *BASE_RESUME_CHAIN_TASK_KEYS):
     TASK_CONFIG[_hop]["error_state"] = error_state_for(_hop)
 
 def is_conversational_task(task_key: str) -> bool:
@@ -1564,6 +1661,11 @@ CANDIDATE_STATES = {
     **{
         s: {"prior_states": ["REQUESTED_RESUME", "REQUESTED_ARTIFACTS"], "progress_rank": 6}
         for s in CANDIDATE_CRAFT_CHAIN_ERROR_STATES
+    },
+    # AST-2221: base-resume hop failures land on ERROR_<HOP> with REQUESTED_RESUME priors only.
+    **{
+        s: {"prior_states": ["REQUESTED_RESUME"], "progress_rank": 4}
+        for s in BASE_RESUME_CHAIN_ERROR_STATES
     },
     "ARTIFACTS_READY": {
         "prior_states": [
@@ -2664,7 +2766,7 @@ assert TASK_CONFIG["resolve_website"]["agent_task"] == "find_company_website"
 assert TASK_CONFIG["resolve_website"]["trigger_state"] == "WEBSITE_REVIEW"
 assert TASK_CONFIG["vet_inflow_discovery"]["trigger_state"] == "DISCOVERED"
 
-# AST-1252: REQUESTED_ARTIFACTS opens at craft_get_rubric; succession via agent_task.run_next.
+# AST-1252 / AST-2221: candidate stages open at entry hop; succession via agent_task.run_next.
 # task_key is the entry hop (no parallel craft_task_key). Resume wrapper stage removed.
 CANDIDATE_STAGE_DISPATCH = {
     "requested_artifacts": {
@@ -2673,8 +2775,14 @@ CANDIDATE_STAGE_DISPATCH = {
         "pass_state": "ARTIFACTS_READY",
         "auto_mode": False,
     },
+    "requested_resume": {
+        "task_key": "shape_the_story",
+        "trigger_state": "REQUESTED_RESUME",
+        "pass_state": "RESUME_READY",
+        "auto_mode": False,
+    },
 }
-assert CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["task_key"] in TASK_CONFIG
+assert all(e["task_key"] in TASK_CONFIG for e in CANDIDATE_STAGE_DISPATCH.values())
 
 # Google Custom Search HTTP pacing (AST-837). Units: seconds (float/int) and count (int).
 GOOGLE_CSE_CONFIG = {
@@ -4219,8 +4327,9 @@ def _dispatch_trigger_state_for_task_key(task_key: str) -> str:
         return "WATCH"
     if task_key == "inflow_discovery":
         return INFLOW_CONFIG["discovery"]["dispatch_trigger_state"]
-    if task_key == CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["task_key"]:
-        return CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["trigger_state"]
+    for _stage in CANDIDATE_STAGE_DISPATCH.values():
+        if task_key == _stage["task_key"]:
+            return _stage["trigger_state"]
     if task_key == "inflow_resolve_website":
         return INFLOW_CONFIG["resolve"]["dispatch_trigger_state"]
     if task_key == "resolve_website":
@@ -4285,7 +4394,9 @@ def _dispatch_trigger_state_for_task_key(task_key: str) -> str:
 def _dispatch_entity_type_for_task_key(task_key: str) -> str:
     if task_key in _DISPATCH_COMPANY_ENTITY_TASK_KEYS:
         return "company"
-    if task_key == "inflow_discovery" or task_key == CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["task_key"]:
+    if task_key == "inflow_discovery" or any(
+        task_key == _stage["task_key"] for _stage in CANDIDATE_STAGE_DISPATCH.values()
+    ):
         return "candidate"
     # stat.dispatch.entity-state-bound: ingress/notify rows now per-candidate meteorite (was global NULL pool).
     if task_key in (
@@ -7599,7 +7710,7 @@ def is_valid_job_batch_claim_state(state: str) -> bool:
 
 
 def is_valid_candidate_batch_claim_state(state: str) -> bool:
-    """True for CANDIDATE_STATES keys and REQUESTED_ARTIFACTS.<hop> runtime labels (claim + persist)."""
+    """True for CANDIDATE_STATES keys and <stage_trigger>.<hop> runtime labels (claim + persist)."""
     s = (state or "").strip()
     if not s:
         return False
@@ -7608,8 +7719,8 @@ def is_valid_candidate_batch_claim_state(state: str) -> bool:
     parsed = parse_dispatch_hop_label(s)
     if parsed is None:
         return False
-    stage_trigger = CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["trigger_state"]
-    return parsed[0] == stage_trigger
+    stage_triggers = {e["trigger_state"] for e in CANDIDATE_STAGE_DISPATCH.values()}
+    return parsed[0] in stage_triggers
 
 
 def dispatch_hop_label(trigger_state: str, completed_task_key: str) -> str:

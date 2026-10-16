@@ -822,3 +822,9 @@ These read the JSON directly, independent of the pre-existing seed defects (`bra
 **New:** `TestAst2210ContextDraftCatalogRows::test_draft_and_revise_rows` — each of the six `CONTACT_CONTEXT_COMMAND_CONFIG` draft tasks is a current `principal_recruiter_estelle` row in group **Contact Estelle** with `## Good examples` + `## Bad examples` (ticket AC 3), `{$SELECTED_AGENT}`, and no unfilled `<TITLE>`/`<LABEL>`/`<GUIDANCE>`/`<GOOD>`/`<BAD>` skeleton token; the `CONTACT_DRAFT_THREAD_CONFIG["revise_task_key"]` row is `contact_recruiter_estelle` in the same group. Unchanged and green: `TestAst1072ContactEstelleTurnCatalogRow`.
 
 **Masked, not revised:** `TestAst786AgentTaskRepoJsonSeed` (pinned row count / key set) stays pre-existing red; whoever re-pins it must add the seven AST-2210 keys. Primary manifest: **`docs/test-bible/utils/config.md`** § AST-2210.
+
+### AST-2221 · AST-1201 (nine base-resume chain `agent_task` rows)
+
+**New:** `TestAst2221BaseResumeChainCatalogRows::test_run_next_chain_order_prompts_and_agents` — walk `run_next` from `shape_the_story` (current rows) yields exactly `BASE_RESUME_CHAIN_TASK_KEYS` and empty terminal; each row is `Candidate Artifacts` / group order `2000` / seq `20`–`28`; agents Estelle (story + title patterns) / Judith (middle seven); exact seed `user_prompt`s; empty system/cache prompts; unique `task_key_uuid`s. Config half: **`docs/test-bible/utils/config.md`** § AST-2221.
+
+**Masked, not revised:** `TestAst786AgentTaskRepoJsonSeed` — add the nine AST-2221 keys when that lock is re-pinned.

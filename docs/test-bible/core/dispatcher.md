@@ -857,6 +857,10 @@ grep -n '^_auto_thread_cap_override: Optional\[int\] = None' src/core/dispatcher
 1. `[bug-repro]` `pytest -q tests/component/core/test_dispatcher.py::TestWarmThenGather::test_bug_repro_stagger_spaces_remaining_starts` — red pre-AST-2149 (`sleep` never awaited: `[] == [1.0, 2.0]`), green with AST-2149.
 2. `pytest -q tests/component/core/test_dispatcher.py::TestWarmThenGather tests/component/core/test_dispatcher.py::TestAst1867ProviderBalanceOutage tests/component/core/test_dispatcher.py::TestAst2010ProviderRateLimitOutage tests/component/core/test_dispatcher.py::TestAst2098ProviderProbeOutage --durations=10` — no node ≈1.00s. `TestAst2098ProviderProbeOutage::test_run_unified_per_entity_skips_after_probe_failure` is pre-existing red on ftr (`repeat_processed`, § AST-2093 / AST-2141) and outside this pass bar.
 
+### AST-2222 · AST-1201 (pointer)
+
+Candidate claim expansion uses `candidate_stage_dispatch_claim_states` for every stage trigger (not only `REQUESTED_ARTIFACTS`). Primary: [`candidate.md`](candidate.md) § AST-2222 — AC 6/7 source scans on `dispatcher.py`.
+
 ### AST-2218 · AST-2215 (fetch_timesheet ensure/provision/due; close → NEW)
 
 Parent AC **3** (exactly one row per candidate), **4** (due on `NEW` ledger count; historical null excluded). Ledger close stamps `timesheet_state="NEW"`. Runner routing is covered under [`timesheets.md`](timesheets.md).

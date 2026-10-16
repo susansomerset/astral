@@ -5149,6 +5149,42 @@ Config only, no handlers. `CONTACT_CONTEXT_COMMAND_CONFIG` (six suffixes → `ar
 
 **Bible shasum (after publish):** `git show origin/sub/AST-2206/AST-2210-registry-estelle-prompts:docs/test-bible/utils/config.md | shasum`; same for `docs/test-bible/core/repo_admin_json.md`.
 
+### AST-2221 · AST-1201 (base resume chain registry + stage-generic resolvers)
+
+**Parent:** [AST-1201](https://linear.app/astralcareermatch/issue/AST-1201). **Publish:** `origin/sub/AST-1201/AST-2221-base-resume-chain-registry-and-seed-prompts`. Plan: `docs/features/artifacts/ast-2221-base-resume-chain-registry-and-seed-prompts.md`.
+
+Config + seed only (no `src/core/*`). `BASE_RESUME_CHAIN_TASK_KEYS` / `BASE_RESUME_CHAIN_ERROR_STATES` (nine hops, Functional-scope order); nine `TASK_CONFIG` entries (`entity_type: candidate`, JSON schemas; `draft_resume_base` shares `_CRAFT_RESUME_BASE_RESPONSE_SCHEMA` by identity + `artifact_key` `candidate.artifacts.base_resume`; `draft_resume_experiences` reuses `_EXPERIENCE_JOB_ARRAY_FIELD`); ERROR states with priors `REQUESTED_RESUME` only / `progress_rank` 4; `CANDIDATE_STAGE_DISPATCH["requested_resume"]` entry (`shape_the_story` → `REQUESTED_RESUME` → `RESUME_READY`, `auto_mode` False); three resolvers loop every stage entry (`_dispatch_trigger_state_for_task_key`, `_dispatch_entity_type_for_task_key`, `is_valid_candidate_batch_claim_state`). Catalog seed: [`../core/repo_admin_json.md`](../core/repo_admin_json.md) § AST-2221. Sibling **AST-2222** owns the stage runner.
+
+| Area | Component tests |
+| --- | --- |
+| AC 1 nine hops + shell fields; AC 2 schema/`artifact_key` identity; experience field object identity | new **`TestAst2221BaseResumeChainConfig`** — `test_nine_hops_registered`, `test_assembler_reuses_craft_schema_and_artifact_key` |
+| AC 4 ERROR states + priors; AC 5 stage entry; every stage `task_key` in `TASK_CONFIG` | same — `test_error_states_and_priors`, `test_requested_resume_stage_entry` |
+| AC 6 stage-generic resolvers (entry + craft regression); mid-chain KeyError; hop-label claim | same — `test_stage_generic_resolvers`, `test_hop_label_claim_validation` |
+| Revised: artifacts-only “no `requested_resume`” lock retired | **`TestAst972CandidateStageDispatch::test_stage_dispatch_map_and_task_config`** |
+| Revised: AUTO-off covers every stage entry (not only artifacts) | **`TestAst1022HonorAutoOffStageDispatch::test_stage_dispatch_auto_mode_seed_false`** |
+
+**Broken / obsolete this pass:** AST-972 asserted `"requested_resume" not in CANDIDATE_STAGE_DISPATCH` — product now registers that stage. AST-1022 only checked `requested_artifacts["auto_mode"]`.
+
+**Masked, not revised:** `TestAst786AgentTaskRepoJsonSeed` (pinned 57-key set) stays pre-existing red (also missing AST-2210 keys); do not re-pin here.
+
+**Integration:** none — no `tests/integration/` scenario reads `BASE_RESUME_CHAIN_*` or `requested_resume` stage dispatch.
+
+## QA test manifest — AST-2221
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst2221BaseResumeChainConfig \
+  tests/component/utils/test_config.py::TestAst972CandidateStageDispatch \
+  tests/component/utils/test_config.py::TestAst1022HonorAutoOffStageDispatch \
+  tests/component/utils/test_config.py::TestAst1252ArtifactsDispatchChainConfig \
+  tests/component/core/test_repo_admin_json.py::TestAst2221BaseResumeChainCatalogRows \
+  -q
+```
+
+**Pass criterion:** all nodes green on the command above. Not the zero-arg harness / branch-lock gate.
+
+**Bible shasum (after publish):** `git show origin/sub/AST-1201/AST-2221-base-resume-chain-registry-and-seed-prompts:docs/test-bible/utils/config.md | shasum`; same for `docs/test-bible/core/repo_admin_json.md`.
+
 ### AST-2217 · AST-2215 (fetch_timesheet registries)
 
 `FETCH_TIMESHEET_CONFIG` (poller defaults: `entity_type` / `trigger_state` / `freq_hrs` None, `auto_mode` False) plus `TIMESHEET_REQUEST_TYPES`, `TIMESHEET_RECEIPT_FIELDS`, `LEDGER_TIMESHEET_STATES`, `TIMESHEET_SEARCH_SERVER_ID`. Reconcile constants left in place for AST-2218.

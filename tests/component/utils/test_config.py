@@ -2537,7 +2537,7 @@ class TestAst972CandidateStageDispatch:
     """AST-972 → AST-1252: CANDIDATE_STAGE_DISPATCH artifacts entry + claim/trigger helpers."""
 
     def test_stage_dispatch_map_and_task_config(self) -> None:
-        assert "requested_resume" not in cfg.CANDIDATE_STAGE_DISPATCH
+        # AST-2221: requested_resume stage entry is live — assert shape in TestAst2221BaseResumeChainConfig.
         arts = cfg.CANDIDATE_STAGE_DISPATCH["requested_artifacts"]
         assert arts["task_key"] == "craft_get_rubric"
         assert arts["trigger_state"] == "REQUESTED_ARTIFACTS"
@@ -2581,11 +2581,11 @@ class TestAst972CandidateStageDispatch:
     reason="AST-972 product not on this publish tip",
 )
 class TestAst1022HonorAutoOffStageDispatch:
-    """AST-1022 → AST-1252: remaining stage entry seeds AUTO off."""
+    """AST-1022 → AST-1252: every stage entry seeds AUTO off (AST-2221 adds requested_resume)."""
 
     def test_stage_dispatch_auto_mode_seed_false(self) -> None:
-        arts = cfg.CANDIDATE_STAGE_DISPATCH["requested_artifacts"]
-        assert arts["auto_mode"] is False
+        for stage_key, entry in cfg.CANDIDATE_STAGE_DISPATCH.items():
+            assert entry["auto_mode"] is False, stage_key
 
 
 class TestAst1252ArtifactsDispatchChainConfig:
@@ -8840,6 +8840,85 @@ class TestAst2218FetchTimesheetAdminDefaults:
         assert cfg.is_fetch_timesheet_task_key("fetch_timesheet") is True
         assert cfg.is_fetch_timesheet_task_key(" fetch_timesheet ") is True
         assert cfg.is_fetch_timesheet_task_key("evaluate_jd") is False
+
+
+# Branches: nine hops + schemas; assembler schema identity; ERROR priors; stage entry;
+# stage-generic resolvers (entry hop + craft regression); hop-label claim validation.
+class TestAst2221BaseResumeChainConfig:
+    """AST-2221: BASE_RESUME_CHAIN registry, requested_resume stage, stage-generic resolvers."""
+
+    def test_nine_hops_registered(self) -> None:
+        assert cfg.BASE_RESUME_CHAIN_TASK_KEYS == (
+            "shape_the_story",
+            "draft_resume_experiences",
+            "draft_supporting_sections",
+            "draft_highlights",
+            "draft_core_competencies",
+            "draft_professional_summary",
+            "draft_keywords",
+            "draft_resume_base",
+            "draft_title_patterns",
+        )
+        for k in cfg.BASE_RESUME_CHAIN_TASK_KEYS:
+            t = cfg.TASK_CONFIG[k]
+            assert t["entity_type"] == "candidate", k
+            assert t["requires_candidate_key"] is True, k
+            assert t["response_format"] == "json", k
+            assert t["trigger_state"] is None, k
+            assert t["response_schema"], k
+
+    def test_assembler_reuses_craft_schema_and_artifact_key(self) -> None:
+        t = cfg.TASK_CONFIG["draft_resume_base"]
+        assert t["response_schema"] is cfg._CRAFT_RESUME_BASE_RESPONSE_SCHEMA
+        assert t["artifact_key"] == "candidate.artifacts.base_resume"
+        # experience field object identity (not a copied dict)
+        exp = cfg.TASK_CONFIG["draft_resume_experiences"]["response_schema"]["experience"]
+        assert exp is cfg._EXPERIENCE_JOB_ARRAY_FIELD
+
+    def test_error_states_and_priors(self) -> None:
+        assert cfg.BASE_RESUME_CHAIN_ERROR_STATES == tuple(
+            cfg.error_state_for(k) for k in cfg.BASE_RESUME_CHAIN_TASK_KEYS
+        )
+        for k in cfg.BASE_RESUME_CHAIN_TASK_KEYS:
+            st = cfg.error_state_for(k)
+            assert cfg.TASK_CONFIG[k]["error_state"] == st, k
+            assert cfg.CANDIDATE_STATES[st]["prior_states"] == ["REQUESTED_RESUME"], k
+            assert cfg.CANDIDATE_STATES[st]["progress_rank"] == 4, k
+
+    def test_requested_resume_stage_entry(self) -> None:
+        assert cfg.CANDIDATE_STAGE_DISPATCH["requested_resume"] == {
+            "task_key": "shape_the_story",
+            "trigger_state": "REQUESTED_RESUME",
+            "pass_state": "RESUME_READY",
+            "auto_mode": False,
+        }
+        # Every stage entry task_key is in TASK_CONFIG (import-time assert twin).
+        for entry in cfg.CANDIDATE_STAGE_DISPATCH.values():
+            assert entry["task_key"] in cfg.TASK_CONFIG
+
+    def test_stage_generic_resolvers(self) -> None:
+        from src.utils.config import (
+            _dispatch_entity_type_for_task_key,
+            _dispatch_trigger_state_for_task_key,
+        )
+
+        assert _dispatch_trigger_state_for_task_key("shape_the_story") == "REQUESTED_RESUME"
+        assert _dispatch_entity_type_for_task_key("shape_the_story") == "candidate"
+        # Existing artifacts stage must not regress.
+        assert _dispatch_trigger_state_for_task_key("craft_get_rubric") == "REQUESTED_ARTIFACTS"
+        assert _dispatch_entity_type_for_task_key("craft_get_rubric") == "candidate"
+        # Mid-chain hops stay stage-trigger-less (sibling owns claim/resume).
+        with pytest.raises(KeyError):
+            _dispatch_trigger_state_for_task_key("draft_highlights")
+
+    def test_hop_label_claim_validation(self) -> None:
+        # Stage-generic claim validator accepts REQUESTED_RESUME.<hop> like REQUESTED_ARTIFACTS.<hop>.
+        assert cfg.is_valid_candidate_batch_claim_state(
+            cfg.dispatch_hop_label("REQUESTED_RESUME", "shape_the_story"),
+        ) is True
+        assert cfg.is_valid_candidate_batch_claim_state(
+            cfg.dispatch_hop_label("REQUESTED_ARTIFACTS", "craft_get_rubric"),
+        ) is True
 
 
 class TestAst2223CandidateMeteoriteEditConfig:
