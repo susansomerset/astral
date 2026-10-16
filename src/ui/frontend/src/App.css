@@ -1520,6 +1520,16 @@ body {
 .rubric-grade-thermometer-seg.seg-d { background: var(--grade-d); }
 .rubric-grade-thermometer-seg.seg-f { background: var(--grade-f); }
 .rubric-grade-thermometer-seg.seg-x { background: var(--grade-x); }
+.rubric-grade-rollup {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+}
+.rubric-grade-run-count {
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+}
 
 /* AST-1968: colour-only grade circle for Recommended list analysis lines */
 .grade-dot-letterless {
