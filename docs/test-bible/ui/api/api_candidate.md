@@ -528,6 +528,34 @@ Production PUT upserts or deletes, then one deploy, then stores status and expir
 
 **Broken / obsolete:** outbound `{server, label}` only, and the Manage Candidates “(set)” / “(not set)” labels. Revised in place. **Integration:** none.
 
+### AST-2267 · AST-2225 (Manage Candidates state dropdown)
+
+**Parent:** [AST-2225](https://linear.app/astralcareermatch/issue/AST-2225). **Publish:** `origin/sub/AST-2225/AST-2267-manage-candidates-state-dropdown`. Plan patch: `docs/features/candidate/ast-2228-candidate-stage-registry.md` § Bug AST-2267.
+
+`GET /api/candidates/states` becomes `[{state, label}]` (`label` is `{stage}:{STATE}`), omits `ERROR_*` / `INTAKE_INITIATED` / `*_STALE`, sorted by label. Option value stays the raw key.
+
+| Area | Component tests |
+| --- | --- |
+| [bug-repro] object list, omit, stage labels, sort | **`TestAst2267PickerStates::test_ast2267_picker_states_are_stage_labels`** — red on the pre-fix string dump |
+| List membership reads `state` when the row is an object | revised **`TestCandidateRoutes::test_list_candidates_and_states`** |
+
+Page half: [`../../frontend/pages.md`](../../frontend/pages.md) § AST-2267.
+
+## QA test manifest — AST-2267
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_candidate.py::TestAst2267PickerStates::test_ast2267_picker_states_are_stage_labels \
+  -q
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminManageCandidates.test.tsx \
+  -t 'AST-2267'
+```
+
+**Pass criterion:** `[bug-repro]` `test_ast2267_picker_states_are_stage_labels` is red on this pre-fix tip (rows are strings, so the dict check fails). It goes green once `get_candidate_states` returns sorted `{state, label}` objects and omits `ERROR_*` / `INTAKE_INITIATED` / `*_STALE`. Page node: [`../../frontend/pages.md`](../../frontend/pages.md).
+
+**Bible shasum (after publish):** `git show origin/sub/AST-2225/AST-2267-manage-candidates-state-dropdown:docs/test-bible/ui/api/api_candidate.md | shasum`
+
 ## QA test manifest — AST-2252
 
 1. `tests/component/ui/api/test_api_candidate.py::TestSanitizeCandidate`

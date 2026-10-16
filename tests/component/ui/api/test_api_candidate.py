@@ -252,8 +252,11 @@ class TestCandidateRoutes:
         assert len(candidate_client.get("/api/candidates?include_deleted=true", headers=auth_headers).get_json()) == 1
         states = candidate_client.get("/api/candidates/states", headers=auth_headers)
         assert states.status_code == 200
-        assert "NEW_CANDIDATE" in states.get_json()
-        assert "PROSPECT" not in states.get_json()
+        # AST-2267: payload becomes {state, label} objects; membership is the state key.
+        payload = states.get_json()
+        names = [row["state"] if isinstance(row, dict) else row for row in payload]
+        assert "NEW_CANDIDATE" in names
+        assert "PROSPECT" not in names
 
     def test_list_rows_carry_stored_key_servers_only(
         self, candidate_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
@@ -478,6 +481,36 @@ class TestCandidateRoutes:
         assert resp.status_code == 400
         assert resp.get_json()["error"] == "expires_at must be YYYY-MM-DD HH:MM:SS"
         assert b"sk-kimi-plain" not in resp.data
+
+
+class TestAst2267PickerStates:
+    """[bug-repro] Manage Candidates state list is stage-prefixed objects, not every registry key."""
+
+    def test_ast2267_picker_states_are_stage_labels(
+        self, candidate_client: FlaskClient, auth_headers: dict[str, str]
+    ) -> None:
+        resp = candidate_client.get("/api/candidates/states", headers=auth_headers)
+        assert resp.status_code == 200
+        payload = resp.get_json()
+        assert isinstance(payload, list) and payload
+        assert all(
+            isinstance(row, dict)
+            and isinstance(row.get("state"), str)
+            and isinstance(row.get("label"), str)
+            for row in payload
+        )
+        names = [row["state"] for row in payload]
+        labels = [row["label"] for row in payload]
+        assert labels == sorted(labels)
+        assert not any(
+            n.startswith("ERROR_") or n == "INTAKE_INITIATED" or n.endswith("_STALE")
+            for n in names
+        )
+        by_state = {row["state"]: row["label"] for row in payload}
+        assert by_state["ACTIVE_SEARCH"] == "5:ACTIVE_SEARCH"
+        assert by_state["DELETED"] == "0:DELETED"
+        assert "NEW_CANDIDATE" in by_state
+        assert "PROSPECT" not in by_state
 
 
 class TestAst2252AdminSecretExpiry:
