@@ -21,8 +21,11 @@ from src.core.tracker import (
     get_job_artifacts,
     get_job_effective_resume_structure,
     hydrate_job_artifacts_for_display,
-    job_state_admits_transition,
+    job_applied_at,
+    job_discovered_at,
     job_misses_dispatch_score_floor,
+    job_recommended_at,
+    job_state_admits_transition,
     legal_job_successor_states,
     list_jobs,
     list_jobs_below_dispatch_score_floor,
@@ -221,6 +224,26 @@ def detail(astral_job_id):
     _attach_skipped_edit_meta(job)
     # AST-1872: server-resolved Skip legality for the Recommended report (core owns the prior-state rule)
     job["can_skip"] = job_state_admits_transition(job.get("state") or "", "CANDIDATE_SKIPPED")
+    # AST-2232: Applied legality — same prior-state admission as Skip
+    job["can_apply"] = job_state_admits_transition(
+        job.get("state") or "", "CANDIDATE_APPLIED"
+    )
+    # AST-2232: company identity + website for Recommended report header (siblings render)
+    company_key = (job.get("company_id") or job.get("company") or "").strip()
+    company_row = None
+    if company_key:
+        logger.debug("Calling get_company: [short_name=%s]", company_key)
+        company_row = get_company(company_key)
+        logger.debug("Response from get_company: %s", company_row)
+    job["company_name"] = (
+        ((company_row or {}).get("company_name") or "").strip() or None
+    )
+    job["company_website"] = (
+        ((company_row or {}).get("company_website") or "").strip() or None
+    )
+    job["discovered_at"] = job_discovered_at(job)
+    job["recommended_at"] = job_recommended_at(job)
+    job["applied_at"] = job_applied_at(job)
     # AST-1100/1592: pin-resolve proposed_answers; re-hydrate with job id for catalog current-read.
     jd = job.get("job_data") if isinstance(job.get("job_data"), dict) else {}
     art = hydrate_job_artifacts_for_display(

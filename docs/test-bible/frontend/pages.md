@@ -4120,3 +4120,15 @@ cd src/ui/frontend && npm run test:component -- \
 **Bible path shasums (publish tip `2b5a8f786`):**
 - `docs/test-bible/frontend/components.md` — `02f1b04adf3b3953651804b5f19d8db18208b65b`
 - `docs/test-bible/frontend/pages.md` — `7dd54eed4d2ffc854170b508a0e283487e8e0b62`
+
+### AST-2234 · AST-2226 (§6c JobsRecommended totalScore import)
+
+**Parent:** AST-2226. **Publish:** `origin/sub/AST-2226/AST-2234-modal-panes-and-wiring`.
+
+`JobsRecommended.tsx` drops its local `totalScore` and imports the shared helper from `recommendedJobReport` (behavior unchanged). Existing page Vitest covers first paint / score column — no new page asserts.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| §6c routed page still renders | `JobsRecommended.tsx` | **`test_JobsRecommended.test.tsx`** (existing suite, regression) |
+
+Manifest: [`components.md`](components.md) § AST-2234.
