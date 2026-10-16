@@ -5326,3 +5326,5 @@ Candidate-facing groups → **Candidate / Criteria / Company / Job Opportunities
 ## QA test manifest — AST-2230
 
 Primary command: [`../ui/api/api_system.md`](../ui/api/api_system.md) § QA test manifest — AST-2230.
+
+**AST-2250 catalog** (`TestAst2250CandidateSecretCatalog`): [`../external/railway.md`](../external/railway.md) § QA test manifest — AST-2250.

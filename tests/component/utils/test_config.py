@@ -9119,3 +9119,74 @@ class TestAst2223CandidateMeteoriteEditConfig:
             "employer_name",
             cfg.METEORITE_CONFIG["electronic_contact_column"],
         ]
+
+
+class TestAst2250CandidateSecretCatalog:
+    """AST-2250: Railway target env names, catalog rows, variable-name shape, env.example comments."""
+
+    def test_railway_target_env_names(self) -> None:
+        assert cfg.CANDIDATE_SECRET_RAILWAY_CONFIG == {
+            "graphql_url": "https://backboard.railway.com/graphql/v2",
+            "token_env": "ASTRAL_RAILWAY_TOKEN",
+            "project_id_env": "ASTRAL_RAILWAY_PROJECT_ID",
+            "environment_id_env": "ASTRAL_RAILWAY_ENVIRONMENT_ID",
+            "service_id_env": "ASTRAL_RAILWAY_SERVICE_ID",
+        }
+        # Gunicorn dict stays the four existing keys.
+        assert set(cfg.RAILWAY_CONFIG) == {
+            "workers",
+            "threads",
+            "timeout",
+            "access_log_quiet_paths",
+        }
+
+    def test_catalog_matches_llm_servers_plus_search(self) -> None:
+        assert set(cfg.CANDIDATE_SECRET_CATALOG) == set(cfg.LLM_SERVER_CONFIG) | {
+            "google_cse_api_key",
+            "google_cse_id",
+        }
+        assert cfg.candidate_secret_variable_name("anthropic", "ada-1") == "CANDIDATE_ADA_1_ANTHROPIC"
+        assert cfg.candidate_secret_variable_name("kimi", "ada-1") == "CANDIDATE_ADA_1_KIMI"
+        assert cfg.candidate_secret_variable_name("openrouter", "ada-1") == "CANDIDATE_ADA_1_OPENROUTER"
+        assert cfg.candidate_secret_variable_name("deepseek", "ada-1") == "CANDIDATE_ADA_1_DEEPSEEK"
+        assert (
+            cfg.candidate_secret_variable_name("google_cse_api_key", "ada-1")
+            == "CANDIDATE_ADA_1_GOOGLE_CSE_API_KEY"
+        )
+        assert cfg.candidate_secret_variable_name("google_cse_id", "ada-1") == "CANDIDATE_ADA_1_GOOGLE_CSE_ID"
+        assert cfg.candidate_secret_variable_name("anthropic", "Ada 1!") == "CANDIDATE_ADA_1__ANTHROPIC"
+        assert cfg.candidate_secret_variable_name("anthropic", "é") == "CANDIDATE___ANTHROPIC"
+        for secret_id, row in cfg.CANDIDATE_SECRET_CATALOG.items():
+            assert cfg.candidate_secret_local_stub_env(secret_id) == row["local_stub_env"]
+            assert row["local_stub_env"].startswith("CANDIDATE_SECRET_STUB_")
+
+    def test_unknown_secret_and_blank_candidate_raise(self) -> None:
+        with pytest.raises(ValueError, match="Unknown candidate secret 'nope'"):
+            cfg.candidate_secret_variable_name("nope", "ada-1")
+        with pytest.raises(ValueError, match="Unknown candidate secret 'nope'"):
+            cfg.candidate_secret_local_stub_env("nope")
+        with pytest.raises(ValueError, match="candidate_id is required"):
+            cfg.candidate_secret_variable_name("anthropic", "   ")
+        with pytest.raises(ValueError, match="candidate_id is required"):
+            cfg.candidate_secret_variable_name("anthropic", None)  # type: ignore[arg-type]
+
+    def test_env_example_comments_names_only(self) -> None:
+        from pathlib import Path
+
+        text = Path(__file__).resolve().parents[3].joinpath("env.example").read_text(encoding="utf-8")
+        names = [
+            "ASTRAL_RAILWAY_TOKEN",
+            "ASTRAL_RAILWAY_PROJECT_ID",
+            "ASTRAL_RAILWAY_ENVIRONMENT_ID",
+            "ASTRAL_RAILWAY_SERVICE_ID",
+            "CANDIDATE_SECRET_STUB_ANTHROPIC",
+            "CANDIDATE_SECRET_STUB_KIMI",
+            "CANDIDATE_SECRET_STUB_OPENROUTER",
+            "CANDIDATE_SECRET_STUB_DEEPSEEK",
+            "CANDIDATE_SECRET_STUB_GOOGLE_CSE_API_KEY",
+            "CANDIDATE_SECRET_STUB_GOOGLE_CSE_ID",
+        ]
+        for name in names:
+            assert f"# {name}=" in text
+            assert f"\n{name}=" not in text
+        assert "# RAILWAY_TOKEN=...  # operator machine only — never commit" in text
