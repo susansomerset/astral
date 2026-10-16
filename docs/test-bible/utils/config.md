@@ -5149,3 +5149,38 @@ Config only, no handlers. `CONTACT_CONTEXT_COMMAND_CONFIG` (six suffixes → `ar
 
 **Bible shasum (after publish):** `git show origin/sub/AST-2206/AST-2210-registry-estelle-prompts:docs/test-bible/utils/config.md | shasum`; same for `docs/test-bible/core/repo_admin_json.md`.
 
+
+### AST-2228 · AST-2225 (candidate stage registry + topic vocabulary cutover)
+
+**Parent:** [AST-2225](https://linear.app/astralcareermatch/issue/AST-2225). **Publish:** `origin/sub/AST-2225/AST-2228-candidate-stage-registry`. Plan: `docs/features/candidate/ast-2228-candidate-stage-registry.md`. Core resolver/migrate: [`../core/candidate.md`](../core/candidate.md) § AST-2228.
+
+`stage` on every `CANDIDATE_STATES` entry; revive `PROFILE_READY` / `CONTEXT_READY`; delete four topic-ready(+stale) keys; locked bands (`PAUSE_SEARCH` 5, `RESUME_READY` 4, `PROFILE_READY` 2, `DELETED` 0; craft `ERROR_*` → 4); `CANDIDATE_LEGACY_STATE_MAP` remaps topics onto the revived path (live PROFILE/CONTEXT drop from the map); import-time asserts. No `candidate.stage` column (AC 4 — registry metadata only). Does **not** regroup `NAV_CONFIG` (sibling #3).
+
+| Area | Component tests |
+| --- | --- |
+| Stage on every entry; happy path keys; no topic keys; no profile/context stale; REQUESTED_RESUME priors = CONTEXT_READY; NEW/LIVE_PROMPTS stay retired | revised **`TestAst970CandidateStateRegistry`** |
+| Locked AC 1–3 bands + craft ERROR stage 4 | new **`TestAst2228CandidateStageRegistry`** |
+| Legacy map + remap (topics → PROFILE/CONTEXT; live keys identity) | revised **`TestAst973LegacyCandidateRemap`** |
+| AST-1806 prior snapshot: drop topic keys; pin PROFILE/CONTEXT + REQUESTED_RESUME priors | revised **`TestAst1808RetryRegistryPurge::test_prior_snapshot_pinned`** (`_ast2228_candidate_topic_cutover`) |
+
+**Broken / obsolete this pass:** AST-970 happy-path / stale / retired-name asserts that still named topic states or claimed PROFILE/CONTEXT absent; AST-973 map that remapped PROFILE/CONTEXT → NEW_CANDIDATE; AST-1808 snapshot set equality without topic cutover.
+
+**Integration:** none — no existing scenario asserts topic-ready labels or `CANDIDATE_STATES[*].stage`; do not invent.
+
+## QA test manifest — AST-2228
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst970CandidateStateRegistry \
+  tests/component/utils/test_config.py::TestAst973LegacyCandidateRemap \
+  tests/component/utils/test_config.py::TestAst2228CandidateStageRegistry \
+  tests/component/utils/test_config.py::TestAst1808RetryRegistryPurge::test_prior_snapshot_pinned \
+  tests/component/core/test_candidate.py::TestAst970CandidateStateMachine \
+  tests/component/core/test_candidate.py::TestAst2228CandidateStageAndTopicMigrate \
+  tests/component/core/test_candidate.py::TestCheckContextCompleteExtended::test_returns_true_when_already_at_or_past_context_ready \
+  -q
+```
+
+**Pass criterion:** 28 passed on the narrowed run. Not the zero-arg harness.
+
+**Bible shasum (after publish):** `git show origin/sub/AST-2225/AST-2228-candidate-stage-registry:docs/test-bible/utils/config.md | shasum`; same for `docs/test-bible/core/candidate.md`.

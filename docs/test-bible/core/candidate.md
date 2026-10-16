@@ -2527,3 +2527,23 @@ grep -rnE '(draft|save|show)-(strengths|dealbreakers|priorities|ideal-day|bio-su
 **Pass criterion:** 54 passed; AC 3 grep empty. Not the zero-arg harness. `test_contact.py` needs `asyncpg` / `nh3` in the interpreter (use `/home/susan/astral/.venv/bin/python` on this worktree); restore `data/contact_estelle_activity.json` if a `test_contact.py` run dirties it.
 
 **Bible shasum (after publish):** `git show origin/sub/AST-2206/AST-2211-show-save-handlers-threaded-history:docs/test-bible/core/candidate.md | shasum`; same for `docs/test-bible/external/slack.md`.
+
+### AST-2228 · AST-2225 (stage resolver + topic-row migrate + CONTEXT_READY gate)
+
+**Parent:** [AST-2225](https://linear.app/astralcareermatch/issue/AST-2225). **Publish:** `origin/sub/AST-2225/AST-2228-candidate-stage-registry`. Config registry half: [`../utils/config.md`](../utils/config.md) § AST-2228.
+
+`candidate_stage(state)` reads registry `stage` via `registered_base` (unknown → `ValueError`). `migrate_retired_topic_candidate_states()` force-transitions live topic-ready(+stale) rows onto `PROFILE_READY` / `CONTEXT_READY` via `remap_legacy_candidate_state`. Hooked at the start of `age_stale_candidate_states` (first stale tick heals; no dispatcher edit). `check_context_complete` completeness rank is `CONTEXT_READY` (was `ALL_TOPICS_READY`). Happy-path transitions use PROFILE → CONTEXT. No `candidate.stage` column.
+
+| Area | Component tests |
+| --- | --- |
+| Happy path PROFILE/CONTEXT; intake → PROFILE; RESUME_READY_STALE → REQUESTED_ARTIFACTS; age_stale on RESUME_READY | revised **`TestAst970CandidateStateMachine`** |
+| `candidate_stage` bands + retry inherit + unknown; migrate rewrite count; age_stale calls migrate first; CONTEXT_READY rank gate | new **`TestAst2228CandidateStageAndTopicMigrate`** |
+| Completeness past CONTEXT_READY | revised **`TestCheckContextCompleteExtended::test_returns_true_when_already_at_or_past_context_ready`** |
+
+**Broken / obsolete this pass:** AST-970 hops/stale/age asserts naming `REQUIRED_TOPICS_*` / `ALL_TOPICS_*`; completeness test name tied to `ALL_TOPICS_READY`.
+
+**Integration:** none — do not invent.
+
+## QA test manifest — AST-2228
+
+Primary command + pass criterion: [`../utils/config.md`](../utils/config.md) § QA test manifest — AST-2228 (same narrowed node list; 28 passed).
