@@ -2441,4 +2441,4 @@ grep -n 'Print Resume\|Print Cover' src/ui/frontend/src/components/RecommendedJo
 
 **Pass criterion:** items 1–3 green / empty / present; item 4 holds for product Files Changed. Not zero-arg harness.
 
-**Bible shasum (publish tip):** fill after push.
+**Bible shasum (publish tip):** `docs/test-bible/frontend/components.md` — `c95aca8e8ab318efab0585b5ddd22f6039f5b6b7` *(content tip before this docs-only record)*
