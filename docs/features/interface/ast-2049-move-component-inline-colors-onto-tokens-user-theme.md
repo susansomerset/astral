@@ -1,3 +1,63 @@
+<!-- linear-archive: AST-2049 archived 2026-10-16 -->
+
+## Linear archive (AST-2049)
+
+**Archived:** 2026-10-16  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-2049/move-component-inline-colors-onto-tokens-user-theme  
+**Status at archive:** Archive  
+**Project:** Astral Interface  
+**Assignee:** katherine  
+**Priority / estimate:** None / 2  
+**Parent:** AST-2042 — User Theme  
+**Blocked by / blocks / related:** parent: AST-2042; related: AST-2041
+
+### Description
+
+## What this implements
+
+After #1 (needs its tokens). If [AST-2041](https://linear.app/astralcareermatch/issue/AST-2041) is in flight, run after it (shared `ArtifactEditor.tsx`). Replaces every inline literal color, hex fallback, and undefined custom-property reference in the listed components/pages with `App.css` tokens, with no layout or behavior change. Does not touch `App.css` (#1) or `CandidateProfile.tsx` (#2).
+
+## Citations
+
+none — frontend style props only.
+
+## Scope
+
+`src/ui/frontend/src/components/ArtifactEditor.tsx`, `ContextTextPage.tsx`, `NavigationShell.tsx`, `ProfileTextPage.tsx`, `RepoJsonDivergenceBanner.tsx`, `StateTimeline.tsx`, `TabbedTextArea.tsx`; `src/ui/frontend/src/pages/AdminCostReconciliation.tsx`, `AdminDataManagement.tsx`, `AdminManageCandidates.tsx`, `AdminScheduledActions.tsx`, `AdminScheduledQueries.tsx`, `AdminSessionCoverLetter.tsx`, `AdminSessionResumePaste.tsx`, `AdminTaskPrompts.tsx`, `ArtifactsBaseResumeContent.tsx`, `ArtifactsCompanySearchTerms.tsx`, `CompaniesNewList.tsx`, `CompaniesWatchHistory.tsx` (each inline literal color, each hex fallback inside `var(--x, #…)`, and each undefined custom-property reference onto a token `App.css` defines).
+
+## Acceptance criteria
+
+ 9. **No stray colors.** `rg -n "[\"' ,(]#[0-9a-fA-F]{3,8}\b" src/ui/frontend/src --glob '*.{ts,tsx}' --glob '!*.test.*'` returns nothing (HTML entities like `&#9660;` are excluded by the leading character class). In `App.css`, every hex literal, including `var(--x, #…)` fallbacks, sits inside a theme token block. Every `var(--name` in `src/ui/frontend/src` names a property defined in a token block. **Fail:** any hex in a `.ts`/`.tsx`, a hex in an `App.css` rule body, or a reference to an undefined property.
+10. **Builds clean; no new lint.** In `src/ui/frontend`, `npm run build` exits 0, and `npm run lint` reports no problem that is absent on `origin/dev` (diff the problem lists). **Fail:** a non-zero exit or a new lint problem.
+
+## Boundaries
+
+After #1 (needs its tokens). Does not touch App.css (#1) or CandidateProfile.tsx (#2). AC 9's .ts/.tsx grep is scoped to this child's 18 files; it passes epic-wide once #2 also lands. No layout or behavior change.
+
+## Notes for planning
+
+Canon Scope: none (locked at Discussion). Parent [AST-2042](https://linear.app/astralcareermatch/issue/AST-2042) Description carries the full Functional / Component / Technical scope.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/AST-2042-user-theme`, child `sub/AST-2042/AST-2049-inline-color-tokens`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-10-08T21:44:45.037Z
+[code-rubric] PROCEED (Commit: 000d5347e) Inline colors on tokens
+
+#### betty — 2026-10-08T21:35:59.334Z
+`origin/sub/AST-2042/AST-2049-inline-color-tokens` @ `000d5347e` · AC9 guard, none broken
+
+#### joan — 2026-10-08T21:27:20.928Z
+[plan-rubric] PROCEED (Commit: 7107fa7e8) Inline colors onto tokens
+
+#### katherine — 2026-10-08T21:25:34.292Z
+`origin/sub/AST-2042/AST-2049-inline-color-tokens` @ `7107fa7e8` · 49 swaps, two stages
+
+---
+
 # AST-2049 — Move component inline colors onto tokens (User Theme)
 
 - **Parent:** [AST-2042 User Theme](https://linear.app/astralcareermatch/issue/AST-2042)

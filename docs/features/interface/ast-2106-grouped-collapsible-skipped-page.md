@@ -1,3 +1,75 @@
+<!-- linear-archive: AST-2106 archived 2026-10-16 -->
+
+## Linear archive (AST-2106)
+
+**Archived:** 2026-10-16  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-2106/grouped-collapsible-skipped-page-group-the-skipped-jobs-list-by-fail  
+**Status at archive:** Archive  
+**Project:** Astral Interface  
+**Assignee:** hedy  
+**Priority / estimate:** None / 2  
+**Parent:** AST-2102 — Group the Skipped jobs list by Fail, Bot block and Error  
+**Blocked by / blocks / related:** parent: AST-2102
+
+### Description
+
+## What this implements
+
+After #1. Delivers the page: the manifest type gains `groups`. The Skipped page assigns every section (below-floor, normal, legacy) to a group by the manifest rules. It renders a collapsible heading with a total count per non-empty group, and leaves the per-state sections, retry, and actions unchanged. Does **not** own the rules (#1).
+
+## Citations
+
+none. No in-force directive governs React pages.
+
+## Scope
+
+`src/ui/frontend/src/contexts/StateUiContext.tsx`, `src/ui/frontend/src/pages/JobsSkipped.tsx`. Technical scope: the `StateUiContext.tsx` and `JobsSkipped.tsx` items above, verbatim:
+
+* `StateUiContext.tsx` — the `StateUiManifest.jobs.skipped` interface is modified to add `groups`.
+* `JobsSkipped.tsx`
+  * The section memo is modified to assign each built section (below-floor, normal, legacy) to a group. The rules are applied in this order: an explicit member match, then the first group with a matching prefix, then the catch-all.
+  * The render is modified to emit a collapsible group heading (label and total count) before each non-empty group's sections, keyed for the existing expand-policy hook alongside the section keys.
+  * Per-state section and table markup, sort, retry, and actions are unchanged. No job-state string literals or prefixes are typed in the page.
+
+## Acceptance criteria
+
+ 4. **Page renders groups in order.** For a candidate with one job each in an `ERROR_*` state, a `BOT_BLOCKED_*` state, `FAILED_JD`, and `CANDIDATE_SKIPPED`, the Skipped page shows headings Error (1), Bot block (1), Fail (2), top to bottom, and no Other heading. Each per-state section appears under its own group. **Fail:** wrong heading order, a section under the wrong heading, a wrong count, or an Other heading.
+ 5. **Other surfaces holes.** Adding one `INVALID_TITLE` job makes an Other (1) heading render last, containing the Invalid Title section. A job on an unmapped legacy state named `ERROR_SOMETHING_OLD` renders under Error, and one on `MYSTERY_STATE` renders under Other. **Fail:** any of the three lands elsewhere, or Other renders above Fail.
+ 6. **Below floor is Fail.** A `virtual_skip` row renders under the Fail heading. **Fail:** it renders above Error or outside Fail.
+ 7. **Groups collapse.** Clicking a group heading hides all of its per-state sections, and clicking again restores them, with each section's own expanded state unchanged. **Fail:** the group doesn't collapse, or re-expanding resets its sections.
+ 8. **Empty groups hidden.** For a candidate whose only skipped job is `FAILED_JD`, only the Fail heading renders. A candidate with no skipped jobs sees "No skipped jobs". **Fail:** an empty heading renders, or the empty-state text is missing.
+ 9. **Behavior unchanged.** Selecting one job in an `ERROR_*` state and one `FAILED_DO` job, then Retry, sends one `POST /api/jobs/bulk_state` per distinct `bulk_retry_to_state_by_from_state` target, same as `origin/dev`. Section sort and Resurrect behave as before. **Fail:** any changed POST, or lost sort/action behavior.
+10. **No literals in React.** `rg -n '"[A-Z]+(_[A-Z]+)*_"|"[A-Z]+(_[A-Z]+)+"' src/ui/frontend/src/pages/JobsSkipped.tsx` returns nothing. **Fail:** any hit, meaning a prefix or state name hard-coded in the page instead of read from the manifest.
+11. **Builds clean.** In `src/ui/frontend`, `npm run build` exits 0, and `npm run lint` reports no problem absent on `origin/dev`. **Fail:** non-zero exit, or a new lint problem.
+
+## Boundaries
+
+Does not own the group rules or any `config.py` change (#1). Does not rename states (AST-2073).
+
+## Notes for planning
+
+Group membership comes only from manifest `jobs.skipped.groups` (#1). The page applies the rules; it never types a prefix or state name.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/AST-2102-group-skipped-jobs`, child `sub/AST-2102/AST-2106-grouped-skipped-page`. Created at dispatch-parent; exact refs in the epic registry (`epic_registry.py show AST-2102`).
+
+### Comments
+
+#### radia — 2026-10-10T03:50:19.660Z
+[code-rubric] PROCEED (Commit: a571f0d8b) Grouped Skipped page clean
+
+#### betty — 2026-10-10T02:42:45.099Z
+`origin/sub/AST-2102/AST-2106-grouped-skipped-page` @ `a571f0d8b` · fixture groups, AC4–9 tests
+
+#### joan — 2026-10-10T02:34:34.217Z
+[plan-rubric] PROCEED (Commit: 089abbe2d) Grouped Skipped page ready
+
+#### hedy — 2026-10-10T02:32:56.510Z
+`origin/sub/AST-2102/AST-2106-grouped-skipped-page` @ `089abbe2d` · grouped Skipped page planned
+
+---
+
 # AST-2106 — Grouped, collapsible Skipped page
 
 - **Ticket:** [AST-2106](https://linear.app/astralcareermatch/issue/AST-2106) (child of [AST-2102](https://linear.app/astralcareermatch/issue/AST-2102) — Group the Skipped jobs list by Fail, Bot block and Error)

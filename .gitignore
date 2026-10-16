@@ -77,3 +77,6 @@ tests/.coverage/
 /.coverage-*.json
 /coverage-component-frontend/
 /formatting.cover/
+
+# GIMP source files (exports live beside them as png)
+*.xcf

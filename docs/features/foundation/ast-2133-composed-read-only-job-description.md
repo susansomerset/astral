@@ -1,3 +1,67 @@
+<!-- linear-archive: AST-2133 archived 2026-10-16 -->
+
+## Linear archive (AST-2133)
+
+**Archived:** 2026-10-16  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-2133/composed-read-only-job-description-create-a-new-table-telescope-data  
+**Status at archive:** Archive  
+**Project:** Astral Foundation  
+**Assignee:** katherine  
+**Priority / estimate:** None / 3  
+**Parent:** AST-2130 — Create a new table telescope_data  
+**Blocked by / blocks / related:** parent: AST-2130; blocks: AST-2135
+
+### Description
+
+## What this implements
+
+After #2. One composed-JD reader (preamble + pruned scraped text) used by every JD consumer and returned by the job APIs; JD becomes read-only in the modal and the edit API. Observable: AC 7, 8, 9. Does **not** touch gazer's JD write (#2) or company paths (#4).
+
+## Citations
+
+`stat.logging.debug`, `stat.logging.warning`, `stat.logging.error`.
+
+## Scope
+
+`src/core/tracker.py` — new composed-JD function: preamble (`job_description`), then the referenced scraped text (via gazer's resolve helper) run through the existing JD prune / blank-line-collapse rules; modified `get_job_data` so the JD key returns the composed value (self-heal path unchanged); modified job-field update to drop `job_description` handling. `src/core/consult.py` — modified JD reads (live-content assembly, relative-JD and batch JD paths) to call the composed-JD function instead of reading `job_data` directly. `src/ui/api/api_jobs.py` — modified `list_view` and `detail` to place the composed JD in the response's `job_data.job_description` (response only; never written back); modified `persist_skipped_edits` to remove `job_description` from accepted fields. `src/ui/frontend/src/components/JobDetailModal.tsx` — modified JD field to read-only display; removed from draft, dirty check and save payload.
+
+## Acceptance criteria
+
+7. **JD composes.** For a job with preamble P and a scraped-JD reference, `GET /api/jobs/<id>` returns `job_data.job_description` == P followed by the pruned scraped text; for a job with no reference (pasted / meteorite / existing), it returns exactly today's stored text. Fail: mismatch.
+8. **One JD reader.** `git grep -n -E "\.get\((jd_key|[\"']job_description[\"'])" -- src/core src/ui/api ':!src/core/tracker.py'` returns nothing. Fail: any direct read outside tracker.
+9. **JD is read-only.** `PUT /api/jobs/<id>` with only `{"job_description": "x"}` returns 400 and `job_data` is unchanged; with `job_title` plus `job_description`, the title saves and `job_data.job_description` is unchanged. In the job modal the JD is not editable: `git grep -n "job_description: e.target.value" -- src/ui/frontend` returns nothing. Fail: JD written via the API or editable in the modal.
+
+## Boundaries
+
+No gazer JD write (#2), company paths (#4), or data move (#5).
+
+## Notes for planning
+
+Parent: AST-2130. Citations above are the frozen Canon Scope subset for this child.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/AST-2130-telescope-data`, child `sub/AST-2130/AST-2133-composed-jd`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-10-11T00:15:18.602Z
+[code-rubric] PROCEED (Commit: ef7cfc9) composed JD reader clean
+
+#### betty — 2026-10-11T00:07:45.540Z
+ef7cfc974 — composed JD tests landed
+
+#### katherine — 2026-10-10T23:53:22.350Z
+`origin/sub/AST-2130/AST-2133-composed-jd` @ `35106b474`
+
+#### joan — 2026-10-10T23:47:07.074Z
+[plan-rubric] PROCEED (Commit: 5873f858) composed read-only JD plan
+
+#### katherine — 2026-10-10T23:41:59.477Z
+`origin/sub/AST-2130/AST-2133-composed-jd` @ `5873f8586` · plan ready, estimate revise
+
+---
+
 # AST-2133 — Composed, read-only job description
 
 **Parent:** [AST-2130 — Create a new table telescope_data](https://linear.app/astralcareermatch/issue/AST-2130)
