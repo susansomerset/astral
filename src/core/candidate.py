@@ -2053,19 +2053,30 @@ def hydrate_operative_writing_preferences_for_response(candidate_id: str, cd: di
 
     Miss → leave legacy context.writing_preferences blob untouched (parent AC6 migration window).
     Hit → write current string onto context.writing_preferences for the editor contract.
+    Dict bodies (legacy/agent rows) coerce for display only — prefer writing_general_instructions,
+    else stable json.dumps; do not rewrite the artifact row (AST-2243).
     """
     if not isinstance(cd, dict):
         return
     body = get_candidate_current(candidate_id, _WRITING_PREFERENCES_ARTIFACT_KEY)
     if body is None:
         return
-    if not isinstance(body, str):
+    if isinstance(body, str):
+        overlay = body
+    elif isinstance(body, dict):
+        # Display coerce only — plain_text catalog still stores strings on new writes.
+        instructions = body.get("writing_general_instructions")
+        if isinstance(instructions, str) and instructions.strip():
+            overlay = instructions
+        else:
+            overlay = json.dumps(body, sort_keys=True)
+    else:
         return
     ctx = cd.get("context")
     if not isinstance(ctx, dict):
         ctx = {}
         cd["context"] = ctx
-    ctx["writing_preferences"] = body
+    ctx["writing_preferences"] = overlay
 
 
 def _normalize_search_term_lines(val: str) -> list[str]:

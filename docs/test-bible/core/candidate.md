@@ -2239,6 +2239,37 @@ Operative `plain_text` validate on str-path (reuse); Writing Preferences `save_a
 - `docs/test-bible/core/candidate.md` — *(filled after publish)*
 - `docs/test-bible/ui/api/api_candidate.md` — *(filled after publish)*
 
+### AST-2243 · AST-2236 (fix — WP hydrate dict coerce)
+
+**Parent:** [AST-2236 — read current artifact for writing preferences is not working](https://linear.app/astralcareermatch/issue/AST-2236). **Publish:** `origin/sub/AST-2236/AST-2243-wp-hydrate-coerce`.
+
+`hydrate_operative_writing_preferences_for_response` coerces dict current bodies for display overlay (prefer non-empty `writing_general_instructions`, else stable `json.dumps`); string bodies unchanged; miss leaves legacy blob; other non-str types still skip. Does not rewrite artifact rows. Operative plain_text save still rejects non-str. Tests live in the AST-1665 class (flipped + added).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| dict coerce + instructions prefer + non-dict cd / non-dict-non-str skip | `src/core/candidate.py` | **`TestAst1665WritingPreferencesOperativeSaveHydrate`** — `test_hydrate_ignores_non_dict_cd_and_coerces_dict_body`, `test_hydrate_dict_prefers_writing_general_instructions` |
+
+**Broken / obsolete this pass:** `test_hydrate_ignores_non_dict_cd_and_non_str_body` (expected dict early-return blanking) — replaced by coerce asserts above.
+
+**Integration:** none — do not invent.
+
+## QA test manifest
+
+1. Coerce dict body (json.dumps fallback) + non-dict cd / other non-str skip: `tests/component/core/test_candidate.py::TestAst1665WritingPreferencesOperativeSaveHydrate::test_hydrate_ignores_non_dict_cd_and_coerces_dict_body`
+2. Prefer `writing_general_instructions` overlay: `tests/component/core/test_candidate.py::TestAst1665WritingPreferencesOperativeSaveHydrate::test_hydrate_dict_prefers_writing_general_instructions`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst1665WritingPreferencesOperativeSaveHydrate::test_hydrate_ignores_non_dict_cd_and_coerces_dict_body \
+  tests/component/core/test_candidate.py::TestAst1665WritingPreferencesOperativeSaveHydrate::test_hydrate_dict_prefers_writing_general_instructions \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/core/candidate.md` — *(filled after publish)*
+
 ### AST-1679 · AST-1677
 
 **Parent:** [AST-1677 — Move candidate_data.artifacts.resume_structure to artifact table](https://linear.app/astralcareermatch/issue/AST-1677). **Publish:** `origin/sub/AST-1677/AST-1679-operative-save-hydrate-blob-retirement`.
