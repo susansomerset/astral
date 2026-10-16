@@ -134,3 +134,43 @@ limitOverride = { containers = { memoryBytes = 1073741824 } }
 ## Estimate
 
 Confirm Chuckles estimate: 2 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-2241
+**Overall:** APPROVED
+**Corpus:** b7ab2203048ce0beb2869a12200ab7fa696c8066
+**Publish ref:** `00d00a570962604143efc0245c9e00153efe290a` (`origin/sub/AST-2235/AST-2241-railway-phase-1-import-fence-extension`)
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| astral.layers.import-direction | A | | |
+| stat.logging.info | B | | |
+| astral.config.secrets-and-env-specific-from-environ | A | | |
+
+(Worst **B** → roll-up PROCEED. `astral.config.*` resolved from `canon/statutes/astral/config/` at corpus tip; not in `canon_clerk expand` roster.)
+
+## Traceability
+
+Child AC **2→S2** (widen `SRC_IN_SERVICE` to `service/**/*.py`, keep `SERVICE_IN_SRC` on `src`, workflow step rename). **S1→ticket ## Scope + title** (Phase 1 `railway.toml`; no separate child AC checkbox — see discuss). Parent AC **2** covered; **1,3–12** N/A (siblings / out of scope). No orphan stages relative to ticket purpose.
+
+## Findings
+
+**discuss** — Child **Acceptance criteria** lists only **#2** (import fence). Plan **Stage 1** is a major deliverable with clear **Done when**; UAT traceability would be cleaner with an explicit child AC (e.g. `railway.toml` present + healthcheck keys) — optional Chuckles/Archie Description tweak, not a plan rewrite.
+
+**acceptable** — Assignee Katherine at fetch (not Joan); stdout handoff only.
+
+**acceptable** — **`stat.logging.info`**: `applies_when` is `src/**`; fence script uses succinct `echo` lines per Canon notes — **B**, intentional.
+
+**acceptable** — Plan does not edit `tests/component/service/test_telescope_fence.py`; Betty/qa-child may align component coverage later; script + workflow change is sufficient for parent AC 2 enforcement in this slice.
+
+## R6 (summary)
+
+Scope gate: three paths only; no `src/**` product edits, no autoscaler, no AST-2237 app code. **AST-2237** dependency + stop rule documented. Stage 2 widening `service/telescope` → `service` matches parent intent and avoids per-service script churn. `railway.toml` mirrors live Telescope shape (healthcheck, monorepo-root Dockerfile path, 1 GiB). No `fix-now`.
+
+context_tokens≈58000
+
+[plan-rubric] PROCEED (Commit: 00d00a57) CI fence plus Railway toml
