@@ -10,7 +10,7 @@ Tables used (inventory):
 - company   — Roster: company state, state_history, batch_id, company_data, job_site, candidate_id (FK to candidate), originating_search_term (nullable TEXT; denormalized CSE discovery origin string; AST-877), etc. (entity agent_responses JSON retired AST-984)
 - job       — Tracker: astral_job_id, company_id (nullable real employer; AST-1701), candidate_id (required owning candidate; AST-1598 / AST-1594), company_job_id, job_title, job_link, job_data, state, state_history, batch_id, source (company|meteorite parent/track; AST-1701 repurpose of AST-1469) + source_entity_id (company short_name or meteorite id text), etc.
 - meteorite — Ingress staging spine (AST-1557): one row per prospective job after classify fan-out; `state` from `METEORITE_STATES`; claim via `batch_id` / `batch_created_at`; eligibility count via `count_meteorites_unclaimed_in_states`; reverse lookup via `get_meteorite_by_astral_job_id(astral_job_id)`; candidate-scoped listing via `list_meteorites_for_candidate(candidate_id)` (+ landed `job_state`, AST-1974); listing-href fallback reverse lookup via `get_meteorite_link_by_astral_job_id(astral_job_id)` (AST-1694 — link column only; not AST-1685 provenance); columns id, candidate_id, source_kind, source_id, source_ref, state, content, classify_outcome, link, electronic_contact (AST-1689; config literal from AST-1688), job_title, employer_name (AST-1713; Ruth stage_meteorite response keys), astral_job_id, estelle_thread_ts, estelle_notified_at, nag_count, error, batch_id, batch_created_at, created_at, updated_at, state_changed_at.
-- candidate — Candidate: state, state_history JSON array, candidate_data JSON (contact/context/artifacts + meta), first/last/full/pronouns TEXT columns, candidate_api_key TEXT (legacy — not read or written since AST-1878), api_keys TEXT JSON array [{"server": LLM_SERVER_CONFIG id, "key": Fernet ciphertext}] — at most one entry per server; hydrated as candidate_api_keys {server: plaintext} (AST-1901), batch_id, batch_created_at (null/empty = unclaimed; AST-1258).
+- candidate — Candidate: state, state_history JSON array, candidate_data JSON (contact/context/artifacts + meta), first/last/full/pronouns TEXT columns, candidate_api_key TEXT (legacy — not read or written since AST-1878), api_keys TEXT JSON array of {server, status, expires_at} (AST-2251) — status is SET or NOT SET; expires_at is YYYY-MM-DD HH:MM:SS UTC or JSON null; the array is not ciphertext, batch_id, batch_created_at (null/empty = unclaimed; AST-1258).
 - agent    — Agent: agent_id TEXT PK, agent_name TEXT (display string; AST-2232), content TEXT, model_id TEXT (LLM_MODEL_CONFIG key), max_tokens INTEGER, plain call settings sent as stored — quantization TEXT, temperature REAL, reasoning_effort TEXT, provider_allow_fallbacks INTEGER (bool), provider_only / provider_ignore TEXT (JSON array of provider slugs), provider_sort TEXT (AST-1955), requires_structured_output INTEGER (bool; gates model choice, never sent — AST-2172) — updated_at TIMESTAMP.
 - agent_task — Task prompt config with versioning: task_key_uuid TEXT PK, task_key TEXT, current INTEGER (1=active), agent_id TEXT, seven prompt segments (`user_prompt`; `cache_prompt` = Anthropic cache block A; `cache_prompt_b|c|d` = blocks B–D; `nocache_prompt`; `system_prompt` per-task override, empty = use agent content at runtime), `run_next`, `task_group_order TEXT`, `task_group_name TEXT`, `task_seq REAL`, `task_name TEXT` (UI grouping metadata, global per task_key), `updated_at`. Any segment edit (all seven) retires prior row + inserts new `current=1`.
 - anthropic_timesheets — Anthropic-only token/cost ledger mirror: anthropic_req_id TEXT UNIQUE, same metric columns as the unified timesheet (batch_id, token counts, calc_cost_*, agent_performance, failure_note, created_at). Untouched by AST-2217 rename.
@@ -3984,9 +3984,17 @@ def _parse_candidate_row(d: Dict[str, Any]) -> Dict[str, Any]:
     for col in ("first", "last", "full", "pronouns"):
         if d.get(col) is None:
             d[col] = ""
-    # Legacy single key is never exposed (AST-1878); the api_keys array hydrates as a server → key map (AST-1901).
+    # Legacy single key is never exposed (AST-1878). api_keys is status, not ciphertext (AST-2251).
     d.pop("candidate_api_key", None)
-    d["candidate_api_keys"] = _candidate_key_map_from_column(d.pop("api_keys", None))
+    rows = _candidate_secret_rows(d.pop("api_keys", None))
+    d["candidate_secret_status"] = {
+        row["server"]: {"status": row["status"], "expires_at": row.get("expires_at")}
+        for row in rows if "status" in row
+    }
+    d["candidate_api_keys"] = {}
+    d["_legacy_secret_ids"] = [
+        row["server"] for row in rows if "key" in row and "status" not in row
+    ]
     return d
 
 
@@ -4123,47 +4131,54 @@ def update_candidate_last_email_check(
     _run_with_retry(_with_conn)
 
 
-# -- candidate.api_keys: JSON array of {server, key(Fernet ciphertext)}, at most one entry per server (AST-1901) --
+# -- candidate.api_keys: JSON array of {server, status, expires_at}; not ciphertext (AST-2251) --
 
-def _candidate_api_key_entries(raw: Any) -> List[Dict[str, str]]:
-    """candidate.api_keys column → [{server, key(ciphertext)}]; malformed JSON / entries dropped."""
+def _candidate_secret_rows(raw: Any) -> List[Dict[str, Any]]:
+    """api_keys column → status rows or leftover ciphertext rows. Malformed JSON drops."""
     try:
         entries = json.loads(raw) if raw else []
     except (TypeError, ValueError):
         return []
-    return [
-        {"server": str(e["server"]), "key": str(e["key"])}
-        for e in (entries if isinstance(entries, list) else [])
-        if isinstance(e, dict) and e.get("server") and e.get("key")
-    ]
-
-
-def _candidate_key_map_from_column(raw: Any) -> Dict[str, str]:
-    """api_keys array → {server: plaintext} in array order; undecryptable entries omitted (treated as not set)."""
-    out: Dict[str, str] = {}
-    for e in _candidate_api_key_entries(raw):
-        try:
-            out[e["server"]] = decrypt_value(e["key"])
-        except (RuntimeError, ValueError):
+    out: List[Dict[str, Any]] = []
+    for e in entries if isinstance(entries, list) else []:
+        if not isinstance(e, dict) or not e.get("server"):
             continue
+        server = str(e["server"])
+        if "status" in e and "key" not in e and e.get("status") in ("SET", "NOT SET"):
+            exp = e.get("expires_at")
+            out.append({
+                "server": server,
+                "status": str(e["status"]),
+                "expires_at": None if exp is None else str(exp),
+            })
+        elif e.get("key") and "status" not in e:
+            out.append({"server": server, "key": str(e["key"])})
     return out
 
 
-def update_candidate_api_keys(candidate_id: str, entries: List[Dict[str, str]]) -> None:
-    """Apply key edits to candidate.api_keys: non-empty key sets/replaces that server's entry, "" removes it.
-    Raises ValueError on blank id / unknown server / duplicate server in entries, LookupError if the candidate is missing."""
+def update_candidate_api_keys(candidate_id: str, entries: List[Dict[str, Any]]) -> None:
+    """Apply status edits {server, status, expires_at}. Never encrypts. Never writes a key field.
+    Raises ValueError on blank id / bad status / duplicate server, LookupError if the candidate is missing.
+    Untouched legacy {server, key} rows stay until that server is edited or the migration runs."""
     cid = str(candidate_id or "").strip()
     if not cid:
         raise ValueError("candidate_id is required")
-    edits: Dict[str, Optional[str]] = {}
+    edits: Dict[str, Dict[str, Any]] = {}
     for e in entries:
         sid = str((e or {}).get("server") or "")
-        get_llm_server(sid)
+        if not sid:
+            raise ValueError("server is required")
         if sid in edits:
             raise ValueError(f"Duplicate api_keys entry for server {sid!r}")
-        key = str((e or {}).get("key") or "").strip()
-        # Encrypt before opening the connection; None marks a removal.
-        edits[sid] = encrypt_value(key) if key else None
+        status = (e or {}).get("status")
+        if status not in ("SET", "NOT SET") or "key" in (e or {}):
+            raise ValueError(f"Invalid api_keys status for server {sid!r}")
+        exp = (e or {}).get("expires_at")
+        edits[sid] = {
+            "server": sid,
+            "status": status,
+            "expires_at": None if exp is None else str(exp),
+        }
     now = _utc_now()
 
     def _with_conn() -> None:
@@ -4175,16 +4190,20 @@ def update_candidate_api_keys(candidate_id: str, entries: List[Dict[str, str]]) 
             ).fetchone()
             if row is None:
                 raise LookupError(f"Candidate not found: {cid}")
-            # Existing order kept; new servers append — at most one entry per server by construction.
-            merged = {e["server"]: e["key"] for e in _candidate_api_key_entries(row["api_keys"])}
-            for sid, ciphertext in edits.items():
-                if ciphertext is None:
-                    merged.pop(sid, None)
-                else:
-                    merged[sid] = ciphertext
+            # Existing order kept; new servers append. Edited servers drop any ciphertext key.
+            order: List[str] = []
+            by_server: Dict[str, Dict[str, Any]] = {}
+            for stored in _candidate_secret_rows(row["api_keys"]):
+                if stored["server"] not in by_server:
+                    order.append(stored["server"])
+                by_server[stored["server"]] = stored
+            for sid, edit in edits.items():
+                if sid not in by_server:
+                    order.append(sid)
+                by_server[sid] = edit
             conn.execute(
                 "UPDATE candidate SET api_keys = ?, updated_at = ? WHERE astral_candidate_id = ?",
-                (json.dumps([{"server": k, "key": v} for k, v in merged.items()]), now, cid),
+                (json.dumps([by_server[sid] for sid in order]), now, cid),
             )
             conn.commit()
         finally:
