@@ -89,4 +89,6 @@ Isolated FastAPI Postgres queue consumer — **not** under `src/`. Flat imports 
 
 **Out of scope:** Judoscale / Phase-2 autoscaler, live Railway dashboard, AST-2237–2240 product logic.
 
-**Bible shasum (after publish):** `git show origin/sub/AST-2235/AST-2241-railway-phase-1-import-fence-extension:docs/test-bible/service/astral_agent.md | shasum`
+**Bible shasums (publish tip `edc4cded6`):**
+- `docs/test-bible/service/astral_agent.md` — `c30f52ecaac0747919975f428fe0aafcdda30e90  -`
+- `docs/test-bible/service/telescope.md` — `03454db08734dc5a50d1b13f177981d81db62d59  -`
