@@ -134,3 +134,7 @@ Parent AC **5** stub half + AC **8** Anthropic recorded-row attribution. `get_re
 | New — recorded call carries attribution + timing | `send_to_anthropic` | `…::test_recorded_call_carries_attribution` |
 
 **Primary manifest:** [`../data/database/timesheets.md`](../data/database/timesheets.md) § AST-2217. **Integration:** none.
+
+### AST-2239 · AST-2235 (`send_to_anthropic` thin stub)
+
+`send_to_anthropic` raises `RuntimeError` (retired). Live provider HTTP: [`../service/astral_agent.md`](../service/astral_agent.md) § AST-2239. Send-path classes skipped (`@_SEND_RETIRED`); keep `TestGetTimestampPrefix` / parse helpers / `get_receipt` stub. Retirement assert: `TestAst2239SendToAnthropicRetired`.
