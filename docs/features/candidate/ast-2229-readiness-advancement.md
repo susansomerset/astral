@@ -205,3 +205,78 @@ context_tokens≈58000
 | 2 | `15e47846c` | `_tick_loop` calls `advance_candidate_readiness` after stale aging |
 
 **Betty note:** Core + dispatcher tick only. No test-tree edits. AC11 = profile signal (no demote); AC12 = tick → advance; AC13 = hop targets are real `trigger_state` strings (`REQUESTED_RESUME` / `REQUESTED_ARTIFACTS` / `ACTIVE_SEARCH`).
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-2229
+**Publish ref:** `9078a2a719a09b33eb9dca9151f0070ea1ada41b` (`origin/sub/AST-2225/AST-2229-readiness-advancement`)
+**Corpus:** b7ab2203048ce0beb2869a12200ab7fa696c8066
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.entity.batch-processing | A | | |
+| patt.entity.batch-criteria | X | | |
+| patt.task.dispatch-retry | A | | |
+| astral.batch.claim-process-release | X | | |
+| astral.dispatch.entity-state-bound | A | | |
+| stat.logging.info.dispatcher | A | | |
+| stat.logging.info.entity | A | | |
+
+## Column diff vs plan stage
+
+| slug | Joan | Radia | note |
+|------|------|-------|------|
+| stat.logging.info.entity | B | A | Build uses canonical `candidate state: {from} -> {to} (batch: -)` pipe line, not a custom `readiness_advance` token |
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+- **Location:** `src/core/candidate.py` — `check_profile_complete` / `incomplete_profile` (plan Stage 1 step 1–2)
+- **Finding:** @susan — Parent AC 11 says “required Profile pieces”; this child locks the signal to stripped `first` + `last` + `contact_email` only. Epic yellow chrome (#4) will key off `incomplete_profile()`; broader Profile-section fields (bio, pronouns, etc.) do not flip the signal.
+- **Default:** Ship as implemented and document in #4 that yellow follows `incomplete_profile()`; widen `check_profile_complete` only if Susan explicitly rejects name+email as the AC 11 contract before UT.
+
+### advisory
+
+- **Location:** `git diff origin/dev...origin/sub/AST-2225/AST-2229-readiness-advancement`
+- **Finding:** Three-dot diff vs `origin/dev` includes stacked #1 (AST-2228) and gap (AST-2245) registry/docs/tests plus this child. AST-2229 **commits** (`4511f5e41`, `15e47846c`, `9078a2a71`) touch only `candidate.py`, `dispatcher.py`, tests, and bible — no `config.py` edits on this ticket.
+- **Note:** Expected ftr/sub stacking until rollup to `dev`.
+
+- **Location:** `tests/component/core/test_candidate.py` — `TestAst2229ProfileSignalAndReadinessAdvance`
+- **Finding:** Betty landed component coverage after build stub said no test-tree edits; covers AC11–AC13 (demote ban, illegal transition swallow, hop → `REQUESTED_RESUME` / `REQUESTED_ARTIFACTS` / `ACTIVE_SEARCH`, tick order in `test_dispatcher.py`).
+
+## Plan fidelity (non-canon)
+
+Matches plan Stages 1–2: `_READINESS_HOPS` locked table; `advance_candidate_readiness` list-scan, forward-only (`candidate_stage` guard, no `force`), predicates per plan; `_tick_loop` calls `advance_candidate_readiness()` immediately after `age_stale_candidate_states()`; no nav/API/config/database changes in 2229 commits. Joan’s logging discuss addressed in code.
+
+## Estimate footprint (non-canon)
+
+Confirm estimate **5**: ~100 lines core + tick wiring + focused component tests — consistent with a 5-point child.
+
+## What's solid
+
+- AC12: dispatcher test records `stale` then `ready` call order on `_tick_loop`.
+- AC13: `test_advance_hop_targets_are_registry_trigger_states` ties `REQUESTED_RESUME` / `REQUESTED_ARTIFACTS` to `CANDIDATE_STAGE_DISPATCH` claimable strings, not stage integers.
+- AC11: `incomplete_profile` never calls `transition_candidate_state`; missing row → no ghost alert.
+
+## Recommended actions (downstream — not for Radia)
+
+- Chuckles: append artifact, `docs(AST-2229): Radia review — clean`, push, post slim upshot `--as radia`, **Review Posted** → datt **§3h** PROCEED.
+- Optional for resolve-child / UT: confirm with Susan on profile-signal breadth (discuss above) or accept **Default** and proceed.
+
+context_tokens≈32000
+
+```
+[code-rubric] PROCEED (Commit: 9078a2a719a09b33eb9dca9151f0070ea1ada41b) readiness advance wired
