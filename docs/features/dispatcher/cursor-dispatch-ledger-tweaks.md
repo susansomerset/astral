@@ -3,7 +3,7 @@
 - **Branch:** `cursor-dispatch-ledger-tweaks` (laptop / Cursor; base `origin/dev`)
 - **Linear:** none yet — ad-hoc Susan + Cursor integration checkout
 - **Status:** **plan only — nothing implemented.** Verified against `origin/dev` @ `c58774be6` (2026-10-16): no `agent_envelope` anywhere, no `refresh_ledger_batch_cost`, and no commit in any ref has ever added either.
-- **Rebased onto AST-2215 (2026-10-16):** AST-2217 renamed `agent_timesheets` → **`service_timesheet`** and added ledger **`timesheet_state`** (`NEW` → `FETCHING` → `RECEIPTED`); AST-2218 **retired the background platform reconcile** — vendor cost now lands only via `run_fetch_timesheet` → `_apply_receipt`. Names and hook points below are updated to match. **Stage 2 re-anchored (2026-10-16):** the original text assumed the envelope was available at the post-`_send_to_server` ledger write; it is not (see Stage 2 anchors + Open question).
+- **Rebased onto AST-2215 (2026-10-16):** AST-2217 renamed `agent_timesheets` → **`service_timesheet`** and added ledger **`timesheet_state`** (`NEW` → `FETCHING` → `RECEIPTED`); AST-2218 **retired the background platform reconcile** — vendor cost now lands only via `run_fetch_timesheet` → `_apply_receipt`. Names and hook points below are updated to match. **Stage 2 re-anchored (2026-10-16):** the original text assumed the envelope was available at the post-`_send_to_server` ledger write; it is not (see Stage 2 anchors). **Scope decided:** envelope on every call, rubric or not.
 - **Goal:** Finish the ledger’s role as the **batch audit row**: persist the agent **envelope** on `dispatch_ledger`, and keep **`total_cost` / `entity_cost`** in sync with **`service_timesheet`** whenever a row is inserted or a receipt applies its platform cost.
 
 ## Problem (as-built vs intent)
@@ -92,7 +92,7 @@ Readers (`get_dispatch_ledger`, `list_dispatch_ledger`): **no code change** (`SE
 - Envelope validation (`{agent_performance, agent_payload}`) is the function at ~1463.
 - `structured=True` graders (AST-2172) carry no envelope → NULL by design (E5).
 
-**Open question for Susan (decide before building):** capture the raw envelope for **every** enveloped task (deepcopy `result["parsed_response"]` right after ~2270, before normalization/validation), or **only vector-feedback tasks** (reuse the existing `envelope_snapshot`, smaller change)? Plan below assumes **every enveloped task**; the vector-only variant just swaps the capture line.
+**Decided (Susan, 2026-10-16): the envelope is captured with every single call, rubric or not.** Capture the raw envelope for **every** enveloped task (deepcopy `result["parsed_response"]` right after ~2270, before normalization / validation) — not just vector-feedback tasks, so the existing `envelope_snapshot` is not reused. The only calls with no envelope are the ones that never produce one: provider failures (nothing parsed) and `structured=True` graders (E5).
 
 **Done when:** Under `log_batch_id` with a saved ledger row, a `do_task` call whose response is an envelope leaves `get_dispatch_ledger(id)["agent_envelope"]` as JSON with both keys; a provider failure leaves it NULL (may still set `llm_failure_class`); a validation failure stores the raw captured dict; a `structured=True` call leaves it NULL.
 
