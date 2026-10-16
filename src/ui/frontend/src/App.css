@@ -1275,6 +1275,17 @@ body {
   gap: 6px 8px;
 }
 
+@media (max-width: 1023px) {
+  .recommended-report-phase-grade-row {
+    flex-wrap: nowrap;
+  }
+}
+
+.recommended-report-job-title-secondary {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
 .recommended-report-phase-grade-cell {
   display: flex;
   flex-direction: column;
