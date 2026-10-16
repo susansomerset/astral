@@ -396,45 +396,33 @@ class TestCandidateRoutes:
         update_keys.assert_not_called()
         save_data.assert_not_called()
 
-    def test_put_two_server_keys_stores_ciphertext_array_and_get_lists_servers_only(
+    def test_put_without_expires_at_stores_no_ciphertext(
         self,
         candidate_client: FlaskClient,
         auth_headers: dict[str, str],
         sqlite_in_memory,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        # AC 6 end to end (AST-1901): two platform keys → two ciphertext entries in candidate.api_keys; GET lists servers only.
-        from cryptography.fernet import Fernet
-
+        # AST-2251: the API still omits expires_at (AST-2252). A set must not write ciphertext.
         db = sqlite_in_memory
-        # rubric hydrate is off-topic here and reads rubric_vector (order-dependent in sqlite_in_memory)
         monkeypatch.setattr(candidate_mod, "normalize_rubric_artifacts_on_save", MagicMock())
         monkeypatch.setattr(candidate_mod, "hydrate_rubric_artifacts_for_response", MagicMock())
-        monkeypatch.setattr(db, "_fernet", Fernet(Fernet.generate_key()))
         db.save_candidate("cand-k", state="NEW_CANDIDATE", candidate_data={})
         resp = candidate_client.put(
             "/api/candidates/cand-k/data",
             json={"api_keys": [{"server": "kimi", "key": "sk-kimi-plain"}, {"server": "openrouter", "key": "sk-or-plain"}]},
             headers=auth_headers,
         )
-        assert resp.status_code == 200
+        assert resp.status_code == 400
+        assert resp.get_json()["error"] == "expires_at is required"
+        assert b"sk-kimi-plain" not in resp.data
         conn = db._get_connection()
         try:
             raw = conn.execute("SELECT api_keys FROM candidate WHERE astral_candidate_id = ?", ("cand-k",)).fetchone()[0]
         finally:
             conn.close()
-        entries = json.loads(raw)
-        assert [e["server"] for e in entries] == ["kimi", "openrouter"]
-        assert [db.decrypt_value(e["key"]) for e in entries] == ["sk-kimi-plain", "sk-or-plain"]
-        assert "plain" not in raw
-        got = candidate_client.get("/api/candidates/cand-k", headers=auth_headers)
-        assert got.get_json()["api_keys"] == _api_keys_entries("kimi", "openrouter")
-        assert b"plain" not in got.data
-        cleared = candidate_client.put(
-            "/api/candidates/cand-k/data", json={"api_keys": [{"server": "kimi", "key": ""}]}, headers=auth_headers
-        )
-        assert cleared.status_code == 200
-        assert candidate_client.get("/api/candidates/cand-k", headers=auth_headers).get_json()["api_keys"] == _api_keys_entries("openrouter")
+        assert raw in (None, "", "[]")
+        assert "sk-kimi-plain" not in (raw or "")
 
     def test_update_rejects_blank_company_search_terms(self, candidate_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(candidate_mod, "save_candidate_data", MagicMock())

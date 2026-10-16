@@ -460,7 +460,7 @@ See **`docs/test-bible/core/candidate.md`** § AST-1679 (shared numbered list).
 - `test_update_sends_api_keys_array_edits`
 - `test_update_rejects_malformed_api_keys` ×7, with exact error text
 - `test_update_rejects_duplicate_server_without_echoing_keys`
-- the end-to-end `test_put_two_server_keys_stores_ciphertext_array_and_get_lists_servers_only`: two ciphertext entries in `candidate.api_keys`, then GET, then remove one
+- AST-2251 replaced the ciphertext round trip with `test_put_without_expires_at_stores_no_ciphertext` (400 `expires_at is required`, column stays empty). Manifest: [`../../data/database/candidates.md`](../../data/database/candidates.md) § AST-2251.
 - the non-admin 403, now with an array body
 
 Full manifest: [`../../data/database/candidates.md`](../../data/database/candidates.md) § QA test manifest (AST-1901).

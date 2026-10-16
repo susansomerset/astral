@@ -166,3 +166,44 @@ cd src/ui/frontend && npm run test:component -- \
 ```
 
 **Pass criterion:** all green except two pre-existing reds that also fail on the pre-fix tree for unrelated reasons: `TestCandidateRoutes::test_list_candidates_and_states` (stale `PROSPECT`) and `::test_update_merges_data_and_state` (`qualify_job_listings` agent_task 400).
+
+
+### AST-2251 · AST-2246 (status, hydrate, migration)
+
+**Parent:** [AST-2246](https://linear.app/astralcareermatch/issue/AST-2246). **Publish:** `origin/sub/AST-2246/AST-2251-secret-status-hydrate`. Plan: `docs/features/foundation/ast-2251-secret-status-hydrate.md`.
+
+`api_keys` stores `{server, status, expires_at}` only. Hydrate fills `candidate_api_keys` from the process environment (shared stub locally, per-candidate variable when `ASTRAL_RAILWAY_TOKEN` is set). A timestamp at or before now reports `EXPIRED` and omits that server. The migration script decrypts leftover ciphertext, upserts one Railway variable, then drops the `key` field. Admin PUT still omits `expires_at` until AST-2252, so that call returns 400 and writes no ciphertext.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Status write, NOT SET kept, legacy ciphertext left for other servers, no encrypt | `src/data/database.py` | revised **`TestAst1901CandidateApiKeysArray`** |
+| Set/clear wrapper, local stub, production name, EXPIRED, warnings | `src/core/candidate.py` | **`TestAst2251SecretStatusHydrate`** · revised **`TestCandidateAdminFacades::test_save_candidate_admin_and_update_api_keys`** |
+| PUT without expiry stores nothing | `src/ui/api/api_candidate.py` (unchanged) | revised **`TestCandidateRoutes::test_put_without_expires_at_stores_no_ciphertext`** |
+| Dry-run, execute, failed upsert, undecryptable | `scripts/migrations/migrate_candidate_api_keys_to_railway.py` | **`TestAst2251MigrateCiphertext`** |
+
+**Broken / obsolete this pass:** AST-1901 ciphertext assertions (`{server, key}` writes, decrypt-on-read, blank key removes the row, the API ciphertext round trip). Revised in place. **Integration:** none.
+
+## QA test manifest — AST-2251
+
+1. `tests/component/data/database/test_candidates.py::TestAst1901CandidateApiKeysArray`
+2. `tests/component/core/test_candidate.py::TestAst2251SecretStatusHydrate`
+3. `tests/component/core/test_candidate.py::TestCandidateAdminFacades::test_save_candidate_admin_and_update_api_keys`
+4. `tests/component/ui/api/test_api_candidate.py::TestCandidateRoutes::test_put_without_expires_at_stores_no_ciphertext`
+5. `tests/component/scripts/test_migrate_candidate_api_keys_to_railway.py::TestAst2251MigrateCiphertext`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/data/database/test_candidates.py::TestAst1901CandidateApiKeysArray \
+  tests/component/core/test_candidate.py::TestAst2251SecretStatusHydrate \
+  tests/component/core/test_candidate.py::TestCandidateAdminFacades::test_save_candidate_admin_and_update_api_keys \
+  tests/component/ui/api/test_api_candidate.py::TestCandidateRoutes::test_put_without_expires_at_stores_no_ciphertext \
+  tests/component/scripts/test_migrate_candidate_api_keys_to_railway.py::TestAst2251MigrateCiphertext
+```
+
+**Pass criterion:** 32 passed on that narrowed run. Not the zero-arg harness.
+
+**Bible shasum (after publish):** `git show origin/sub/AST-2246/AST-2251-secret-status-hydrate:docs/test-bible/data/database/candidates.md | shasum`
+
+`git show origin/sub/AST-2246/AST-2251-secret-status-hydrate:docs/test-bible/core/candidate.md | shasum`
+
+`git show origin/sub/AST-2246/AST-2251-secret-status-hydrate:docs/test-bible/ui/api/api_candidate.md | shasum`
