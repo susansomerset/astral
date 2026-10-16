@@ -313,3 +313,58 @@ Confirm estimate **5**: footprint is registry + two core helpers + data-model do
 - Optional for `resolve-child` / UT notes only: one line in issue doc that topic-labeled rows heal on first `age_stale_candidate_states` if operators care about the window (already in plan + data model).
 
 context_tokens≈28000
+
+## Bug: AST-2267 — Manage Candidates state dropdown
+
+### As-is
+
+`GET /api/candidates/states` returns every `CANDIDATE_STATES` key (`src/ui/api/api_candidate.py` `get_candidate_states`). Manage Candidates renders each string as both option value and label (`AdminManageCandidates.tsx` state `<select>`). The list includes `ERROR_*`, `INTAKE_INITIATED`, and `*_STALE`, with no stage prefix and no alphanumeric sort.
+
+### To-be
+
+The dropdown omits `ERROR_*`, `INTAKE_INITIATED`, and `*_STALE`. Each remaining item’s visible text is `{stage}:{STATE}` (example `5:ACTIVE_SEARCH`). The list is sorted alphanumeric by that label. The option **value** stays the raw registry key so save still posts `ACTIVE_SEARCH`, not the label. Those omitted names stay in `CANDIDATE_STATES`.
+
+### Repro
+
+Open Manage Candidates, edit any candidate, open **State (admin override)**. The options include `ERROR_SHAPE_THE_STORY` (and other `ERROR_*`), `INTAKE_INITIATED`, `RESUME_READY_STALE`, `ARTIFACTS_READY_STALE`, shown as bare names in registry insertion order.
+
+### Root cause
+
+`get_candidate_states` dumps `list(CANDIDATE_STATES.keys())` with no picker filter. The select prints that string; it never reads `stage`.
+
+### Proposed change
+
+1. In `src/ui/api/api_candidate.py`, replace the body of `get_candidate_states` so the JSON is a list of objects, not bare strings. Build it only from `CANDIDATE_STATES` (do not edit the registry):
+
+   - Skip a key when `name.startswith("ERROR_")` or `name == "INTAKE_INITIATED"` or `name.endswith("_STALE")`.
+   - For each kept key, `label = f"{int(cfg['stage'])}:{name}"`.
+   - Sort by `label` ascending (plain string order).
+   - Return `jsonify([{"state": name, "label": label}, ...])`.
+
+   Example head: `{"state": "DELETED", "label": "0:DELETED"}`, `{"state": "INACTIVE", "label": "0:INACTIVE"}`, then stage 1 names, through `{"state": "ACTIVE_SEARCH", "label": "5:ACTIVE_SEARCH"}`. No `ERROR_*`, no `INTAKE_INITIATED`, no `RESUME_READY_STALE`, no `ARTIFACTS_READY_STALE`.
+
+2. In `src/ui/frontend/src/pages/AdminManageCandidates.tsx`:
+
+   - Change `validStates` state to `{ state: string; label: string }[]`.
+   - On `/api/candidates/states`, keep the array only when every element is an object with string `state` and string `label`; otherwise set `[]`.
+   - Render:
+
+     ```tsx
+     {validStates.map(s => (
+       <option key={s.state} value={s.state}>{s.label}</option>
+     ))}
+     ```
+
+   - If `editForm.state` is non-empty and not in `validStates`, render one extra `<option value={editForm.state}>{editForm.state}</option>` **before** the mapped options so a candidate already in an omitted state stays selected. Do not invent a stage prefix for that extra option.
+
+3. Do not change `CANDIDATE_STATES`, transition rules, or any other caller. Do not edit `tests/`.
+
+### Blast radius
+
+`/api/candidates/states` is only consumed by `AdminManageCandidates.tsx` in product code. Component tests that stub or assert a **string** array (`tests/component/ui/api/test_api_candidate.py`, `tests/component/frontend/pages/test_AdminManageCandidates.test.tsx`) will not match the object list — Betty owns that tree.
+
+### What must still hold
+
+- Every `CANDIDATE_STATES` entry still has `stage`, including omitted picker names (`ERROR_*` stage 3 or 4, `INTAKE_INITIATED` stage 1, `*_STALE` stage 4).
+- No `candidate.stage` column.
+- Saving the select posts the raw state key. Dispatch and stale aging still use the registry keys, not the label.
