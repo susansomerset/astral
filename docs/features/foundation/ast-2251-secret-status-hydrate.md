@@ -395,3 +395,24 @@ Done when: a production Admin set of OpenRouter (mocked Railway) calls upsert (b
 - Parent AC: GET / sanitize never returns plaintext.
 - AST-2275: set still plants (and clear pops) the process env name hydrate reads; hydrate still warns (candidate id + secret id, not the value) when status is SET and the env value is missing.
 - `stat.logging.error` / `stat.logging.info.api`: Railway failures and Admin completion logs stay free of secret material.
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-2283
+**Publish ref:** `3a24cd5075b770a78c1af744f9f7af62f13ce450` (`origin/sub/AST-2246/AST-2283-vault-key-still-missing`)
+**Overall:** CLEAN
+
+## Fix-specific checks
+
+**[bug-repro]** — OK. Plant before deploy order + hydrate keeps OpenRouter.
+
+**## What must still hold** — OK. Upsert + one deploy, EXPIRED/local/GET, AST-2275 plant, no-secret logging.
+
+## Findings
+
+Advisory only. Deletes-before-upserts order vs plan text; multi-key batch untested; post-restart env is UAT.
+
+```
+[code-rubric] PROCEED (Commit: 3a24cd5) Plant before deploy reorder
+```
