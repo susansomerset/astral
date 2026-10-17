@@ -196,3 +196,4 @@ context_tokens≈62000
 - **fix-now:** none — no product changes
 - **discuss:** Took **Default** — leave `ignored_list_to_state` as `"TO_WATCH"` in config; Ignored page keeps hard-coded `TEST_WATCH` (matches approved plan / smaller change)
 - **advisory:** noted sibling AST-2319/2320 carry; no action
+- **§9a (2026-10-17 resume):** Betty landed `test(AST-2322): resolve ftr bible/test merge` @ `5ba83cb9b`. Folded AST-2320 into `api_companies.py` (watch_list enrich + `GET /<short_name>/jobs` + `WATCH_LIST_JOB_BUCKETS`) while keeping AST-2322 add/bulk_state + logging.

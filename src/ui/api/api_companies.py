@@ -7,20 +7,26 @@ from src.core.agent import get_entity_agent_story
 from src.core.roster import (
     add_company_for_test_watch,
     count_companies,
+    enrich_watch_list_company,
     get_active_trigger_states,
+    get_companies_job_state_stats,
     get_company,
     get_company_job_state_counts,
     list_companies,
     list_company_job_scans,
+    list_company_jobs_for_bucket,
     save_company,
     transition_company_state,
     update_company,
 )
-from src.utils.config import ASTRAL_CONFIG, METEORITE_CONFIG
+from src.utils.config import ASTRAL_CONFIG, METEORITE_CONFIG, WATCH_LIST_JOB_BUCKETS
 from src.utils.logging import get_logger
 
 companies_bp = Blueprint("companies", __name__, url_prefix="/api/companies")
 logger = get_logger(__name__)
+
+# Match api_jobs list payloads — drop bulky blobs from bucket job lists (AST-2320).
+_WATCH_JOB_LIST_DROP_KEYS = ("job_data", "state_history")
 
 
 def _flatten_for_view(company: dict) -> dict:
@@ -45,6 +51,14 @@ def list_view():
 
     if view == "watch_list":
         rows = list_companies(states=["WATCH"], candidate_id=candidate_id)
+        short_names = [r["short_name"] for r in rows if r.get("short_name")]
+        stats_by_company = get_companies_job_state_stats(short_names)
+        enriched = []
+        for r in rows:
+            sn = r.get("short_name")
+            enrich_watch_list_company(r, stats_by_company.get(sn, {}) if sn else {})
+            enriched.append(_flatten_for_view(r))
+        return jsonify(enriched)
     elif view == "new_list":
         active = get_active_trigger_states(candidate_id, "company") if candidate_id else []
         pipeline_states = [s for s in active if s not in ("WATCH", "IGNORE")]
@@ -110,6 +124,29 @@ def detail(short_name):
     company["job_state_counts"] = get_company_job_state_counts(short_name)
     company["agent_story"] = get_entity_agent_story(company)
     return jsonify(company)
+
+
+@companies_bp.route("/<short_name>/jobs")
+@require_auth
+def company_jobs_by_bucket(short_name):
+    """Jobs for one company filtered to a Watch List count bucket (AST-2320)."""
+    bucket = (request.args.get("bucket") or "").strip()
+    candidate_id = (request.args.get("candidate_id") or "").strip()
+    if bucket not in WATCH_LIST_JOB_BUCKETS:
+        return jsonify({"error": "invalid bucket"}), 400
+    if not candidate_id:
+        return jsonify({"error": "candidate_id required"}), 400
+    if not get_company(short_name):
+        return jsonify({"error": "Not found"}), 404
+    states = list(WATCH_LIST_JOB_BUCKETS[bucket]["states"])
+    rows = list_company_jobs_for_bucket(short_name, states, candidate_id=candidate_id)
+    slim = []
+    for job in rows:
+        row = dict(job)
+        for key in _WATCH_JOB_LIST_DROP_KEYS:
+            row.pop(key, None)
+        slim.append(row)
+    return jsonify(slim)
 
 
 @companies_bp.route("/<short_name>", methods=["PUT"])
