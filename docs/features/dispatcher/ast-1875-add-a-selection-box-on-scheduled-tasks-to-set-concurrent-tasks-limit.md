@@ -218,4 +218,4 @@ From AST-1875 acceptance / Functional scope (and AST-1916/1917):
 
 - **Docs-acceptance:** test-tree delivery lands on gap sibling [AST-2273](https://linear.app/astralcareermatch/issue/AST-2273) (Betty TESTS: REVISE).
 - **Radia review:** PROCEED / CLEAN @ `80993a5f` — §3h User Testing (resolve-child skipped).
-
+<!-- Radia review artifact: PROCEED 80993a5f -->
