@@ -4208,9 +4208,12 @@ def hydrate_candidate_secrets(row: dict) -> None:
 
 def update_candidate_api_keys(candidate_id: str, entries: List[Dict[str, str]]) -> None:
     """Non-empty key stores SET plus expires_at. Empty key stores NOT SET and clears expiry.
-    The key is not persisted. Railway is not called."""
+    The key is not persisted. Railway is not called. Plants or pops the process env name
+    hydrate reads (AST-2275) so this process sees the key before the next deploy."""
     edits: List[Dict[str, Any]] = []
     seen: set = set()
+    token_env = CANDIDATE_SECRET_RAILWAY_CONFIG["token_env"]
+    production = token_env in os.environ and bool(os.environ[token_env].strip())
     for e in entries:
         server = str((e or {}).get("server") or "").strip()
         if not server:
@@ -4223,6 +4226,11 @@ def update_candidate_api_keys(candidate_id: str, entries: List[Dict[str, str]]) 
             raise ValueError(f"Duplicate api_keys entry for server {server!r}")
         seen.add(server)
         key = str((e or {}).get("key") or "").strip()
+        env_name = (
+            candidate_secret_variable_name(server, candidate_id)
+            if production
+            else candidate_secret_local_stub_env(server)
+        )
         if key:
             expires_at = str((e or {}).get("expires_at") or "").strip()
             if not expires_at:
@@ -4231,8 +4239,10 @@ def update_candidate_api_keys(candidate_id: str, entries: List[Dict[str, str]]) 
                 datetime.strptime(expires_at, _SECRET_EXPIRES_FMT)
             except ValueError:
                 raise ValueError("expires_at must be YYYY-MM-DD HH:MM:SS") from None
+            os.environ[env_name] = key
             edits.append({"server": server, "status": "SET", "expires_at": expires_at})
         else:
+            os.environ.pop(env_name, None)
             edits.append({"server": server, "status": "NOT SET", "expires_at": None})
     database.update_candidate_api_keys(candidate_id, edits)
 
