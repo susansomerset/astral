@@ -45,7 +45,9 @@ from src.data.database import (
     get_company,
     get_company_batch,
     get_company_job_counts,
+    get_company_job_state_stats,
     list_companies,
+    list_jobs_for_company,
     list_company_job_scans,
     list_stale_company_search_terms,
     save_company,
@@ -71,6 +73,7 @@ from src.utils.config import (
     PROVIDER_CALL_BUDGET,
     ROSTER_CONFIG,
     TASK_CONFIG,
+    WATCH_LIST_JOB_BUCKETS,
     WEB_DATA_CONFIG,
     is_registered_state,
     registered_base,
@@ -279,6 +282,52 @@ def transition_company_state(short_name: str, to_state: str) -> None:
 # ---- Roster inflow discovery (AST-505) ----
 
 _INFLOW_SLUG_RE = re.compile(r"^[a-z0-9_]+$")
+
+
+def _slug_from_company_name(name: str) -> str:
+    """Mechanical short_name stem from a human company name (AST-2322)."""
+    slug = re.sub(r"[^a-z0-9]+", "_", (name or "").strip().lower()).strip("_")
+    return slug
+
+
+def add_company_for_test_watch(
+    candidate_id: str,
+    company_name: str,
+    company_website: str,
+    job_site: str,
+) -> str:
+    """Create a candidate-owned company in TEST_WATCH (Careers URL → job_site)."""
+    candidate_id = (candidate_id or "").strip()
+    company_name = (company_name or "").strip()
+    company_website = (company_website or "").strip()
+    job_site = (job_site or "").strip()
+    if not candidate_id:
+        raise ValueError("candidate_id required")
+    if not company_name:
+        raise ValueError("company_name required")
+    if not company_website:
+        raise ValueError("company_website required")
+    if not job_site:
+        raise ValueError("job_site required")
+    base = _slug_from_company_name(company_name)
+    if not base or not _INFLOW_SLUG_RE.match(base):
+        raise ValueError("invalid short_name from company name")
+    chosen: Optional[str] = None
+    for candidate_slug in [base] + [f"{base}_{n}" for n in range(2, 100)]:
+        if not get_company(candidate_slug):
+            chosen = candidate_slug
+            break
+    if not chosen:
+        raise ValueError("short_name collision")
+    save_company(
+        short_name=chosen,
+        state="TEST_WATCH",
+        company_name=company_name,
+        company_website=company_website,
+        job_site=job_site,
+        candidate_id=candidate_id,
+    )
+    return chosen
 
 
 def _normalize_company_url_for_dedupe(url: str) -> str:
@@ -1044,6 +1093,27 @@ async def run_company_task(
                 return {**zero, "total_passed": 1}
             return {**zero, "total_failed": 1}
 
+        elif input_state == "TEST_WATCH":
+            # AST-2319: parse-success validate only → WATCH / WEBSITE_FOUND.
+            tk = (dispatch_task_key or "").strip()
+            if tk != "test_watch":
+                _warn_company(short_name, "-", f"TEST_WATCH expects test_watch, got {tk}")
+                return {**zero, "total_errors": 1}
+            result = await run_test_watch_validate(entity, batch_id, ctx, debug)
+            if is_provider_state_hold(result):
+                return {
+                    **zero,
+                    "total_held": 1,
+                    "failure_class": result.get("failure_class"),
+                    "error": result.get("error"),
+                }
+            if result.get("state") == ROSTER_CONFIG["test_watch"]["pass_state"]:
+                return {**zero, "total_passed": 1}
+            if result.get("state") == ROSTER_CONFIG["test_watch"]["fail_state"]:
+                return {**zero, "total_failed": 1}
+            _warn_company(short_name, "-", result.get("error") or "test_watch unexpected")
+            return {**zero, "total_errors": 1}
+
         elif input_state == "WATCH":
             from src.core.gazer import process_gazer_batch  # lazy import avoids circular
             error_state = ROSTER_CONFIG.get("gaze", {}).get("error_state")
@@ -1354,6 +1424,92 @@ async def run_parse_job_list_dispatch(
         )
     logger.debug("Response from run_parse_job_list_dispatch: %s", result)
     return result
+
+
+async def run_test_watch_validate(
+    entity: Dict[str, Any],
+    batch_id: str,
+    ctx: Optional[Dict[str, Any]] = None,
+    debug: bool = False,
+) -> Dict[str, Any]:
+    """TEST_WATCH: job-list parse check only → WATCH or WEBSITE_FOUND (AST-2319)."""
+    _ = batch_id
+    tw_cfg = ROSTER_CONFIG["test_watch"]
+    pass_state = tw_cfg["pass_state"]
+    fail_state = tw_cfg["fail_state"]
+    short_name = entity.get("short_name", "")
+    company_website = str(entity.get("company_website") or "").strip()
+    job_site = str(entity.get("job_site") or "").strip()
+    input_state = str(entity.get("state") or "").strip()
+    cdata = entity.get("company_data") if isinstance(entity.get("company_data"), dict) else {}
+    if input_state != "TEST_WATCH":
+        _warn_company(short_name, "-", f"unexpected state {input_state}")
+        return {"short_name": short_name, "state": input_state, "error": "unexpected_state"}
+    pjl_key = ROSTER_CONFIG["parse_job_list"]["selected_pjl_url_key"]
+    list_url = (
+        str(cdata.get(pjl_key) or "").strip()
+        or job_site
+        or company_website
+    )
+    job_titles = _normalize_job_titles(cdata.get("job_titles"))
+    if not list_url or not job_titles:
+        transition_company_state(short_name, fail_state)
+        return {"short_name": short_name, "state": fail_state}
+
+    def _fail() -> Dict[str, Any]:
+        transition_company_state(short_name, fail_state)
+        return {"short_name": short_name, "state": fail_state}
+
+    try:
+        async with create_browser_context() as browser_context:
+            dom_html = await _scrape_list_page_dom_for_parse(
+                list_url, browser_context, debug=debug, short_name=short_name,
+            )
+            if not (dom_html or "").strip():
+                return _fail()
+            dom_joined, _containers, cull_outcome = await asyncio.to_thread(
+                _culled_dom_for_parse, dom_html, job_titles,
+            )
+            if cull_outcome == "cull_miss" or not (dom_joined or "").strip():
+                return _fail()
+            response = await do_task(
+                task_key="parse_job_list",
+                live_content=dom_joined or "",
+                index=short_name,
+                ctx=ctx,
+            )
+            if is_provider_state_hold(response):
+                return response
+            if (
+                not response
+                or response.get("empty_tokens")
+                or not response.get("success")
+            ):
+                return _fail()
+            parsed = response.get("parsed_response") or {}
+            container = (parsed.get("job_container") or "").strip()
+            job_tag = (parsed.get("job_tag") or "").strip()
+            if not container or not job_tag:
+                return _fail()
+            err, _, _ = _validate_parse_job_list_raw_job_listings(
+                dom_joined, container, job_tag, parsed.get("job_ids", []),
+            )
+            if err:
+                return _fail()
+            parse_instructions = {
+                "container": container,
+                "job_tag": job_tag,
+                "container_index": _compute_container_index(dom_html, container, job_titles),
+            }
+            save_company_data(short_name, {"parse_instructions": parse_instructions})
+            transition_company_state(short_name, pass_state)
+            return {
+                "short_name": short_name,
+                "state": pass_state,
+                "response_type": "TEST_WATCH_OK",
+            }
+    except (PlaywrightInfraError, Exception):
+        return _fail()
 
 
 async def parse_job_list_batch(
@@ -3824,3 +3980,97 @@ def _validate_parse_job_list_raw_job_listings(
 def get_company_job_state_counts(short_name: str) -> Dict[str, int]:
     """Return {state: count} for all jobs belonging to company."""
     return get_company_job_counts(short_name)
+
+
+def get_companies_job_state_stats(
+    company_ids: List[str],
+) -> Dict[str, Dict[str, Dict[str, Any]]]:
+    """Thin facade: per-company job state counts + newest_at (AST-2320)."""
+    return get_company_job_state_stats(company_ids)
+
+
+def list_company_jobs_for_bucket(
+    company_id: str,
+    states: List[str],
+    candidate_id: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    """Thin facade: jobs for one company filtered to a Watch List bucket (AST-2320)."""
+    return list_jobs_for_company(company_id, states=states, candidate_id=candidate_id)
+
+
+def company_watch_scan_start(company: Dict[str, Any]) -> Optional[str]:
+    """Timestamp of the first state_history entry whose to_state is WATCH (AST-2320)."""
+    for entry in company.get("state_history") or []:
+        if not isinstance(entry, dict):
+            continue
+        if (entry.get("to_state") or "").strip() != "WATCH":
+            continue
+        ts = entry.get("timestamp")
+        if ts is None:
+            return None
+        text = str(ts).strip()
+        return text or None
+    return None
+
+
+def company_watch_best_fit(
+    state_stats: Dict[str, Dict[str, Any]],
+) -> Tuple[Optional[str], Optional[str]]:
+    """Furthest Best Fit ladder UI label + that state's newest_at (AST-2320)."""
+    ladder: Dict[str, Tuple[int, str]] = {}
+    for bucket in WATCH_LIST_JOB_BUCKETS.values():
+        order = bucket["best_fit_order"]
+        if order is None:
+            continue
+        label = bucket["label"]
+        for state in bucket["states"]:
+            ladder[state] = (order, label)
+    best_order = -1
+    best_label: Optional[str] = None
+    best_at: Optional[str] = None
+    for state, info in state_stats.items():
+        if int(info.get("count") or 0) <= 0:
+            continue
+        rung = ladder.get(state)
+        if rung is None:
+            continue
+        order, label = rung
+        if order > best_order:
+            best_order = order
+            best_label = label
+            newest = info.get("newest_at")
+            best_at = str(newest).strip() if newest is not None and str(newest).strip() else None
+    return best_label, best_at
+
+
+def company_watch_bucket_aggregates(
+    state_stats: Dict[str, Dict[str, Any]],
+) -> Dict[str, Any]:
+    """Named Watch List count buckets + *_newest_at + total jobs (AST-2320)."""
+    out: Dict[str, Any] = {}
+    for key, bucket in WATCH_LIST_JOB_BUCKETS.items():
+        count = 0
+        newest_vals: List[str] = []
+        for state in bucket["states"]:
+            info = state_stats.get(state) or {}
+            count += int(info.get("count") or 0)
+            newest = info.get("newest_at")
+            if newest is not None and str(newest).strip():
+                newest_vals.append(str(newest).strip())
+        out[key] = count
+        out[f"{key}_newest_at"] = max(newest_vals) if newest_vals else None
+    out["jobs"] = sum(int((info or {}).get("count") or 0) for info in state_stats.values())
+    return out
+
+
+def enrich_watch_list_company(
+    company: Dict[str, Any],
+    state_stats: Dict[str, Dict[str, Any]],
+) -> Dict[str, Any]:
+    """Attach Scan Start, Best Fit, Jobs, and named count buckets to a WATCH row (AST-2320)."""
+    company["scan_start"] = company_watch_scan_start(company)
+    label, at = company_watch_best_fit(state_stats)
+    company["best_fit_label"] = label
+    company["best_fit_at"] = at
+    company.update(company_watch_bucket_aggregates(state_stats))
+    return company

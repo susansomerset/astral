@@ -717,6 +717,14 @@ TASK_CONFIG = {
         "requires_candidate_key": True,
         "trigger_state": None,
     },
+    # AST-2319: company dispatch — parse-success validate only (LLM still uses parse_job_list).
+    "test_watch": {
+        "entity_type": "company",
+        "requires_candidate_key": True,
+        "trigger_state": "TEST_WATCH",
+        "pass_state": "WATCH",
+        "fail_state": "WEBSITE_FOUND",
+    },
     "vet_inflow_discovery": {
         "output_type": "grades_encoded_vet_meta",
         "response_schema": {
@@ -1561,6 +1569,8 @@ COMPANY_STATES = {
         "batch_criteria": {"limit": 10, "sort_by": "updated_at"},
         "retry_state": retry_of("UPSHOT_READY"),
     },
+    # AST-2319: reclaim / add-company holding — parse-validate only → WATCH or WEBSITE_FOUND.
+    "TEST_WATCH": {"batch_criteria": {"limit": 10, "sort_by": "updated_at"}},
     "WATCH": {"batch_criteria": {"limit": 10, "sort_by": "last_scan_at", "scan_interval_hours": 24}},
     "IGNORE": {},
     "METEORITE": {},  # AST-1493: roster-inert meteorite placeholders (stem-keyed); no batch_criteria
@@ -2632,6 +2642,13 @@ ROSTER_CONFIG = {
         # Empty-token data defect — bare, never a retry (AST-2000 / AST-2086).
         "error_state": error_state_for("parse_job_list"),
         "selected_pjl_url_key": "selected_pjl_url",
+    },
+    # AST-2319: TEST_WATCH validate — parse ok → WATCH; else WEBSITE_FOUND (no retry hop).
+    "test_watch": {
+        "task_key": "test_watch",
+        "dispatch_trigger_state": "TEST_WATCH",
+        "pass_state": "WATCH",
+        "fail_state": "WEBSITE_FOUND",
     },
     # AST-2054: Estelle company upshot hop. Retry once via UPSHOT_READY_RETRY, then ERROR_COMPANY_UPSHOT.
     "company_upshot": {
@@ -4063,6 +4080,21 @@ SEED_CONFIG = {
         "'land_meteorite', 'meteorite_bot_blocked_notify'"
         ")",
     ),
+    # AST-2319: Linear paste only — TEST_WATCH company validate (never auto-executed).
+    "dispatch_task-test-watch": (
+        "INSERT INTO dispatch_task ("
+        "candidate_id, task_key, entity_type, trigger_state, sort_by, "
+        "batch_call_mode, freq_hrs, min_count, batch_size, auto_mode, score_floor"
+        ") SELECT c.candidate_id, 'test_watch', 'company', "
+        "'TEST_WATCH', 'updated_at', 0, 0, 1, 10, 1, NULL "
+        "FROM candidate c "
+        "WHERE NOT EXISTS ("
+        "  SELECT 1 FROM dispatch_task d "
+        "  WHERE d.candidate_id = c.candidate_id "
+        "    AND d.task_key = 'test_watch' "
+        "    AND d.trigger_state = 'TEST_WATCH'"
+        ")",
+    ),
 }
 
 # AST-1974: Jobs → Ready / Review lists (two of the four explicit lists; Processing is their complement).
@@ -4328,7 +4360,7 @@ _DISPATCH_BATCH_CALL_MODE_ONE = frozenset({
 _DISPATCH_COMPANY_ENTITY_TASK_KEYS = frozenset({
     "prefilter_company", "fetch_website", "fetch_job_pages", "select_job_page", "parse_job_list",
     "recheck_no_openings", "gaze", "inflow_resolve_website", "vet_inflow_discovery",
-    "resolve_website", "fetch_company_culture_pages", "company_upshot",
+    "resolve_website", "fetch_company_culture_pages", "company_upshot", "test_watch",
 })
 
 def resolve_dispatch_task_config_key(task_key: str) -> str:
@@ -4587,6 +4619,19 @@ def dispatch_task_admin_defaults(
     }
 
 
+# AST-2319: TEST_WATCH dispatch registration invariants.
+assert ROSTER_CONFIG["test_watch"]["pass_state"] == "WATCH"
+assert ROSTER_CONFIG["test_watch"]["fail_state"] == "WEBSITE_FOUND"
+assert ROSTER_CONFIG["test_watch"]["dispatch_trigger_state"] == "TEST_WATCH"
+assert "TEST_WATCH" in COMPANY_STATES
+assert "retry_state" not in COMPANY_STATES["TEST_WATCH"]
+_test_watch_defaults = dispatch_task_admin_defaults("test_watch")
+assert _test_watch_defaults["entity_type"] == "company"
+assert _test_watch_defaults["trigger_state"] == "TEST_WATCH"
+assert _test_watch_defaults["sort_by"] == "updated_at"
+assert _test_watch_defaults["batch_call_mode"] == 0
+
+
 def dispatch_task_key_is_scored(task_key: str) -> bool:
     tk = (task_key or "").strip()
     return bool((TASK_CONFIG.get(tk) or {}).get("scored"))
@@ -4665,6 +4710,31 @@ SKIPPED_STATES = [
 # Derived, never typed out; the assert keeps the four lists pairwise disjoint (each job on exactly one list).
 JOBS_PROCESSING_EXCLUDED_STATES = [*READY_JOB_STATES, *REVIEW_JOB_STATES, *APPLIED_JOB_STATES, *SKIPPED_STATES]
 assert len(JOBS_PROCESSING_EXCLUDED_STATES) == len(set(JOBS_PROCESSING_EXCLUDED_STATES)), "Jobs lists overlap"
+
+# AST-2320: Watch List count columns + Best Fit ladder (UI label keys → job states).
+# best_fit_order: low → high; None = counted on the list but not a Best Fit rung (SKIPPED).
+WATCH_LIST_JOB_BUCKETS = {
+    "jl": {"label": "JL", "states": ["FAILED_JOBLIST"], "best_fit_order": 1},
+    "jd": {"label": "JD", "states": ["FAILED_JD"], "best_fit_order": 2},
+    "do": {"label": "DO", "states": ["FAILED_DO"], "best_fit_order": 3},
+    "get": {"label": "GET", "states": ["PASSED_GET"], "best_fit_order": 4},
+    "like": {"label": "LIKE", "states": ["PASSED_LIKE"], "best_fit_order": 5},
+    "active": {
+        "label": "ACTIVE",
+        "states": ["RECOMMENDED", "CANDIDATE_REVIEW"],
+        "best_fit_order": 6,
+    },
+    "skipped": {"label": "SKIPPED", "states": list(SKIPPED_STATES), "best_fit_order": None},
+    "applied": {
+        "label": "APPLIED",
+        "states": list(APPLIED_JOB_STATES),
+        "best_fit_order": 7,
+    },
+}
+for _wl_key, _wl_bucket in WATCH_LIST_JOB_BUCKETS.items():
+    assert all(s in JOB_STATES for s in _wl_bucket["states"]), _wl_key
+_wl_orders = [b["best_fit_order"] for b in WATCH_LIST_JOB_BUCKETS.values() if b["best_fit_order"] is not None]
+assert sorted(_wl_orders) == [1, 2, 3, 4, 5, 6, 7] and len(set(_wl_orders)) == 7
 
 # AST-2173: Universal search — per entity type (keys double as table names), the columns searched
 # by case-insensitive literal substring. A hit on any base field ranks the entity in the base tier;
@@ -5133,7 +5203,6 @@ def build_state_ui_manifest() -> Dict[str, Any]:
         "inactive_list_to_state": "WEBSITE_FOUND",
         "ignored_list_to_state": "TO_WATCH",
         "watch_list_ignore_to_state": "IGNORE",
-        "watch_list_ack_to_state": "WEBSITE_FOUND",
     }
     assert all(v in COMPANY_STATES for v in bulk_company.values())
 
@@ -5547,6 +5616,11 @@ ASTRAL_CONFIG = {
         (retry_of("JOBLIST_IDENTIFIED"), error_state_for("parse_job_list")),
         # AST-2054: upshot hops. WATCH → GET_UPSHOT is Susan's manual re-run via company state controls.
         ("WATCH", "GET_UPSHOT"),
+        # AST-2319: Watch List ignore / Ignored restore / TEST_WATCH validate outcomes.
+        ("WATCH", "IGNORE"),
+        ("IGNORE", "TEST_WATCH"),
+        ("TEST_WATCH", "WATCH"),
+        ("TEST_WATCH", "WEBSITE_FOUND"),
         ("GET_UPSHOT", "UPSHOT_READY"),
         ("UPSHOT_READY", "WATCH"),
         ("UPSHOT_READY", retry_of("UPSHOT_READY")),
@@ -6961,10 +7035,19 @@ DATA_SHAPES = {
         "list": {
             "watch_list": [
                 {"key": "company_name", "label": "Company", "sortable": True},
-                {"key": "short_name", "label": "Short Name", "sortable": True},
-                {"key": "company_website", "label": "Website", "sortable": True},
-                {"key": "state", "label": "State", "sortable": True},
-                {"key": "last_scan_at", "label": "Last Scanned", "sortable": True, "defaultDesc": True, "type": "datetime"},
+                {"key": "scan_start", "label": "Scan Start", "sortable": True, "type": "datetime"},
+                {"key": "last_scan_at", "label": "Last Scan", "sortable": True, "defaultDesc": True, "type": "datetime"},
+                {"key": "best_fit_label", "label": "Best Fit", "sortable": True},
+                {"key": "best_fit_at", "label": "Best Fit Date", "sortable": True, "type": "datetime"},
+                {"key": "jobs", "label": "Jobs", "sortable": True, "type": "int"},
+                {"key": "jl", "label": "JL", "sortable": True, "type": "int"},
+                {"key": "jd", "label": "JD", "sortable": True, "type": "int"},
+                {"key": "do", "label": "DO", "sortable": True, "type": "int"},
+                {"key": "get", "label": "GET", "sortable": True, "type": "int"},
+                {"key": "like", "label": "LIKE", "sortable": True, "type": "int"},
+                {"key": "active", "label": "ACTIVE", "sortable": True, "type": "int"},
+                {"key": "skipped", "label": "SKIPPED", "sortable": True, "type": "int"},
+                {"key": "applied", "label": "APPLIED", "sortable": True, "type": "int"},
             ],
             "new_list": [
                 {"key": "company_name", "label": "Company", "sortable": True},

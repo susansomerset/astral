@@ -672,3 +672,65 @@ class TestAst1980MeteoriteJobCreatedAt:
         assert len(selects) == 1
         assert "job_state" in selects[0] and "job_created_at" in selects[0]
         assert len(rows) == 3
+
+
+class TestAst2320CompanyJobStateStats:
+    """AST-2320: get_company_job_state_stats + list_jobs_for_company."""
+
+    def test_state_stats_counts_and_newest(self, seeded_db) -> None:
+        db = seeded_db
+        db.save_company("acme", state="WATCH", candidate_id="cand-1")
+        db.save_job(
+            "j-jl-old", company="acme", state="FAILED_JOBLIST", candidate_id="cand-1",
+            state_changed_at="2026-01-01 00:00:00",
+        )
+        db.save_job(
+            "j-jl-new", company="acme", state="FAILED_JOBLIST", candidate_id="cand-1",
+            state_changed_at="2026-01-05 00:00:00",
+        )
+        db.save_job(
+            "j-like", company="acme", state="PASSED_LIKE", candidate_id="cand-1",
+            state_changed_at="2026-01-03 00:00:00",
+        )
+        stats = db.get_company_job_state_stats(["acme", "acme", " ", "ghost"])
+        assert "ghost" not in stats
+        acme = stats["acme"]
+        assert acme["FAILED_JOBLIST"]["count"] == 2
+        assert acme["FAILED_JOBLIST"]["newest_at"] == "2026-01-05 00:00:00"
+        assert acme["PASSED_LIKE"]["count"] == 1
+        # Thin wrapper still returns counts only.
+        assert db.get_company_job_counts("acme") == {
+            "FAILED_JOBLIST": 2,
+            "PASSED_LIKE": 1,
+        }
+        assert db.get_company_job_state_stats([]) == {}
+
+    def test_list_jobs_for_company_filters(self, seeded_db) -> None:
+        db = seeded_db
+        db.save_company("acme", state="WATCH", candidate_id="cand-1")
+        db.save_job(
+            "j-a", company="acme", state="RECOMMENDED", candidate_id="cand-1",
+            state_changed_at="2026-01-02 00:00:00",
+        )
+        db.save_job(
+            "j-b", company="acme", state="CANDIDATE_REVIEW", candidate_id="cand-1",
+            state_changed_at="2026-01-03 00:00:00",
+        )
+        db.save_job(
+            "j-other", company="acme", state="PASSED_LIKE", candidate_id="cand-1",
+            state_changed_at="2026-01-04 00:00:00",
+        )
+        db.save_job(
+            "j-other-cand", company="acme", state="RECOMMENDED", candidate_id="cand-2",
+            state_changed_at="2026-01-05 00:00:00",
+        )
+        rows = db.list_jobs_for_company(
+            "acme",
+            states=["RECOMMENDED", "CANDIDATE_REVIEW"],
+            candidate_id="cand-1",
+        )
+        ids = {r["astral_job_id"] for r in rows}
+        assert ids == {"j-a", "j-b"}
+        assert rows[0]["astral_job_id"] == "j-b"  # newest first
+        with pytest.raises(ValueError, match="company_id"):
+            db.list_jobs_for_company("  ")

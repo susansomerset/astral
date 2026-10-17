@@ -1371,3 +1371,65 @@ docs/test-bible/external/google_cse.md 86a58edf4b2f75c1c4ce8dc511237fbb88c6c2c3
 docs/test-bible/core/timesheets.md     0d673050c050303311b3d5dbf5b51506f424f9af
 # roster.md: git show origin/sub/AST-2215/AST-2219-google-search-receipt-stub:docs/test-bible/core/roster.md | shasum
 ```
+
+### AST-2319 · AST-2318 (TEST_WATCH validate producer)
+
+**Parent:** [AST-2318](https://linear.app/astralcareermatch/issue/AST-2318). **Publish:** `origin/sub/AST-2318/AST-2319-test-watch-state-and-validate-dispatch`. Plan: `docs/features/roster/ast-2319-test-watch-state-and-validate-dispatch.md`. Config registry: [`../utils/config.md`](../utils/config.md) § AST-2319.
+
+Company claimed in **`TEST_WATCH`** under **`dispatch_task_key="test_watch"`** runs **`run_test_watch_validate`**: scrape + cull + **`do_task(task_key="parse_job_list")`** (not `_fetch_parse_job_list`); parse-success → **`WATCH`** (+ `parse_instructions` via `save_company_data`); every non-hold failure → **`WEBSITE_FOUND`**. Provider hold keeps **`TEST_WATCH`**. No `clear_company_batch`. Wrong dispatch key → `total_errors`. `WEBSITE_FOUND` tallies **`total_failed`** (not errors).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Validate outcomes (pass / fail / hold / unexpected) | `src/core/roster.py` | `tests/component/core/test_roster.py::TestAst2319TestWatchValidate` |
+| `run_company_task` routing tallies | `src/core/roster.py` | `tests/component/core/test_roster.py::TestAst2319TestWatchRouting` |
+| Registry + seed + transitions | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst2319TestWatchConfig` |
+
+**Broken / obsolete:** none (new state + producer; no deleted modules).
+
+**Integration:** none (no existing scenario asserts IGNORE→WATCH hop or Watch List membership for WEBSITE_FOUND from this path).
+
+## QA test manifest — AST-2319
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst2319TestWatchConfig \
+  tests/component/core/test_roster.py::TestAst2319TestWatchValidate \
+  tests/component/core/test_roster.py::TestAst2319TestWatchRouting \
+  -q
+```
+
+**Pass criterion:** pytest green on the nodes above. Not the zero-arg harness / branch-lock gate.
+
+**Bible shasums (after publish):**
+
+```text
+# git show origin/sub/AST-2318/AST-2319-test-watch-state-and-validate-dispatch:docs/test-bible/core/roster.md | shasum
+# git show origin/sub/AST-2318/AST-2319-test-watch-state-and-validate-dispatch:docs/test-bible/utils/config.md | shasum
+```
+
+### AST-2320 · AST-2318 (Scan Start / Best Fit / bucket aggregates)
+
+**Parent:** [AST-2318](https://linear.app/astralcareermatch/issue/AST-2318). **Publish:** `origin/sub/AST-2318/AST-2320-watch-list-aggregates-api-and-shapes`. Config: [`../utils/config.md`](../utils/config.md) § AST-2320.
+
+**`company_watch_scan_start`**: first `state_history` `to_state=WATCH` timestamp (no `created_at` / `last_scan_at` fallback). **`company_watch_best_fit`**: furthest ladder UI label + that state's `newest_at` (never `FAILED_` in label). **`company_watch_bucket_aggregates`** + **`enrich_watch_list_company`**.
+
+| Area | Component tests |
+| --- | --- |
+| Scan Start / Best Fit / enrich | new **`TestAst2320WatchListAggregates`** |
+
+Primary narrowed run: [`../ui/api/api_companies.md`](../ui/api/api_companies.md) § QA test manifest — AST-2320.
+### AST-2322 · AST-2318 (add company → TEST_WATCH)
+
+**Parent:** [AST-2318](https://linear.app/astralcareermatch/issue/AST-2318). **Publish:** `origin/sub/AST-2318/AST-2322-add-company-and-ignore-restore`. Plan: `docs/features/roster/ast-2322-add-company-and-ignore-restore.md`. API: [`../ui/api/api_companies.md`](../ui/api/api_companies.md) § AST-2322. Pages: [`../frontend/pages.md`](../frontend/pages.md) § AST-2322.
+
+**`add_company_for_test_watch`**: slug from company name (`_slug_from_company_name` + `_INFLOW_SLUG_RE`); collision suffix `_2`…; `save_company` lands **`TEST_WATCH`** with Careers URL on **`job_site`** and **`candidate_id`**. Empty fields / invalid slug / exhausted collision → `ValueError`. No `transition_company_state` on create.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Slug + create / collision / validation | `src/core/roster.py` | `tests/component/core/test_roster.py::TestAst2322AddCompanyForTestWatch` |
+
+**Broken / obsolete:** none in core (new helper). API/UI broken tests listed in sibling bible blocks.
+
+## QA test manifest — AST-2322
+
+Primary command lives in [`../ui/api/api_companies.md`](../ui/api/api_companies.md) § QA test manifest — AST-2322 (includes pages + core).
