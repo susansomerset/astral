@@ -404,3 +404,11 @@ no plan-stage canon scores attached
 ```
 
 context_tokens≈28000
+
+## Resolution (AST-2325 — 2026-10-17)
+
+**Driven by:** Radia fix-now — AST-2224 label-order assert vs content-below-grid layout (Default: update the assert; do not revert dep-* chrome).
+
+**Change:** `tests/component/frontend/components/test_MeteoriteDetailModal.test.tsx` — `editable detail: one control per server field…` now expects label DOM order `non-content keys (server relative order) then content`, matching plan-fix AST-2325 markup. Product `MeteoriteDetailModal.tsx` dep-* / `profile-contact-grid` chrome unchanged.
+
+**Verified:** full `test_MeteoriteDetailModal.test.tsx` green (incl. AST-2325 `[bug-repro]` + revised AST-2224 case).
