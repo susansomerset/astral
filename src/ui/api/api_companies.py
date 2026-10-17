@@ -5,6 +5,7 @@ from flask import Blueprint, jsonify, request
 from ui.auth import require_auth
 from src.core.agent import get_entity_agent_story
 from src.core.roster import (
+    add_company_for_test_watch,
     count_companies,
     get_active_trigger_states,
     get_company,
@@ -12,11 +13,14 @@ from src.core.roster import (
     list_companies,
     list_company_job_scans,
     save_company,
+    transition_company_state,
     update_company,
 )
-from src.utils.config import METEORITE_CONFIG
+from src.utils.config import ASTRAL_CONFIG, METEORITE_CONFIG
+from src.utils.logging import get_logger
 
 companies_bp = Blueprint("companies", __name__, url_prefix="/api/companies")
+logger = get_logger(__name__)
 
 
 def _flatten_for_view(company: dict) -> dict:
@@ -135,10 +139,50 @@ def bulk_state():
     to_state = data.get("to_state", "")
     if not short_names or not to_state:
         return jsonify({"error": "short_names and to_state required"}), 400
-    updated = 0
+    transitions = ASTRAL_CONFIG["company_state_transitions"]
+    # Validate every found row before any write (no partial apply on illegal pair).
+    to_apply = []
     for sn in short_names:
-        updated += update_company(sn, state=to_state)
+        company = get_company(sn)
+        if not company:
+            continue
+        from_state = str(company.get("state") or "")
+        if (from_state, to_state) not in transitions:
+            return jsonify({"error": f"transition not allowed: {from_state} -> {to_state}"}), 400
+        to_apply.append(sn)
+    updated = 0
+    for sn in to_apply:
+        transition_company_state(sn, to_state)
+        updated += 1
+    logger.info("%s | api %s completed: POST %s", "-", "/api/companies/bulk_state", 200)
     return jsonify({"updated": updated})
+
+
+@companies_bp.route("/add", methods=["POST"])
+@require_auth
+def add_company():
+    """Create candidate-owned company in TEST_WATCH. Body: name/website/job_site + candidate_id."""
+    data = request.get_json(force=True) or {}
+    candidate_id = (data.get("candidate_id") or "").strip()
+    company_name = (data.get("company_name") or "").strip()
+    company_website = (data.get("company_website") or "").strip()
+    job_site = (data.get("job_site") or "").strip()
+    if not candidate_id:
+        return jsonify({"error": "candidate_id required"}), 400
+    if not company_name:
+        return jsonify({"error": "company_name required"}), 400
+    if not company_website:
+        return jsonify({"error": "company_website required"}), 400
+    if not job_site:
+        return jsonify({"error": "job_site required"}), 400
+    try:
+        sn = add_company_for_test_watch(
+            candidate_id, company_name, company_website, job_site,
+        )
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    logger.info("%s | api %s completed: POST %s", candidate_id, "/api/companies/add", 201)
+    return jsonify({"short_name": sn, "state": "TEST_WATCH"}), 201
 
 
 @companies_bp.route("/import", methods=["POST"])
