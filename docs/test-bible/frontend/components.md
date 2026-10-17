@@ -2586,3 +2586,15 @@ cd src/ui/frontend && npm run test:component -- \
 ```
 
 **[bug-repro] nodes:** `AST-2268 JD header is score and gradable percent`; `AST-2268: job-carried rubric content beats a blank live row`.
+
+### AST-2321 · AST-2318 (CompanyWatchJobsModal + stacked JobDetailModal)
+
+**Parent:** [AST-2318](https://linear.app/astralcareermatch/issue/AST-2318). **Publish:** `origin/sub/AST-2318/AST-2321-watch-list-ui-dates-toggle-count-modal`. Page wiring: [`pages.md`](pages.md) § AST-2321.
+
+**CompanyWatchJobsModal:** `GET /api/companies/<short>/jobs?bucket=&candidate_id=` → table; row opens `JobDetailModal` with `stacked`; empty bucket → “No jobs in this bucket.” (no error toast).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Bucket load + stacked detail + empty state | `CompanyWatchJobsModal.tsx` | new **`test_CompanyWatchJobsModal.test.tsx`** |
+
+Primary narrowed run: [`pages.md`](pages.md) § QA test manifest — AST-2321.

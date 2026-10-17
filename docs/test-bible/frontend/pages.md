@@ -4208,3 +4208,28 @@ cd src/ui/frontend && npm run test:component -- \
 **Broken / obsolete (revised this pass):** Ignored cases that clicked **Move to Watch** / asserted “precious snowflakes moved to watch list” / “Move failed”.
 
 Primary narrowed run: [`../ui/api/api_companies.md`](../ui/api/api_companies.md) § QA test manifest — AST-2322.
+
+### AST-2321 · AST-2318 (Watch List dates toggle, count sort, jobs modal)
+
+**Parent:** [AST-2318](https://linear.app/astralcareermatch/issue/AST-2318). **Publish:** `origin/sub/AST-2318/AST-2321-watch-list-ui-dates-toggle-count-modal`. Modal: [`components.md`](components.md) § AST-2321.
+
+**CompaniesWatchList (§6c page):** Show dates formats count cells `N (m/d/yy)` from `{bucket}_newest_at`; ACTIVE header numeric sort; count ≥1 opens `CompanyWatchJobsModal` without company detail; Ignore-only bulk (`to_state: IGNORE`); no Retry Scrape. AST-2322 Add Company cases still pass beside the dates toggle.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Dates toggle + numeric ACTIVE sort + count→jobs (§6c) | `CompaniesWatchList.tsx` | revised **`test_CompaniesWatchList.test.tsx`** (`AST-2321: …`) |
+| Ignore-only / no Retry Scrape | `CompaniesWatchList.tsx` | revised ignore bulk case (was Retry+Ignore) |
+
+**Broken / obsolete (revised this pass):** `runs retry and ignore bulk actions` (Retry Scrape removed).
+
+## QA test manifest — AST-2321
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_CompaniesWatchList.test.tsx \
+  ../../../tests/component/frontend/components/test_CompanyWatchJobsModal.test.tsx
+```
+
+**Pass criterion:** Vitest green on the files above. Not the zero-arg harness / branch-lock gate.
+
+**Bible shasums (after publish):** `git show origin/sub/AST-2318/AST-2321-watch-list-ui-dates-toggle-count-modal:docs/test-bible/<path> | shasum`
