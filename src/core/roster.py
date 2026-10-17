@@ -49,6 +49,7 @@ from src.data.database import (
     list_companies,
     list_jobs_for_company,
     list_company_job_scans,
+    count_company_job_scans,
     list_stale_company_search_terms,
     save_company,
     set_company_batch,
@@ -3991,11 +3992,16 @@ def get_companies_job_state_stats(
 
 def list_company_jobs_for_bucket(
     company_id: str,
-    states: List[str],
+    states: Optional[List[str]] = None,
     candidate_id: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """Thin facade: jobs for one company filtered to a Watch List bucket (AST-2320)."""
     return list_jobs_for_company(company_id, states=states, candidate_id=candidate_id)
+
+
+def get_companies_scan_counts(company_ids: List[str]) -> Dict[str, int]:
+    """Thin facade: per-company company_job_scan row counts (AST-2326)."""
+    return count_company_job_scans(company_ids)
 
 
 def company_watch_scan_start(company: Dict[str, Any]) -> Optional[str]:
@@ -4066,11 +4072,13 @@ def company_watch_bucket_aggregates(
 def enrich_watch_list_company(
     company: Dict[str, Any],
     state_stats: Dict[str, Dict[str, Any]],
+    scan_count: int = 0,
 ) -> Dict[str, Any]:
-    """Attach Scan Start, Best Fit, Jobs, and named count buckets to a WATCH row (AST-2320)."""
+    """Attach Scan Start, Best Fit, Jobs, Scan, and named count buckets to a WATCH row (AST-2320/2326)."""
     company["scan_start"] = company_watch_scan_start(company)
     label, at = company_watch_best_fit(state_stats)
     company["best_fit_label"] = label
     company["best_fit_at"] = at
     company.update(company_watch_bucket_aggregates(state_stats))
+    company["scan_count"] = int(scan_count or 0)
     return company

@@ -10,9 +10,10 @@ import api from "../lib/api"
 import { formatCell } from "../lib/fmt"
 import type { Column } from "../components/ListPage"
 
-/** AST-2320 bucket keys (not including total `jobs`) — clickable count columns. */
+/** AST-2320 named buckets + AST-2326 Scan / Jobs — centered count columns. */
 const COUNT_BUCKET_KEYS = ["jl", "jd", "do", "get", "like", "active", "skipped", "applied"] as const
 type CountBucketKey = (typeof COUNT_BUCKET_KEYS)[number]
+const CENTER_COUNT_KEYS = new Set<string>(["scan_count", "jobs", ...COUNT_BUCKET_KEYS])
 
 interface Company {
   short_name: string
@@ -24,6 +25,7 @@ interface Company {
   best_fit_label?: string | null
   best_fit_at?: string | null
   jobs?: number
+  scan_count?: number
   [key: string]: unknown
 }
 
@@ -77,7 +79,7 @@ export default function WatchList() {
   useEffect(() => { load() }, [load])
 
   const columns: Column<Company>[] = useMemo(() => {
-    const countSet = new Set<string>(COUNT_BUCKET_KEYS)
+    const bucketSet = new Set<string>(COUNT_BUCKET_KEYS)
     return apiColumns
       .filter(c => c.key !== "best_fit_at")
       .map(c => {
@@ -87,6 +89,7 @@ export default function WatchList() {
           sortable: c.sortable !== false,
           ...(c.type ? { type: c.type } : {}),
           ...(c.defaultDesc ? { defaultDesc: true } : {}),
+          ...(CENTER_COUNT_KEYS.has(c.key) ? { align: "center" as const } : {}),
         }
         if (c.key === "best_fit_label") {
           col.render = (_v, row) => {
@@ -96,19 +99,53 @@ export default function WatchList() {
             return at ? `${label} (${at})` : label
           }
         }
-        if (countSet.has(c.key)) {
+        // Date-only visible text; full timestamp in tooltip (AST-2326)
+        if (c.key === "scan_start" || c.key === "last_scan_at") {
+          col.render = (value) => {
+            const raw = value == null ? "" : String(value).trim()
+            if (!raw) return "—"
+            const dateText = formatCell(raw, "date")
+            const tip = formatCell(raw, "datetime")
+            return <span title={tip === "—" ? undefined : tip}>{dateText}</span>
+          }
+        }
+        if (c.key === "scan_count") {
+          col.render = (value) => {
+            const n = Number(value) || 0
+            return n < 1 ? "-" : String(n)
+          }
+        }
+        if (c.key === "jobs") {
+          col.render = (value, row) => {
+            const n = Number(value) || 0
+            if (n < 1) return "-"
+            return (
+              <button
+                type="button"
+                className="dispatch-batch-link"
+                onClick={e => {
+                  e.stopPropagation()
+                  setJobsModal({ shortName: row.short_name, bucket: "all", label: "Jobs" })
+                }}
+              >
+                {String(n)}
+              </button>
+            )
+          }
+        }
+        if (bucketSet.has(c.key)) {
           const bucket = c.key as CountBucketKey
           const label = c.label
           col.render = (value, row) => {
             const n = Number(value) || 0
+            if (n < 1) return "-"
             let text = String(n)
-            if (showDates && n >= 1) {
+            if (showDates) {
               const at = shortDate(
                 row[`${bucket}_newest_at`] != null ? String(row[`${bucket}_newest_at`]) : null,
               )
               if (at) text = `${n} (${at})`
             }
-            if (n < 1) return text
             return (
               <button
                 type="button"

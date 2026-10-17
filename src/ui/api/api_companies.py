@@ -10,6 +10,7 @@ from src.core.roster import (
     enrich_watch_list_company,
     get_active_trigger_states,
     get_companies_job_state_stats,
+    get_companies_scan_counts,
     get_company,
     get_company_job_state_counts,
     list_companies,
@@ -21,6 +22,7 @@ from src.core.roster import (
 )
 from src.utils.config import ASTRAL_CONFIG, METEORITE_CONFIG, WATCH_LIST_JOB_BUCKETS
 from src.utils.logging import get_logger
+from ui.api.api_jobs import _flatten_grades
 
 companies_bp = Blueprint("companies", __name__, url_prefix="/api/companies")
 logger = get_logger(__name__)
@@ -53,10 +55,15 @@ def list_view():
         rows = list_companies(states=["WATCH"], candidate_id=candidate_id)
         short_names = [r["short_name"] for r in rows if r.get("short_name")]
         stats_by_company = get_companies_job_state_stats(short_names)
+        scan_by_company = get_companies_scan_counts(short_names)
         enriched = []
         for r in rows:
             sn = r.get("short_name")
-            enrich_watch_list_company(r, stats_by_company.get(sn, {}) if sn else {})
+            enrich_watch_list_company(
+                r,
+                stats_by_company.get(sn, {}) if sn else {},
+                scan_by_company.get(sn, 0) if sn else 0,
+            )
             enriched.append(_flatten_for_view(r))
         return jsonify(enriched)
     elif view == "new_list":
@@ -129,20 +136,24 @@ def detail(short_name):
 @companies_bp.route("/<short_name>/jobs")
 @require_auth
 def company_jobs_by_bucket(short_name):
-    """Jobs for one company filtered to a Watch List count bucket (AST-2320)."""
+    """Jobs for one company filtered to a Watch List count bucket (AST-2320).
+
+    bucket=all returns every job for the company (no state IN filter) with grades
+    flattened like jobs list slim rows (AST-2326).
+    """
     bucket = (request.args.get("bucket") or "").strip()
     candidate_id = (request.args.get("candidate_id") or "").strip()
-    if bucket not in WATCH_LIST_JOB_BUCKETS:
+    if bucket != "all" and bucket not in WATCH_LIST_JOB_BUCKETS:
         return jsonify({"error": "invalid bucket"}), 400
     if not candidate_id:
         return jsonify({"error": "candidate_id required"}), 400
     if not get_company(short_name):
         return jsonify({"error": "Not found"}), 404
-    states = list(WATCH_LIST_JOB_BUCKETS[bucket]["states"])
+    states = None if bucket == "all" else list(WATCH_LIST_JOB_BUCKETS[bucket]["states"])
     rows = list_company_jobs_for_bucket(short_name, states, candidate_id=candidate_id)
     slim = []
     for job in rows:
-        row = dict(job)
+        row = _flatten_grades(dict(job))
         for key in _WATCH_JOB_LIST_DROP_KEYS:
             row.pop(key, None)
         slim.append(row)
