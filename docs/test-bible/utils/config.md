@@ -5334,3 +5334,19 @@ Candidate-facing groups → **Candidate / Criteria / Company / Job Opportunities
 ## QA test manifest — AST-2230
 
 Primary command: [`../ui/api/api_system.md`](../ui/api/api_system.md) § QA test manifest — AST-2230.
+
+### AST-2319 · AST-2318 (TEST_WATCH state + test_watch dispatch)
+
+**Parent:** [AST-2318](https://linear.app/astralcareermatch/issue/AST-2318). **Publish:** `origin/sub/AST-2318/AST-2319-test-watch-state-and-validate-dispatch`. Roster producer: [`../core/roster.md`](../core/roster.md) § AST-2319.
+
+**`TEST_WATCH`** in **`COMPANY_STATES`** (`batch_criteria` limit 10 / `updated_at`; no `retry_state`). Transitions: **`WATCH→IGNORE`**, **`IGNORE→TEST_WATCH`**, **`TEST_WATCH→WATCH`**, **`TEST_WATCH→WEBSITE_FOUND`**. **`ROSTER_CONFIG["test_watch"]`** / **`TASK_CONFIG["test_watch"]`** (`trigger_state=TEST_WATCH`, pass `WATCH`, fail `WEBSITE_FOUND`). In **`_DISPATCH_COMPANY_ENTITY_TASK_KEYS`**; not in **`_DISPATCH_BATCH_CALL_MODE_ONE`**. Paste-only **`SEED_CONFIG["dispatch_task-test-watch"]`**. UI bulk targets unchanged (`ignored_list_to_state=TO_WATCH`, etc.).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| State + transitions + claim companion | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst2319TestWatchConfig::test_company_state_and_transitions` |
+| Roster/TASK + admin defaults + frozensets | `src/utils/config.py` | `…::test_roster_and_task_config`, `…::test_admin_defaults_and_dispatch_sets` |
+| Seed SQL + UI manifest boundary | `src/utils/config.py` | `…::test_seed_sql_and_ui_manifest_boundary` |
+
+**Broken / obsolete:** none.
+
+Primary narrowed run: [`../core/roster.md`](../core/roster.md) § QA test manifest — AST-2319.

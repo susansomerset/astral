@@ -1047,6 +1047,27 @@ async def run_company_task(
                 return {**zero, "total_passed": 1}
             return {**zero, "total_failed": 1}
 
+        elif input_state == "TEST_WATCH":
+            # AST-2319: parse-success validate only → WATCH / WEBSITE_FOUND.
+            tk = (dispatch_task_key or "").strip()
+            if tk != "test_watch":
+                _warn_company(short_name, "-", f"TEST_WATCH expects test_watch, got {tk}")
+                return {**zero, "total_errors": 1}
+            result = await run_test_watch_validate(entity, batch_id, ctx, debug)
+            if is_provider_state_hold(result):
+                return {
+                    **zero,
+                    "total_held": 1,
+                    "failure_class": result.get("failure_class"),
+                    "error": result.get("error"),
+                }
+            if result.get("state") == ROSTER_CONFIG["test_watch"]["pass_state"]:
+                return {**zero, "total_passed": 1}
+            if result.get("state") == ROSTER_CONFIG["test_watch"]["fail_state"]:
+                return {**zero, "total_failed": 1}
+            _warn_company(short_name, "-", result.get("error") or "test_watch unexpected")
+            return {**zero, "total_errors": 1}
+
         elif input_state == "WATCH":
             from src.core.gazer import process_gazer_batch  # lazy import avoids circular
             error_state = ROSTER_CONFIG.get("gaze", {}).get("error_state")
@@ -1357,6 +1378,92 @@ async def run_parse_job_list_dispatch(
         )
     logger.debug("Response from run_parse_job_list_dispatch: %s", result)
     return result
+
+
+async def run_test_watch_validate(
+    entity: Dict[str, Any],
+    batch_id: str,
+    ctx: Optional[Dict[str, Any]] = None,
+    debug: bool = False,
+) -> Dict[str, Any]:
+    """TEST_WATCH: job-list parse check only → WATCH or WEBSITE_FOUND (AST-2319)."""
+    _ = batch_id
+    tw_cfg = ROSTER_CONFIG["test_watch"]
+    pass_state = tw_cfg["pass_state"]
+    fail_state = tw_cfg["fail_state"]
+    short_name = entity.get("short_name", "")
+    company_website = str(entity.get("company_website") or "").strip()
+    job_site = str(entity.get("job_site") or "").strip()
+    input_state = str(entity.get("state") or "").strip()
+    cdata = entity.get("company_data") if isinstance(entity.get("company_data"), dict) else {}
+    if input_state != "TEST_WATCH":
+        _warn_company(short_name, "-", f"unexpected state {input_state}")
+        return {"short_name": short_name, "state": input_state, "error": "unexpected_state"}
+    pjl_key = ROSTER_CONFIG["parse_job_list"]["selected_pjl_url_key"]
+    list_url = (
+        str(cdata.get(pjl_key) or "").strip()
+        or job_site
+        or company_website
+    )
+    job_titles = _normalize_job_titles(cdata.get("job_titles"))
+    if not list_url or not job_titles:
+        transition_company_state(short_name, fail_state)
+        return {"short_name": short_name, "state": fail_state}
+
+    def _fail() -> Dict[str, Any]:
+        transition_company_state(short_name, fail_state)
+        return {"short_name": short_name, "state": fail_state}
+
+    try:
+        async with create_browser_context() as browser_context:
+            dom_html = await _scrape_list_page_dom_for_parse(
+                list_url, browser_context, debug=debug, short_name=short_name,
+            )
+            if not (dom_html or "").strip():
+                return _fail()
+            dom_joined, _containers, cull_outcome = await asyncio.to_thread(
+                _culled_dom_for_parse, dom_html, job_titles,
+            )
+            if cull_outcome == "cull_miss" or not (dom_joined or "").strip():
+                return _fail()
+            response = await do_task(
+                task_key="parse_job_list",
+                live_content=dom_joined or "",
+                index=short_name,
+                ctx=ctx,
+            )
+            if is_provider_state_hold(response):
+                return response
+            if (
+                not response
+                or response.get("empty_tokens")
+                or not response.get("success")
+            ):
+                return _fail()
+            parsed = response.get("parsed_response") or {}
+            container = (parsed.get("job_container") or "").strip()
+            job_tag = (parsed.get("job_tag") or "").strip()
+            if not container or not job_tag:
+                return _fail()
+            err, _, _ = _validate_parse_job_list_raw_job_listings(
+                dom_joined, container, job_tag, parsed.get("job_ids", []),
+            )
+            if err:
+                return _fail()
+            parse_instructions = {
+                "container": container,
+                "job_tag": job_tag,
+                "container_index": _compute_container_index(dom_html, container, job_titles),
+            }
+            save_company_data(short_name, {"parse_instructions": parse_instructions})
+            transition_company_state(short_name, pass_state)
+            return {
+                "short_name": short_name,
+                "state": pass_state,
+                "response_type": "TEST_WATCH_OK",
+            }
+    except (PlaywrightInfraError, Exception):
+        return _fail()
 
 
 async def parse_job_list_batch(
