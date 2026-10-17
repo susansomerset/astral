@@ -2598,3 +2598,15 @@ cd src/ui/frontend && npm run test:component -- \
 | Bucket load + stacked detail + empty state | `CompanyWatchJobsModal.tsx` | new **`test_CompanyWatchJobsModal.test.tsx`** |
 
 Primary narrowed run: [`pages.md`](pages.md) § QA test manifest — AST-2321.
+
+### AST-2326 · AST-2318 (CompanyWatchJobsModal polish — qa-fix)
+
+**Parent:** [AST-2318](https://linear.app/astralcareermatch/issue/AST-2318). **Publish:** `origin/sub/AST-2318/AST-2326-watch-list-job-popup-count-date-polish`.
+
+**[bug-repro]** no State column; `PhaseAnalysisLines` / grade dots when slim row carries phase grades; `bucket=all` groups by title-cased state (`Failed Joblist`).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| No State + dots + all-mode groups | `CompanyWatchJobsModal.tsx` | **`test_CompanyWatchJobsModal.test.tsx`** — `[bug-repro] AST-2326: …` |
+
+Primary narrowed run: [`pages.md`](pages.md) § QA test manifest — AST-2326.

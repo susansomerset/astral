@@ -219,6 +219,39 @@ class TestAst2320WatchListEnrichmentAndJobs:
             headers=auth_headers,
         )
         assert missing_co.status_code == 404
+
+    def test_company_jobs_bucket_all_flattens_grades(
+        self, companies_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """AST-2326 [bug-repro]: bucket=all + phase grades lifted (no job_data blob)."""
+        monkeypatch.setattr(
+            companies_mod, "get_company", lambda sn: {"short_name": sn, "state": "WATCH"},
+        )
+        listed = MagicMock(return_value=[
+            {
+                "astral_job_id": "j1",
+                "state": "RECOMMENDED",
+                "job_data": {"jd_grades": {"JD": "A"}},
+                "state_history": [{"to_state": "RECOMMENDED"}],
+            },
+        ])
+        monkeypatch.setattr(companies_mod, "list_company_jobs_for_bucket", listed)
+        ok = companies_client.get(
+            "/api/companies/acme/jobs?bucket=all&candidate_id=cand-1",
+            headers=auth_headers,
+        )
+        assert ok.status_code == 200
+        rows = ok.get_json()
+        assert rows[0]["astral_job_id"] == "j1"
+        assert "job_data" not in rows[0]
+        assert "state_history" not in rows[0]
+        assert rows[0].get("jd_grades") == {"JD": "A"}
+        # all = unfiltered (None or [] states); named buckets keep a non-empty list
+        listed.assert_called_once()
+        call_states = listed.call_args.args[1] if listed.call_args.args[1:] else listed.call_args.kwargs.get("states")
+        assert call_states in (None, [])
+
+
 class TestAst2322AddCompanyAndBulkState:
     """AST-2322: POST /add → TEST_WATCH; bulk_state transition-gated."""
 

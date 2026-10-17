@@ -4233,3 +4233,28 @@ cd src/ui/frontend && npm run test:component -- \
 **Pass criterion:** Vitest green on the files above. Not the zero-arg harness / branch-lock gate.
 
 **Bible shasums (after publish):** `git show origin/sub/AST-2318/AST-2321-watch-list-ui-dates-toggle-count-modal:docs/test-bible/<path> | shasum`
+
+### AST-2326 · AST-2318 (Watch List popup + count/date polish — qa-fix)
+
+**Parent:** [AST-2318](https://linear.app/astralcareermatch/issue/AST-2318). **Publish:** `origin/sub/AST-2318/AST-2326-watch-list-job-popup-count-date-polish`. Config/API: [`../utils/config.md`](../utils/config.md) · [`../ui/api/api_companies.md`](../ui/api/api_companies.md). Modal: [`components.md`](components.md) § AST-2326.
+
+**[bug-repro]** empty bucket cells render `-` (not `0`); **Jobs** count opens `bucket=all` modal. Revises AST-2321 empty-`0` assert in place.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Empty `-` + Jobs→all (§6c) | `CompaniesWatchList.tsx` | **`test_CompaniesWatchList.test.tsx`** — `[bug-repro] AST-2326: empty counts…` + revised Show dates empty cell |
+
+## QA test manifest — AST-2326
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst2320WatchListConfig::test_watch_list_shape_columns \
+  tests/component/ui/api/test_api_companies.py::TestAst2320WatchListEnrichmentAndJobs::test_company_jobs_bucket_all_flattens_grades \
+  -q
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_CompaniesWatchList.test.tsx \
+  ../../../tests/component/frontend/components/test_CompanyWatchJobsModal.test.tsx \
+  -t 'AST-2326|Show dates'
+```
+
+**Pass criterion (test-fix):** [bug-repro] nodes flip red→green after make-fix; remaining AST-2321/2322 cases stay green.

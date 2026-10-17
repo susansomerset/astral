@@ -9228,9 +9228,10 @@ class TestAst2320WatchListConfig:
     def test_watch_list_shape_columns(self) -> None:
         cols = cfg.DATA_SHAPES["companies"]["list"]["watch_list"]
         keys = [c["key"] for c in cols]
+        # AST-2326: Scan tally sits immediately before Jobs (was missing on pre-fix tree).
         assert keys == [
             "company_name", "scan_start", "last_scan_at", "best_fit_label", "best_fit_at",
-            "jobs", "jl", "jd", "do", "get", "like", "active", "skipped", "applied",
+            "scan_count", "jobs", "jl", "jd", "do", "get", "like", "active", "skipped", "applied",
         ]
         assert all("FAILED_" not in str(c.get("label", "")) for c in cols)
         assert "short_name" not in keys

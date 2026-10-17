@@ -88,4 +88,70 @@ describe("CompanyWatchJobsModal", () => {
     expect(await screen.findByText("No jobs in this bucket.")).toBeInTheDocument()
     expect(screen.queryByTestId("job-detail-probe")).not.toBeInTheDocument()
   })
+
+  it("[bug-repro] AST-2326: no State column; phase grade dots when grades present", async () => {
+    installBaseApiMocks(mockedApi, (url) => {
+      if (url === jobsUrl) {
+        return jsonResponse([
+          {
+            astral_job_id: "j-graded",
+            job_title: "Graded Role",
+            state: "RECOMMENDED",
+            state_changed_at: "2026-03-15T12:00:00Z",
+            jd_grades: { JD: "A" },
+          },
+        ])
+      }
+      throw new Error(url)
+    })
+    renderWithProviders(
+      <CompanyWatchJobsModal
+        shortName="acme"
+        bucket="active"
+        bucketLabel="ACTIVE"
+        candidateId={candidateId}
+        onClose={() => {}}
+      />,
+    )
+    expect(await screen.findByText("Graded Role")).toBeInTheDocument()
+    expect(screen.queryByRole("columnheader", { name: "State" })).not.toBeInTheDocument()
+    expect(document.querySelector(".recommended-analysis-lines")).toBeTruthy()
+    expect(document.querySelectorAll(".grade-dot").length).toBeGreaterThan(0)
+  })
+
+  it("[bug-repro] AST-2326: all-jobs mode groups by title-cased state", async () => {
+    const allUrl = `/api/companies/acme/jobs?bucket=all&candidate_id=${candidateId}`
+    installBaseApiMocks(mockedApi, (url) => {
+      if (url === allUrl) {
+        return jsonResponse([
+          {
+            astral_job_id: "j-jl",
+            job_title: "List Fail",
+            state: "FAILED_JOBLIST",
+            state_changed_at: "2026-03-15T12:00:00Z",
+          },
+          {
+            astral_job_id: "j-rec",
+            job_title: "Rec Role",
+            state: "RECOMMENDED",
+            state_changed_at: "2026-03-14T12:00:00Z",
+          },
+        ])
+      }
+      throw new Error(url)
+    })
+    renderWithProviders(
+      <CompanyWatchJobsModal
+        shortName="acme"
+        bucket="all"
+        bucketLabel="Jobs"
+        candidateId={candidateId}
+        onClose={() => {}}
+      />,
+    )
+    expect(await screen.findByRole("heading", { name: "Jobs — acme" })).toBeInTheDocument()
+    expect(screen.getByText("Failed Joblist")).toBeInTheDocument()
+    expect(screen.getByText("Recommended")).toBeInTheDocument()
+    expect(screen.queryByRole("columnheader", { name: "State" })).not.toBeInTheDocument()
+  })
 })
