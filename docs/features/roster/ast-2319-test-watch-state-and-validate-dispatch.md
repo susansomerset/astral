@@ -142,3 +142,35 @@ Register company state `TEST_WATCH`, the four company transitions this ticket ow
 ## Estimate
 
 Confirm Chuckles estimate: 5 — agree
+
+## Joan validate
+
+```text
+[plan-rubric]
+**Ticket:** AST-2319
+**Overall:** APPROVED
+**Corpus:** b7ab2203048ce0beb2869a12200ab7fa696c8066
+**Publish ref:** `sub/AST-2318/AST-2319-test-watch-state-and-validate-dispatch` @ `fba73721e0c0383884dd387e97ddbbd2d43b9a50`
+
+## Canon scores
+
+astral.dispatch.entity-state-bound | A | |
+astral.batch.claim-process-release | A | |
+patt.entity.batch-processing | A | |
+patt.entity.batch-criteria | A | |
+patt.task.dispatch-retry | X | | No retry hop — parent default single-shot → WEBSITE_FOUND; plan documents opt-out
+
+## Traceability
+
+AC 10 → Stage 1 (transitions) + Stage 2 (`run_test_watch_validate` → WATCH / WEBSITE_FOUND); AC 11 → Stage 1 (`COMPANY_STATES`, `TASK_CONFIG`/`ROSTER_CONFIG`, `SEED_CONFIG` dispatch row). Parent AC 1–9 N/A (this child’s Scope).
+
+## Findings
+
+**acceptable** — Stage 2 deliberately calls `do_task` instead of `_fetch_parse_job_list` so parse failures do not write `parse_job_list_notes`; success/fail checks on `empty_tokens`, `success`, and nested `parsed_response` match `do_task`’s shape.
+
+**acceptable** — `WEBSITE_FOUND` tallied as `total_failed` (not `total_errors`) matches parent pipeline intent and avoids tripping the dispatch circuit breaker on expected validate failures.
+
+**discuss** — `dispatch_claim_states("TEST_WATCH")` will still pair `TEST_WATCH_RETRY` per global helper even though this plan registers no `_RETRY` routing; harmless while no row can land in that companion state, but worth knowing if a future change ever transitions into `TEST_WATCH_RETRY` without registry work.
+
+context_tokens≈42000
+```
