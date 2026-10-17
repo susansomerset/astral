@@ -219,3 +219,68 @@ From AST-1875 acceptance / Functional scope (and AST-1916/1917):
 - **Docs-acceptance:** test-tree delivery lands on gap sibling [AST-2273](https://linear.app/astralcareermatch/issue/AST-2273) (Betty TESTS: REVISE).
 - **Radia review:** PROCEED / CLEAN @ `80993a5f` — §3h User Testing (resolve-child skipped).
 <!-- Radia review artifact: PROCEED 80993a5f -->
+
+## Bug: AST-2273 — gap: AUTO/CLICK header badge split tests (AST-2272)
+
+Parent mini-epic: [AST-2270](https://linear.app/astralcareermatch/issue/AST-2270). Sibling product fix: [AST-2272](https://linear.app/astralcareermatch/issue/AST-2272) (`## Bug: AST-2272` above). Betty `[board-betty] TESTS: REVISE` on AST-2272: bible/tests cover AST-1917 dropdown only — missing badge-split coverage for the mixed-running repro.
+
+### As-is
+
+`docs/test-bible/frontend/pages.md` § AST-1917 and `test_AdminScheduledActions_AST1917.test.tsx` assert Max AUTO dropdown load/POST/bounds only. No case mocks mixed `thread_status` (`is_auto: true` + `is_auto: false`, both `running`) and asserts the header badge next to Max AUTO. A regression to bare `{N} running` (pre-AST-2272) would not fail the suite.
+
+### To-be
+
+Bible + component tests lock AST-2272’s badge labels so mixed AUTO+CLICK cannot look like a Max AUTO cap breach, and AUTO-only / CLICK-only forms stay explicit.
+
+### Repro
+
+Against **pre-AST-2272** product (badge = `{activeThreads.length} running`):
+
+1. Mount Scheduled Actions with `GET .../auto_thread_cap` → `{max_auto_threads: 3, default: 3, min: 1, max: 100}`.
+2. Mock `GET .../thread_status` with **3** running AUTO entries (`is_auto: true`) and **2** running CLICK entries (`is_auto: false`) — total 5, AUTO ≤ cap.
+3. Header shows **`5 running`** beside Max AUTO = 3 → looks like a breach.
+
+Fixture: plain `thread_status` JSON map (no DB); same shape as `task_status_all` / existing page mocks (`running`, `draining`, `task_key`, `candidate_id`, `is_auto`).
+
+### Root cause
+
+Test gap only — product contract is already specified in `## Bug: AST-2272` Proposed change §3. Coverage never followed the observability fix Betty flagged at the board.
+
+### Proposed change
+
+Explicit scope = AST-2273 ## Scope (bible + AdminScheduledActions component tests). **No product code.** AST-2272 badge copy on `ftr` / this sub is the oracle:
+
+| running AUTO | running CLICK | badge text |
+| ---: | ---: | --- |
+| A>0 | 0 | `{A} AUTO running` |
+| 0 | C>0 | `{C} CLICK running` |
+| A>0 | C>0 | `{A} AUTO · {C} CLICK` |
+
+1. **`docs/test-bible/frontend/pages.md` — modified.** Add an **AST-2273 · AST-2272** subsection under / next to § AST-1917 (Scheduled Actions header):
+   - Name the mixed-running repro (Max AUTO = 3, 3 AUTO + 2 CLICK → badge must not be `5 running`).
+   - Table the three badge forms above against `AdminScheduledActions.tsx` `runningBadgeLabel`.
+   - Point component tests at `tests/component/frontend/pages/test_AdminScheduledActions_AST1917.test.tsx` (extend) **or** a sibling `test_AdminScheduledActions_AST2273.test.tsx` if extending would muddy the dropdown suite — pick one file, document the path.
+   - Manifest: `cd src/ui/frontend && npm run test:component -- <chosen file(s)>` plus the existing AST-1917 / main Scheduled Actions files still green (same posture as AST-1917 manifest).
+
+2. **Component tests — new/extended (Betty lands via qa-fix / test-tree; engineers do not edit `tests/` on make-fix).** In the chosen file, reuse AST-1917’s `mockApi` / `installBaseApiMocks` pattern but return a non-empty `thread_status`:
+   - **Mixed (board repro):** cap GET = `freshCap` (3); `thread_status` = three `{running: true, is_auto: true, …}` + two `{running: true, is_auto: false, …}`. Assert header text **`3 AUTO · 2 CLICK`** is present; assert **`5 running`** is **absent**; Max AUTO select still value `"3"`; Stop All enabled.
+   - **AUTO only:** three AUTO running, zero CLICK → **`3 AUTO running`**; no `CLICK` in that badge; no bare `3 running` as the sole badge.
+   - **CLICK only:** two CLICK running, zero AUTO → **`2 CLICK running`**; Max AUTO still shown when cap GET succeeds.
+   - Do **not** assert dispatcher slot math or change `auto_thread_cap` POST cases (AST-1917 owns those).
+
+3. **Repro-first gate:** at least the mixed case must fail on a tree that still renders `{N} running` and pass on AST-2272’s labeled badge (already on `origin/ftr/AST-2270-max-auto-cap-observability` / this sub). If product lands first, still ship the asserts — green is fine; the lock is the point.
+
+### Blast radius
+
+- Test-bible + Vitest under `tests/component/frontend/pages/` only.
+- Existing AST-1917 dropdown cases and `test_AdminScheduledActions.test.tsx` / `_AST1104` must stay green (they already mock or ignore running-badge copy).
+- No `dispatcher.py` / `api_admin.py` / `config.py` / product TSX changes on this ticket.
+
+### What must still hold
+
+From AST-2272 / AST-1875 (regression locks, not re-implements):
+
+1. Cap applies to AUTO only; CLICK outside the cap — badge labeling must not imply otherwise.
+2. Max AUTO dropdown contract (AST-1917) unchanged: bounds from API, GET effective matches select.
+3. Stop All remains total-running based (enabled whenever any thread is running).
+4. No DeepSeek / persistence / enforcement changes on this gap ticket.
