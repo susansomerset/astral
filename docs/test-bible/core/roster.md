@@ -1406,3 +1406,15 @@ Company claimed in **`TEST_WATCH`** under **`dispatch_task_key="test_watch"`** r
 # git show origin/sub/AST-2318/AST-2319-test-watch-state-and-validate-dispatch:docs/test-bible/core/roster.md | shasum
 # git show origin/sub/AST-2318/AST-2319-test-watch-state-and-validate-dispatch:docs/test-bible/utils/config.md | shasum
 ```
+
+### AST-2320 · AST-2318 (Scan Start / Best Fit / bucket aggregates)
+
+**Parent:** [AST-2318](https://linear.app/astralcareermatch/issue/AST-2318). **Publish:** `origin/sub/AST-2318/AST-2320-watch-list-aggregates-api-and-shapes`. Config: [`../utils/config.md`](../utils/config.md) § AST-2320.
+
+**`company_watch_scan_start`**: first `state_history` `to_state=WATCH` timestamp (no `created_at` / `last_scan_at` fallback). **`company_watch_best_fit`**: furthest ladder UI label + that state's `newest_at` (never `FAILED_` in label). **`company_watch_bucket_aggregates`** + **`enrich_watch_list_company`**.
+
+| Area | Component tests |
+| --- | --- |
+| Scan Start / Best Fit / enrich | new **`TestAst2320WatchListAggregates`** |
+
+Primary narrowed run: [`../ui/api/api_companies.md`](../ui/api/api_companies.md) § QA test manifest — AST-2320.

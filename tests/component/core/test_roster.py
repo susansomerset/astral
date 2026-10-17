@@ -8117,3 +8117,66 @@ class TestAst2319TestWatchRouting:
             "TEST_WATCH", entity, "batch-2319d", dispatch_task_key="test_watch",
         )
         assert errored["total_errors"] == 1
+
+
+class TestAst2320WatchListAggregates:
+    """AST-2320: Scan Start, Best Fit, bucket aggregates, enrich_watch_list_company."""
+
+    def test_scan_start_first_watch_only(self) -> None:
+        company = {
+            "state_history": [
+                {"to_state": "TO_WATCH", "timestamp": "2026-01-01T00:00:00Z"},
+                {"to_state": "WATCH", "timestamp": "2026-01-02T12:00:00Z"},
+                {"to_state": "WATCH", "timestamp": "2026-01-05T12:00:00Z"},
+            ],
+            "created_at": "2025-12-01T00:00:00Z",
+            "last_scan_at": "2026-01-06T00:00:00Z",
+        }
+        assert roster_mod.company_watch_scan_start(company) == "2026-01-02T12:00:00Z"
+        assert roster_mod.company_watch_scan_start({"state_history": []}) is None
+        assert roster_mod.company_watch_scan_start(
+            {"state_history": [{"to_state": "IGNORE", "timestamp": "x"}]}
+        ) is None
+
+    def test_best_fit_ladder_and_narrow_label(self) -> None:
+        stats = {
+            "FAILED_JOBLIST": {"count": 2, "newest_at": "2026-01-01"},
+            "PASSED_LIKE": {"count": 1, "newest_at": "2026-01-10"},
+            "FAILED_DO": {"count": 1, "newest_at": "2026-01-08"},
+        }
+        label, at = roster_mod.company_watch_best_fit(stats)
+        assert label == "LIKE"
+        assert at == "2026-01-10"
+        assert "FAILED_" not in (label or "")
+        # ACTIVE beats LIKE
+        stats["RECOMMENDED"] = {"count": 1, "newest_at": "2026-01-11"}
+        label2, at2 = roster_mod.company_watch_best_fit(stats)
+        assert label2 == "ACTIVE" and at2 == "2026-01-11"
+        # SKIPPED alone is not a Best Fit rung
+        assert roster_mod.company_watch_best_fit(
+            {"CANDIDATE_SKIPPED": {"count": 3, "newest_at": "2026-01-01"}}
+        ) == (None, None)
+
+    def test_bucket_aggregates_and_enrich(self) -> None:
+        stats = {
+            "FAILED_JOBLIST": {"count": 2, "newest_at": "2026-01-01"},
+            "FAILED_JD": {"count": 1, "newest_at": "2026-01-03"},
+            "PASSED_GET": {"count": 1, "newest_at": "2026-01-02"},
+            "RECOMMENDED": {"count": 1, "newest_at": "2026-01-04"},
+            "CANDIDATE_REVIEW": {"count": 1, "newest_at": "2026-01-05"},
+        }
+        agg = roster_mod.company_watch_bucket_aggregates(stats)
+        assert agg["jl"] == 2 and agg["jd"] == 1 and agg["get"] == 1
+        assert agg["active"] == 2
+        assert agg["active_newest_at"] == "2026-01-05"
+        assert agg["jobs"] == 6
+        company = {
+            "short_name": "acme",
+            "state_history": [{"to_state": "WATCH", "timestamp": "2026-01-01T00:00:00Z"}],
+        }
+        out = roster_mod.enrich_watch_list_company(company, stats)
+        assert out["scan_start"] == "2026-01-01T00:00:00Z"
+        assert out["best_fit_label"] == "ACTIVE"
+        # Tied best_fit_order: first ladder hit in state_stats wins (not max newest across the rung).
+        assert out["best_fit_at"] in ("2026-01-04", "2026-01-05")
+        assert out["jl"] == 2 and out["jobs"] == 6

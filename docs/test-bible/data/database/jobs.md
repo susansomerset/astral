@@ -220,3 +220,15 @@ One-line `get_job_batch` JOIN rename (`j.company` → `j.company_id`) after AST-
 `list_jobs` / `count_jobs` gain `exclude_states` (NOT IN, ANDs with IN). `list_meteorites_for_candidate` LEFT JOINs `job` → `job_state` (None when unlanded / job row gone; `meteorite.state` not shadowed).
 
 **New:** **`TestAst1974ExcludeStatesAndMeteoriteJobState`** in `test_jobs.py` — the meteorite join lives here because `test_meteorites.py` is collection-red on `origin/dev` (stale `METEORITE_STATES_RETENTION` import). Manifest: [`ui/api/api_jobs.md`](../../ui/api/api_jobs.md) § AST-1974 item 4.
+
+### AST-2320 · AST-2318 (company job state stats + list by company)
+
+**Parent:** [AST-2318](https://linear.app/astralcareermatch/issue/AST-2318). **Publish:** `origin/sub/AST-2318/AST-2320-watch-list-aggregates-api-and-shapes`.
+
+**`get_company_job_state_stats(company_ids)`** → `{company_id: {state: {count, newest_at}}}`. **`get_company_job_counts`** thin wrapper. **`list_jobs_for_company(company_id, states=, candidate_id=)`**.
+
+| Area | Component tests |
+| --- | --- |
+| Stats + list filter | new **`TestAst2320CompanyJobStateStats`** in `test_jobs.py` |
+
+Primary narrowed run: [`../../ui/api/api_companies.md`](../../ui/api/api_companies.md) § QA test manifest — AST-2320.
