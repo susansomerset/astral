@@ -1406,3 +1406,19 @@ Company claimed in **`TEST_WATCH`** under **`dispatch_task_key="test_watch"`** r
 # git show origin/sub/AST-2318/AST-2319-test-watch-state-and-validate-dispatch:docs/test-bible/core/roster.md | shasum
 # git show origin/sub/AST-2318/AST-2319-test-watch-state-and-validate-dispatch:docs/test-bible/utils/config.md | shasum
 ```
+
+### AST-2322 · AST-2318 (add company → TEST_WATCH)
+
+**Parent:** [AST-2318](https://linear.app/astralcareermatch/issue/AST-2318). **Publish:** `origin/sub/AST-2318/AST-2322-add-company-and-ignore-restore`. Plan: `docs/features/roster/ast-2322-add-company-and-ignore-restore.md`. API: [`../ui/api/api_companies.md`](../ui/api/api_companies.md) § AST-2322. Pages: [`../frontend/pages.md`](../frontend/pages.md) § AST-2322.
+
+**`add_company_for_test_watch`**: slug from company name (`_slug_from_company_name` + `_INFLOW_SLUG_RE`); collision suffix `_2`…; `save_company` lands **`TEST_WATCH`** with Careers URL on **`job_site`** and **`candidate_id`**. Empty fields / invalid slug / exhausted collision → `ValueError`. No `transition_company_state` on create.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Slug + create / collision / validation | `src/core/roster.py` | `tests/component/core/test_roster.py::TestAst2322AddCompanyForTestWatch` |
+
+**Broken / obsolete:** none in core (new helper). API/UI broken tests listed in sibling bible blocks.
+
+## QA test manifest — AST-2322
+
+Primary command lives in [`../ui/api/api_companies.md`](../ui/api/api_companies.md) § QA test manifest — AST-2322 (includes pages + core).

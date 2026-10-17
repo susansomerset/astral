@@ -8117,3 +8117,65 @@ class TestAst2319TestWatchRouting:
             "TEST_WATCH", entity, "batch-2319d", dispatch_task_key="test_watch",
         )
         assert errored["total_errors"] == 1
+
+
+class TestAst2322AddCompanyForTestWatch:
+    """AST-2322: add_company_for_test_watch — candidate-scoped TEST_WATCH create."""
+
+    def test_slug_from_company_name(self) -> None:
+        assert roster_mod._slug_from_company_name("Acme Corp!") == "acme_corp"
+        assert roster_mod._slug_from_company_name("  ") == ""
+
+    def test_create_success_and_collision_suffix(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        existing = {"acme_corp": {"short_name": "acme_corp"}}
+        monkeypatch.setattr(
+            roster_mod,
+            "get_company",
+            lambda sn: existing.get(sn),
+        )
+        save = MagicMock()
+        monkeypatch.setattr(roster_mod, "save_company", save)
+        sn = roster_mod.add_company_for_test_watch(
+            "cand-1", "Acme Corp", "https://acme.test", "https://acme.test/careers",
+        )
+        assert sn == "acme_corp_2"
+        save.assert_called_once_with(
+            short_name="acme_corp_2",
+            state="TEST_WATCH",
+            company_name="Acme Corp",
+            company_website="https://acme.test",
+            job_site="https://acme.test/careers",
+            candidate_id="cand-1",
+        )
+
+    def test_create_base_slug_when_free(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(roster_mod, "get_company", lambda sn: None)
+        save = MagicMock()
+        monkeypatch.setattr(roster_mod, "save_company", save)
+        sn = roster_mod.add_company_for_test_watch(
+            "cand-1", "Beta Inc", "https://beta.test", "https://beta.test/jobs",
+        )
+        assert sn == "beta_inc"
+        assert save.call_args.kwargs["state"] == "TEST_WATCH"
+        assert save.call_args.kwargs["job_site"] == "https://beta.test/jobs"
+
+    def test_required_fields_and_invalid_slug(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(roster_mod, "get_company", lambda sn: None)
+        monkeypatch.setattr(roster_mod, "save_company", MagicMock())
+        with pytest.raises(ValueError, match="candidate_id"):
+            roster_mod.add_company_for_test_watch("", "Acme", "https://a", "https://a/j")
+        with pytest.raises(ValueError, match="company_name"):
+            roster_mod.add_company_for_test_watch("c", "  ", "https://a", "https://a/j")
+        with pytest.raises(ValueError, match="company_website"):
+            roster_mod.add_company_for_test_watch("c", "Acme", "", "https://a/j")
+        with pytest.raises(ValueError, match="job_site"):
+            roster_mod.add_company_for_test_watch("c", "Acme", "https://a", "")
+        with pytest.raises(ValueError, match="invalid short_name"):
+            roster_mod.add_company_for_test_watch("c", "!!!", "https://a", "https://a/j")
+
+    def test_collision_exhausted(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(roster_mod, "get_company", lambda sn: {"short_name": sn})
+        with pytest.raises(ValueError, match="short_name collision"):
+            roster_mod.add_company_for_test_watch(
+                "c", "Acme", "https://a", "https://a/j",
+            )

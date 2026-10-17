@@ -8,6 +8,8 @@ import { candidateId, companyListHandler, installBaseApiMocks, jsonResponse } fr
 
 vi.mock("../../../../src/ui/frontend/src/lib/api", () => ({
   default: vi.fn(),
+  setAuthTokenGetter: vi.fn(),
+  setUnauthorizedHandler: vi.fn(),
 }))
 
 const mockedApi = vi.mocked(api)
@@ -131,5 +133,48 @@ describe("CompaniesWatchList", () => {
     renderWithProviders(<CompaniesWatchList />)
     await waitFor(() => expect(screen.getByText("Loading...")).toBeInTheDocument())
     expect(mockedApi.mock.calls.some(call => String(call[0]).includes(`view=watch_list&candidate_id=${candidateId}`))).toBe(false)
+  })
+
+  it("AST-2322: Add Company posts careers URL as job_site and toasts short_name", async () => {
+    installBaseApiMocks(mockedApi, (url, init) => {
+      if (url === "/api/companies/add" && init?.method === "POST") {
+        return jsonResponse({ short_name: "acme_co", state: "TEST_WATCH" }, { ok: true, status: 201 })
+      }
+      return companyListHandler("watch_list", companies, "watch_list")(url)
+    })
+    renderWithProviders(<CompaniesWatchList />)
+    await waitFor(() => expect(screen.getByText("Acme Corp")).toBeInTheDocument())
+    await userEvent.click(screen.getByRole("button", { name: "Add Company" }))
+    expect(screen.getByRole("heading", { name: "Add Company" })).toBeInTheDocument()
+    expect(screen.getByText("Careers Page URL")).toBeInTheDocument()
+    await userEvent.type(screen.getByLabelText("Company Name"), "Acme Co")
+    await userEvent.type(screen.getByLabelText("Website"), "https://acme.test")
+    await userEvent.type(screen.getByLabelText("Careers Page URL"), "https://acme.test/careers")
+    await userEvent.click(screen.getByRole("button", { name: "Save" }))
+    await waitFor(() => expect(screen.getByText("Added acme_co (TEST_WATCH)")).toBeInTheDocument())
+    const addCall = mockedApi.mock.calls.find(([url]) => url === "/api/companies/add")
+    expect(JSON.parse(String(addCall?.[1]?.body))).toEqual({
+      candidate_id: candidateId,
+      company_name: "Acme Co",
+      company_website: "https://acme.test",
+      job_site: "https://acme.test/careers",
+    })
+  })
+
+  it("AST-2322: Add Company failure toasts error", async () => {
+    installBaseApiMocks(mockedApi, (url, init) => {
+      if (url === "/api/companies/add" && init?.method === "POST") {
+        return jsonResponse({ error: "job_site required" }, { ok: false, status: 400 })
+      }
+      return companyListHandler("watch_list", companies, "watch_list")(url)
+    })
+    renderWithProviders(<CompaniesWatchList />)
+    await waitFor(() => expect(screen.getByText("Acme Corp")).toBeInTheDocument())
+    await userEvent.click(screen.getByRole("button", { name: "Add Company" }))
+    await userEvent.type(screen.getByLabelText("Company Name"), "Acme Co")
+    await userEvent.type(screen.getByLabelText("Website"), "https://acme.test")
+    await userEvent.type(screen.getByLabelText("Careers Page URL"), "https://acme.test/careers")
+    await userEvent.click(screen.getByRole("button", { name: "Save" }))
+    await waitFor(() => expect(screen.getByText("Add company failed")).toBeInTheDocument())
   })
 })

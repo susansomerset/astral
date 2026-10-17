@@ -43,3 +43,39 @@
 **Broken / obsolete:** none — additive key. No new branch (branch lock unaffected).
 
 **Integration:** none.
+
+### AST-2322 · AST-2318 (add route + transition-gated bulk_state)
+
+**Parent:** [AST-2318](https://linear.app/astralcareermatch/issue/AST-2318). **Publish:** `origin/sub/AST-2318/AST-2322-add-company-and-ignore-restore`. Core create: [`../../core/roster.md`](../../core/roster.md) § AST-2322. Pages: [`../../frontend/pages.md`](../../frontend/pages.md) § AST-2322.
+
+**`POST /api/companies/add`** → `201` `{short_name, state: TEST_WATCH}`; missing fields / core `ValueError` → `400`. **`bulk_state`**: pre-validate `(from_state, to_state)` against **`ASTRAL_CONFIG["company_state_transitions"]`**, then **`transition_company_state`**; skip missing rows; reject e.g. `WATCH`→`WEBSITE_FOUND`; allow `IGNORE`→`TEST_WATCH` / `WATCH`→`IGNORE`. Completion `logger.info` on both mutating routes.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Add success / 400 | `api_companies.py` | new **`TestAst2322AddCompanyAndBulkState`** |
+| bulk_state allow / reject / prevalidate | `api_companies.py` | same class; revised **`TestCompaniesRoutes::test_bulk_state_updates_companies`** |
+
+**Broken / obsolete (revised this pass):** `test_bulk_state_updates_companies` (was `update_company` mock; now `get_company` + `transition_company_state`).
+
+## QA test manifest — AST-2322
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_roster.py::TestAst2322AddCompanyForTestWatch \
+  tests/component/ui/api/test_api_companies.py::TestAst2322AddCompanyAndBulkState \
+  tests/component/ui/api/test_api_companies.py::TestCompaniesRoutes::test_bulk_state_updates_companies \
+  tests/component/ui/api/test_api_companies.py::TestCompaniesRoutes::test_bulk_state_requires_body \
+  -q
+```
+
+Frontend (Vitest; §6c page renders):
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_CompaniesWatchList.test.tsx \
+  ../../../tests/component/frontend/pages/test_CompaniesIgnored.test.tsx
+```
+
+**Pass criterion:** pytest + Vitest green on the nodes above. Not the zero-arg harness / branch-lock gate.
+
+**Bible shasums (after publish):** fill from `git show origin/sub/AST-2318/AST-2322-add-company-and-ignore-restore:docs/test-bible/<path> | shasum`.

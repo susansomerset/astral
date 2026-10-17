@@ -4193,3 +4193,18 @@ cd src/ui/frontend && npm run test:component -- \
 ```
 
 **Pass criterion:** `[bug-repro] AST-2267: stage labels…` red on this tip; green once the select renders `label` and keeps an omitted current state as a raw option.
+
+### AST-2322 · AST-2318 (Watch List add + Ignored restore)
+
+**Parent:** [AST-2318](https://linear.app/astralcareermatch/issue/AST-2318). **Publish:** `origin/sub/AST-2318/AST-2322-add-company-and-ignore-restore`. API: [`../ui/api/api_companies.md`](../ui/api/api_companies.md) § AST-2322.
+
+**CompaniesWatchList:** Add Company modal (Company Name / Website / **Careers Page URL**) → `POST /api/companies/add` with `job_site` = careers URL; success toast includes `short_name`. **CompaniesIgnored:** bulk **Restore to Test Watch** posts `to_state: "TEST_WATCH"` (literal; does not read `ignored_list_to_state`, still `TO_WATCH` in config).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Add form success + failure (§6c page) | `CompaniesWatchList.tsx` | revised **`test_CompaniesWatchList.test.tsx`** (`AST-2322: Add Company…`) |
+| Restore label + `TEST_WATCH` body + failure toast | `CompaniesIgnored.tsx` | revised **`test_CompaniesIgnored.test.tsx`** |
+
+**Broken / obsolete (revised this pass):** Ignored cases that clicked **Move to Watch** / asserted “precious snowflakes moved to watch list” / “Move failed”.
+
+Primary narrowed run: [`../ui/api/api_companies.md`](../ui/api/api_companies.md) § QA test manifest — AST-2322.
