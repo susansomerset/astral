@@ -321,6 +321,6 @@ Do **not** treat meteorite changes as part of AST-2326 acceptance until scope is
 
 - `src/ui/frontend/src/components/MeteoriteDetailModal.tsx` — restored (resolve commit)
 - `docs/features/agent/ast-2224-meteorite-modal-edit-form.md` — restored (advisory doc carry)
-- `tests/component/frontend/components/test_MeteoriteDetailModal.test.tsx` — **pending Betty** (`[qa-handoff]`; engineer hook blocks `tests/` commits)
+- `tests/component/frontend/components/test_MeteoriteDetailModal.test.tsx` — restored by Betty (`test(AST-2326): restore MeteoriteDetailModal tests to ftr`)
 
-AST-2325 remains on its own `sub/*` / `origin/dev` lineage; Watch List polish commits unchanged. Re-ran AST-2326 qa-fix manifest after the product restore. Stay **Review Posted** until Betty restores the meteorite test file.
+AST-2325 remains on its own `sub/*` / `origin/dev` lineage. `origin/ftr/AST-2318-company-roster-list-updates…origin/sub/…AST-2326…` has **no** meteorite / AST-2325 paths. Radia fix-now closed.
