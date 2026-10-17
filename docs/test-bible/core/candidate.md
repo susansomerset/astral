@@ -2655,3 +2655,8 @@ Primary command + pass criterion: [`../utils/config.md`](../utils/config.md) § 
 | Walk labels use renamed Criteria/Company item labels | revised **`TestAst1253RequestedArtifactsHandoff::test_walk_helpers_order_labels_and_rubric_keys`** |
 
 **AST-2251 hydrate:** [`../data/database/candidates.md`](../data/database/candidates.md) § QA test manifest — AST-2251.
+
+
+### AST-2275 · AST-2246 (vault set plants process environ)
+
+**Bug-repro (qa-fix):** `tests/component/core/test_candidate.py::TestAst2275VaultKeyInProcessEnviron` — after `update_candidate_api_keys` with a non-empty OpenRouter key on a production probe, `CANDIDATE_SOMERSET_OPENROUTER` is in `os.environ` and hydrate fills `candidate_api_keys["openrouter"]` (the map dispatch/Ad Hoc read). Clear pops the env name. Red on the pre-fix tree (wrapper only wrote status).

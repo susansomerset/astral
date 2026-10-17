@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import inspect
 import json
+import os
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List
 from unittest.mock import AsyncMock, MagicMock
@@ -8277,3 +8278,39 @@ class TestAst2251SecretStatusHydrate:
         assert "Fernet" not in text
         assert "{server, status, expires_at}" in text
         assert "api_keys" in text
+
+
+class TestAst2275VaultKeyInProcessEnviron:
+    """AST-2275: after vault set, this process must hydrate OpenRouter for dispatch."""
+
+    def test_production_set_plants_environ_so_hydrate_and_dispatch_see_key(
+        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Dispatch / Ad Hoc read candidate_api_keys from hydrate. Without planting
+        # the per-candidate env name, SET status alone leaves the map empty.
+        monkeypatch.setenv("ASTRAL_RAILWAY_TOKEN", "tok")
+        monkeypatch.delenv("CANDIDATE_SOMERSET_OPENROUTER", raising=False)
+        db = sqlite_in_memory
+        db.save_candidate("somerset", state="NEW_CANDIDATE")
+        candidate_mod.update_candidate_api_keys("somerset", [{
+            "server": "openrouter",
+            "key": "sk-or-vault",
+            "expires_at": "2999-01-01 00:00:00",
+        }])
+        assert os.environ.get("CANDIDATE_SOMERSET_OPENROUTER") == "sk-or-vault"
+        row = db.get_candidate("somerset")
+        assert row["candidate_secret_status"]["openrouter"]["status"] == "SET"
+        assert row["candidate_api_keys"].get("openrouter") == "sk-or-vault"
+        assert "sk-or-vault" not in (row.get("candidate_secret_status") or {}).__repr__()
+
+    def test_production_clear_pops_environ(
+        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("ASTRAL_RAILWAY_TOKEN", "tok")
+        monkeypatch.setenv("CANDIDATE_SOMERSET_OPENROUTER", "sk-old")
+        db = sqlite_in_memory
+        db.save_candidate("somerset", state="NEW_CANDIDATE")
+        candidate_mod.update_candidate_api_keys("somerset", [{
+            "server": "openrouter", "key": "",
+        }])
+        assert "CANDIDATE_SOMERSET_OPENROUTER" not in os.environ
