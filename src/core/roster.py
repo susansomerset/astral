@@ -281,6 +281,52 @@ def transition_company_state(short_name: str, to_state: str) -> None:
 _INFLOW_SLUG_RE = re.compile(r"^[a-z0-9_]+$")
 
 
+def _slug_from_company_name(name: str) -> str:
+    """Mechanical short_name stem from a human company name (AST-2322)."""
+    slug = re.sub(r"[^a-z0-9]+", "_", (name or "").strip().lower()).strip("_")
+    return slug
+
+
+def add_company_for_test_watch(
+    candidate_id: str,
+    company_name: str,
+    company_website: str,
+    job_site: str,
+) -> str:
+    """Create a candidate-owned company in TEST_WATCH (Careers URL → job_site)."""
+    candidate_id = (candidate_id or "").strip()
+    company_name = (company_name or "").strip()
+    company_website = (company_website or "").strip()
+    job_site = (job_site or "").strip()
+    if not candidate_id:
+        raise ValueError("candidate_id required")
+    if not company_name:
+        raise ValueError("company_name required")
+    if not company_website:
+        raise ValueError("company_website required")
+    if not job_site:
+        raise ValueError("job_site required")
+    base = _slug_from_company_name(company_name)
+    if not base or not _INFLOW_SLUG_RE.match(base):
+        raise ValueError("invalid short_name from company name")
+    chosen: Optional[str] = None
+    for candidate_slug in [base] + [f"{base}_{n}" for n in range(2, 100)]:
+        if not get_company(candidate_slug):
+            chosen = candidate_slug
+            break
+    if not chosen:
+        raise ValueError("short_name collision")
+    save_company(
+        short_name=chosen,
+        state="TEST_WATCH",
+        company_name=company_name,
+        company_website=company_website,
+        job_site=job_site,
+        candidate_id=candidate_id,
+    )
+    return chosen
+
+
 def _normalize_company_url_for_dedupe(url: str) -> str:
     """Host-level URL key for roster ingest dedupe (strip www. after normalize_url)."""
     u = (url or "").strip()
