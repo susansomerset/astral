@@ -255,3 +255,62 @@ AST-2321 shipped a minimal jobs modal and count renders against the AST-2320 sli
 - AST-2320/2321 AC: named bucket counts match state sets; Scan Start = first WATCH history; Best Fit ladder labels without `FAILED_`; dates toggle still expands count cells to `N (m/d/yy)` when on and N≥1; count header sort remains numeric; Ignore-only bulk; no Retry Scrape; Add Company (AST-2322) still posts to `/api/companies/add`.
 - Job detail still loads via `GET /api/jobs/<id>` from the stacked modal; popup does not need full `job_data` blob after grade flatten.
 - Idempotent GETs still do not emit `stat.logging.info.api` completion lines.
+
+## Radia review (AST-2326)
+
+[code-rubric]
+**Ticket:** AST-2326
+**Publish ref:** `64a23512839d1dcbcbe1e6758c87acb50ff715a8` (`origin/sub/AST-2318/AST-2326-watch-list-job-popup-count-date-polish`)
+**Diff base:** `origin/ftr/AST-2318-company-roster-list-updates...origin/sub/AST-2318/AST-2326-watch-list-job-popup-count-date-polish`
+**Parent shape:** Normal (merge via epic `ftr`, not orphaned)
+**Corpus:** b7ab2203048ce0beb2869a12200ab7fa696c8066
+**Overall:** FIX-NOW
+
+## Canon scores
+
+(no frozen directive ids on this bug ticket — nothing to score)
+
+## Column diff vs plan stage
+
+no plan-stage canon scores attached (fix-lane `plan-fix` patch only)
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+**[bug-repro]** OK — repro tests pin AST-2326 to-be behavior (not tautologies): `scan_count` shape order; `bucket=all` grade flatten + `states` unfiltered; empty counts `-` + Jobs → `bucket=all` modal; modal without State column + `.grade-dot` when `jd_grades` present; all-mode group headers `Failed Joblist` / `Recommended`.
+
+**## What must still hold** OK — against plan-fix list: named buckets + enrichment path intact; `bucket=all` additive; dates toggle / numeric sort / ignore-only / Add Company / stacked job detail unchanged on Watch List paths; no new `logger.info` on the GET jobs route in this diff.
+
+## Findings
+
+### fix-now
+
+- **Cross-ticket product scope on fix sub** — `src/ui/frontend/src/components/MeteoriteDetailModal.tsx` and `tests/component/frontend/components/test_MeteoriteDetailModal.test.tsx` ([bug-repro] AST-2325 profile `dep-*` chrome) are **not** in AST-2326 `## Proposed change` / blast radius (Watch List + jobs modal + scan_count only). Shipping them on `sub/AST-2318/AST-2326-…` couples an unrelated meteorite fix to this bug branch and confuses fix-lane review/merge. **Default for resolve-child:** drop meteorite (+ its tests) from this publish ref; land AST-2325 under its own `sub/*` (or split commit) before User Testing.
+
+### discuss
+
+(none)
+
+### advisory
+
+- **Doc carry unrelated to AST-2326:** `docs/features/agent/ast-2224-meteorite-modal-edit-form.md`, `docs/features/team-chuckles/ast-2325-…` appear in the ftr…sub diff — note for Chuckles if those commits should ride this sub or a different ref.
+- **Private API import:** `company_jobs_by_bucket` imports `ui.api.api_jobs._flatten_grades` — matches plan (“prefer importing `_flatten_grades`”); acceptable but couples companies route to jobs module internals (already called out in plan).
+
+## What's solid
+
+- `count_company_job_scans` + watch_list enrichment → `scan_count` before `jobs` in shape.
+- `bucket=all` on existing jobs route; grades flattened before blob drop; named buckets unchanged.
+- `ListPage` optional `align`; Watch List centered counts, `-` for zero, Jobs opens all-jobs modal, scan/last-scan date + tooltip.
+- `CompanyWatchJobsModal`: no State column; `recommended-analysis-row` + grade dots; all-mode grouping with title-cased headers.
+
+## Recommended actions (Chuckles)
+
+| Gate | Parent | Next |
+|------|--------|------|
+| **REVIEW** | Normal | → **Review Posted** → **resolve-child** (strip meteorite scope from sub, re-run manifest) → **User Testing** when clean |
+| After clean **PROCEED** | Normal | → **Review Posted** → fix-lane clean shortcut → **User Testing** (skip resolve-child) |
+
+Do **not** treat meteorite changes as part of AST-2326 acceptance until scope is split or Susan explicitly approves bundling.
