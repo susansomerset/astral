@@ -532,12 +532,12 @@ Production PUT upserts or deletes, then one deploy, then stores status and expir
 
 **Parent:** [AST-2225](https://linear.app/astralcareermatch/issue/AST-2225). **Publish:** `origin/sub/AST-2225/AST-2267-manage-candidates-state-dropdown`. Plan patch: `docs/features/candidate/ast-2228-candidate-stage-registry.md` § Bug AST-2267.
 
-`GET /api/candidates/states` becomes `[{state, label}]` (`label` is `{stage}:{STATE}`), omits `ERROR_*` / `INTAKE_INITIATED` / `*_STALE`, sorted by label. Option value stays the raw key.
+`GET /api/candidates/states` becomes `[{state, label}]` (`label` is `{stage}:{STATE}`), omits `ERROR_*` / `INTAKE_INITIATED` / `*_STALE`, sorted by label. Option value stays the raw key. Live keys such as `PROSPECT` stay (`1:PROSPECT`).
 
 | Area | Component tests |
 | --- | --- |
-| [bug-repro] object list, omit, stage labels, sort | **`TestAst2267PickerStates::test_ast2267_picker_states_are_stage_labels`** — red on the pre-fix string dump |
-| List membership reads `state` when the row is an object | revised **`TestCandidateRoutes::test_list_candidates_and_states`** |
+| [bug-repro] object list, omit, stage labels, sort; `PROSPECT` kept | **`TestAst2267PickerStates::test_ast2267_picker_states_are_stage_labels`** |
+| List membership reads `state` when the row is an object; `PROSPECT` present | revised **`TestCandidateRoutes::test_list_candidates_and_states`** |
 
 Page half: [`../../frontend/pages.md`](../../frontend/pages.md) § AST-2267.
 

@@ -256,7 +256,8 @@ class TestCandidateRoutes:
         payload = states.get_json()
         names = [row["state"] if isinstance(row, dict) else row for row in payload]
         assert "NEW_CANDIDATE" in names
-        assert "PROSPECT" not in names
+        # AST-2267: PROSPECT is a live stage-1 key — keep it in the picker.
+        assert "PROSPECT" in names
 
     def test_list_rows_carry_stored_key_servers_only(
         self, candidate_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
@@ -510,7 +511,8 @@ class TestAst2267PickerStates:
         assert by_state["ACTIVE_SEARCH"] == "5:ACTIVE_SEARCH"
         assert by_state["DELETED"] == "0:DELETED"
         assert "NEW_CANDIDATE" in by_state
-        assert "PROSPECT" not in by_state
+        # Live registry key — omit list is ERROR_*/INTAKE_INITIATED/*_STALE only.
+        assert by_state["PROSPECT"] == "1:PROSPECT"
 
 
 class TestAst2252AdminSecretExpiry:
