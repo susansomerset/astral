@@ -188,3 +188,11 @@ stat.logging.info.api | A | |
 
 context_tokens≈62000
 ```
+
+## Resolution
+
+- **Date:** 2026-10-17
+- **Review tip:** `bc6a580e0` — `docs(AST-2322): Radia review — clean` (Overall CLEAN; fix-now none)
+- **fix-now:** none — no product changes
+- **discuss:** Took **Default** — leave `ignored_list_to_state` as `"TO_WATCH"` in config; Ignored page keeps hard-coded `TEST_WATCH` (matches approved plan / smaller change)
+- **advisory:** noted sibling AST-2319/2320 carry; no action
