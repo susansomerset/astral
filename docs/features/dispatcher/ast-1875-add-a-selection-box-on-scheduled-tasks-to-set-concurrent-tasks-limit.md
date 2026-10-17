@@ -213,3 +213,9 @@ From AST-1875 acceptance / Functional scope (and AST-1916/1917):
 4. Dropdown options still come from API min/max (no `100` literal as dropdown max in the page); GET effective cap matches the select.
 5. Override remains process-local; restart returns to `config.py` default.
 6. Admin auth on cap routes unchanged; no DeepSeek / `max_concurrent` / batch_size / stagger changes.
+
+### Delivery notes (AST-2272)
+
+- **Docs-acceptance:** test-tree delivery lands on gap sibling [AST-2273](https://linear.app/astralcareermatch/issue/AST-2273) (Betty TESTS: REVISE).
+- **Radia review:** PROCEED / CLEAN @ `80993a5f` — §3h User Testing (resolve-child skipped).
+
