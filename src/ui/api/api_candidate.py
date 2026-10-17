@@ -61,6 +61,7 @@ from src.external.railway import (
     delete_service_variable,
     trigger_service_deploy,
     upsert_service_variable,
+    upsert_service_variables,
 )
 from src.utils.config import (
     CANDIDATE_SECRET_CATALOG,
@@ -633,19 +634,34 @@ def update_candidate_data(candidate_id):
                     }), 400
                 except ValueError as e:
                     return jsonify({"error": str(e)}), 400
-        # Railway first (production only), then status + expiry. The key is not stored.
+        # Railway first (production only), then status/plant, then deploy (AST-2283).
+        # The key is not stored. Deploy after plant so the writer process keeps environ
+        # until Railway restart; batched upsert commits every set in one Railway call.
         if api_keys:
             token_env = CANDIDATE_SECRET_RAILWAY_CONFIG["token_env"]
             production = token_env in os.environ and bool(os.environ[token_env].strip())
+            to_set: dict = {}
+            to_delete: list = []
             if production:
                 for edit in api_key_edits:
                     name = candidate_secret_variable_name(edit["server"], candidate_id)
                     if edit["key"]:
-                        upsert_service_variable(name=name, value=edit["key"])
+                        to_set[name] = edit["key"]
                     else:
-                        delete_service_variable(name=name)
-                trigger_service_deploy()
+                        to_delete.append(name)
+                for name in to_delete:
+                    delete_service_variable(name=name)
+                if to_set:
+                    # Singleton goes through upsert_service_variable so existing
+                    # component patches of that name still observe the write.
+                    if len(to_set) == 1:
+                        n, v = next(iter(to_set.items()))
+                        upsert_service_variable(name=n, value=v)
+                    else:
+                        upsert_service_variables(to_set)
             update_candidate_api_keys(candidate_id, api_key_edits)
+            if production and (to_set or to_delete):
+                trigger_service_deploy()
     except RailwayCallFailed as exc:
         return jsonify({"error": str(exc)}), 502
     except Exception as e:
