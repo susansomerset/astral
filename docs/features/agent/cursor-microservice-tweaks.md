@@ -49,10 +49,11 @@ claim / heartbeat / maintenance / drain loops). Where they do the same job, they
 
 ## Telescope todo
 
-- [ ] **T1.** `TELESCOPE_CONFIG["job_deadline_seconds"]` 600 → 24h backstop (U4, with step 4).
-- [ ] **T2.** Verdict audit (U5, with step 1): `telescope_timeout` from the caller's wait, cancellation, and
-  worker loss hold state instead of `_save_parse_dispatch_failure` (`src/core/roster.py` ~1328); also check
-  `fetch_jd`, `gazer`, homepage fetch. A real scrape timeout after its retry stays a real outcome.
+- [done] **T1.** `TELESCOPE_CONFIG["job_deadline_seconds"]` 600 → 24h backstop (U4, with step 4).
+- [done] **T2.** Verdict audit (U5, with step 1): the caller's wait, expiry, cancellation, and enqueue failure
+  hold state instead of `_save_parse_dispatch_failure` (`src/core/roster.py` ~1328); also `fetch_jd`, `gazer`,
+  homepage fetch. A real scrape timeout after its retry stays a real outcome, and so does `lease_expired`
+  (attempts used up = a crash loop; deploys hand jobs back without charging an attempt).
 - [ ] **T3.** Holding area + memory gate (U1): claim everything; start a Firefox context only while memory use is
   below the cutoff; remove `WORKER_CONCURRENCY = 20` and the 2 GiB `limitOverride`. Verify Railway exposes the
   container limit in cgroup `memory.max` before relying on it. Cutoff is a config setting, default **70%**
@@ -60,12 +61,12 @@ claim / heartbeat / maintenance / drain loops). Where they do the same job, they
 - [ ] **T4.** Retries move into the waiting line (U2): `_retry_delay` 2/4/8s doubling → fixed delay (config
   setting, default **2s**, same value and setting for astral-agent transient retries);
   `TIMEOUT_MAX_ATTEMPTS = 2` keeps its meaning; permanent classes unchanged.
-- [ ] **T5.** Optional `timeout_seconds` on the scrape request (U3); default unchanged.
+- [done] **T5.** Optional `timeout_seconds` on the scrape request (U3); default unchanged.
 - [ ] **T6.** `telescope_worker.concurrency` (NOT NULL) reports held count instead of a cap; astral-core never
   reads it (checked). `wait_s` / stats split *held* vs. *running*.
 - [ ] **T7.** Shared skeleton (U6, approved) — last, after both services behave the same.
-- [ ] **T8.** One owner per setting (decision F): drop the `TELESCOPE_CONFIG` mirror note / copies and the
-  duplicated cookie selectors (astral-core sends them, or Telescope owns them alone).
+- [done] **T8.** One owner per setting (decision F): drop the `TELESCOPE_CONFIG` mirror note / copies and the
+  duplicated cookie selectors (Telescope owns cookie dismiss; the platform copy is gone).
 - Deferred: websites throttling us (e.g. 152 JDs on one job board). Telescope never reads HTTP status today;
   measure before building a per-site lot.
 
@@ -73,7 +74,7 @@ claim / heartbeat / maintenance / drain loops). Where they do the same job, they
 
 Each step: one small change, compile + lint + touched tests green before Susan reviews. Status in brackets.
 
-1. **[todo] Queue failures must not become verdicts.** `select_job_page` holds `PJL_READY` for balance refusal,
+1. **[done] Queue failures must not become verdicts.** `select_job_page` holds `PJL_READY` for balance refusal,
    probe failure, and `provider_call_timeout`, but `astral_agent_timeout` / `astral_agent_cancelled` /
    `connectivity_failure` fall through to `ERROR_SELECT_JOB_PAGE_NO_JOBLIST`. Audit every `do_task` caller
    (prefilter, grade_*, evaluate_jd, parse_job_list, upshot, …) for the same gap, then fix in one place if the

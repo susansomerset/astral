@@ -4420,9 +4420,8 @@ class TestAst897HoldStateOnBalanceRefusal:
         trans.assert_not_called()
 
 
-# AST-2010 — an exhausted-429 result's failure_class reaches run_consult_task's caller on every
-# failure return the dispatcher reads; routing / counts are unchanged (no hold); an untagged
-# failure (DeepSeek / Kimi 429, ordinary error) still carries no failure_class.
+# AST-2010 — an exhausted-429 result's failure_class reaches run_consult_task's caller.
+# It holds state (no transition). An untagged failure still carries no failure_class.
 class TestAst2010RateLimitForwarding:
     FC = "provider_rate_limit"
     ERR = "Error code: 429 - {'type': 'error', 'error': {'type': 'rate_limit_error'}}"
@@ -4445,9 +4444,8 @@ class TestAst2010RateLimitForwarding:
         out = await consult_mod.render_verdict("grade_do", "job-1")
         assert out["success"] is False
         assert out["failure_class"] == self.FC
-        # same failure route as today — not a hold
-        assert out.get("state_held") is not True
-        transition.assert_called_once()
+        assert out["state_held"] is True
+        transition.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_render_verdict_untagged_failure_has_no_failure_class(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -4485,9 +4483,9 @@ class TestAst2010RateLimitForwarding:
         )
         assert out["success"] is False
         assert out["failure_class"] == self.FC
-        assert out.get("state_held") is not True
-        # whole batch still takes the ordinary failure route
-        transition.assert_called()
+        assert out["state_held"] is True
+        assert out["total_held"] == 1
+        transition.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_run_consult_task_batch_normalizer_forwards_tag(self, monkeypatch: pytest.MonkeyPatch) -> None:

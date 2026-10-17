@@ -4497,6 +4497,19 @@ async def run_requested_artifacts_dispatch(
                 )
             return {**zero, "total_processed": 1, "total_errors": 1}
         if not response or not response.get("success"):
+            from src.utils.llm_external import is_provider_state_hold
+            if response and is_provider_state_hold(response):
+                # No candidate transition. Dispatcher finally clears the candidate batch_id.
+                return {
+                    "total_processed": 1,
+                    "total_passed": 0,
+                    "total_failed": 0,
+                    "total_errors": 0,
+                    "total_held": 1,
+                    "failure_class": response.get("failure_class"),
+                    "error": response.get("error"),
+                    "state_held": True,
+                }
             raise RuntimeError(
                 (response or {}).get("error") if response else f"do_task None for {start_key}"
             )

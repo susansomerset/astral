@@ -183,6 +183,28 @@ class TestAst2010ProviderRateLimit:
         assert llm_ext_mod.is_provider_rate_limit("nope") is False  # type: ignore[arg-type]
 
 
+class TestQueueStateHold:
+    def test_queue_classes_hold_and_real_timeouts_do_not(self) -> None:
+        for fc in (
+            "astral_agent_timeout",
+            "astral_agent_cancelled",
+            "connectivity_failure",
+            "telescope_queue_wait",
+            "telescope_expired",
+            "telescope_cancelled",
+            "provider_rate_limit",
+        ):
+            assert llm_ext_mod.is_queue_state_hold({"failure_class": fc}) is True
+            assert llm_ext_mod.is_provider_state_hold({"failure_class": fc}) is True
+        assert llm_ext_mod.is_queue_state_hold({"failure_class": "provider_call_timeout"}) is False
+        assert llm_ext_mod.is_queue_state_hold({"failure_class": "telescope_timeout"}) is False
+        assert llm_ext_mod.is_queue_state_hold({"failure_class": "lease_expired"}) is False
+        assert llm_ext_mod.is_queue_state_hold({"failure_class": "provider_balance_refusal"}) is False
+        assert llm_ext_mod.is_provider_state_hold({"failure_class": "provider_balance_refusal"}) is True
+        err = llm_ext_mod.QueueStateHold("telescope_queue_wait", "waited")
+        assert llm_ext_mod.is_queue_state_hold(err) is True
+
+
 class TestAst1190EmptyResponseHelpers:
     """AST-1190: normalize blank errors; hollow conjunction; empty-response predicate."""
 

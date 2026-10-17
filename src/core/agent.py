@@ -56,6 +56,7 @@ from src.external.anthropic import (
 from src.external.astral_agent import AstralAgentError, submit
 from src.utils.cost_calculator import CALC_COST_KEYS, calculate_cost_components_from_counts
 from src.utils.llm_external import (
+    QueueStateHold,
     extract_api_response_text,
     normalize_provider_error,
 )
@@ -1622,7 +1623,18 @@ async def run_cover_letter_artifact_chain_for_job(
     if cid:
         company = tracker.get_company(cid)
 
-    live_content = await _consult._prep_live_content(job, company, scoring_task_key=first_key)
+    try:
+        live_content = await _consult._prep_live_content(job, company, scoring_task_key=first_key)
+    except QueueStateHold as hold:
+        return {
+            "success": False,
+            "error": hold.detail or hold.failure_class,
+            "failure_class": hold.failure_class,
+            "state_held": True,
+            "api_response": None,
+            "parsed_response": None,
+            "timesheet": {},
+        }
     if not live_content:
         return {
             "success": False,

@@ -57,7 +57,14 @@ from src.utils.config import (
 )
 from src.utils.formatting import enumerate_array, normalize_link
 from src.utils.logging import get_logger, log_batch_id, log_debug
-from src.utils.llm_external import is_provider_probe_failure, is_provider_rate_limit, is_provider_state_hold
+from src.utils.llm_external import (
+    QueueStateHold,
+    is_provider_balance_refusal,
+    is_provider_probe_failure,
+    is_provider_rate_limit,
+    is_provider_state_hold,
+    is_queue_state_hold,
+)
 
 logger = get_logger(__name__)
 
@@ -679,6 +686,15 @@ def _latest_score_value(raw: Optional[float]) -> Optional[float]:
     return None if raw is None else float(raw)
 
 
+def _state_hold_tally(result: Dict[str, Any]) -> tuple[str, str]:
+    """('held'|'error', log line). Balance stays an error count; probe and queue holds do not."""
+    if is_provider_probe_failure(result):
+        return "held", "host probe failed — state held"
+    if is_provider_balance_refusal(result):
+        return "error", "provider balance refusal — state held"
+    return "held", f"{result.get('failure_class')} — state held"
+
+
 def _task_config_scored(task_key: str) -> bool:
     """TASK_CONFIG.scored flag for task behavior."""
     return bool((TASK_CONFIG.get(task_key) or {}).get("scored"))
@@ -969,9 +985,15 @@ async def _run_analysis_upshot_batch(
                 if not retry_base(dest):
                     errors += 1
                 continue
-        live_content = await _prep_analysis_upshot_live_content(
-            row, company, scoring_task_key=task_key,
-        )
+        try:
+            live_content = await _prep_analysis_upshot_live_content(
+                row, company, scoring_task_key=task_key,
+            )
+        except QueueStateHold as hold:
+            # Culture coat-check never reached a page. State stays; finally clears the claim.
+            _warn_job(aid, row.get("state") or "-", f"{hold.failure_class} — state held")
+            held += 1
+            continue
         if not live_content:
             fresh = tracker.get_job(aid) or row
             no_web = error_state_for(task_key, "NO_WEBSITE_CONTENT")
@@ -1003,12 +1025,12 @@ async def _run_analysis_upshot_batch(
                     "provider state hold failure_class=%r aid=%s error=%r current_state=%r",
                     result.get("failure_class"), aid, result.get("error"), row.get("state"),
                 )
-                # AST-2098: a failed probe is held, not errored; balance keeps its AST-897 error count.
-                if is_provider_probe_failure(result):
-                    _warn_job(aid, row.get("state") or "-", "host probe failed — state held")
+                # No transition: dispatcher finally clears this job's batch_id.
+                tally, why = _state_hold_tally(result)
+                _warn_job(aid, row.get("state") or "-", why)
+                if tally == "held":
                     held += 1
                 else:
-                    _warn_job(aid, row.get("state") or "-", "provider balance refusal — state held")
                     errors += 1
                 continue
             if result.get("empty_tokens"):
@@ -1193,7 +1215,18 @@ async def render_verdict(
         if not company:
             return _fail(f"Company not found: {job['company']}")
 
-    live_content = await _prep_live_content(job, company, scoring_task_key=agent_task, position=batch_index)
+    try:
+        live_content = await _prep_live_content(job, company, scoring_task_key=agent_task, position=batch_index)
+    except QueueStateHold as hold:
+        current_state = (job.get("state") or (tracker.get_job(astral_job_id) or {}).get("state"))
+        _warn_job(astral_job_id, current_state or "-", f"{hold.failure_class} — state held")
+        return {
+            "success": False,
+            "to_state": current_state,
+            "error": hold.detail or hold.failure_class,
+            "failure_class": hold.failure_class,
+            "state_held": True,
+        }
     if not live_content:
         # _prep_live_content may have already transitioned to ERROR_<TASK_KEY>_NO_WEBSITE_CONTENT
         # for the LIKE case — don't clobber with error_state
@@ -1226,11 +1259,8 @@ async def render_verdict(
                 "provider state hold failure_class=%r aid=%s error=%r current_state=%r",
                 result.get("failure_class"), astral_job_id, result.get("error"), current_state,
             )
-            _warn_job(
-                astral_job_id, current_state or "-",
-                "host probe failed — state held" if is_provider_probe_failure(result)
-                else "provider balance refusal — state held",
-            )
+            _tally, why = _state_hold_tally(result)
+            _warn_job(astral_job_id, current_state or "-", why)
             return {
                 "success": False,
                 "to_state": current_state,
@@ -1462,13 +1492,10 @@ async def _run_batch_consult(
                 "provider state hold failure_class=%r task=%s error=%r",
                 result.get("failure_class"), task_key, result.get("error"),
             )
-            why = "host probe failed" if is_provider_probe_failure(result) else "provider balance refusal"
+            _tally, why = _state_hold_tally(result)
             for job in jobs:
-                _warn_job(
-                    job.get("astral_job_id"),
-                    job.get("state") or "-",
-                    f"{why} — state held",
-                )
+                _warn_job(job.get("astral_job_id"), job.get("state") or "-", why)
+            # No transition. Dispatcher finally clears every claimed job's batch_id.
             return {
                 "success": False,
                 "error": result.get("error"),
@@ -1477,7 +1504,11 @@ async def _run_batch_consult(
                 "total": len(jobs),
                 "failure_class": result.get("failure_class"),
                 "state_held": True,
-                **({"total_held": len(jobs)} if is_provider_probe_failure(result) else {}),
+                **(
+                    {"total_held": len(jobs)}
+                    if is_provider_probe_failure(result) or is_queue_state_hold(result)
+                    else {}
+                ),
             }
         if result.get("empty_tokens"):
             dest = _empty_token_fail_dest(task_key, error_state)
@@ -2201,6 +2232,7 @@ async def _consult_scored_dispatch_batch_encoded(
 
     eligible: List[Dict[str, Any]] = []
     live_rows: List[str] = []
+    holds: List[QueueStateHold] = []
     # Parallel to eligible: each row's batch-unique index (claimed position; skipped rows leave gaps).
     row_indexes: List[int] = []
 
@@ -2220,7 +2252,12 @@ async def _consult_scored_dispatch_batch_encoded(
                 skipped += 1
                 continue
 
-        lc = await _prep_live_content(row, company, scoring_task_key=agent_tk, position=idx)
+        try:
+            lc = await _prep_live_content(row, company, scoring_task_key=agent_tk, position=idx)
+        except QueueStateHold as hold:
+            _warn_job(aid, row.get("state") or "-", f"{hold.failure_class} — state held")
+            holds.append(hold)
+            continue
         if not lc:
             fresh = tracker.get_job(aid) or row
             no_web = error_state_for(agent_tk, "NO_WEBSITE_CONTENT")
@@ -2244,6 +2281,18 @@ async def _consult_scored_dispatch_batch_encoded(
 
     if not eligible:
         logger.debug("no eligible rows after prep skipped=%s", skipped)
+        if holds:
+            return {
+                "success": False,
+                "error": holds[0].detail or holds[0].failure_class,
+                "passed": 0,
+                "failed": 0,
+                "total": len(jobs),
+                "skipped": skipped,
+                "failure_class": holds[0].failure_class,
+                "state_held": True,
+                "total_held": len(holds),
+            }
         return {"success": True, "passed": 0, "failed": 0, "total": len(jobs), "skipped": skipped}
 
     def assemble(rows: List[Dict[str, Any]]) -> str:
@@ -2270,8 +2319,14 @@ async def _consult_scored_dispatch_batch_encoded(
         batch_chunk_index=batch_chunk_index,
         row_indexes=row_indexes,
     )
-    if skipped:
-        result = {**result, "skipped": skipped, "total": len(jobs)}
+    if skipped or holds:
+        # Held rows never entered the call. total covers the claim; total_held keeps them out of errors.
+        result = {
+            **result,
+            "total": len(jobs),
+            **({"skipped": skipped} if skipped else {}),
+            **({"total_held": int(result.get("total_held") or 0) + len(holds)} if holds else {}),
+        }
     return result
 
 
@@ -2498,12 +2553,13 @@ async def run_consult_task(
             total = r.get("total", len(entities))
             passed = r.get("passed", 0)
             failed = r.get("failed", 0)
-            errors = r.get("errors", max(0, total - passed - failed))
+            errors = r.get("errors", max(0, total - passed - failed - r.get("total_held", 0)))
             return {
                 "total_processed": total,
                 "total_passed": passed,
                 "total_failed": failed,
                 "total_errors": errors,
+                **_outage_tag(r),
             }
         if task_key == "fetch_job_pages":
             from src.core.gazer import fetch_job_pages_batch
@@ -2515,12 +2571,13 @@ async def run_consult_task(
             total = r.get("total", len(entities))
             passed = r.get("passed", 0)
             failed = r.get("failed", 0)
-            errors = max(0, total - passed - failed)
+            errors = max(0, total - passed - failed - r.get("total_held", 0))
             return {
                 "total_processed": total,
                 "total_passed": passed,
                 "total_failed": failed,
                 "total_errors": errors,
+                **_outage_tag(r),
             }
         if task_key == "fetch_company_culture_pages":
             from src.core.gazer import fetch_company_culture_pages_batch
@@ -2532,12 +2589,13 @@ async def run_consult_task(
             total = r.get("total", len(entities))
             passed = r.get("passed", 0)
             failed = r.get("failed", 0)
-            errors = max(0, total - passed - failed)
+            errors = max(0, total - passed - failed - r.get("total_held", 0))
             return {
                 "total_processed": total,
                 "total_passed": passed,
                 "total_failed": failed,
                 "total_errors": errors,
+                **_outage_tag(r),
             }
 
         from src.utils.config import INFLOW_CONFIG
@@ -2663,12 +2721,14 @@ async def run_consult_task(
             total = r.get("total", len(entities))
             passed = r.get("passed", 0)
             failed = r.get("failed", 0)
-            errors = r.get("errors", max(0, total - passed - failed))
+            errors = r.get("errors", max(0, total - passed - failed - r.get("total_held", 0)))
             return {
                 "total_processed": total,
                 "total_passed": passed,
                 "total_failed": failed,
                 "total_errors": errors,
+                **({"total_held": r["total_held"]} if r.get("total_held") else {}),
+                **_outage_tag(r),
             }
         return await _debug_await(
             "roster.run_company_task",

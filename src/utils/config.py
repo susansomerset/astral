@@ -5386,22 +5386,6 @@ ASTRAL_CONFIG = {
         "max_html_tag_length": 500,            # AST-1840: attribute values longer than this are snipped
         "max_length_placeholder": "(snipped)", # AST-1840: replacement text, so snipped spots stay visible
     },
-    "cookie_dismiss_selectors": [
-        'button:has-text("Accept All")',
-        'button:has-text("Allow All")',
-        'button:has-text("Accept")',
-        'button:has-text("I Accept")',
-        'button:has-text("Agree")',
-        'button:has-text("Confirm")',
-        '[id*="accept-all"]',
-        '[id*="cookie-accept"]',
-        '[class*="accept-all"]',
-        'button[id*="cookie"]',
-        'button[class*="cookie"]',
-    ],
-    "cookie_fuzzy_accept_keywords": ["accept", "allow", "agree", "confirm", "ok", "got it"],
-    "cookie_selfheal_url_threshold": 5,
-
     # --- DB (database) ---
     "db_retry": {
         "max_attempts": 5,
@@ -5761,12 +5745,13 @@ PLAYWRIGHT_CONFIG = {
 # Scrapes are rows in telescope_job (schema owned by service/telescope/jobqueue.py);
 # the platform inserts a job and waits for the worker to write the result.
 # database_url is env-only (ASTRAL_DATABASE_URL — never a code default).
-# job_deadline_seconds: queue wait + every attempt; past it the job is cancelled.
-# max_attempts: claims per job (mirror: service telescope_config retry comments).
+# job_deadline_seconds: caller backstop only (24h). Not a scrape timer — a dead worker
+# must not strand the dispatch thread. The scrape budget is timeout_seconds on the request.
+# max_attempts: claims per job (the service reads the value off the job row).
 # ---------------------------------------------------------------------------
 TELESCOPE_CONFIG = {
     "database_url_env": "ASTRAL_DATABASE_URL",
-    "job_deadline_seconds": 600,
+    "job_deadline_seconds": 86400,
     "max_attempts": 4,
     "poll_interval_seconds": 1.0,
     "db_pool_max_size": 10,
@@ -6464,6 +6449,21 @@ PROVIDER_RATE_LIMIT = {
 PROVIDER_PROBE_FAILURE = {
     "failure_class": "provider_probe_failure",
 }
+
+# Queue-wait, cancellation, never-claimed expiry, enqueue failure, and an exhausted 429.
+# Not a real provider_call_timeout, and not a Telescope scrape timeout after its retry
+# (that row stays error_class "timeout" → telescope_timeout).
+# lease_expired after max attempts is a crash loop — a real failure, not a hold.
+# Predicate: src/utils/llm_external.is_queue_state_hold.
+QUEUE_STATE_HOLD_FAILURE_CLASSES = frozenset({
+    "astral_agent_timeout",
+    "astral_agent_cancelled",
+    "connectivity_failure",
+    "telescope_queue_wait",
+    "telescope_expired",
+    "telescope_cancelled",
+    PROVIDER_RATE_LIMIT["failure_class"],
+})
 
 # PROVIDER_CALL_BUDGET — per-call LLM wall time (AST-1189 / Archie: 10 minutes).
 # httpx client timeout uses timeout_seconds; caller wait uses timeout_seconds + grace_seconds.

@@ -48,6 +48,7 @@ from src.data.database import (
     text_matches_known_company_job_id_for_candidate,
     update_company_last_scan_at,
 )
+from src.utils.llm_external import QueueStateHold, is_queue_state_hold
 from src.external.telescope import (
     create_browser_context,
     create_batch_browser_session,
@@ -356,7 +357,7 @@ async def fetch_jd_batch(
     fail_state = GAZER_CONFIG["fetch_jd"]["fail_state"]
     job_total = len(jobs)
 
-    passed = failed = 0
+    passed = failed = held = 0
     if debug and job_total > 0:
         _log.debug_index(
             func="gazer.fetch_jd_batch",
@@ -367,7 +368,7 @@ async def fetch_jd_batch(
         )
 
     async def _scrape_one(job: Dict, job_index: int) -> None:
-        nonlocal passed, failed
+        nonlocal passed, failed, held
         aid = job.get("astral_job_id", "")
         job_link = (job.get("job_link") or "").strip()
         if not job_link:
@@ -387,6 +388,11 @@ async def fetch_jd_batch(
         try:
             text, _, row_id = await scrape_visible_text_and_keep(job.get("candidate_id"), job_link)
         except Exception as e:
+            if is_queue_state_hold(e):
+                # JD state stays. Dispatcher finally clears the job's batch_id.
+                _log.warning("[%s] JD scrape held (%s): %s", aid, getattr(e, "failure_class", ""), e)
+                held += 1
+                return
             if debug:
                 _log.debug_index(
                     func="gazer.fetch_jd_batch",
@@ -426,7 +432,12 @@ async def fetch_jd_batch(
             f"summary passed={passed} failed={failed} total={job_total} "
             f"pass_state={pass_state!r} fail_state={fail_state!r}"
         )
-    return {"passed": passed, "failed": failed, "total": len(jobs)}
+    return {
+        "passed": passed,
+        "failed": failed,
+        "total": len(jobs),
+        **({"total_held": held} if held else {}),
+    }
 
 
 async def fetch_relative_jd_batch(batch_id: str, jobs: list[dict[str, Any]]) -> dict[str, int]:
@@ -447,10 +458,10 @@ async def fetch_relative_jd_batch(batch_id: str, jobs: list[dict[str, Any]]) -> 
     fail_state = cfg["fail_state"]
     # Empty / too-short text after a successful click: this task's own unreadable terminal.
     short_state = cfg["unreadable_state"]
-    passed = failed = 0
+    passed = failed = held = 0
 
     async def _fetch_one(job: dict[str, Any]) -> None:
-        nonlocal passed, failed
+        nonlocal passed, failed, held
         aid = job.get("astral_job_id", "")
         job_site = (job.get("job_site") or "").strip()
         href = (job.get("job_link") or "").strip()
@@ -462,6 +473,10 @@ async def fetch_relative_jd_batch(batch_id: str, jobs: list[dict[str, Any]]) -> 
         try:
             final_url, text = await click_through_visible_text(job_site, href)
         except Exception as e:  # noqa: BLE001 — every Telescope/client failure routes to fail_state (AST-2022 §5)
+            if is_queue_state_hold(e):
+                _log.warning("%s held [%s]: %s", aid, getattr(e, "failure_class", ""), e)
+                held += 1
+                return
             if isinstance(e, PlaywrightInfraError) and e.failure_class == TELESCOPE_CLICK_TARGET_MISSING:
                 _log.warning("%s -> %s [click target missing: href=%r list_url=%s]", aid, fail_state, href, job_site)
             else:
@@ -498,7 +513,12 @@ async def fetch_relative_jd_batch(batch_id: str, jobs: list[dict[str, Any]]) -> 
     _log.debug("Beginning fetch_relative_jd loop on %s items", len(jobs))
     await asyncio.gather(*[_fetch_one(j) for j in jobs], return_exceptions=False)
     _log.debug("End fetch_relative_jd loop after %s items", passed + failed)
-    return {"passed": passed, "failed": failed, "total": len(jobs)}
+    return {
+        "passed": passed,
+        "failed": failed,
+        "total": len(jobs),
+        **({"total_held": held} if held else {}),
+    }
 
 
 def _website_content_is_recorded(website_content: Any) -> bool:
@@ -561,7 +581,7 @@ async def fetch_culture_pages_batch(
     bot_state = cfg["bot_blocked_state"]
     no_links_state = cfg["no_links_state"]
     job_total = len(jobs)
-    passed = failed = 0
+    passed = failed = held = 0
 
     if debug and job_total > 0:
         _log.debug_index(
@@ -654,7 +674,13 @@ async def fetch_culture_pages_batch(
             failed += 1
             continue
 
-        content = await get_company_data(company, "website_content")
+        try:
+            content = await get_company_data(company, "website_content")
+        except QueueStateHold as hold:
+            # No culture page loaded. Job stays; dispatcher finally clears batch_id.
+            _log.warning("[%s] culture pages held (%s)", aid, hold.failure_class)
+            held += 1
+            continue
         if content:
             company.setdefault("company_data", {})["website_content"] = content
             if _website_content_bot_walled(resolve_telescope_value(content)):
@@ -705,7 +731,12 @@ async def fetch_culture_pages_batch(
             f"pass_state={pass_state!r} fail_state={fail_state!r} "
             f"bot_state={bot_state!r} no_links_state={no_links_state!r}"
         )
-    return {"passed": passed, "failed": failed, "total": len(jobs)}
+    return {
+        "passed": passed,
+        "failed": failed,
+        "total": len(jobs),
+        **({"total_held": held} if held else {}),
+    }
 
 
 async def fetch_company_culture_pages_batch(
@@ -728,7 +759,7 @@ async def fetch_company_culture_pages_batch(
         _log.set_debug_flag(True)
     pass_state = GAZER_CONFIG["fetch_company_culture_pages"]["pass_state"]
     company_total = len(companies)
-    passed = 0
+    passed = held = 0
 
     # Sequential like fetch_culture_pages_batch: each coat-check scrape opens its own browser context.
     for company_index, company in enumerate(companies, start=1):
@@ -741,6 +772,10 @@ async def fetch_company_culture_pages_batch(
             try:
                 # Coat-check scrapes culture_links_to_explore and saves website_content itself.
                 found = resolve_telescope_value(await get_company_data(company, "website_content"))
+            except QueueStateHold as hold:
+                _log.warning("%s held [%s]: %s", short_name, hold.failure_class, hold.detail)
+                held += 1
+                continue
             except ValueError as e:
                 # Only a missing short_name/company_website escapes the coat-check; the hop still advances.
                 _log.exception(
@@ -764,7 +799,12 @@ async def fetch_company_culture_pages_batch(
             )
             _log.debug_detail(f"{_website_content_debug_summary(found)} company={short_name!r}")
 
-    return {"passed": passed, "failed": 0, "total": company_total}
+    return {
+        "passed": passed,
+        "failed": 0,
+        "total": company_total,
+        **({"total_held": held} if held else {}),
+    }
 
 
 
@@ -789,7 +829,7 @@ async def fetch_website_batch(
     fail_state = cfg["fail_state"]
     notes_key = ROSTER_CONFIG["company_data_keys"]["prefilter_company_notes"]
     company_total = len(companies)
-    passed = failed = errors = skipped = 0
+    passed = failed = errors = skipped = held = 0
 
     if debug and company_total > 0:
         _log.debug_index(
@@ -803,7 +843,7 @@ async def fetch_website_batch(
     async with create_batch_browser_session() as batch_session:
 
         async def _fetch_one_inner(company: Dict[str, Any], company_index: int) -> None:
-            nonlocal passed, failed
+            nonlocal passed, failed, held
             short_name = company.get("short_name") or ""
             company_state = (company.get("state") or "").strip()
             original_website = (company.get("company_website") or "").strip()
@@ -823,6 +863,11 @@ async def fetch_website_batch(
             scrape = await scrape_company_homepage_content(
                 short_name, original_website, batch_session=batch_session
             )
+            if is_queue_state_hold(scrape):
+                # Homepage not fetched. Company stays WEBSITE_FOUND; finally clears batch_id.
+                _log.warning("[%s] homepage held (%s)", short_name, scrape.get("failure_class"))
+                held += 1
+                return
             # Keep every capture — bot walls included — before routing (AST-2132).
             text_id, links_id = keep_page_scrape(company.get("candidate_id"), scrape["company_website"], scrape)
             dest = _fetch_website_fail_destination(
@@ -885,7 +930,7 @@ async def fetch_website_batch(
                     exc_info=r,
                 )
 
-    work_total = passed + failed + errors
+    work_total = passed + failed + errors + held
     if debug:
         _log.debug_detail(
             f"summary passed={passed} failed={failed} errors={errors} skipped={skipped} "
@@ -897,6 +942,7 @@ async def fetch_website_batch(
         "errors": errors,
         "skipped": skipped,
         "total": work_total,
+        **({"total_held": held} if held else {}),
     }
 
 
@@ -922,7 +968,7 @@ async def fetch_job_pages_batch(
     bot_state = cfg["bot_blocked_state"]
     notes_key = ROSTER_CONFIG["company_data_keys"]["prefilter_company_notes"]
     company_total = len(companies)
-    passed = failed = 0
+    passed = failed = held = 0
 
     if debug and company_total > 0:
         _log.debug_index(
@@ -936,7 +982,7 @@ async def fetch_job_pages_batch(
     async with create_browser_context() as browser_context:
 
         async def _fetch_one(company: Dict[str, Any], company_index: int) -> None:
-            nonlocal passed, failed
+            nonlocal passed, failed, held
             short_name = company.get("short_name") or ""
             cd = company.get("company_data") or {}
             candidate_id = company.get("candidate_id")
@@ -958,9 +1004,15 @@ async def fetch_job_pages_batch(
             pjl_pages = list(cd.get("pjl_scrape_pages") or [])
 
             walled = False
+            queue_only = True
+            saw_error = False
             # AST-1995: every candidate is re-scraped each run — no already-scraped skip.
             for url_idx, url in enumerate(candidate_urls, start=1):
                 record = await _scrape_pjl_page(url, browser_context, debug=debug)
+                if record.get("error"):
+                    saw_error = True
+                    if not is_queue_state_hold(record):
+                        queue_only = False
                 text_id, links_id = keep_page_scrape(candidate_id, record["url"], record)
                 # Row ids ride on the record for the PJL merge (AST-2134 reshapes pjl_scrape_pages to {url, id}).
                 record = {**record, "visible_text_id": text_id, "page_links_id": links_id}
@@ -1018,6 +1070,10 @@ async def fetch_job_pages_batch(
                             f"scraped={len(candidate_urls)})"
                         ),
                     )
+            elif saw_error and queue_only and not walled:
+                # Every miss was a queue failure. Stay on the trigger state; finally clears batch_id.
+                _log.warning("[%s] job pages held (queue)", short_name)
+                held += 1
             else:
                 dest = bot_state if walled else fail_state
                 transition_company_state(short_name, dest)
@@ -1046,7 +1102,12 @@ async def fetch_job_pages_batch(
             f"summary passed={passed} failed={failed} total={company_total} "
             f"pass_state={pass_state!r} fail_state={fail_state!r}"
         )
-    return {"passed": passed, "failed": failed, "total": len(companies)}
+    return {
+        "passed": passed,
+        "failed": failed,
+        "total": len(companies),
+        **({"total_held": held} if held else {}),
+    }
 
 
 def _compiled_title_patterns(ctx: Dict[str, Any]) -> List[Any]:
@@ -1321,9 +1382,13 @@ async def process_gazer_batch(
     results_by_short_name: Dict[str, Tuple[str, str, str]] = {}
     # Real scrape failure reason per company, kept regardless of debug (AST-1997).
     scrape_errors: Dict[str, str] = {}
+    scrape_holds: Dict[str, BaseException] = {}
     for i, r in enumerate(results):
         if isinstance(r, Exception):
             sn, _ = to_scrape[i]
+            if is_queue_state_hold(r):
+                scrape_holds[sn] = r
+                continue
             # Bare exceptions (e.g. asyncio.TimeoutError()) have empty str(); drop the trailing ": ".
             scrape_errors[sn] = f"Scrape failed: {type(r).__name__}: {r}" if str(r) else f"Scrape failed: {type(r).__name__}"
             continue
@@ -1336,6 +1401,18 @@ async def process_gazer_batch(
     for ci, c in enumerate(companies, start=1):
         short_name = c.get("short_name", "")
         if not short_name:
+            continue
+
+        if short_name in scrape_holds:
+            hold = scrape_holds[short_name]
+            outcomes.append({
+                "short_name": short_name,
+                "status": "held",
+                "failure_class": hold.failure_class,
+                "message": str(hold),
+                "new": None,
+                "duplicates": None,
+            })
             continue
 
         if short_name not in results_by_short_name:

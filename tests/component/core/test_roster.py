@@ -1707,7 +1707,18 @@ class TestPrefilterCompany:
 
     @pytest.mark.asyncio
     async def test_scrape_failure_transitions_cannot_read(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(roster_mod, "get_visible_text", AsyncMock(side_effect=RuntimeError("blocked")))
+        # A finished scrape that failed (scrape_failed) is a verdict. Queue classes are not.
+        monkeypatch.setattr(
+            roster_mod,
+            "scrape_company_homepage_content",
+            AsyncMock(return_value={
+                "company_website": "https://acme.com",
+                "visible_text": "",
+                "enumerated_nav_links": "",
+                "error": "scrape_failed: blocked",
+                "failure_class": "scrape_failed",
+            }),
+        )
         transition = MagicMock()
         save = MagicMock()
         monkeypatch.setattr(roster_mod, "transition_company_state", transition)
@@ -1716,6 +1727,32 @@ class TestPrefilterCompany:
         assert out["state"] == "ERROR_PREFILTER_COMPANY_UNREADABLE"
         transition.assert_called_once_with("acme", "ERROR_PREFILTER_COMPANY_UNREADABLE")
         save.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_queue_failure_holds_state(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            roster_mod,
+            "scrape_company_homepage_content",
+            AsyncMock(return_value={
+                "company_website": "https://acme.com",
+                "visible_text": "",
+                "enumerated_nav_links": "",
+                "error": "job waited out",
+                "failure_class": "telescope_queue_wait",
+            }),
+        )
+        monkeypatch.setattr(roster_mod, "get_company", MagicMock(return_value={"state": "WEBSITE_FOUND"}))
+        transition = MagicMock()
+        save = MagicMock()
+        monkeypatch.setattr(roster_mod, "transition_company_state", transition)
+        monkeypatch.setattr(roster_mod, "save_company_data", save)
+        out = await roster_mod.prefilter_company("acme", "https://acme.com")
+        assert out["decision"] == "HOLD"
+        assert out["state"] == "WEBSITE_FOUND"
+        assert out["state_held"] is True
+        assert out["failure_class"] == "telescope_queue_wait"
+        transition.assert_not_called()
+        save.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_redirect_and_empty_text_paths(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -6436,9 +6473,8 @@ class TestAst897HoldStateOnBalanceRefusal:
         transition.assert_not_called()
 
 
-# AST-2010 — exhausted-429 failure_class travels up the company paths the dispatcher reads;
-# routing / counts unchanged (no hold): select failure still ERROR_SELECT_JOB_PAGE_NO_JOBLIST, JOBS_FOUND error still
-# error_state + total_errors, prefilter batch still on the ordinary failure ladder.
+# AST-2010 — exhausted-429 failure_class travels up the company paths the dispatcher reads.
+# It is a queue hold (U2/U5): state stays, total_held is set, no ERROR_* / retry transition.
 class TestAst2010RateLimitForwarding:
     FC = "provider_rate_limit"
     ERR = "Error code: 429 - {'type': 'error', 'error': {'type': 'rate_limit_error'}}"
@@ -6456,10 +6492,10 @@ class TestAst2010RateLimitForwarding:
             page_url_map={1: "https://jobs"}, page_dom_map={1: "<motion/>"}, visible_map={1: ""},
             nav_links="", browser_context=MagicMock(), debug=False, ctx=None,
         )
-        assert (out["state"], out["response_type"]) == ("ERROR_SELECT_JOB_PAGE_NO_JOBLIST", "SELECT_FAILED")
+        assert out["state_held"] is True
         assert out["failure_class"] == self.FC
-        assert out.get("state_held") is not True
-        saver.assert_called_once()
+        assert out["state"] != "ERROR_SELECT_JOB_PAGE_NO_JOBLIST"
+        saver.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_run_company_task_select_job_page_forwards_tag(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -6468,10 +6504,9 @@ class TestAst2010RateLimitForwarding:
         out = await roster_mod.run_company_task(
             "PJL_READY", {"short_name": "acme", "state": "PJL_READY"}, "b2010", dispatch_task_key="select_job_page",
         )
-        # ERROR_SELECT_JOB_PAGE_NO_JOBLIST is terminal_ok today — count unchanged, tag rides along
-        assert (out["total_processed"], out["total_passed"], out["total_errors"]) == (1, 1, 0)
+        assert out["total_held"] == 1
+        assert out["total_errors"] == 0
         assert out["failure_class"] == self.FC
-        assert "total_held" not in out
 
     @pytest.mark.asyncio
     async def test_run_company_task_jobs_found_error_forwards_tag(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -6481,11 +6516,10 @@ class TestAst2010RateLimitForwarding:
         transition = MagicMock()
         monkeypatch.setattr(roster_mod, "transition_company_state", transition)
         out = await roster_mod.run_company_task("JOBS_FOUND", ent, "b2010")
-        assert out["total_errors"] == 1
+        assert out["total_errors"] == 0
+        assert out["total_held"] == 1
         assert out["failure_class"] == self.FC
-        assert "total_held" not in out
-        # still the ordinary error route (locate error_state), not a hold
-        transition.assert_called_once_with(ent["short_name"], ROSTER_CONFIG["locate_job_page"]["error_state"])
+        transition.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_batch_prefilter_generic_failure_forwards_tag(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -6496,8 +6530,9 @@ class TestAst2010RateLimitForwarding:
         out = await roster_mod.prefilter_company_batch("batch-2010", companies, debug=False)
         assert (out["passed"], out["failed"], out["total"]) == (0, 0, 1)
         assert out["failure_class"] == self.FC
-        assert out.get("state_held") is not True
-        transition.assert_called()
+        assert out["state_held"] is True
+        assert out["total_held"] == 1
+        transition.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_untagged_failure_has_no_failure_class(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -6541,31 +6576,34 @@ class TestAst2010RateLimitForwarding:
 
     @pytest.mark.asyncio
     async def test_find_job_page_select_failure_carries_outage_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        # AST-2140 Option B: run_company_task routes on "error", so the entity result carries the text as outage_error
+        # Exhausted 429 holds the loop-eligible state. The provider text stays on "error" for the outage note.
         monkeypatch.setattr(roster_mod, "do_task", AsyncMock(return_value=self._tagged()))
-        monkeypatch.setattr(roster_mod, "_save_company", MagicMock())
+        save = MagicMock()
+        monkeypatch.setattr(roster_mod, "_save_company", save)
+        monkeypatch.setattr(roster_mod, "get_company", lambda _sn: {"state": "PJL_READY"})
         out = await roster_mod._find_job_page_from_assembled(
             short_name="acme", company_website="https://cw", assembled_content="asm",
             page_url_map={1: "https://jobs"}, page_dom_map={1: "<motion/>"}, visible_map={1: ""},
             nav_links="", browser_context=MagicMock(), debug=False, ctx=None,
         )
-        assert (out["state"], out["response_type"]) == ("ERROR_SELECT_JOB_PAGE_NO_JOBLIST", "SELECT_FAILED")
-        assert "error" not in out
-        assert out.get("outage_error") == self.ERR
+        assert (out["state"], out["response_type"]) == ("PJL_READY", "SELECT_FAILED")
+        assert out.get("error") == self.ERR
+        assert out["state_held"] is True
         assert out["failure_class"] == self.FC
+        save.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_run_company_task_select_job_page_forwards_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        # AST-2140 Option B: outage_error is lifted back to "error" on the summary; routing/counts unchanged
-        inner = {"short_name": "acme", "state": "ERROR_SELECT_JOB_PAGE_NO_JOBLIST", "response_type": "SELECT_FAILED",
-                 "failure_class": self.FC, "outage_error": self.ERR}
+        # Rate-limit failure_class is a hold: counts as held, error text still reaches the dispatcher.
+        inner = {"short_name": "acme", "state": "PJL_READY", "response_type": "SELECT_FAILED",
+                 "failure_class": self.FC, "error": self.ERR, "state_held": True}
         monkeypatch.setattr(roster_mod, "run_select_job_page_dispatch", AsyncMock(return_value=inner))
         warn = MagicMock()
         monkeypatch.setattr(roster_mod, "_warn_company", warn)
         out = await roster_mod.run_company_task(
             "PJL_READY", {"short_name": "acme", "state": "PJL_READY"}, "b2140", dispatch_task_key="select_job_page",
         )
-        assert (out["total_processed"], out["total_passed"], out["total_errors"]) == (1, 1, 0)
+        assert (out["total_processed"], out["total_passed"], out["total_errors"], out["total_held"]) == (1, 0, 0, 1)
         assert out.get("error") == self.ERR
         assert out["failure_class"] == self.FC
         warn.assert_not_called()
@@ -7490,19 +7528,24 @@ class TestAst2070CompanyUpshotBatch:
         assert [r.levelname for r in caplog.records if "a -> ERROR_COMPANY_UPSHOT [empty prompt tokens]" in r.getMessage()] == ["ERROR"]
 
     @pytest.mark.asyncio
-    @pytest.mark.parametrize("result", [
-        {"success": False, "error": "429", "failure_class": "provider_rate_limit"},
-        {"success": False},
-    ])
-    async def test_do_task_failure_routes_retry_then_error(
-        self, monkeypatch: pytest.MonkeyPatch, result: dict[str, Any],
-    ) -> None:
-        m = self._patch(monkeypatch, result)
+    async def test_do_task_failure_routes_retry_then_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        m = self._patch(monkeypatch, {"success": False})
         companies = [{"short_name": "a", "state": "UPSHOT_READY"}, {"short_name": "b", "state": "UPSHOT_READY_RETRY"}]
         out = await roster_mod.company_upshot_batch("b6", companies)
         assert self._dests(m["transition_company_state"]) == {"a": "UPSHOT_READY_RETRY", "b": "ERROR_COMPANY_UPSHOT"}
         assert out["retried"] == 1 and out["passed"] == 0
-        assert out.get("failure_class") == result.get("failure_class")
+        assert "failure_class" not in out
+
+    @pytest.mark.asyncio
+    async def test_rate_limit_holds_state(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        result = {"success": False, "error": "429", "failure_class": "provider_rate_limit"}
+        m = self._patch(monkeypatch, result)
+        companies = [{"short_name": "a", "state": "UPSHOT_READY"}, {"short_name": "b", "state": "UPSHOT_READY_RETRY"}]
+        out = await roster_mod.company_upshot_batch("b6-hold", companies)
+        m["transition_company_state"].assert_not_called()
+        assert out["state_held"] is True
+        assert out["total_held"] == 2
+        assert out["failure_class"] == "provider_rate_limit"
 
 
 # AST-2088 (bug, parent AST-2054): the upshot response's optional company_name rewrites the root

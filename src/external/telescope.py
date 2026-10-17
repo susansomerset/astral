@@ -405,8 +405,10 @@ class _TelescopeQueue:
                     deadline,
                     request.get("url"),
                 )
+                # Caller gave up waiting. A scrape that actually timed out is error_class
+                # "timeout" on the row below, and stays telescope_timeout.
                 raise PlaywrightInfraError(
-                    "telescope_timeout", f"job {job_id} exceeded {deadline}s"
+                    "telescope_queue_wait", f"job {job_id} exceeded {deadline}s"
                 ) from None
             except asyncio.CancelledError:
                 await asyncio.shield(self._cancel(db, job_id))
@@ -426,7 +428,12 @@ class _TelescopeQueue:
             return data
         error_class = row["error_class"] or "unknown"
         detail = f"job {job_id} {status} ({error_class}): {row['error'] or ''}"
-        if error_class in ("timeout", "expired"):
+        if status == "cancelled" or error_class == "cancelled":
+            raise PlaywrightInfraError("telescope_cancelled", detail)
+        if error_class == "expired":
+            raise PlaywrightInfraError("telescope_expired", detail)
+        # lease_expired is attempts used up by a crash loop. A real failure, same as scrape_failed.
+        if error_class == "timeout":
             raise PlaywrightInfraError("telescope_timeout", detail)
         if error_class == "bad_request":
             raise PlaywrightInfraError("telescope_bad_request", detail)
@@ -581,6 +588,7 @@ async def _post_telescope(
     wait_ready: Optional[bool] = None,
     debug: Optional[bool] = None,
     click_href: Optional[str] = None,
+    timeout_seconds: Optional[float] = None,
     priority: Optional[int] = None,
 ) -> dict:
     """One Telescope job — one page load, only requested capture keys in the result."""
@@ -599,6 +607,8 @@ async def _post_telescope(
         ),
         "debug": scrape_debug,
     }
+    if timeout_seconds is not None:
+        body["timeout_seconds"] = float(timeout_seconds)
     if selector is not None:
         body["selector"] = selector
     if tag is not None:

@@ -10,6 +10,7 @@ from src.utils.config import (
     PROVIDER_EMPTY_RESPONSE,
     PROVIDER_PROBE_FAILURE,
     PROVIDER_RATE_LIMIT,
+    QUEUE_STATE_HOLD_FAILURE_CLASSES,
 )
 from src.utils.logging import get_logger
 
@@ -64,9 +65,44 @@ def is_provider_probe_failure(result: Optional[Dict[str, Any]]) -> bool:
     return result.get("failure_class") == PROVIDER_PROBE_FAILURE["failure_class"]
 
 
+class QueueStateHold(Exception):
+    """A queue failure a coat-check would otherwise swallow into a verdict.
+
+    failure_class is one of QUEUE_STATE_HOLD_FAILURE_CLASSES. Callers leave entity
+    state alone and return; the dispatcher finally releases the claim.
+    """
+
+    def __init__(self, failure_class: str, detail: str = "") -> None:
+        self.failure_class = failure_class
+        self.detail = detail
+        super().__init__(f"[{failure_class}] {detail}")
+
+
+def is_queue_state_hold(result: Any) -> bool:
+    """True for a queue failure or exhausted 429 — not a verdict.
+
+    Balance refusal holds the same way: the task returns without transitioning, and
+    `_run_unified`'s finally (`clear_job_batch` / `clear_company_batch` /
+    `clear_candidate_batch`) clears batch_id so the next tick can reclaim the entity.
+    A hold that raises out of that try, or that writes an ERROR_* state, stays locked
+    or leaves the trigger state and never re-dispatches.
+    """
+    if isinstance(result, str):
+        failure_class = result
+    elif isinstance(result, dict):
+        failure_class = result.get("failure_class")
+    else:
+        failure_class = getattr(result, "failure_class", None)
+    return failure_class in QUEUE_STATE_HOLD_FAILURE_CLASSES
+
+
 def is_provider_state_hold(result: Optional[Dict[str, Any]]) -> bool:
-    """True when the entity keeps its state: balance refusal (AST-897) or failed host probe (AST-2098)."""
-    return is_provider_balance_refusal(result) or is_provider_probe_failure(result)
+    """True when the entity keeps its state: balance, probe, exhausted 429, or a queue failure."""
+    return (
+        is_provider_balance_refusal(result)
+        or is_provider_probe_failure(result)
+        or is_queue_state_hold(result)
+    )
 
 
 def provider_call_http_timeout_seconds() -> float:

@@ -110,7 +110,7 @@ def load_settings() -> Settings:
         launch_retry_delay_seconds=LAUNCH_RETRY_DELAY_SECONDS,
         viewport=dict(VIEWPORT),
         firefox_user_prefs=dict(FIREFOX_USER_PREFS),
-        # Duplicated from platform ASTRAL_CONFIG — import fence forbids src/
+        # Telescope owns cookie dismiss. astral-core does not keep a copy.
         cookie_dismiss_selectors=[
             'button:has-text("Accept All")',
             'button:has-text("Allow All")',

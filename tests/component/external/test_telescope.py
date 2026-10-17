@@ -624,11 +624,38 @@ class TestAst2023ClickThrough:
         assert pw_mod.TELESCOPE_CLICK_TARGET_MISSING not in pw_mod.PLAYWRIGHT_INFRA_FAILURE_CLASSES
 
     @pytest.mark.asyncio
+    async def test_submit_lease_expired_is_a_real_failure(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Attempts exhausted by a crash loop. Holding it would re-dispatch the URL every tick.
+        err = await self._submit_failing(monkeypatch, "lease_expired")
+        assert err.failure_class == "telescope_job_failed"
+
+    @pytest.mark.asyncio
     async def test_submit_scrape_failed_still_job_failed_control(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         err = await self._submit_failing(monkeypatch, "scrape_failed")
         assert err.failure_class == "telescope_job_failed"
+
+    @pytest.mark.asyncio
+    async def test_submit_timeout_stays_telescope_timeout(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        err = await self._submit_failing(monkeypatch, "timeout")
+        assert err.failure_class == "telescope_timeout"
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("error_class", "failure_class"),
+        [
+            ("expired", "telescope_expired"),
+            ("cancelled", "telescope_cancelled"),
+        ],
+    )
+    async def test_submit_queue_failures_are_distinct(
+        self, monkeypatch: pytest.MonkeyPatch, error_class: str, failure_class: str,
+    ) -> None:
+        err = await self._submit_failing(monkeypatch, error_class)
+        assert err.failure_class == failure_class
 
     @pytest.mark.asyncio
     async def test_click_through_returns_final_url_and_text(self, monkeypatch: pytest.MonkeyPatch) -> None:

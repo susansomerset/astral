@@ -1,6 +1,6 @@
-"""Telescope service constants — keep in sync with platform TELESCOPE_CONFIG.
+"""Telescope service constants.
 
-Mirror: src/utils/config.py → TELESCOPE_CONFIG (max_attempts, job_deadline_seconds)
+Per-job values (timeout, max attempts, deadline) arrive on the job row from astral-core.
 Import fence forbids reading src/ from service/telescope/.
 Secrets (database URL) stay in env via settings.py.
 """

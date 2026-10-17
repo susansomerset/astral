@@ -58,10 +58,12 @@ from src.data.database import (
 )
 from src.utils.logging import get_logger, log_batch_id
 from src.utils.llm_external import (
+    QueueStateHold,
     is_provider_balance_refusal,
     is_provider_probe_failure,
     is_provider_rate_limit,
     is_provider_state_hold,
+    is_queue_state_hold,
 )
 from src.utils.config import (
     ASTRAL_CONFIG,
@@ -1032,6 +1034,14 @@ async def run_company_task(
                 return {**zero, "total_errors": 1}
             result = await run_parse_job_list_dispatch(entity, batch_id, ctx, debug)
             parse_cfg = ROSTER_CONFIG["parse_job_list"]
+            if result.get("state_held") or is_provider_state_hold(result):
+                # State unchanged. Dispatcher finally clears the company batch_id.
+                return {
+                    **zero,
+                    "total_held": 1,
+                    "failure_class": result.get("failure_class"),
+                    "error": result.get("error"),
+                }
             if result.get("error"):
                 _warn_company(short_name, "-", result["error"])
                 return {**zero, "total_errors": 1}
@@ -1049,6 +1059,13 @@ async def run_company_task(
             error_state = ROSTER_CONFIG.get("gaze", {}).get("error_state")
             outcomes = await process_gazer_batch(batch_id, [entity], debug=debug, ctx=ctx)
             o = outcomes[0] if outcomes else {}
+            if o.get("status") == "held" or is_queue_state_hold(o):
+                return {
+                    **zero,
+                    "total_held": 1,
+                    "failure_class": o.get("failure_class"),
+                    "error": o.get("message"),
+                }
             if o.get("status") == "failure":
                 _warn_company(short_name, error_state or "-", o.get("message", "") or "gaze failed")
                 if error_state:
@@ -1294,6 +1311,16 @@ async def run_parse_job_list_dispatch(
                 notes="containers not found for titles", response_type="PARSE_DISPATCH_NO_CONTAINERS",
             )
         parsed = await _fetch_parse_job_list(dom_joined, short_name, debug=debug, ctx=ctx)
+        if is_provider_state_hold(parsed):
+            return {
+                "short_name": short_name,
+                "state": input_state,
+                "job_site": "",
+                "response_type": "PARSE_DISPATCH_HELD",
+                "error": parsed.get("error"),
+                "failure_class": parsed.get("failure_class"),
+                "state_held": True,
+            }
         if parsed.get("empty_tokens"):
             # AST-2000: terminal parse state, no retry — "error" makes the dispatcher count an error.
             terminal = ROSTER_CONFIG["parse_job_list"]["error_state"]
@@ -1326,6 +1353,17 @@ async def run_parse_job_list_dispatch(
             async with create_browser_context() as browser_context:
                 result = await _scrape_and_parse(browser_context)
     except PlaywrightInfraError as ex:
+        if is_queue_state_hold(ex):
+            # Queue wait / cancel / worker loss: leave the parse state. Claim clears in finally.
+            return {
+                "short_name": short_name,
+                "state": input_state,
+                "job_site": "",
+                "response_type": "PARSE_DISPATCH_HELD",
+                "error": ex.detail,
+                "failure_class": ex.failure_class,
+                "state_held": True,
+            }
         # Outcome severity is logged by _save_parse_dispatch_failure (AST-1839)
         logger.debug(
             "%s | company parse_job_list scrape\n  %s: %s\n  Continuing to the next company",
@@ -1365,7 +1403,7 @@ async def parse_job_list_batch(
     """Shared-browser parse_job_list for a claimed company batch (AST-891)."""
     parse_cfg = ROSTER_CONFIG["parse_job_list"]
     company_total = len(companies)
-    passed = errors = retried = 0
+    passed = errors = retried = held = 0
     logger.debug("Beginning parse_job_list loop on %s items", company_total)
     # AST-1847: dispatcher-owned running summary (mutated in place) so per-company
     # outcomes survive a dispatch-timeout cancel that discards the return value below.
@@ -1380,7 +1418,7 @@ async def parse_job_list_batch(
 
     async with create_batch_browser_session() as batch_session:
         async def _one(company: Dict[str, Any], company_index: int) -> None:
-            nonlocal passed, errors, retried
+            nonlocal passed, errors, retried, held
             short_name = company.get("short_name") or ""
             company_website = company.get("company_website") or ""
             input_state = str(company.get("state") or "").strip()
@@ -1395,8 +1433,11 @@ async def parse_job_list_batch(
                 company, batch_id, ctx, debug, batch_session=batch_session,
             )
             logger.debug("Response from run_parse_job_list_dispatch: %s", result)
+            if result.get("state_held") or is_provider_state_hold(result):
+                held += 1
+                _tally(None)
             # AST-1839: retry holding is not an error; terminal fail (only reached out of the holding) is.
-            if result.get("error"):
+            elif result.get("error"):
                 errors += 1
                 _tally("total_errors")
             elif result.get("state") == parse_cfg["pass_state"]:
@@ -1433,7 +1474,14 @@ async def parse_job_list_batch(
                 )
 
     logger.debug("End parse_job_list loop after %s items", company_total)
-    return {"passed": passed, "failed": 0, "total": company_total, "errors": errors, "retried": retried}
+    return {
+        "passed": passed,
+        "failed": 0,
+        "total": company_total,
+        "errors": errors,
+        "retried": retried,
+        **({"total_held": held} if held else {}),
+    }
 
 
 async def process_recheck_no_openings(
@@ -1710,6 +1758,7 @@ async def scrape_company_homepage_content(
         else:
             fc = classify_playwright_failure(scrape_err)
             msg = str(scrape_err)
+        out["failure_class"] = fc
         if is_playwright_infra_failure(fc):
             out["error"] = f"[playwright:{fc}] {msg}"
         else:
@@ -1887,6 +1936,14 @@ async def prefilter_company(
         _, nav_links_id = keep_page_scrape(candidate_id, scrape["company_website"], scrape)
         logger.debug("Response from keep_page_scrape: nav_links_id=%s", nav_links_id)
         if scrape.get("error"):
+            if is_queue_state_hold(scrape):
+                # Homepage never loaded because the queue failed. Stay put; finally clears batch_id.
+                result["error"] = scrape["error"]
+                result["state"] = (get_company(short_name) or {}).get("state")
+                result["failure_class"] = scrape.get("failure_class")
+                result["state_held"] = True
+                result["decision"] = "HOLD"
+                return result
             unreadable = ROSTER_CONFIG["prefilter"]["unreadable_state"]
             transition_company_state(short_name, unreadable)
             save_company_data(short_name, {"prefilter_company_notes": scrape["error"]})
@@ -2207,7 +2264,11 @@ async def _run_batch_company_prefilter(
                 "failure_class": result.get("failure_class"),
                 "error": result.get("error"),
                 "state_held": True,
-                **({"total_held": len(companies)} if is_provider_probe_failure(result) else {}),
+                **(
+                    {"total_held": len(companies)}
+                    if is_provider_probe_failure(result) or is_queue_state_hold(result)
+                    else {}
+                ),
             }
         if result.get("empty_tokens"):
             # AST-2000: data defect — straight to ERROR_PREFILTER_COMPANY, never a retry holding.
@@ -2487,7 +2548,11 @@ async def company_upshot_batch(
                 "failure_class": result.get("failure_class"),
                 "error": result.get("error"),
                 "state_held": True,
-                **({"total_held": len(rows)} if is_provider_probe_failure(result) else {}),
+                **(
+                    {"total_held": len(rows)}
+                    if is_provider_probe_failure(result) or is_queue_state_hold(result)
+                    else {}
+                ),
             }
         if result.get("empty_tokens"):
             # Data defect, not an agent miss: straight to the terminal error, never the retry holding.
@@ -2765,6 +2830,16 @@ async def jobs_found_process_job_site(
     try:
         visible_text, final_url = await get_visible_text(job_site, return_final_url=True)
     except Exception as ex:
+        if is_queue_state_hold(ex):
+            return {
+                "short_name": short_name,
+                "state": (get_company(short_name) or {}).get("state"),
+                "job_site": job_site,
+                "response_type": "SCRAPE_HELD",
+                "error": str(ex),
+                "failure_class": ex.failure_class,
+                "state_held": True,
+            }
         logger.warn_exc(
             "%s | company jobs_found scrape\n  %s: %s\n  Leaving job_site unscanned",
             short_name,
@@ -2843,6 +2918,9 @@ async def _scrape_pjl_page(
         finally:
             await close_page(pg)
     except Exception as e:
+        out["failure_class"] = (
+            e.failure_class if isinstance(e, PlaywrightInfraError) else classify_playwright_failure(e)
+        )
         out["error"] = str(e)
         logger.warn_exc(
             "%s | company PJL page scrape\n  %s: %s\n  Continuing to the next page",
@@ -3666,6 +3744,7 @@ async def _fetch_website_content(company: Dict[str, Any]) -> Optional[list]:
         logger.debug("Beginning culture page scrape loop on %s items", len(selected_urls))
         pages = []
         refs = []
+        queue_hold: Optional[BaseException] = None
         async with create_browser_context() as context:
             for url in selected_urls[:max_pages]:
                 try:
@@ -3676,6 +3755,8 @@ async def _fetch_website_content(company: Dict[str, Any]) -> Optional[list]:
                         pages.append({"url": url, "content": text.strip()})
                         refs.append({"url": url, "id": row_id})
                 except Exception as e:
+                    if is_queue_state_hold(e):
+                        queue_hold = e
                     logger.warn_exc(
                         "%s | company culture page scrape\n  %s: %s\n  Continuing to the next page",
                         url,
@@ -3686,6 +3767,11 @@ async def _fetch_website_content(company: Dict[str, Any]) -> Optional[list]:
 
         logger.debug("End culture page scrape loop after %s items", len(pages))
         if not pages:
+            if queue_hold is not None:
+                raise QueueStateHold(
+                    queue_hold.failure_class,
+                    getattr(queue_hold, "detail", "") or str(queue_hold),
+                )
             _warn_company(short_name, "-", "all culture page scrapes failed")
             return None
 
@@ -3693,9 +3779,11 @@ async def _fetch_website_content(company: Dict[str, Any]) -> Optional[list]:
         save_company_data(short_name, {"website_content": refs})
         _entity_info(short_name, "company", "website_content saved", len(pages))
         return pages
-    except ValueError:
+    except (ValueError, QueueStateHold):
         raise
     except Exception as e:
+        if is_queue_state_hold(e):
+            raise QueueStateHold(e.failure_class, getattr(e, "detail", "") or str(e)) from e
         logger.warn_exc(
             "%s | company website_content fetch\n  %s: %s\n  Leaving website_content unset",
             short_name,
@@ -3778,6 +3866,8 @@ async def _fetch_parse_job_list(dom_html: str, short_name: str, debug: bool = Fa
         # AST-2000: callers route this to a terminal error state, not the parse-failure saves.
         return {"empty_tokens": response["empty_tokens"], "error": response.get("error")}
     if not response or not response.get("success"):
+        if is_provider_state_hold(response):
+            return response
         err = (response or {}).get("error", "no parsed_response")
         _warn_company(short_name, "-", f"parse_job_list failed: {err}")
         save_company_data(short_name, {"parse_job_list_notes": err})

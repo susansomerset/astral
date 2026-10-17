@@ -84,6 +84,10 @@ class TelescopeRequest(BaseModel):
     expand: bool = Field(default=True, description=_EXPAND_DESC)
     wait_ready: bool = False
     click_href: Optional[str] = Field(default=None, description=_CLICK_DESC)
+    timeout_seconds: Optional[float] = Field(
+        default=None,
+        description="Scrape budget in seconds. Absent → REQUEST_TIMEOUT_SECONDS.",
+    )
     debug: bool = Field(
         default=False,
         description=(
@@ -184,15 +188,18 @@ async def run_scrape(
         _log.debug("Captured %s", capture_summary(out))
         return out
 
+    # Scrape budget starts once the job has its page (Firefox relaunch excluded).
+    budget = (
+        float(req.timeout_seconds)
+        if req.timeout_seconds is not None
+        else settings.request_timeout_seconds
+    )
     try:
-        # Scrape budget starts once the job has its page (Firefox relaunch excluded).
         async with firefox.page() as page:
-            result = await asyncio.wait_for(
-                _scrape(page), timeout=settings.request_timeout_seconds
-            )
+            result = await asyncio.wait_for(_scrape(page), timeout=budget)
     except asyncio.TimeoutError:
         raise ScrapeError(
-            "timeout", f"scrape exceeded {settings.request_timeout_seconds}s"
+            "timeout", f"scrape exceeded {budget}s"
         ) from None
     except ClickTargetMissing as exc:
         raise ScrapeError(CLICK_TARGET_MISSING, str(exc)) from None
