@@ -131,3 +131,37 @@ Ticket **Scope** names exactly these files/kinds:
 ## Estimate
 
 Confirm Chuckles estimate: 5 — agree
+
+## Joan validate
+
+```text
+[plan-rubric]
+**Ticket:** AST-2321
+**Overall:** APPROVED
+**Corpus:** b7ab2203048ce0beb2869a12200ab7fa696c8066
+**Publish ref:** `sub/AST-2318/AST-2321-watch-list-ui-dates-toggle-count-modal` @ `1a77858fb55de6f23b32db7fa6bebf963a81d5ca`
+
+## Canon scores
+
+(no directive ids on the ticket’s frozen Citations list — explicit “none beyond parent”; nothing to score in R3)
+
+## Traceability
+
+AC 5 → Stage 2 (dates toggle + count `Column.render` using `{key}_newest_at`); AC 6 → Stage 2 (numeric row fields + ListPage sort on `row[key]`); AC 7 → Stage 1 (`CompanyWatchJobsModal` + bucket jobs API + stacked `JobDetailModal`); AC 8 → Stage 2 (Ignore-only bulk, drop Retry Scrape / `watch_list_ack_to_state`); AC 9 → Stage 2 (`npm run build` / `npm run lint`). Parent AC 1–4, 10–12 N/A (aggregates API, add/restore, TEST_WATCH, backend). Child AC 8 end-to-end ignore needs `watch_list_ignore_to_state` + `bulk_state` from siblings — assumed on epic line per Depends.
+
+## Findings
+
+**discuss** — Linear assignee is Ada, not Joan; Chuckles should assign Joan before validate-plan handoff per skill §1 (review proceeded on spawn instruction).
+
+**acceptable** — Explicit scope gate matches ticket Scope; decision not to touch `ListPage.tsx` after page-local `render` + `stopPropagation` matches precedent (`JobsMeteorites`).
+
+**acceptable** — Sort reads raw `row.jl`…`applied` ints while display formats in `render` — satisfies AC6 without ListPage API changes.
+
+**discuss** — Plan prose cites `cmpValues(…, { numeric: true })`; `ListPage`’s `cmpValues` has no options arg (always uses `localeCompare` with `numeric: true`). Behavior for numeric row fields is still fine — implementers should follow actual `ListPage.tsx`, not the shorthand in the plan.
+
+**discuss** — Best Fit cell always appends date when `best_fit_at` is set, independent of the dates toggle — aligns with parent functional scope (“Best Fit always carries its date”); AC5 only governs count columns.
+
+**discuss** — `CompaniesWatchList.tsx` `actions` slot will also gain add-company UI in AST-2322; merge/build order should keep both affordances without dropping the dates toggle.
+
+context_tokens≈85000
+```
