@@ -44,6 +44,31 @@
 
 **Integration:** none.
 
+### AST-2320 · AST-2318 (watch_list enrichment + jobs-by-bucket)
+
+**Parent:** [AST-2318](https://linear.app/astralcareermatch/issue/AST-2318). **Publish:** `origin/sub/AST-2318/AST-2320-watch-list-aggregates-api-and-shapes`.
+
+**`GET ?view=watch_list`**: attaches `scan_start`, `best_fit_label`/`best_fit_at`, `jobs`, bucket counts + `*_newest_at`. **`GET /<short_name>/jobs?bucket=&candidate_id=`**: bucket-filtered jobs; drops `job_data` / `state_history`. No `logger.info` on these GETs.
+
+| Area | Component tests |
+| --- | --- |
+| Enrichment + jobs route | new **`TestAst2320WatchListEnrichmentAndJobs`** |
+
+## QA test manifest — AST-2320
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst2320WatchListConfig \
+  tests/component/utils/test_config.py::TestAst2319TestWatchConfig::test_seed_sql_and_ui_manifest_boundary \
+  tests/component/core/test_roster.py::TestAst2320WatchListAggregates \
+  tests/component/ui/api/test_api_companies.py::TestAst2320WatchListEnrichmentAndJobs \
+  tests/component/data/database/test_jobs.py::TestAst2320CompanyJobStateStats \
+  -q
+```
+
+**Pass criterion:** pytest green on the nodes above. Not the zero-arg harness.
+
+**Bible shasums (after publish):** `git show origin/sub/AST-2318/AST-2320-watch-list-aggregates-api-and-shapes:docs/test-bible/<path> | shasum`
 ### AST-2322 · AST-2318 (add route + transition-gated bulk_state)
 
 **Parent:** [AST-2318](https://linear.app/astralcareermatch/issue/AST-2318). **Publish:** `origin/sub/AST-2318/AST-2322-add-company-and-ignore-restore`. Core create: [`../../core/roster.md`](../../core/roster.md) § AST-2322. Pages: [`../../frontend/pages.md`](../../frontend/pages.md) § AST-2322.

@@ -9199,7 +9199,46 @@ class TestAst2319TestWatchConfig:
         assert "task_key = 'test_watch'" in sql
         assert "trigger_state = 'TEST_WATCH'" in sql
         # Restore / ignore UI targets stay sibling-owned (this ticket only adds transitions).
+        # AST-2320: watch_list_ack_to_state (retry→WEBSITE_FOUND) removed from the manifest.
         bulk = cfg.build_state_ui_manifest()["company"]["bulk_transitions"]
         assert bulk["ignored_list_to_state"] == "TO_WATCH"
         assert bulk["watch_list_ignore_to_state"] == "IGNORE"
-        assert bulk["watch_list_ack_to_state"] == "WEBSITE_FOUND"
+        assert "watch_list_ack_to_state" not in bulk
+
+
+class TestAst2320WatchListConfig:
+    """AST-2320: WATCH_LIST_JOB_BUCKETS, watch_list shapes, drop retry bulk key."""
+
+    def test_buckets_and_best_fit_order(self) -> None:
+        buckets = cfg.WATCH_LIST_JOB_BUCKETS
+        assert buckets["jl"]["label"] == "JL" and buckets["jl"]["states"] == ["FAILED_JOBLIST"]
+        assert buckets["jd"]["label"] == "JD"
+        assert buckets["do"]["label"] == "DO"
+        assert buckets["get"]["states"] == ["PASSED_GET"]
+        assert buckets["like"]["states"] == ["PASSED_LIKE"]
+        assert buckets["active"]["states"] == ["RECOMMENDED", "CANDIDATE_REVIEW"]
+        assert buckets["skipped"]["best_fit_order"] is None
+        assert set(buckets["skipped"]["states"]) == set(cfg.SKIPPED_STATES)
+        assert set(buckets["applied"]["states"]) == set(cfg.APPLIED_JOB_STATES)
+        orders = [b["best_fit_order"] for b in buckets.values() if b["best_fit_order"] is not None]
+        assert sorted(orders) == [1, 2, 3, 4, 5, 6, 7]
+        # Narrow labels never carry FAILED_
+        assert all("FAILED_" not in b["label"] for b in buckets.values())
+
+    def test_watch_list_shape_columns(self) -> None:
+        cols = cfg.DATA_SHAPES["companies"]["list"]["watch_list"]
+        keys = [c["key"] for c in cols]
+        assert keys == [
+            "company_name", "scan_start", "last_scan_at", "best_fit_label", "best_fit_at",
+            "jobs", "jl", "jd", "do", "get", "like", "active", "skipped", "applied",
+        ]
+        assert all("FAILED_" not in str(c.get("label", "")) for c in cols)
+        assert "short_name" not in keys
+        assert "company_website" not in keys
+
+    def test_bulk_manifest_drops_ack_retry(self) -> None:
+        bulk = cfg.build_state_ui_manifest()["company"]["bulk_transitions"]
+        assert "watch_list_ack_to_state" not in bulk
+        assert bulk["watch_list_ignore_to_state"] == "IGNORE"
+        assert bulk["ignored_list_to_state"] == "TO_WATCH"
+        assert bulk["inactive_list_to_state"] == "WEBSITE_FOUND"

@@ -289,3 +289,63 @@ AC 1 → Stage 2–4 (`get_company_job_state_stats`, bucket helpers, `list_view`
 
 context_tokens≈72000
 
+## Review
+
+- **Publish ref:** `sub/AST-2318/AST-2320-watch-list-aggregates-api-and-shapes`
+- **Tip:** `8ad98062e` — `code(AST-2320): enrich watch_list and jobs-by-bucket route`
+
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-2320
+**Publish ref:** `4c3e64713dfeb9f3ac29e7feb495e254f6435930` (`origin/sub/AST-2318/AST-2320-watch-list-aggregates-api-and-shapes`)
+**Corpus:** b7ab2203048ce0beb2869a12200ab7fa696c8066
+**Overall:** CLEAN
+
+## Canon scores
+
+astral.entity.required-metadata | A | |
+stat.logging.info.api | A | |
+
+## Column diff vs plan stage
+
+(aligned)
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **Sibling product carry (expected):** three-dot diff vs `origin/dev` still includes **AST-2319** `TEST_WATCH` / `test_watch` edits in `src/utils/config.py`, `src/core/roster.py`, and related plan/bible/tests — normal stacked sub history on the parent epic; scored only **AST-2320** scope for this ticket.
+- **Sibling test/bible carry:** `docs/features/roster/ast-2319-*.md`, `TestAst2319*` blocks in `test_roster.py` / `test_config.py` ride the same publish ref.
+- **Joan plan notes (unchanged on tip):** independent bucket double-count (JL/JD/DO vs `skipped`) is intentional; `watch_list_ack_to_state` removal can leave Retry Scrape dead until **AST-2321** UI ships (manifest already dropped; `tests/component/frontend/fixtures/stateUiManifestFixture.ts` still has `watch_list_ack_to_state` — **2321** cleanup, not this diff).
+- **Best Fit tie on one ladder rung:** `company_watch_best_fit` keeps the first winning state at the same `best_fit_order` (dict iteration), not `MAX(newest_at)` across both ACTIVE states — tests document this (`TestAst2320WatchListAggregates::test_bucket_aggregates_and_enrich`); aligns with plan’s multi-job-same-state note, slightly looser than AC3’s singular “that job” wording.
+- Issue doc `## Review` tip `8ad98062e` lags published tip `4c3e64713`; refresh when Chuckles appends this review.
+
+## What's solid
+
+- **Stage 1:** `WATCH_LIST_JOB_BUCKETS` + asserts; `DATA_SHAPES` watch_list columns match plan (narrow labels, no `FAILED_` in shape labels); `watch_list_ack_to_state` removed from `build_state_ui_manifest`.
+- **Stage 2:** `get_company_job_state_stats` batch SQL; `get_company_job_counts` wrapper; `list_jobs_for_company` with candidate + state filter and sort allowlist.
+- **Stage 3:** `company_watch_scan_start` (first `WATCH` only, no `created_at`/`last_scan_at` fallback); Best Fit from bucket labels; bucket aggregates + `jobs` total; `enrich_watch_list_company` orchestrator + roster facades.
+- **Stage 4:** `list_view` batch-enriches `watch_list` only; `GET /<short_name>/jobs` validates bucket + `candidate_id`, 404 company, strips `_WATCH_JOB_LIST_DROP_KEYS`; no `logger.info` on those GETs.
+- Betty manifest nodes covered by component tests (config, roster aggregates, API enrichment/jobs route, DB stats).
+
+## Recommended actions
+
+- Chuckles: append artifact, bump `## Review` tip to `4c3e64713`, `docs(AST-2320): Radia review — clean` on sub-branch, post slim upshot `--as radia`, **Review Posted** → **resolve-child** only if no action on advisories.
+- **AST-2321** (blockedBy): drop Retry Scrape + align frontend manifest fixture with manifest without `watch_list_ack_to_state` when that sibling is picked up.
+
+context_tokens≈48000
+

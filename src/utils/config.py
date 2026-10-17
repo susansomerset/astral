@@ -4711,6 +4711,31 @@ SKIPPED_STATES = [
 JOBS_PROCESSING_EXCLUDED_STATES = [*READY_JOB_STATES, *REVIEW_JOB_STATES, *APPLIED_JOB_STATES, *SKIPPED_STATES]
 assert len(JOBS_PROCESSING_EXCLUDED_STATES) == len(set(JOBS_PROCESSING_EXCLUDED_STATES)), "Jobs lists overlap"
 
+# AST-2320: Watch List count columns + Best Fit ladder (UI label keys → job states).
+# best_fit_order: low → high; None = counted on the list but not a Best Fit rung (SKIPPED).
+WATCH_LIST_JOB_BUCKETS = {
+    "jl": {"label": "JL", "states": ["FAILED_JOBLIST"], "best_fit_order": 1},
+    "jd": {"label": "JD", "states": ["FAILED_JD"], "best_fit_order": 2},
+    "do": {"label": "DO", "states": ["FAILED_DO"], "best_fit_order": 3},
+    "get": {"label": "GET", "states": ["PASSED_GET"], "best_fit_order": 4},
+    "like": {"label": "LIKE", "states": ["PASSED_LIKE"], "best_fit_order": 5},
+    "active": {
+        "label": "ACTIVE",
+        "states": ["RECOMMENDED", "CANDIDATE_REVIEW"],
+        "best_fit_order": 6,
+    },
+    "skipped": {"label": "SKIPPED", "states": list(SKIPPED_STATES), "best_fit_order": None},
+    "applied": {
+        "label": "APPLIED",
+        "states": list(APPLIED_JOB_STATES),
+        "best_fit_order": 7,
+    },
+}
+for _wl_key, _wl_bucket in WATCH_LIST_JOB_BUCKETS.items():
+    assert all(s in JOB_STATES for s in _wl_bucket["states"]), _wl_key
+_wl_orders = [b["best_fit_order"] for b in WATCH_LIST_JOB_BUCKETS.values() if b["best_fit_order"] is not None]
+assert sorted(_wl_orders) == [1, 2, 3, 4, 5, 6, 7] and len(set(_wl_orders)) == 7
+
 # AST-2173: Universal search — per entity type (keys double as table names), the columns searched
 # by case-insensitive literal substring. A hit on any base field ranks the entity in the base tier;
 # payload-only hits rank after. id_field keys the result; name_fields join (non-empty, " — ") into
@@ -5178,7 +5203,6 @@ def build_state_ui_manifest() -> Dict[str, Any]:
         "inactive_list_to_state": "WEBSITE_FOUND",
         "ignored_list_to_state": "TO_WATCH",
         "watch_list_ignore_to_state": "IGNORE",
-        "watch_list_ack_to_state": "WEBSITE_FOUND",
     }
     assert all(v in COMPANY_STATES for v in bulk_company.values())
 
@@ -7011,10 +7035,19 @@ DATA_SHAPES = {
         "list": {
             "watch_list": [
                 {"key": "company_name", "label": "Company", "sortable": True},
-                {"key": "short_name", "label": "Short Name", "sortable": True},
-                {"key": "company_website", "label": "Website", "sortable": True},
-                {"key": "state", "label": "State", "sortable": True},
-                {"key": "last_scan_at", "label": "Last Scanned", "sortable": True, "defaultDesc": True, "type": "datetime"},
+                {"key": "scan_start", "label": "Scan Start", "sortable": True, "type": "datetime"},
+                {"key": "last_scan_at", "label": "Last Scan", "sortable": True, "defaultDesc": True, "type": "datetime"},
+                {"key": "best_fit_label", "label": "Best Fit", "sortable": True},
+                {"key": "best_fit_at", "label": "Best Fit Date", "sortable": True, "type": "datetime"},
+                {"key": "jobs", "label": "Jobs", "sortable": True, "type": "int"},
+                {"key": "jl", "label": "JL", "sortable": True, "type": "int"},
+                {"key": "jd", "label": "JD", "sortable": True, "type": "int"},
+                {"key": "do", "label": "DO", "sortable": True, "type": "int"},
+                {"key": "get", "label": "GET", "sortable": True, "type": "int"},
+                {"key": "like", "label": "LIKE", "sortable": True, "type": "int"},
+                {"key": "active", "label": "ACTIVE", "sortable": True, "type": "int"},
+                {"key": "skipped", "label": "SKIPPED", "sortable": True, "type": "int"},
+                {"key": "applied", "label": "APPLIED", "sortable": True, "type": "int"},
             ],
             "new_list": [
                 {"key": "company_name", "label": "Company", "sortable": True},

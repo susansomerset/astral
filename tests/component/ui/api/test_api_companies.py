@@ -140,6 +140,85 @@ class TestCompaniesRoutes:
         update.assert_not_called()
 
 
+class TestAst2320WatchListEnrichmentAndJobs:
+    """AST-2320: watch_list enrichment + GET /<short_name>/jobs?bucket=."""
+
+    def test_watch_list_enriches_rows(
+        self, companies_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(
+            companies_mod,
+            "list_companies",
+            lambda **kwargs: [{
+                "short_name": "acme",
+                "company_name": "Acme",
+                "company_data": {},
+                "state_history": [
+                    {"to_state": "WATCH", "timestamp": "2026-01-02T00:00:00Z"},
+                ],
+            }],
+        )
+        monkeypatch.setattr(
+            companies_mod,
+            "get_companies_job_state_stats",
+            lambda ids: {
+                "acme": {
+                    "PASSED_LIKE": {"count": 1, "newest_at": "2026-01-09"},
+                    "FAILED_JOBLIST": {"count": 2, "newest_at": "2026-01-01"},
+                },
+            },
+        )
+        resp = companies_client.get(
+            "/api/companies?view=watch_list&candidate_id=cand-1", headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        row = resp.get_json()[0]
+        assert row["scan_start"] == "2026-01-02T00:00:00Z"
+        assert row["best_fit_label"] == "LIKE"
+        assert row["best_fit_at"] == "2026-01-09"
+        assert "FAILED_" not in (row.get("best_fit_label") or "")
+        assert row["jl"] == 2 and row["like"] == 1 and row["jobs"] == 3
+
+    def test_company_jobs_by_bucket(
+        self, companies_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(
+            companies_mod, "get_company", lambda sn: {"short_name": sn, "state": "WATCH"},
+        )
+        listed = MagicMock(return_value=[
+            {"astral_job_id": "j1", "state": "RECOMMENDED", "job_data": {"x": 1}, "state_history": []},
+        ])
+        monkeypatch.setattr(companies_mod, "list_company_jobs_for_bucket", listed)
+        ok = companies_client.get(
+            "/api/companies/acme/jobs?bucket=active&candidate_id=cand-1",
+            headers=auth_headers,
+        )
+        assert ok.status_code == 200
+        rows = ok.get_json()
+        assert rows[0]["astral_job_id"] == "j1"
+        assert "job_data" not in rows[0]
+        assert "state_history" not in rows[0]
+        listed.assert_called_once_with(
+            "acme",
+            list(companies_mod.WATCH_LIST_JOB_BUCKETS["active"]["states"]),
+            candidate_id="cand-1",
+        )
+        bad_bucket = companies_client.get(
+            "/api/companies/acme/jobs?bucket=nope&candidate_id=cand-1",
+            headers=auth_headers,
+        )
+        assert bad_bucket.status_code == 400
+        missing_cand = companies_client.get(
+            "/api/companies/acme/jobs?bucket=jl",
+            headers=auth_headers,
+        )
+        assert missing_cand.status_code == 400
+        monkeypatch.setattr(companies_mod, "get_company", lambda sn: None)
+        missing_co = companies_client.get(
+            "/api/companies/acme/jobs?bucket=jl&candidate_id=cand-1",
+            headers=auth_headers,
+        )
+        assert missing_co.status_code == 404
 class TestAst2322AddCompanyAndBulkState:
     """AST-2322: POST /add → TEST_WATCH; bulk_state transition-gated."""
 

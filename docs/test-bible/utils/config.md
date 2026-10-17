@@ -5350,3 +5350,18 @@ Primary command: [`../ui/api/api_system.md`](../ui/api/api_system.md) § QA test
 **Broken / obsolete:** none.
 
 Primary narrowed run: [`../core/roster.md`](../core/roster.md) § QA test manifest — AST-2319.
+
+### AST-2320 · AST-2318 (Watch List buckets + shapes; drop retry bulk key)
+
+**Parent:** [AST-2318](https://linear.app/astralcareermatch/issue/AST-2318). **Publish:** `origin/sub/AST-2318/AST-2320-watch-list-aggregates-api-and-shapes`. Roster/API: [`../core/roster.md`](../core/roster.md) § AST-2320 · [`../ui/api/api_companies.md`](../ui/api/api_companies.md) § AST-2320. Jobs DB: [`../data/database/jobs.md`](../data/database/jobs.md) § AST-2320.
+
+**`WATCH_LIST_JOB_BUCKETS`**: JL/JD/DO/GET/LIKE/ACTIVE/SKIPPED/APPLIED → state sets + `best_fit_order` (SKIPPED `None`). **`DATA_SHAPES["companies"]["list"]["watch_list"]`** columns use narrow labels (no `FAILED_`). **`build_state_ui_manifest` `bulk_transitions`**: drops **`watch_list_ack_to_state`**.
+
+| Area | Component tests |
+| --- | --- |
+| Buckets + shape columns + bulk key drop | new **`TestAst2320WatchListConfig`** |
+| AST-2319 manifest boundary (ack key) | revised **`TestAst2319TestWatchConfig::test_seed_sql_and_ui_manifest_boundary`** |
+
+**Broken / obsolete this pass:** AST-2319 assert `watch_list_ack_to_state == WEBSITE_FOUND`.
+
+Primary narrowed run: [`../ui/api/api_companies.md`](../ui/api/api_companies.md) § QA test manifest — AST-2320.
