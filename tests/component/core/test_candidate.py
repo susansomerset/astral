@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import inspect
 import json
-import os
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List
 from unittest.mock import AsyncMock, MagicMock
@@ -891,17 +890,11 @@ class TestCandidateAdminFacades:
         monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
         monkeypatch.setattr(candidate_mod.database, "update_candidate_api_keys", update, raising=False)
         candidate_mod.save_candidate_admin("somerset", state="ACTIVE_SEARCH")
-        # AST-2251: the wrapper stores status and expiry. The key is not passed down.
-        edits = [
-            {"server": "kimi", "key": "sk-kimi", "expires_at": "2999-01-01 00:00:00"},
-            {"server": "openrouter", "key": ""},
-        ]
+        # AST-1901: key edits pass straight to the candidate's api_keys array.
+        edits = [{"server": "kimi", "key": "sk-kimi"}, {"server": "openrouter", "key": ""}]
         candidate_mod.update_candidate_api_keys("somerset", edits)
         save.assert_called_once_with("somerset", state="ACTIVE_SEARCH")
-        update.assert_called_once_with("somerset", [
-            {"server": "kimi", "status": "SET", "expires_at": "2999-01-01 00:00:00"},
-            {"server": "openrouter", "status": "NOT SET", "expires_at": None},
-        ])
+        update.assert_called_once_with("somerset", edits)
 
     def test_per_server_set_clear_wrappers_retired(self) -> None:
         assert not hasattr(candidate_mod, "set_candidate_api_key")
@@ -8122,198 +8115,6 @@ class TestAst2211ContactContextHandlers:
         }
         assert self._versions(seeded_db, key) == []
         assert any("empty after sanitize" in r.getMessage() for r in caplog.records if r.levelname == "WARNING")
-
-
-class TestAst2251SecretStatusHydrate:
-    """AST-2251: set/clear status, local stub hydrate, EXPIRED omits the server. No Railway call."""
-
-    def _set(self, db, cid: str, server: str, expires_at: str) -> None:
-        db.update_candidate_api_keys(cid, [{
-            "server": server, "status": "SET", "expires_at": expires_at,
-        }])
-
-    def test_wrapper_rejects_bad_edits_before_write(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        update = MagicMock()
-        monkeypatch.setattr(candidate_mod.database, "update_candidate_api_keys", update)
-        with pytest.raises(ValueError, match="expires_at is required"):
-            candidate_mod.update_candidate_api_keys("ada-1", [{"server": "kimi", "key": "sk"}])
-        with pytest.raises(ValueError, match="expires_at must be YYYY-MM-DD HH:MM:SS"):
-            candidate_mod.update_candidate_api_keys("ada-1", [{
-                "server": "kimi", "key": "sk", "expires_at": "tomorrow",
-            }])
-        with pytest.raises(ValueError, match="Unknown candidate secret 'nope'"):
-            candidate_mod.update_candidate_api_keys("ada-1", [{"server": "nope", "key": "sk", "expires_at": "2999-01-01 00:00:00"}])
-        with pytest.raises(ValueError, match="Duplicate api_keys entry for server 'kimi'"):
-            candidate_mod.update_candidate_api_keys("ada-1", [
-                {"server": "kimi", "key": "a", "expires_at": "2999-01-01 00:00:00"},
-                {"server": "kimi", "key": "b", "expires_at": "2999-01-01 00:00:00"},
-            ])
-        with pytest.raises(ValueError, match="server is required"):
-            candidate_mod.update_candidate_api_keys("ada-1", [{"server": "  ", "key": "sk"}])
-        update.assert_not_called()
-
-    def test_clear_ignores_expires_at(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        update = MagicMock()
-        monkeypatch.setattr(candidate_mod.database, "update_candidate_api_keys", update)
-        candidate_mod.update_candidate_api_keys("ada-1", [{
-            "server": "kimi", "key": "  ", "expires_at": "2999-01-01 00:00:00",
-        }])
-        update.assert_called_once_with("ada-1", [{
-            "server": "kimi", "status": "NOT SET", "expires_at": None,
-        }])
-
-    def test_local_stub_is_shared_and_railway_is_not_called(
-        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.delenv("ASTRAL_RAILWAY_TOKEN", raising=False)
-        monkeypatch.setenv("CANDIDATE_SECRET_STUB_KIMI", "stub-kimi")
-        db = sqlite_in_memory
-        for cid in ("ada-1", "ada-2"):
-            db.save_candidate(cid, state="NEW_CANDIDATE")
-            self._set(db, cid, "kimi", "2999-01-01 00:00:00")
-        called = MagicMock(side_effect=AssertionError("railway"))
-        monkeypatch.setattr("src.external.railway.upsert_service_variable", called)
-        assert db.get_candidate("ada-1")["candidate_api_keys"]["kimi"] == "stub-kimi"
-        assert db.get_candidate("ada-2")["candidate_api_keys"]["kimi"] == "stub-kimi"
-        called.assert_not_called()
-
-    def test_production_reads_per_candidate_variable(
-        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setenv("ASTRAL_RAILWAY_TOKEN", "tok")
-        monkeypatch.setenv("CANDIDATE_ADA_1_KIMI", "prod-1")
-        monkeypatch.setenv("CANDIDATE_ADA_2_KIMI", "prod-2")
-        db = sqlite_in_memory
-        for cid in ("ada-1", "ada-2"):
-            db.save_candidate(cid, state="NEW_CANDIDATE")
-            self._set(db, cid, "kimi", "2999-01-01 00:00:00")
-        assert db.get_candidate("ada-1")["candidate_api_keys"]["kimi"] == "prod-1"
-        assert db.get_candidate("ada-2")["candidate_api_keys"]["kimi"] == "prod-2"
-
-    def test_blank_railway_token_stays_local(self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("ASTRAL_RAILWAY_TOKEN", "   ")
-        monkeypatch.setenv("CANDIDATE_SECRET_STUB_KIMI", "stub-kimi")
-        monkeypatch.setenv("CANDIDATE_ADA_1_KIMI", "prod-1")
-        db = sqlite_in_memory
-        db.save_candidate("ada-1", state="NEW_CANDIDATE")
-        self._set(db, "ada-1", "kimi", "2999-01-01 00:00:00")
-        assert db.get_candidate("ada-1")["candidate_api_keys"]["kimi"] == "stub-kimi"
-
-    def test_expired_and_exact_now_omit_the_server(
-        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.delenv("ASTRAL_RAILWAY_TOKEN", raising=False)
-        monkeypatch.setenv("CANDIDATE_SECRET_STUB_KIMI", "stub-kimi")
-        real = candidate_mod.datetime
-
-        class Frozen(real):
-            @classmethod
-            def now(cls, tz=None):
-                return real(2020, 6, 1, 12, 0, 0, tzinfo=timezone.utc)
-
-        monkeypatch.setattr(candidate_mod, "datetime", Frozen)
-        db = sqlite_in_memory
-        db.save_candidate("ada-1", state="NEW_CANDIDATE")
-        self._set(db, "ada-1", "kimi", "2020-06-01 12:00:00")
-        row = db.get_candidate("ada-1")
-        assert "kimi" not in row["candidate_api_keys"]
-        assert row["candidate_secret_status"]["kimi"]["status"] == "EXPIRED"
-        assert row["candidate_secret_status"]["kimi"]["expires_at"] == "2020-06-01 12:00:00"
-        self._set(db, "ada-1", "kimi", "2020-06-01 12:00:01")
-        row = db.get_candidate("ada-1")
-        assert row["candidate_api_keys"]["kimi"] == "stub-kimi"
-        assert row["candidate_secret_status"]["kimi"]["status"] == "SET"
-
-    def test_not_set_and_bad_date_and_missing_env(
-        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
-    ) -> None:
-        monkeypatch.delenv("ASTRAL_RAILWAY_TOKEN", raising=False)
-        monkeypatch.delenv("CANDIDATE_SECRET_STUB_ANTHROPIC", raising=False)
-        db = sqlite_in_memory
-        db.save_candidate("ada-1", state="NEW_CANDIDATE")
-        db.update_candidate_api_keys("ada-1", [
-            {"server": "kimi", "status": "NOT SET", "expires_at": None},
-            {"server": "openrouter", "status": "SET", "expires_at": "not-a-date"},
-            {"server": "anthropic", "status": "SET", "expires_at": None},
-        ])
-        caplog.set_level("WARNING")
-        row = db.get_candidate("ada-1")
-        assert row["candidate_api_keys"] == {}
-        assert row["candidate_secret_status"]["kimi"]["status"] == "NOT SET"
-        assert row["candidate_secret_status"]["openrouter"]["status"] == "EXPIRED"
-        assert row["candidate_secret_status"]["anthropic"]["status"] == "SET"
-        text = caplog.text
-        assert "ada-1 secret openrouter expires_at is not YYYY-MM-DD HH:MM:SS" in text
-        assert "ada-1 secret anthropic is SET but missing from the environment" in text
-        assert "secret kimi" not in text
-
-    def test_legacy_ciphertext_warns_and_stays_out_of_the_map(
-        self, sqlite_in_memory, caplog: pytest.LogCaptureFixture
-    ) -> None:
-        db = sqlite_in_memory
-        db.save_candidate("ada-1", state="NEW_CANDIDATE")
-        conn = db._get_connection()
-        try:
-            conn.execute(
-                "UPDATE candidate SET api_keys = ? WHERE astral_candidate_id = ?",
-                (json.dumps([{"server": "kimi", "key": "cipher-not-logged"}]), "ada-1"),
-            )
-            conn.commit()
-        finally:
-            conn.close()
-        caplog.set_level("WARNING")
-        row = db.get_candidate("ada-1")
-        assert row["candidate_api_keys"] == {}
-        assert "kimi" not in row["candidate_secret_status"]
-        assert "_legacy_secret_ids" not in row
-        assert "ada-1 secret kimi still has ciphertext" in caplog.text
-        assert "cipher-not-logged" not in caplog.text
-
-    def test_data_model_describes_status_not_fernet(self) -> None:
-        from pathlib import Path
-        text = Path(__file__).resolve().parents[3].joinpath(
-            "docs/features/candidate/CANDIDATE_DATA_MODEL.md"
-        ).read_text(encoding="utf-8")
-        assert "## Encryption" not in text
-        assert "Fernet" not in text
-        assert "{server, status, expires_at}" in text
-        assert "api_keys" in text
-
-
-class TestAst2275VaultKeyInProcessEnviron:
-    """AST-2275: after vault set, this process must hydrate OpenRouter for dispatch."""
-
-    def test_production_set_plants_environ_so_hydrate_and_dispatch_see_key(
-        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        # Dispatch / Ad Hoc read candidate_api_keys from hydrate. Without planting
-        # the per-candidate env name, SET status alone leaves the map empty.
-        monkeypatch.setenv("ASTRAL_RAILWAY_TOKEN", "tok")
-        monkeypatch.delenv("CANDIDATE_SOMERSET_OPENROUTER", raising=False)
-        db = sqlite_in_memory
-        db.save_candidate("somerset", state="NEW_CANDIDATE")
-        candidate_mod.update_candidate_api_keys("somerset", [{
-            "server": "openrouter",
-            "key": "sk-or-vault",
-            "expires_at": "2999-01-01 00:00:00",
-        }])
-        assert os.environ.get("CANDIDATE_SOMERSET_OPENROUTER") == "sk-or-vault"
-        row = db.get_candidate("somerset")
-        assert row["candidate_secret_status"]["openrouter"]["status"] == "SET"
-        assert row["candidate_api_keys"].get("openrouter") == "sk-or-vault"
-        assert "sk-or-vault" not in (row.get("candidate_secret_status") or {}).__repr__()
-
-    def test_production_clear_pops_environ(
-        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setenv("ASTRAL_RAILWAY_TOKEN", "tok")
-        monkeypatch.setenv("CANDIDATE_SOMERSET_OPENROUTER", "sk-old")
-        db = sqlite_in_memory
-        db.save_candidate("somerset", state="NEW_CANDIDATE")
-        candidate_mod.update_candidate_api_keys("somerset", [{
-            "server": "openrouter", "key": "",
-        }])
-        assert "CANDIDATE_SOMERSET_OPENROUTER" not in os.environ
 
 
 class TestAst2261GradeRollup:

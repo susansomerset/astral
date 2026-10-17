@@ -41,7 +41,6 @@ never from Flask request handlers — AI calls don't belong in synchronous web r
 import asyncio
 import copy
 import json
-import os
 import re
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -64,8 +63,6 @@ from src.utils.config import (
     ARTIFACT_CONFIG,
     BUILD_CONFIG,
     CANDIDATE_CONFIG,
-    CANDIDATE_SECRET_CATALOG,
-    CANDIDATE_SECRET_RAILWAY_CONFIG,
     CANDIDATE_CONTACT_UNIQUENESS_CONFIG,
     CANDIDATE_LIBRARY_CONFIG,
     CANDIDATE_LOOKUP_CONFIG,
@@ -77,8 +74,6 @@ from src.utils.config import (
     SURFER_CONSENT_CONFIG,
     CANDIDATE_STATES,
     CANDIDATE_STAGE_DISPATCH,
-    candidate_secret_local_stub_env,
-    candidate_secret_variable_name,
     remap_legacy_candidate_state,
     CRAFT_ARTIFACTS_CHAIN_TASK_TO_NAV_PATH,
     CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY,
@@ -4304,103 +4299,9 @@ def save_candidate_admin(candidate_id: str, **kwargs: Any) -> None:
     database.save_candidate(candidate_id, **kwargs)
 
 
-_SECRET_EXPIRES_FMT = "%Y-%m-%d %H:%M:%S"
-
-
-def hydrate_candidate_secrets(row: dict) -> None:
-    """Fill candidate_api_keys from environ for reported SET. EXPIRED omits the server. No Railway calls."""
-    who = str(row.get("astral_candidate_id") or "") or "-"
-    for secret_id in row.pop("_legacy_secret_ids", None) or []:
-        logger.warning(
-            "%s secret %s still has ciphertext in api_keys — this server is unset until migration",
-            who,
-            secret_id,
-        )
-    token_env = CANDIDATE_SECRET_RAILWAY_CONFIG["token_env"]
-    production = token_env in os.environ and bool(os.environ[token_env].strip())
-    status = row.get("candidate_secret_status") or {}
-    keys: Dict[str, str] = {}
-    for secret_id, rec in status.items():
-        if rec.get("status") == "NOT SET":
-            continue
-        if rec.get("status") != "SET":
-            continue
-        expires_at = rec.get("expires_at")
-        if expires_at not in (None, ""):
-            try:
-                parsed = datetime.strptime(str(expires_at), _SECRET_EXPIRES_FMT).replace(
-                    tzinfo=timezone.utc
-                )
-            except ValueError:
-                rec["status"] = "EXPIRED"
-                logger.warning(
-                    "%s secret %s expires_at is not YYYY-MM-DD HH:MM:SS — this server is unset",
-                    who,
-                    secret_id,
-                )
-                continue
-            if datetime.now(timezone.utc) >= parsed:
-                rec["status"] = "EXPIRED"
-                continue
-        env_name = (
-            candidate_secret_variable_name(secret_id, str(row.get("astral_candidate_id") or ""))
-            if production
-            else candidate_secret_local_stub_env(secret_id)
-        )
-        try:
-            value = os.environ[env_name]
-        except KeyError:
-            value = ""
-        if not str(value).strip():
-            logger.warning(
-                "%s secret %s is SET but missing from the environment — this server is unset",
-                who,
-                secret_id,
-            )
-            continue
-        keys[secret_id] = value
-    row["candidate_api_keys"] = keys
-
-
 def update_candidate_api_keys(candidate_id: str, entries: List[Dict[str, str]]) -> None:
-    """Non-empty key stores SET plus expires_at. Empty key stores NOT SET and clears expiry.
-    The key is not persisted. Railway is not called. Plants or pops the process env name
-    hydrate reads (AST-2275) so this process sees the key before the next deploy."""
-    edits: List[Dict[str, Any]] = []
-    seen: set = set()
-    token_env = CANDIDATE_SECRET_RAILWAY_CONFIG["token_env"]
-    production = token_env in os.environ and bool(os.environ[token_env].strip())
-    for e in entries:
-        server = str((e or {}).get("server") or "").strip()
-        if not server:
-            raise ValueError("server is required")
-        if server not in CANDIDATE_SECRET_CATALOG:
-            raise ValueError(
-                f"Unknown candidate secret {server!r}. Valid: {list(CANDIDATE_SECRET_CATALOG)}"
-            )
-        if server in seen:
-            raise ValueError(f"Duplicate api_keys entry for server {server!r}")
-        seen.add(server)
-        key = str((e or {}).get("key") or "").strip()
-        env_name = (
-            candidate_secret_variable_name(server, candidate_id)
-            if production
-            else candidate_secret_local_stub_env(server)
-        )
-        if key:
-            expires_at = str((e or {}).get("expires_at") or "").strip()
-            if not expires_at:
-                raise ValueError("expires_at is required")
-            try:
-                datetime.strptime(expires_at, _SECRET_EXPIRES_FMT)
-            except ValueError:
-                raise ValueError("expires_at must be YYYY-MM-DD HH:MM:SS") from None
-            os.environ[env_name] = key
-            edits.append({"server": server, "status": "SET", "expires_at": expires_at})
-        else:
-            os.environ.pop(env_name, None)
-            edits.append({"server": server, "status": "NOT SET", "expires_at": None})
-    database.update_candidate_api_keys(candidate_id, edits)
+    """Admin key edits on the candidate's api_keys array: key sets/replaces that server's entry, "" removes it."""
+    database.update_candidate_api_keys(candidate_id, entries)
 
 
 def get_pending_craft_generation(

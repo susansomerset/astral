@@ -23,21 +23,6 @@ def _telescope_tmp_db(sqlite_in_memory):
     return sqlite_in_memory
 
 
-_REAL_SEARCH_CREDENTIALS = roster_mod._search_credentials
-
-
-@pytest.fixture(autouse=True)
-def _candidate_search_secrets(monkeypatch: pytest.MonkeyPatch):
-    """AST-2253: CSE call sites require hydrated secrets before search_google_cse.
-    Older suites mock the client and often have no candidate_id. Supply both ids
-    unless a test puts _REAL_SEARCH_CREDENTIALS back."""
-    monkeypatch.setattr(
-        roster_mod,
-        "_search_credentials",
-        lambda candidate_id: ("test-cse-key", "test-cx"),
-    )
-
-
 
 def _cse_result(hits: Optional[List[Dict[str, str]]] = None) -> Dict[str, Any]:
     """AST-2219: search_google_cse returns GoogleCseSearchResult, not a bare hit list."""
@@ -7854,71 +7839,3 @@ class TestAst2180LightCheckReasons:
         assert await roster_mod._fetch_prefilter_notes({**_company(), "candidate_id": "cand-1"}) is None
         # Pre-fix the notes call sent no codes, so the grader skipped before send.
         assert do_task.await_args.kwargs["ctx"]["vector_labels"] == {"fit": "Fit"}
-
-
-class TestAst2253SearchCredentials:
-    """AST-2253: roster CSE sites pass this candidate's hydrated search secrets."""
-
-    @pytest.mark.asyncio
-    async def test_resolve_passes_candidate_key_and_cx(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(roster_mod, "_search_credentials", _REAL_SEARCH_CREDENTIALS)
-        seen: dict[str, str] = {}
-
-        def _cse(query: str, **kwargs: Any) -> Dict[str, Any]:
-            seen["api_key"] = kwargs["api_key"]
-            seen["cx"] = kwargs["cx"]
-            return _cse_result([])
-
-        monkeypatch.setattr(roster_mod, "get_candidate", lambda cid: {
-            "candidate_api_keys": {
-                "google_cse_api_key": "sk-cand-c",
-                "google_cse_id": "cx-cand-c",
-            },
-        })
-        monkeypatch.setattr(roster_mod, "search_google_cse", _cse)
-        monkeypatch.setattr(roster_mod, "transition_company_state", MagicMock())
-        entity = _company(state="DISCOVERED", company_website="")
-        entity["candidate_id"] = "cand-c"
-        entity["company_name"] = "Acme"
-        await roster_mod.resolve_company_website("acme", entity, {}, False)
-        assert seen == {"api_key": "sk-cand-c", "cx": "cx-cand-c"}
-
-    @pytest.mark.asyncio
-    async def test_resolve_missing_secret_warns_and_skips_search(
-        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
-    ) -> None:
-        monkeypatch.setattr(roster_mod, "_search_credentials", _REAL_SEARCH_CREDENTIALS)
-        cse = MagicMock()
-        monkeypatch.setattr(roster_mod, "get_candidate", lambda cid: {
-            "candidate_api_keys": {"google_cse_api_key": "sk-do-not-log"},
-        })
-        monkeypatch.setattr(roster_mod, "search_google_cse", cse)
-        entity = _company(state="DISCOVERED", company_website="")
-        entity["candidate_id"] = "cand-c"
-        with caplog.at_level("WARNING", logger="src.core.roster"):
-            out = await roster_mod.resolve_company_website("acme", entity, {}, False)
-        assert out == {"success": False, "state": None, "error": None}
-        cse.assert_not_called()
-        text = "\n".join(r.message for r in caplog.records)
-        assert "cand-c" in text and "google_cse_id" in text
-        assert "sk-do-not-log" not in text
-
-    @pytest.mark.asyncio
-    async def test_discovery_missing_secret_counts_an_error(
-        self, seeded_db, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
-    ) -> None:
-        monkeypatch.setattr(roster_mod, "_search_credentials", _REAL_SEARCH_CREDENTIALS)
-        db = seeded_db
-        db.save_candidate("cand-c", state="ACTIVE_SEARCH", candidate_data={})
-        db.sync_company_search_terms("cand-c", ["fintech", "robots"])
-        cse = MagicMock()
-        monkeypatch.setattr(roster_mod, "get_candidate", lambda cid: {"candidate_api_keys": {}})
-        monkeypatch.setattr(roster_mod, "search_google_cse", cse)
-        cand = {"astral_candidate_id": "cand-c", "candidate_data": {}}
-        with caplog.at_level("WARNING", logger="src.core.roster"):
-            out = await roster_mod.run_inflow_discovery_batch(cand, "batch-c", cand, False)
-        assert out["total_errors"] == 2
-        cse.assert_not_called()
-        text = "\n".join(r.message for r in caplog.records)
-        assert "google_cse_api_key" in text and "google_cse_id" in text
-        assert "cand-c" in text

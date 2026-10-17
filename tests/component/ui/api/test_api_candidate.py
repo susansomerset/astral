@@ -56,52 +56,24 @@ def _resume_content_blob(**overrides) -> dict:
     return body
 
 
-def _api_keys_entries(*server_ids: str, status: str = "SET", expires_at: str | None = "2999-01-01 00:00:00") -> list:
-    """Outbound api_keys: status and expiry, never the secret (AST-2252)."""
-    return [
-        {"server": sid, "label": LLM_SERVER_CONFIG[sid]["label"], "status": status, "expires_at": expires_at}
-        for sid in server_ids
-    ]
+def _api_keys_entries(*server_ids: str) -> list:
+    """Expected outbound api_keys: one {server, label} per stored key, in array order (AST-1901)."""
+    return [{"server": sid, "label": LLM_SERVER_CONFIG[sid]["label"]} for sid in server_ids]
 
 
 # Branches: hydrated map → [{server, label}] in order; unknown server id → id as label; no map → [] with no
 # get_candidate lookup; plaintext map + legacy ciphertext always stripped.
 class TestSanitizeCandidate:
     def test_strips_keys_and_lists_stored_servers_in_order(self) -> None:
-        row = {
-            "candidate_api_keys": {"openrouter": "sk-or", "kimi": "sk-kimi"},
-            "candidate_api_key": "ct",
-            "candidate_secret_status": {
-                "openrouter": {"status": "SET", "expires_at": "2999-01-01 00:00:00"},
-                "kimi": {"status": "EXPIRED", "expires_at": "2000-01-01 00:00:00"},
-            },
-            "_legacy_secret_ids": ["anthropic"],
-            "state": "NEW_CANDIDATE",
-        }
+        row = {"candidate_api_keys": {"openrouter": "sk-or", "kimi": "sk-kimi"}, "candidate_api_key": "ct", "state": "NEW_CANDIDATE"}
         out = candidate_mod._sanitize_candidate(row)
-        assert out["api_keys"] == [
-            {"server": "openrouter", "label": "OpenRouter", "status": "SET", "expires_at": "2999-01-01 00:00:00"},
-            {"server": "kimi", "label": "Kimi", "status": "EXPIRED", "expires_at": "2000-01-01 00:00:00"},
-        ]
-        assert {"candidate_api_keys", "candidate_api_key", "candidate_secret_status", "_legacy_secret_ids", "has_api_key"}.isdisjoint(out)
+        assert out["api_keys"] == _api_keys_entries("openrouter", "kimi")
+        assert {"candidate_api_keys", "candidate_api_key", "has_api_key"}.isdisjoint(out)
         assert "sk-kimi" not in repr(out) and "sk-or" not in repr(out)
 
     def test_server_missing_from_catalog_uses_id_as_label(self) -> None:
-        out = candidate_mod._sanitize_candidate({
-            "candidate_secret_status": {"retired_srv": {"status": "SET", "expires_at": None}},
-            "candidate_api_keys": {"retired_srv": "k"},
-        })
-        assert out["api_keys"] == [{"server": "retired_srv", "label": "retired_srv", "status": "SET", "expires_at": None}]
-        assert "k" not in repr(out["api_keys"])
-
-    def test_search_secret_labels(self) -> None:
-        out = candidate_mod._sanitize_candidate({
-            "candidate_secret_status": {
-                "google_cse_api_key": {"status": "NOT SET", "expires_at": None},
-                "google_cse_id": {"status": "SET", "expires_at": "2999-01-01 00:00:00"},
-            },
-        })
-        assert [e["label"] for e in out["api_keys"]] == ["Google CSE API key", "Google CSE engine id"]
+        out = candidate_mod._sanitize_candidate({"candidate_api_keys": {"retired_srv": "k"}})
+        assert out["api_keys"] == [{"server": "retired_srv", "label": "retired_srv"}]
 
     def test_row_without_map_lists_no_keys_and_never_looks_up(self, monkeypatch: pytest.MonkeyPatch) -> None:
         # List rows are hydrated by the data layer now; sanitize never calls get_candidate per row.
@@ -266,8 +238,7 @@ class TestCandidateRoutes:
         monkeypatch.setattr(
             candidate_mod, "core_list_candidates",
             lambda include_deleted=False: [
-                {"astral_candidate_id": "c1", "candidate_api_key": "x", "candidate_api_keys": {"kimi": "sk-kimi"},
-                 "candidate_secret_status": {"kimi": {"status": "SET", "expires_at": "2999-01-01 00:00:00"}}}
+                {"astral_candidate_id": "c1", "candidate_api_key": "x", "candidate_api_keys": {"kimi": "sk-kimi"}}
             ],
         )
         monkeypatch.setattr(candidate_mod, "get_candidate", MagicMock(side_effect=AssertionError("no lookup")))
@@ -298,12 +269,7 @@ class TestCandidateRoutes:
     def test_get_returns_sanitized_candidate(self, candidate_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(
             candidate_mod, "get_candidate",
-            lambda candidate_id: {
-                "astral_candidate_id": candidate_id,
-                "candidate_api_keys": {"deepseek": "sk-ds"},
-                "candidate_api_key": "x",
-                "candidate_secret_status": {"deepseek": {"status": "SET", "expires_at": "2999-01-01 00:00:00"}},
-            },
+            lambda candidate_id: {"astral_candidate_id": candidate_id, "candidate_api_keys": {"deepseek": "sk-ds"}, "candidate_api_key": "x"},
         )
         resp = candidate_client.get("/api/candidates/cand-1", headers=auth_headers)
         assert resp.status_code == 200
@@ -371,27 +337,20 @@ class TestCandidateRoutes:
         self, candidate_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
         save_data, update_keys = MagicMock(), MagicMock()
-        monkeypatch.delenv("ASTRAL_RAILWAY_TOKEN", raising=False)
         monkeypatch.setattr(candidate_mod, "save_candidate_data", save_data)
         monkeypatch.setattr(candidate_mod, "update_candidate_api_keys", update_keys, raising=False)
-        monkeypatch.setattr(candidate_mod, "upsert_service_variable", MagicMock(side_effect=AssertionError("railway")))
         monkeypatch.setattr(candidate_mod, "get_candidate", lambda candidate_id: {"astral_candidate_id": candidate_id})
         resp = candidate_client.put(
             "/api/candidates/cand-1/data",
-            json={"api_keys": [
-                {"server": "kimi", "key": "  new-key  ", "expires_at": "2999-01-01 00:00:00"},
-                {"server": "openrouter", "key": "sk-or", "expires_at": " 2999-02-02 00:00:00 "},
-            ], "note": "x"},
+            json={"api_keys": [{"server": "kimi", "key": "  new-key  "}, {"server": "openrouter", "key": "sk-or"}], "note": "x"},
             headers=auth_headers,
         )
         assert resp.status_code == 200
         # api_keys never reaches candidate_data
         assert "api_keys" not in repr(save_data.call_args_list)
         assert "new-key" not in repr(save_data.call_args_list)
-        update_keys.assert_called_once_with("cand-1", [
-            {"server": "kimi", "key": "new-key", "expires_at": "2999-01-01 00:00:00"},
-            {"server": "openrouter", "key": "sk-or", "expires_at": "2999-02-02 00:00:00"},
-        ])
+        # AST-1901: one call with the stripped edits, in body order
+        update_keys.assert_called_once_with("cand-1", [{"server": "kimi", "key": "new-key"}, {"server": "openrouter", "key": "sk-or"}])
         removed = candidate_client.put(
             "/api/candidates/cand-1/data", json={"api_keys": [{"server": "deepseek", "key": "   "}]}, headers=auth_headers
         )
@@ -441,212 +400,45 @@ class TestCandidateRoutes:
         update_keys.assert_not_called()
         save_data.assert_not_called()
 
-    def test_put_without_expires_at_stores_no_ciphertext(
+    def test_put_two_server_keys_stores_ciphertext_array_and_get_lists_servers_only(
         self,
         candidate_client: FlaskClient,
         auth_headers: dict[str, str],
         sqlite_in_memory,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        # AST-2251: the API still omits expires_at (AST-2252). A set must not write ciphertext.
+        # AC 6 end to end (AST-1901): two platform keys → two ciphertext entries in candidate.api_keys; GET lists servers only.
+        from cryptography.fernet import Fernet
+
         db = sqlite_in_memory
+        # rubric hydrate is off-topic here and reads rubric_vector (order-dependent in sqlite_in_memory)
         monkeypatch.setattr(candidate_mod, "normalize_rubric_artifacts_on_save", MagicMock())
         monkeypatch.setattr(candidate_mod, "hydrate_rubric_artifacts_for_response", MagicMock())
+        monkeypatch.setattr(db, "_fernet", Fernet(Fernet.generate_key()))
         db.save_candidate("cand-k", state="NEW_CANDIDATE", candidate_data={})
         resp = candidate_client.put(
             "/api/candidates/cand-k/data",
             json={"api_keys": [{"server": "kimi", "key": "sk-kimi-plain"}, {"server": "openrouter", "key": "sk-or-plain"}]},
             headers=auth_headers,
         )
-        assert resp.status_code == 400
-        assert resp.get_json()["error"] == "expires_at is required"
-        assert b"sk-kimi-plain" not in resp.data
+        assert resp.status_code == 200
         conn = db._get_connection()
         try:
             raw = conn.execute("SELECT api_keys FROM candidate WHERE astral_candidate_id = ?", ("cand-k",)).fetchone()[0]
         finally:
             conn.close()
-        assert raw in (None, "", "[]")
-        assert "sk-kimi-plain" not in (raw or "")
-
-    def test_put_bad_expiry_does_not_write(
-        self, candidate_client: FlaskClient, auth_headers: dict[str, str], sqlite_in_memory
-    ) -> None:
-        db = sqlite_in_memory
-        db.save_candidate("cand-k", state="NEW_CANDIDATE", candidate_data={})
-        resp = candidate_client.put(
-            "/api/candidates/cand-k/data",
-            json={"api_keys": [{"server": "kimi", "key": "sk-kimi-plain", "expires_at": "tomorrow"}]},
-            headers=auth_headers,
+        entries = json.loads(raw)
+        assert [e["server"] for e in entries] == ["kimi", "openrouter"]
+        assert [db.decrypt_value(e["key"]) for e in entries] == ["sk-kimi-plain", "sk-or-plain"]
+        assert "plain" not in raw
+        got = candidate_client.get("/api/candidates/cand-k", headers=auth_headers)
+        assert got.get_json()["api_keys"] == _api_keys_entries("kimi", "openrouter")
+        assert b"plain" not in got.data
+        cleared = candidate_client.put(
+            "/api/candidates/cand-k/data", json={"api_keys": [{"server": "kimi", "key": ""}]}, headers=auth_headers
         )
-        assert resp.status_code == 400
-        assert resp.get_json()["error"] == "expires_at must be YYYY-MM-DD HH:MM:SS"
-        assert b"sk-kimi-plain" not in resp.data
-
-
-class TestAst2267PickerStates:
-    """[bug-repro] Manage Candidates state list is stage-prefixed objects, not every registry key."""
-
-    def test_ast2267_picker_states_are_stage_labels(
-        self, candidate_client: FlaskClient, auth_headers: dict[str, str]
-    ) -> None:
-        resp = candidate_client.get("/api/candidates/states", headers=auth_headers)
-        assert resp.status_code == 200
-        payload = resp.get_json()
-        assert isinstance(payload, list) and payload
-        assert all(
-            isinstance(row, dict)
-            and isinstance(row.get("state"), str)
-            and isinstance(row.get("label"), str)
-            for row in payload
-        )
-        names = [row["state"] for row in payload]
-        labels = [row["label"] for row in payload]
-        assert labels == sorted(labels)
-        assert not any(
-            n.startswith("ERROR_") or n == "INTAKE_INITIATED" or n.endswith("_STALE")
-            for n in names
-        )
-        by_state = {row["state"]: row["label"] for row in payload}
-        assert by_state["ACTIVE_SEARCH"] == "5:ACTIVE_SEARCH"
-        assert by_state["DELETED"] == "0:DELETED"
-        assert "NEW_CANDIDATE" in by_state
-        # Live registry key — omit list is ERROR_*/INTAKE_INITIATED/*_STALE only.
-        assert by_state["PROSPECT"] == "1:PROSPECT"
-
-
-class TestAst2252AdminSecretExpiry:
-    """Production set is one upsert and one deploy. The row stores status and expiry only."""
-
-    def _raw(self, db, cid: str = "cand-k"):
-        conn = db._get_connection()
-        try:
-            cell = conn.execute(
-                "SELECT api_keys FROM candidate WHERE astral_candidate_id = ?", (cid,)
-            ).fetchone()[0]
-        finally:
-            conn.close()
-        return cell
-
-    def test_production_set_upserts_deploys_and_stores_status_only(
-        self,
-        candidate_client: FlaskClient,
-        auth_headers: dict[str, str],
-        sqlite_in_memory,
-        monkeypatch: pytest.MonkeyPatch,
-        caplog: pytest.LogCaptureFixture,
-    ) -> None:
-        db = sqlite_in_memory
-        monkeypatch.setenv("ASTRAL_RAILWAY_TOKEN", "tok-secret")
-        monkeypatch.setattr(candidate_mod, "normalize_rubric_artifacts_on_save", MagicMock())
-        monkeypatch.setattr(candidate_mod, "hydrate_rubric_artifacts_for_response", MagicMock())
-        upserts = []
-        deletes = []
-        deploys = []
-        monkeypatch.setattr(candidate_mod, "upsert_service_variable", lambda **kw: upserts.append(kw))
-        monkeypatch.setattr(candidate_mod, "delete_service_variable", lambda **kw: deletes.append(kw))
-        monkeypatch.setattr(candidate_mod, "trigger_service_deploy", lambda: deploys.append("go") or "dep-1")
-        db.save_candidate("cand-k", state="NEW_CANDIDATE", candidate_data={})
-        caplog.set_level("INFO")
-        resp = candidate_client.put(
-            "/api/candidates/cand-k/data",
-            json={"api_keys": [{"server": "kimi", "key": "sk-kimi-plain", "expires_at": "2999-01-01 00:00:00"}]},
-            headers=auth_headers,
-        )
-        assert resp.status_code == 200
-        assert upserts == [{"name": "CANDIDATE_CAND_K_KIMI", "value": "sk-kimi-plain"}]
-        assert deletes == []
-        assert deploys == ["go"]
-        body = resp.get_json()
-        assert body["api_keys"] == [{
-            "server": "kimi", "label": "Kimi", "status": "SET", "expires_at": "2999-01-01 00:00:00",
-        }]
-        assert b"sk-kimi-plain" not in resp.data
-        assert "sk-kimi-plain" not in caplog.text
-        stored = json.loads(self._raw(db))
-        assert stored == [{"server": "kimi", "status": "SET", "expires_at": "2999-01-01 00:00:00"}]
-        assert "key" not in stored[0]
-
-    def test_production_clear_deletes_and_deploys_once(
-        self, candidate_client: FlaskClient, auth_headers: dict[str, str], sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        db = sqlite_in_memory
-        monkeypatch.setenv("ASTRAL_RAILWAY_TOKEN", "tok")
-        monkeypatch.setattr(candidate_mod, "normalize_rubric_artifacts_on_save", MagicMock())
-        monkeypatch.setattr(candidate_mod, "hydrate_rubric_artifacts_for_response", MagicMock())
-        calls = []
-        monkeypatch.setattr(candidate_mod, "upsert_service_variable", lambda **kw: calls.append(("up", kw)))
-        monkeypatch.setattr(candidate_mod, "delete_service_variable", lambda **kw: calls.append(("del", kw)))
-        monkeypatch.setattr(candidate_mod, "trigger_service_deploy", lambda: calls.append(("deploy",)) or "dep")
-        db.save_candidate("cand-k", state="NEW_CANDIDATE", candidate_data={})
-        db.update_candidate_api_keys("cand-k", [{
-            "server": "kimi", "status": "SET", "expires_at": "2999-01-01 00:00:00",
-        }])
-        resp = candidate_client.put(
-            "/api/candidates/cand-k/data",
-            json={"api_keys": [
-                {"server": "kimi", "key": ""},
-                {"server": "openrouter", "key": "sk-or", "expires_at": "2999-03-03 00:00:00"},
-            ]},
-            headers=auth_headers,
-        )
-        assert resp.status_code == 200
-        assert calls == [
-            ("del", {"name": "CANDIDATE_CAND_K_KIMI"}),
-            ("up", {"name": "CANDIDATE_CAND_K_OPENROUTER", "value": "sk-or"}),
-            ("deploy",),
-        ]
-        assert json.loads(self._raw(db)) == [
-            {"server": "kimi", "status": "NOT SET", "expires_at": None},
-            {"server": "openrouter", "status": "SET", "expires_at": "2999-03-03 00:00:00"},
-        ]
-        assert b"sk-or" not in resp.data
-
-    def test_local_set_skips_railway(
-        self, candidate_client: FlaskClient, auth_headers: dict[str, str], sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        db = sqlite_in_memory
-        monkeypatch.setenv("ASTRAL_RAILWAY_TOKEN", "   ")
-        monkeypatch.setattr(candidate_mod, "normalize_rubric_artifacts_on_save", MagicMock())
-        monkeypatch.setattr(candidate_mod, "hydrate_rubric_artifacts_for_response", MagicMock())
-        monkeypatch.setattr(candidate_mod, "upsert_service_variable", MagicMock(side_effect=AssertionError("railway")))
-        monkeypatch.setattr(candidate_mod, "trigger_service_deploy", MagicMock(side_effect=AssertionError("deploy")))
-        db.save_candidate("cand-k", state="NEW_CANDIDATE", candidate_data={})
-        resp = candidate_client.put(
-            "/api/candidates/cand-k/data",
-            json={"api_keys": [{"server": "kimi", "key": "sk-local", "expires_at": "2999-01-01 00:00:00"}]},
-            headers=auth_headers,
-        )
-        assert resp.status_code == 200
-        assert json.loads(self._raw(db))[0]["status"] == "SET"
-        assert b"sk-local" not in resp.data
-
-    def test_railway_failure_leaves_the_row(
-        self, candidate_client: FlaskClient, auth_headers: dict[str, str], sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        from src.external.railway import RailwayCallFailed
-
-        db = sqlite_in_memory
-        monkeypatch.setenv("ASTRAL_RAILWAY_TOKEN", "tok")
-        monkeypatch.setattr(candidate_mod, "normalize_rubric_artifacts_on_save", MagicMock())
-        monkeypatch.setattr(candidate_mod, "hydrate_rubric_artifacts_for_response", MagicMock())
-        monkeypatch.setattr(
-            candidate_mod, "upsert_service_variable",
-            lambda **kw: (_ for _ in ()).throw(RailwayCallFailed("railway upsert failed for CANDIDATE_CAND_K_KIMI")),
-        )
-        deploy = MagicMock()
-        monkeypatch.setattr(candidate_mod, "trigger_service_deploy", deploy)
-        db.save_candidate("cand-k", state="NEW_CANDIDATE", candidate_data={})
-        resp = candidate_client.put(
-            "/api/candidates/cand-k/data",
-            json={"api_keys": [{"server": "kimi", "key": "sk-kimi-plain", "expires_at": "2999-01-01 00:00:00"}]},
-            headers=auth_headers,
-        )
-        assert resp.status_code == 502
-        assert resp.get_json()["error"] == "railway upsert failed for CANDIDATE_CAND_K_KIMI"
-        assert b"sk-kimi-plain" not in resp.data
-        deploy.assert_not_called()
-        assert self._raw(db) in (None, "", "[]")
+        assert cleared.status_code == 200
+        assert candidate_client.get("/api/candidates/cand-k", headers=auth_headers).get_json()["api_keys"] == _api_keys_entries("openrouter")
 
     def test_update_rejects_blank_company_search_terms(self, candidate_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(candidate_mod, "save_candidate_data", MagicMock())
@@ -736,66 +528,35 @@ class TestAst2252AdminSecretExpiry:
         assert resp.status_code == 404
 
 
-class TestAst2283PlantBeforeDeploy:
-    """AST-2283: production Admin PUT must plant process env before the deploy restart."""
+class TestAst2267PickerStates:
+    """[bug-repro] Manage Candidates state list is stage-prefixed objects, not every registry key."""
 
-    def test_production_put_plants_before_deploy_so_hydrate_keeps_openrouter(
-        self,
-        candidate_client: FlaskClient,
-        auth_headers: dict[str, str],
-        sqlite_in_memory,
-        monkeypatch: pytest.MonkeyPatch,
+    def test_ast2267_picker_states_are_stage_labels(
+        self, candidate_client: FlaskClient, auth_headers: dict[str, str]
     ) -> None:
-        import os
-
-        db = sqlite_in_memory
-        monkeypatch.setenv("ASTRAL_RAILWAY_TOKEN", "tok")
-        monkeypatch.delenv("CANDIDATE_SOMERSET_OPENROUTER", raising=False)
-        monkeypatch.setattr(candidate_mod, "normalize_rubric_artifacts_on_save", MagicMock())
-        monkeypatch.setattr(candidate_mod, "hydrate_rubric_artifacts_for_response", MagicMock())
-        order: list[str] = []
-        planted_when_deploy: list[str | None] = []
-        real_update = candidate_mod.update_candidate_api_keys
-
-        def _upsert(*_a, **_kw):
-            order.append("upsert")
-
-        def _delete(*_a, **_kw):
-            order.append("delete")
-
-        def _update(cid: str, edits):
-            order.append("update")
-            real_update(cid, edits)
-
-        def _deploy():
-            planted_when_deploy.append(os.environ.get("CANDIDATE_SOMERSET_OPENROUTER"))
-            order.append("deploy")
-            return "dep-1"
-
-        monkeypatch.setattr(candidate_mod, "upsert_service_variable", _upsert)
-        monkeypatch.setattr(candidate_mod, "delete_service_variable", _delete)
-        monkeypatch.setattr(candidate_mod, "update_candidate_api_keys", _update)
-        monkeypatch.setattr(candidate_mod, "trigger_service_deploy", _deploy)
-        # make-fix may call the batch helper instead of the one-key wrapper
-        if hasattr(candidate_mod, "upsert_service_variables"):
-            monkeypatch.setattr(candidate_mod, "upsert_service_variables", _upsert)
-        db.save_candidate("somerset", state="NEW_CANDIDATE", candidate_data={})
-        resp = candidate_client.put(
-            "/api/candidates/somerset/data",
-            json={"api_keys": [{
-                "server": "openrouter",
-                "key": "sk-or-vault",
-                "expires_at": "2999-01-01 00:00:00",
-            }]},
-            headers=auth_headers,
-        )
+        resp = candidate_client.get("/api/candidates/states", headers=auth_headers)
         assert resp.status_code == 200
-        assert order.index("update") < order.index("deploy")
-        assert planted_when_deploy == ["sk-or-vault"]
-        assert os.environ.get("CANDIDATE_SOMERSET_OPENROUTER") == "sk-or-vault"
-        row = db.get_candidate("somerset")
-        assert row["candidate_api_keys"].get("openrouter") == "sk-or-vault"
-        assert b"sk-or-vault" not in resp.data
+        payload = resp.get_json()
+        assert isinstance(payload, list) and payload
+        assert all(
+            isinstance(row, dict)
+            and isinstance(row.get("state"), str)
+            and isinstance(row.get("label"), str)
+            for row in payload
+        )
+        names = [row["state"] for row in payload]
+        labels = [row["label"] for row in payload]
+        assert labels == sorted(labels)
+        assert not any(
+            n.startswith("ERROR_") or n == "INTAKE_INITIATED" or n.endswith("_STALE")
+            for n in names
+        )
+        by_state = {row["state"]: row["label"] for row in payload}
+        assert by_state["ACTIVE_SEARCH"] == "5:ACTIVE_SEARCH"
+        assert by_state["DELETED"] == "0:DELETED"
+        assert "NEW_CANDIDATE" in by_state
+        # Live registry key — omit list is ERROR_*/INTAKE_INITIATED/*_STALE only.
+        assert by_state["PROSPECT"] == "1:PROSPECT"
 
 
 class TestAst1253GenerateArtifactsApi:

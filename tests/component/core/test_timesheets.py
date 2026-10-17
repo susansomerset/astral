@@ -114,36 +114,8 @@ class TestAst2219GoogleCseReceiptRoute:
         fn = timesheets_mod._get_receipt_fn(TIMESHEET_SEARCH_SERVER_ID)
         assert fn is google_cse_mod.get_receipt
 
-    def test_fetch_skips_google_cse_without_candidate_key(
-        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
-    ) -> None:
-        db = sqlite_in_memory
-        _seed_ledger(db, "batch-cse", "cand-1")
-        assert db._add_timesheet_entry(
-            "search-1", None, None, "cand-1", "batch-cse", 1,
-            0, 0, 0, 0, 0, 0, 0.0, 0.0, 0.0, 0.0,
-            provider=TIMESHEET_SEARCH_SERVER_ID,
-            request_type="DISPATCH_SEARCH",
-        ) is True
-
-        def spy(ids: List[str], api_key: str) -> List[Dict[str, Any]]:
-            raise AssertionError("missing search key must not call get_receipt")
-
-        monkeypatch.setattr(timesheets_mod, "get_candidate", lambda cid: {
-            "candidate_api_keys": {"google_cse_id": "engine-only"},
-        })
-        monkeypatch.setattr("src.external.google_cse.get_receipt", spy)
-        with caplog.at_level("WARNING", logger="src.core.timesheets"):
-            out = timesheets_mod.run_fetch_timesheet("cand-1")
-        assert out["total_failed"] == 1
-        assert out["total_passed"] == 0
-        assert db.get_dispatch_ledger("batch-cse")["timesheet_state"] == "NEW"
-        text = "\n".join(r.message for r in caplog.records)
-        assert "cand-1" in text and "google_cse_api_key" in text
-        assert "engine-only" not in text
-
-    def test_fetch_passes_google_cse_api_key(
-        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    def test_fetch_stubs_google_cse_without_candidate_key(
+        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         db = sqlite_in_memory
         _seed_ledger(db, "batch-cse", "cand-1")
@@ -159,16 +131,13 @@ class TestAst2219GoogleCseReceiptRoute:
             seen_keys.append(api_key)
             return [_empty_receipt(completion_status="stub", platform_cost=None) for _ in ids]
 
-        monkeypatch.setattr(timesheets_mod, "get_candidate", lambda cid: {
-            "candidate_api_keys": {"google_cse_api_key": "sk-cse-plain"},
-        })
+        monkeypatch.setattr(timesheets_mod, "get_candidate", lambda cid: {"candidate_api_keys": {}})
         monkeypatch.setattr("src.external.google_cse.get_receipt", spy)
-        with caplog.at_level("DEBUG", logger="src.core.timesheets"):
-            out = timesheets_mod.run_fetch_timesheet("cand-1")
-        assert seen_keys == ["sk-cse-plain"]
+        out = timesheets_mod.run_fetch_timesheet("cand-1")
+        assert seen_keys == [""]
         assert out["total_passed"] == 1
-        logged = "\n".join(r.message for r in caplog.records)
-        assert "sk-cse-plain" not in logged
+        assert db.get_dispatch_ledger("batch-cse")["timesheet_state"] == "RECEIPTED"
+        assert db.list_timesheets(batch_id="batch-cse")[0]["platform_cost"] is None
 
 
 class TestAst2218RunFetchTimesheet:

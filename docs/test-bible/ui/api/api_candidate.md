@@ -460,7 +460,7 @@ See **`docs/test-bible/core/candidate.md`** § AST-1679 (shared numbered list).
 - `test_update_sends_api_keys_array_edits`
 - `test_update_rejects_malformed_api_keys` ×7, with exact error text
 - `test_update_rejects_duplicate_server_without_echoing_keys`
-- AST-2251 replaced the ciphertext round trip with `test_put_without_expires_at_stores_no_ciphertext` (400 `expires_at is required`, column stays empty). Manifest: [`../../data/database/candidates.md`](../../data/database/candidates.md) § AST-2251.
+- the end-to-end `test_put_two_server_keys_stores_ciphertext_array_and_get_lists_servers_only`: two ciphertext entries in `candidate.api_keys`, then GET, then remove one
 - the non-admin 403, now with an array body
 
 Full manifest: [`../../data/database/candidates.md`](../../data/database/candidates.md) § QA test manifest (AST-1901).
@@ -511,23 +511,6 @@ New route lines are fully branch-covered for `LOCKED_AT_100`. **Fixture fix:** `
 `TestAst2067CandidateVersionRoutes::_seed_rubric` seeded `V01`/`V02` through `sync_rubric_vectors_from_criteria`, which now rejects codes that aren't `[A-Z]{2}`. Renamed to `VA`/`VB` across the class (`_RUB` route path `/rubric/do_rubric/VA`, `code=` history filter, current-map assertions, 404 / bad-key route params). Unblocks **`…::test_rubric_list_and_set_current_200`** and **`…::test_rubric_cross_code_uuid_400_current_unchanged`**; § AST-2067 manifest and pass count unchanged. Primary manifest: [`../../core/consult.md`](../../core/consult.md) § AST-2127.
 
 
-### AST-2252 · AST-2246 (admin set, clear, expiry)
-
-**Parent:** [AST-2246](https://linear.app/astralcareermatch/issue/AST-2246). **Publish:** `origin/sub/AST-2246/AST-2252-admin-secret-expiry`. Plan: `docs/features/foundation/ast-2252-admin-secret-expiry.md`.
-
-Production PUT upserts or deletes, then one deploy, then stores status and expiry only. Local (`ASTRAL_RAILWAY_TOKEN` blank) skips Railway. GET `api_keys` is label, status, and expiry. Manage Candidates shows SET / NOT SET / EXPIRED and sends expiry with a typed secret.
-
-| Area | Component tests |
-| --- | --- |
-| Sanitize drops plaintext; search labels | revised **`TestSanitizeCandidate`** |
-| Set without expiry still 400; edits carry `expires_at` | revised **`TestCandidateRoutes::test_put_without_expires_at_stores_no_ciphertext`** · **`::test_update_sends_api_keys_array_edits`** |
-| One upsert + one deploy; clear + one deploy; local skip; 502 leaves the row | **`TestAst2252AdminSecretExpiry`** |
-| Page render, status column, typed expiry, clear, bad expiry toast | `test_AdminManageCandidates.test.tsx` |
-
-**AST-2265:** the expiry control is a date select. A stored `expires_at` prefills `YYYY-MM-DD`. A typed secret saves that date plus ` 00:00:00`. An empty date toasts `Expiry date is required` and does not PUT. Repro (red on the pre-fix page): `test_AdminManageCandidates.test.tsx` — `AST-2265: a typed secret without a calendar date does not save`, and the edit flow's date value `2999-01-02` → `expires_at: 2999-01-02 00:00:00`.
-
-**Broken / obsolete:** outbound `{server, label}` only, and the Manage Candidates “(set)” / “(not set)” labels. Revised in place. **Integration:** none.
-
 ### AST-2267 · AST-2225 (Manage Candidates state dropdown)
 
 **Parent:** [AST-2225](https://linear.app/astralcareermatch/issue/AST-2225). **Publish:** `origin/sub/AST-2225/AST-2267-manage-candidates-state-dropdown`. Plan patch: `docs/features/candidate/ast-2228-candidate-stage-registry.md` § Bug AST-2267.
@@ -556,39 +539,6 @@ cd src/ui/frontend && npm run test:component -- \
 
 **Bible shasum (after publish):** `git show origin/sub/AST-2225/AST-2267-manage-candidates-state-dropdown:docs/test-bible/ui/api/api_candidate.md | shasum`
 
-## QA test manifest — AST-2252
-
-1. `tests/component/ui/api/test_api_candidate.py::TestSanitizeCandidate`
-2. `tests/component/ui/api/test_api_candidate.py::TestCandidateRoutes::test_list_rows_carry_stored_key_servers_only`
-3. `tests/component/ui/api/test_api_candidate.py::TestCandidateRoutes::test_get_returns_sanitized_candidate`
-4. `tests/component/ui/api/test_api_candidate.py::TestCandidateRoutes::test_update_sends_api_keys_array_edits`
-5. `tests/component/ui/api/test_api_candidate.py::TestCandidateRoutes::test_update_rejects_malformed_api_keys`
-6. `tests/component/ui/api/test_api_candidate.py::TestCandidateRoutes::test_put_without_expires_at_stores_no_ciphertext`
-7. `tests/component/ui/api/test_api_candidate.py::TestCandidateRoutes::test_put_bad_expiry_does_not_write`
-8. `tests/component/ui/api/test_api_candidate.py::TestAst2252AdminSecretExpiry`
-9. `tests/component/frontend/pages/test_AdminManageCandidates.test.tsx`
-
-```bash
-./scripts/testing/run_component_tests.sh \
-  tests/component/ui/api/test_api_candidate.py::TestSanitizeCandidate \
-  tests/component/ui/api/test_api_candidate.py::TestCandidateRoutes::test_list_rows_carry_stored_key_servers_only \
-  tests/component/ui/api/test_api_candidate.py::TestCandidateRoutes::test_get_returns_sanitized_candidate \
-  tests/component/ui/api/test_api_candidate.py::TestCandidateRoutes::test_update_sends_api_keys_array_edits \
-  tests/component/ui/api/test_api_candidate.py::TestCandidateRoutes::test_update_rejects_malformed_api_keys \
-  tests/component/ui/api/test_api_candidate.py::TestCandidateRoutes::test_put_without_expires_at_stores_no_ciphertext \
-  tests/component/ui/api/test_api_candidate.py::TestCandidateRoutes::test_put_bad_expiry_does_not_write \
-  tests/component/ui/api/test_api_candidate.py::TestAst2252AdminSecretExpiry
-
-cd src/ui/frontend && npm run test:component -- \
-  ../../../tests/component/frontend/pages/test_AdminManageCandidates.test.tsx
-```
-
-**Pass criterion:** pytest green on those nodes, and the Manage Candidates Vitest file green. Not the zero-arg harness.
-
-**Bible shasum (after publish):** `git show origin/sub/AST-2246/AST-2252-admin-secret-expiry:docs/test-bible/ui/api/api_candidate.md | shasum`
-
-`git show origin/sub/AST-2246/AST-2252-admin-secret-expiry:docs/test-bible/frontend/pages.md | shasum`
-
 ### AST-2261 · AST-2257 (grade_rollup GET)
 
 **Publish:** `origin/sub/AST-2257/AST-2261-version-scoped-grade-rollup`. Primary: [`../../core/candidate.md`](../../core/candidate.md) § AST-2261.
@@ -603,8 +553,3 @@ cd src/ui/frontend && npm run test:component -- \
 **Fixture:** `tests/component/ui/conftest.py` `_DB_SCHEMA_FLAGS` includes `_vector_feedback_schema_ensured` so a fresh SQLite file creates `vector_feedback` (same leak class as AST-2067's rubric flag).
 
 **Broken / obsolete:** none. Manifest command: [`../../core/candidate.md`](../../core/candidate.md) § QA test manifest — AST-2261.
-
-
-### AST-2283 · AST-2246 (plant before deploy)
-
-**Bug-repro (qa-fix):** `tests/component/ui/api/test_api_candidate.py::TestAst2283PlantBeforeDeploy::test_production_put_plants_before_deploy_so_hydrate_keeps_openrouter` — production Admin PUT must call `update_candidate_api_keys` before `trigger_service_deploy` so `CANDIDATE_SOMERSET_OPENROUTER` is planted when deploy runs and hydrate keeps OpenRouter. Red on the pre-fix tree (deploy runs before the plant).

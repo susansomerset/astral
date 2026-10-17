@@ -1,19 +1,16 @@
 #!/usr/bin/env python3
 """AST-489: spike — Google Custom Search Engine for exemplar company-discovery queries.
 
-Usage (repo root). Pass the CSE key and engine id on the command line:
+Usage (repo root, with GOOGLE_CSE_API_KEY and GOOGLE_CSE_ID set in the environment or repo `.env`):
 
   # Built-in exemplar batch (AST-489 acceptance runs)
-  python3 scripts/spikes/ast489_google_cse_company_search_spike.py \\
-      --api-key "$KEY" --cx "$CX"
+  python3 scripts/spikes/ast489_google_cse_company_search_spike.py
 
   # Ad-hoc query with site restriction (alias or raw domain fragment)
-  python3 scripts/spikes/ast489_google_cse_company_search_spike.py --api-key "$KEY" --cx "$CX" \\
-      --site linkedin \\
+  python3 scripts/spikes/ast489_google_cse_company_search_spike.py --site linkedin \\
       Small businesses making smart watches for dolls
 
-  python3 scripts/spikes/ast489_google_cse_company_search_spike.py --api-key "$KEY" --cx "$CX" \\
-      --days 7 \\
+  python3 scripts/spikes/ast489_google_cse_company_search_spike.py --days 7 \\
       healthtech SaaS remote
 
 Non-interactive; prints labeled title / URL / snippet per hit per run.
@@ -96,8 +93,6 @@ def resolve_site_filter(raw: str) -> str:
 def run_search(
     *,
     query: str,
-    api_key: str,
-    cx: str,
     site_filters: tuple[str, ...],
     max_results: int,
     days: int | None = None,
@@ -110,15 +105,12 @@ def run_search(
     print(extra)
     print("=" * 72)
     try:
-        result = search_google_cse(
+        hits = search_google_cse(
             query,
-            api_key=api_key,
-            cx=cx,
             max_results=max_results,
             site_filters=site_filters or None,
             days=days,
         )
-        hits = result["hits"]
     except Exception as exc:  # noqa: BLE001 — spike surfaces any failure plainly
         print(f"ERROR: {exc}", file=sys.stderr)
         sys.exit(1)
@@ -144,8 +136,6 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Google CSE company-discovery spike (AST-489).",
     )
-    parser.add_argument("--api-key", required=True, help="CSE API key passed to search_google_cse.")
-    parser.add_argument("--cx", required=True, help="CSE engine id passed to search_google_cse.")
     parser.add_argument(
         "--site",
         "-s",
@@ -202,8 +192,6 @@ def main(argv: list[str] | None = None) -> None:
             sys.exit(1)
         run_search(
             query=query,
-            api_key=args.api_key,
-            cx=args.cx,
             site_filters=site_filters,
             max_results=args.max_results,
             days=args.days,
@@ -213,8 +201,6 @@ def main(argv: list[str] | None = None) -> None:
     for spec in RUNS:
         run_search(
             query=spec["query"],
-            api_key=args.api_key,
-            cx=args.cx,
             site_filters=spec["site_filters"],
             max_results=spec["max_results"],
             days=args.days,

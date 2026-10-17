@@ -2654,7 +2654,6 @@ Primary command + pass criterion: [`../utils/config.md`](../utils/config.md) § 
 | --- | --- |
 | Walk labels use renamed Criteria/Company item labels | revised **`TestAst1253RequestedArtifactsHandoff::test_walk_helpers_order_labels_and_rubric_keys`** |
 
-**AST-2251 hydrate:** [`../data/database/candidates.md`](../data/database/candidates.md) § QA test manifest — AST-2251.
 
 ### AST-2261 · AST-2257 (version-scoped grade rollup)
 
@@ -2693,7 +2692,3 @@ Primary command + pass criterion: [`../utils/config.md`](../utils/config.md) § 
 **Pass criterion:** those nodes green, including meteorite-twin letter C on the current uuid. Not the zero-arg harness.
 
 **Bible shasum (after publish):** `git show origin/sub/AST-2257/AST-2261-version-scoped-grade-rollup:docs/test-bible/core/candidate.md | shasum`; same for `docs/test-bible/ui/api/api_candidate.md` and `docs/test-bible/ui/api/api_system.md`.
-
-### AST-2275 · AST-2246 (vault set plants process environ)
-
-**Bug-repro (qa-fix):** `tests/component/core/test_candidate.py::TestAst2275VaultKeyInProcessEnviron` — after `update_candidate_api_keys` with a non-empty OpenRouter key on a production probe, `CANDIDATE_SOMERSET_OPENROUTER` is in `os.environ` and hydrate fills `candidate_api_keys["openrouter"]` (the map dispatch/Ad Hoc read). Clear pops the env name. Red on the pre-fix tree (wrapper only wrote status).

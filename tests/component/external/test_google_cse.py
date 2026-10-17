@@ -37,61 +37,39 @@ def _fake_response(ok: bool, *, status: int = 200, payload: object | None = None
 
 @pytest.fixture(autouse=True)
 def google_cse_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("GOOGLE_CSE_API_KEY", raising=False)
-    monkeypatch.delenv("GOOGLE_CSE_ID", raising=False)
+    monkeypatch.setenv("GOOGLE_CSE_API_KEY", "fake-key")
+    monkeypatch.setenv("GOOGLE_CSE_ID", "fake-cx")
     google_cse_mod._last_cse_request_at = None
     yield  # type: ignore[misc]
     google_cse_mod._last_cse_request_at = None
 
 
-def _search(query: str, **kwargs: object):
-    """Caller credentials. AST-2253: the client no longer reads GOOGLE_CSE_*."""
-    kwargs.setdefault("api_key", "caller-key")
-    kwargs.setdefault("cx", "caller-cx")
-    return google_cse_mod.search_google_cse(query, **kwargs)  # type: ignore[arg-type]
-
-
 # --- search_google_cse: credentials / query ---
 class TestGoogleCseSearchGoogleCse:
-    def test_blank_api_key_raises_before_http(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        get = MagicMock(side_effect=AssertionError("blank credentials must not HTTP"))
-        monkeypatch.setattr(google_cse_mod.requests, "get", get)
-        with pytest.raises(ValueError, match="api_key and cx are required"):
-            google_cse_mod.search_google_cse("test", api_key="  ", cx="caller-cx")
-        get.assert_not_called()
+    def test_missing_api_key_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("GOOGLE_CSE_API_KEY", raising=False)
+        with pytest.raises(RuntimeError, match="missing environment variable 'GOOGLE_CSE_API_KEY'"):
+            google_cse_mod.search_google_cse("test")
 
-    def test_blank_cx_raises_before_http(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        get = MagicMock(side_effect=AssertionError("blank credentials must not HTTP"))
-        monkeypatch.setattr(google_cse_mod.requests, "get", get)
-        with pytest.raises(ValueError, match="api_key and cx are required"):
-            google_cse_mod.search_google_cse("test", api_key="caller-key", cx="")
-        get.assert_not_called()
-
-    def test_caller_key_and_cx_are_the_http_params(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("GOOGLE_CSE_API_KEY", "env-key")
-        monkeypatch.setenv("GOOGLE_CSE_ID", "env-cx")
-        payload = {"items": [{"title": "A", "link": "https://a", "snippet": "s"}]}
-        get = MagicMock(return_value=_fake_response(True, payload=payload))
-        monkeypatch.setattr(google_cse_mod.requests, "get", get)
-        google_cse_mod.search_google_cse("q", api_key="cand-key", cx="cand-cx")
-        params = get.call_args.kwargs["params"]
-        assert params["key"] == "cand-key"
-        assert params["cx"] == "cand-cx"
+    def test_missing_cx_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("GOOGLE_CSE_ID", raising=False)
+        with pytest.raises(RuntimeError, match="missing environment variable 'GOOGLE_CSE_ID'"):
+            google_cse_mod.search_google_cse("test")
 
     def test_blank_query_raises(self) -> None:
         with pytest.raises(ValueError, match="empty query"):
-            _search("   ")
+            google_cse_mod.search_google_cse("   ")
 
     def test_days_must_be_positive(self) -> None:
         with pytest.raises(ValueError, match="days must be a positive integer"):
-            _search("q", days=0)
+            google_cse_mod.search_google_cse("q", days=0)
 
     def test_date_restrict_passed_when_days_set(self, monkeypatch: pytest.MonkeyPatch) -> None:
         payload = {"items": [{"title": "A", "link": "https://a", "snippet": "s"}]}
         rsp = _fake_response(True, payload=payload)
         get = MagicMock(return_value=rsp)
         monkeypatch.setattr(google_cse_mod.requests, "get", get)
-        _search("q", days=30)
+        google_cse_mod.search_google_cse("q", days=30)
         assert get.call_args.kwargs["params"]["dateRestrict"] == "d30"
 
     def test_http_error_includes_body_snippet(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -99,37 +77,37 @@ class TestGoogleCseSearchGoogleCse:
         rsp = _fake_response(False, status=500, raw_text=body)
         monkeypatch.setattr(google_cse_mod.requests, "get", MagicMock(return_value=rsp))
         with pytest.raises(RuntimeError, match=r"Google CSE HTTP 500"):
-            _search("q")
+            google_cse_mod.search_google_cse("q")
 
     def test_non_json_body_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
         rsp = _fake_response(True, payload=Ellipsis)
         monkeypatch.setattr(google_cse_mod.requests, "get", MagicMock(return_value=rsp))
         with pytest.raises(RuntimeError, match="not valid JSON"):
-            _search("q")
+            google_cse_mod.search_google_cse("q")
 
     def test_json_root_not_object_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
         rsp = _fake_response(True, payload=[])
         monkeypatch.setattr(google_cse_mod.requests, "get", MagicMock(return_value=rsp))
         with pytest.raises(RuntimeError, match="not an object"):
-            _search("q")
+            google_cse_mod.search_google_cse("q")
 
     def test_api_error_object_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
         rsp = _fake_response(True, payload={"error": {"message": "quota", "code": 403}})
         monkeypatch.setattr(google_cse_mod.requests, "get", MagicMock(return_value=rsp))
         with pytest.raises(RuntimeError, match="Google CSE API error: quota"):
-            _search("q")
+            google_cse_mod.search_google_cse("q")
 
     def test_items_not_list_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
         rsp = _fake_response(True, payload={"items": {}})
         monkeypatch.setattr(google_cse_mod.requests, "get", MagicMock(return_value=rsp))
         with pytest.raises(RuntimeError, match="'items' is not a list"):
-            _search("q")
+            google_cse_mod.search_google_cse("q")
 
     def test_items_none_normalized_to_empty_then_done(self, monkeypatch: pytest.MonkeyPatch) -> None:
         rsp = _fake_response(True, payload={"items": None})
         get = MagicMock(return_value=rsp)
         monkeypatch.setattr(google_cse_mod.requests, "get", get)
-        out = _search("q")
+        out = google_cse_mod.search_google_cse("q")
         assert out["hits"] == []
         assert out["hit_count"] == 0
         assert out["call_start"] and out["call_stop"]
@@ -145,7 +123,7 @@ class TestGoogleCseSearchGoogleCse:
         rsp = _fake_response(True, payload=payload)
         get = MagicMock(return_value=rsp)
         monkeypatch.setattr(google_cse_mod.requests, "get", get)
-        out = _search(
+        out = google_cse_mod.search_google_cse(
             " base ",
             max_results=5,
             site_filters=(" linkedin.com ", "", 99, "crunchbase.com"),
@@ -166,7 +144,7 @@ class TestGoogleCseSearchGoogleCse:
         page2 = {"items": [{"title": "2", "link": "u2", "snippet": "s2"}]}
         get = MagicMock(side_effect=[_fake_response(True, payload=page1), _fake_response(True, payload=page2)])
         monkeypatch.setattr(google_cse_mod.requests, "get", get)
-        out = _search("q", max_results=0)
+        out = google_cse_mod.search_google_cse("q", max_results=0)
         assert [h["title"] for h in out["hits"]] == ["1", "2"]
         assert out["hit_count"] == 2
         assert get.call_count == 2
@@ -179,7 +157,7 @@ class TestGoogleCseSearchGoogleCse:
         rsp = _fake_response(True, payload=page)
         get = MagicMock(return_value=rsp)
         monkeypatch.setattr(google_cse_mod.requests, "get", get)
-        out = _search("q", max_results=0)
+        out = google_cse_mod.search_google_cse("q", max_results=0)
         assert len(out["hits"]) == 1
         assert out["hit_count"] == 1
         get.assert_called_once()
@@ -192,7 +170,7 @@ class TestGoogleCseSearchGoogleCse:
         rsp = _fake_response(True, payload=page)
         get = MagicMock(return_value=rsp)
         monkeypatch.setattr(google_cse_mod.requests, "get", get)
-        _search("q", max_results=0)
+        google_cse_mod.search_google_cse("q", max_results=0)
         get.assert_called_once()
 
 
@@ -245,8 +223,8 @@ class TestGoogleCseAst837PacingAndRateLimit:
         sleeps: list[float] = []
         monkeypatch.setattr(google_cse_mod.time, "sleep", lambda sec: sleeps.append(sec))
         google_cse_mod._last_cse_request_at = 100.0
-        _search("q1")
-        _search("q2")
+        google_cse_mod.search_google_cse("q1")
+        google_cse_mod.search_google_cse("q2")
         assert sleeps[-1] == pytest.approx(1.5, abs=0.01)
 
     def test_inter_query_delay_zero_skips_sleep(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -257,8 +235,8 @@ class TestGoogleCseAst837PacingAndRateLimit:
         google_cse_mod._last_cse_request_at = 1.0
         sleeps: list[float] = []
         monkeypatch.setattr(google_cse_mod.time, "sleep", lambda sec: sleeps.append(sec))
-        _search("q1")
-        _search("q2")
+        google_cse_mod.search_google_cse("q1")
+        google_cse_mod.search_google_cse("q2")
         assert sleeps == []
 
     def test_rate_limit_429_retries_then_succeeds(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -273,7 +251,7 @@ class TestGoogleCseAst837PacingAndRateLimit:
         sleeps: list[float] = []
         monkeypatch.setattr(google_cse_mod.time, "sleep", lambda sec: sleeps.append(sec))
         monkeypatch.setattr(google_cse_mod.time, "monotonic", MagicMock(return_value=0.0))
-        out = _search("q")
+        out = google_cse_mod.search_google_cse("q")
         assert out["hits"] == [{"title": "A", "url": "https://a", "snippet": ""}]
         assert out["hit_count"] == 1
         assert get.call_count == 2
@@ -288,7 +266,7 @@ class TestGoogleCseAst837PacingAndRateLimit:
         monkeypatch.setattr(google_cse_mod.time, "sleep", MagicMock())
         monkeypatch.setattr(google_cse_mod.time, "monotonic", MagicMock(return_value=0.0))
         with pytest.raises(RuntimeError, match=r"Google CSE HTTP 429"):
-            _search("q")
+            google_cse_mod.search_google_cse("q")
         assert get.call_count == 2
 
     def test_rate_limit_json_envelope_retries(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -309,7 +287,7 @@ class TestGoogleCseAst837PacingAndRateLimit:
         monkeypatch.setattr(google_cse_mod.requests, "get", get)
         monkeypatch.setattr(google_cse_mod.time, "sleep", MagicMock())
         monkeypatch.setattr(google_cse_mod.time, "monotonic", MagicMock(return_value=0.0))
-        out = _search("q")
+        out = google_cse_mod.search_google_cse("q")
         assert out["hits"][0]["url"] == "https://b"
         assert out["hit_count"] == 1
         assert get.call_count == 2
@@ -325,7 +303,7 @@ class TestGoogleCseAst837PacingAndRateLimit:
         monkeypatch.setattr(google_cse_mod.time, "sleep", MagicMock())
         google_cse_mod._last_cse_request_at = 0.0
         messages: list[str] = []
-        _search("q", pace_detail=messages.append)
+        google_cse_mod.search_google_cse("q", pace_detail=messages.append)
         assert any("pacing: sleeping" in line for line in messages)
         assert any("CSE HTTP start=1 status=200 items=1" in line for line in messages)
 
@@ -344,7 +322,7 @@ class TestGoogleCseAst839HttpOutcomeLines:
         monkeypatch.setattr(google_cse_mod.requests, "get", MagicMock(return_value=rsp))
         monkeypatch.setattr(google_cse_mod.time, "monotonic", MagicMock(return_value=0.0))
         messages: list[str] = []
-        _search("q", pace_detail=messages.append)
+        google_cse_mod.search_google_cse("q", pace_detail=messages.append)
         assert messages == ["CSE HTTP start=1 status=200 items=2"]
 
     def test_multi_page_emits_outcome_per_http_call(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -366,7 +344,7 @@ class TestGoogleCseAst839HttpOutcomeLines:
         )
         monkeypatch.setattr(google_cse_mod.time, "monotonic", MagicMock(return_value=0.0))
         messages: list[str] = []
-        _search("q", max_results=0, pace_detail=messages.append)
+        google_cse_mod.search_google_cse("q", max_results=0, pace_detail=messages.append)
         assert messages == [
             "CSE HTTP start=1 status=200 items=1",
             "CSE HTTP start=11 status=200 items=1",
@@ -387,7 +365,7 @@ class TestGoogleCseAst839HttpOutcomeLines:
         monkeypatch.setattr(google_cse_mod.time, "sleep", MagicMock())
         monkeypatch.setattr(google_cse_mod.time, "monotonic", MagicMock(return_value=0.0))
         messages: list[str] = []
-        _search("q", pace_detail=messages.append)
+        google_cse_mod.search_google_cse("q", pace_detail=messages.append)
         assert messages[0] == "CSE HTTP start=1 status=429 rate_limited=true"
         assert "rate limit: HTTP 429" in messages[1]
         assert messages[-1] == "CSE HTTP start=1 status=200 items=1"
@@ -401,7 +379,7 @@ class TestGoogleCseAst839HttpOutcomeLines:
         monkeypatch.setattr(google_cse_mod.time, "monotonic", MagicMock(return_value=0.0))
         messages: list[str] = []
         with pytest.raises(RuntimeError, match=r"Google CSE HTTP 429"):
-            _search("q", pace_detail=messages.append)
+            google_cse_mod.search_google_cse("q", pace_detail=messages.append)
         assert messages[-1] == "CSE HTTP start=1 status=429 rate_limited=exhausted"
 
 
@@ -431,7 +409,7 @@ class TestAst2219GetReceiptAndSearchResult:
         monkeypatch.setattr(
             google_cse_mod.requests, "get", MagicMock(return_value=_fake_response(True, payload=payload))
         )
-        out = _search("q")
+        out = google_cse_mod.search_google_cse("q")
         assert set(out) == {"hits", "call_start", "call_stop", "hit_count"}
         assert out["hit_count"] == len(out["hits"]) == 1
         assert out["call_stop"] >= out["call_start"]

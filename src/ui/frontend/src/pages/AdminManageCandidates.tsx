@@ -16,8 +16,8 @@ interface Candidate {
   last?: string
   full?: string
   pronouns?: string
-  /** Status and expiry only — never the secret. */
-  api_keys?: { server: string; label: string; status?: string; expires_at?: string | null }[]
+  /** Stored keys only, in array order (AST-1901): server id + catalog label — never the key itself. */
+  api_keys?: { server: string; label: string }[]
   [key: string]: unknown
 }
 
@@ -70,7 +70,7 @@ function flattenCandidate(c: Candidate): Candidate & Record<string, unknown> {
     last: c.last ?? "",
     contact_email: contact.contact_email ?? "",
     slack_username: typeof contact.slack_username === "string" ? contact.slack_username : "",
-    api_key_status: "",
+    api_key_status: (c.api_keys ?? []).map(k => k.label).join(", ") || "Not set",
   }
 }
 
@@ -156,7 +156,6 @@ export default function ManageCandidates() {
   })
   // Key edits keyed by server id: typed value, show toggle, pending clear.
   const [keyInputs, setKeyInputs] = useState<Record<string, string>>({})
-  const [keyExpires, setKeyExpires] = useState<Record<string, string>>({})
   // Server catalog for the key fields, derived from /api/admin/agents/models (no literals).
   const [keyServers, setKeyServers] = useState<{ server: string; label: string }[]>([])
   const [unboundSlackUsers, setUnboundSlackUsers] = useState<UnboundSlackUser[]>([])
@@ -319,11 +318,8 @@ export default function ManageCandidates() {
     // One picker option per server, catalog order (several models can share a server).
     api("/api/admin/agents/models").then(r => r.json()).then((m: Record<string, { order: number; server_id: string; server_label: string }>) => {
       const seen = new Set<string>()
-      const servers = Object.values(m).sort((a, b) => a.order - b.order).flatMap(x =>
-        seen.has(x.server_id) ? [] : (seen.add(x.server_id), [{ server: x.server_id, label: x.server_label }]))
-      if (!seen.has("google_cse_api_key")) servers.push({ server: "google_cse_api_key", label: "Google CSE API key" })
-      if (!seen.has("google_cse_id")) servers.push({ server: "google_cse_id", label: "Google CSE engine id" })
-      setKeyServers(servers)
+      setKeyServers(Object.values(m).sort((a, b) => a.order - b.order).flatMap(x =>
+        seen.has(x.server_id) ? [] : (seen.add(x.server_id), [{ server: x.server_id, label: x.server_label }])))
     })
     loadAll()
     loadDispatchTaskCounts()
@@ -393,12 +389,6 @@ export default function ManageCandidates() {
       slack_channel_id: channelId,
     })
     setKeyInputs({})
-    const expires: Record<string, string> = {}
-    for (const k of c.api_keys ?? []) {
-      const raw = k.expires_at ?? ""
-      if (/^\d{4}-\d{2}-\d{2}/.test(raw)) expires[k.server] = raw.slice(0, 10)
-    }
-    setKeyExpires(expires)
     setShowKeys({})
     setClearKeys({})
     setChannelMembershipWarn(null)
@@ -450,17 +440,10 @@ export default function ManageCandidates() {
       state,
     }
     // Only rows that changed: typed key = set/replace, "" = remove a stored entry; omit when nothing changed.
-    const apiKeys: { server: string; key: string; expires_at?: string }[] = []
+    const apiKeys: { server: string; key: string }[] = []
     for (const sid of keyRows.map(r => r.server)) {
       if (clearKeys[sid]) apiKeys.push({ server: sid, key: "" })
-      else if ((keyInputs[sid] ?? "").trim()) {
-        const date = (keyExpires[sid] ?? "").trim()
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-          setToast({ text: "Expiry date is required", variant: "error" })
-          return
-        }
-        apiKeys.push({ server: sid, key: keyInputs[sid].trim(), expires_at: `${date} 00:00:00` })
-      }
+      else if ((keyInputs[sid] ?? "").trim()) apiKeys.push({ server: sid, key: keyInputs[sid].trim() })
     }
     if (apiKeys.length) payload.api_keys = apiKeys
     const url = `/api/candidates/${editTarget.astral_candidate_id}/data`
@@ -627,23 +610,11 @@ export default function ManageCandidates() {
       return {
         ...col,
         // Value is the joined labels of servers with a stored key (AST-1901), or "Not set".
-        render: (_val: unknown, row: Candidate) => {
-          const keys = row.api_keys ?? []
-          if (!keys.length) {
-            return <span style={{ color: "var(--warning)", fontWeight: 600, fontSize: 12 }}>⚠️ Not set</span>
-          }
+        render: (val: unknown) => {
+          const isSet = typeof val === "string" && val !== "" && val !== "Not set"
           return (
-            <span style={{ fontWeight: 600, fontSize: 12 }}>
-              {keys.map((k, i) => {
-                const status = k.status ?? "NOT SET"
-                const color = status === "SET" ? "var(--success)" : status === "EXPIRED" ? "var(--danger)" : "var(--warning)"
-                const exp = k.expires_at ? ` ${k.expires_at}` : ""
-                return (
-                  <span key={k.server} style={{ color }}>
-                    {i ? ", " : ""}{k.label} {status}{exp}
-                  </span>
-                )
-              })}
+            <span style={{ color: isSet ? "var(--success)" : "var(--warning)", fontWeight: 600, fontSize: 12 }}>
+              {isSet ? `🔑 ${val}` : "⚠️ Not set"}
             </span>
           )
         },
@@ -716,16 +687,11 @@ export default function ManageCandidates() {
     </div>
   ) : null
 
+  // One row per catalog server (AST-1920), set or not; stored entries the catalog no longer lists stay visible so they can be cleared.
   const storedKeys = editTarget?.api_keys ?? []
   const keyRows = [
-    ...keyServers.map(s => {
-      const hit = storedKeys.find(k => k.server === s.server)
-      return { ...s, status: hit?.status ?? "NOT SET", expires_at: hit?.expires_at ?? null }
-    }),
-    ...storedKeys.filter(k => !keyServers.some(s => s.server === k.server)).map(k => ({
-      ...k,
-      status: k.status ?? "NOT SET",
-    })),
+    ...keyServers.map(s => ({ ...s, stored: storedKeys.some(k => k.server === s.server) })),
+    ...storedKeys.filter(k => !keyServers.some(s => s.server === k.server)).map(k => ({ ...k, stored: true })),
   ]
 
   return (
@@ -908,7 +874,7 @@ export default function ManageCandidates() {
         {keyRows.map(({ server: sid, ...k }) => (
           <div className="dep-field" key={sid}>
             <label className="dep-field-label">
-              {k.label} · {k.status}{k.expires_at ? ` · ${k.expires_at}` : ""}{clearKeys[sid] ? " · will clear on save" : ""}
+              {k.label} API key {k.stored ? "(set — leave blank to keep current)" : "(not set)"}
             </label>
             <div style={{ display: "flex", gap: 6 }}>
               <input
@@ -926,7 +892,7 @@ export default function ManageCandidates() {
               >
                 {showKeys[sid] ? "Hide" : "Show"}
               </button>
-              {(k.status === "SET" || k.status === "EXPIRED") && !keyInputs[sid] && !clearKeys[sid] && (
+              {k.stored && !keyInputs[sid] && !clearKeys[sid] && (
                 <button
                   type="button"
                   className="btn danger"
@@ -946,13 +912,6 @@ export default function ManageCandidates() {
                 </button>
               )}
             </div>
-            <input
-              className="dep-input"
-              type="date"
-              autoComplete="off"
-              value={keyExpires[sid] ?? ""}
-              onChange={e => setKeyExpires(p => ({ ...p, [sid]: e.target.value }))}
-            />
           </div>
         ))}
       </Modal>

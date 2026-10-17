@@ -5,8 +5,10 @@ from __future__ import annotations
 import json
 
 import pytest
+from cryptography.fernet import Fernet
 
-# Branches: insert requires state; invalid state; update merge vs overwrite.
+
+# Branches: insert requires state; invalid state; update merge vs overwrite; api key encrypt.
 class TestSaveCandidate:
     def test_insert_requires_state(self, sqlite_in_memory) -> None:
         with pytest.raises(ValueError, match="state required"):
@@ -94,15 +96,15 @@ class TestListCandidates:
         assert ids == {"cand-1", "cand-2"}
 
 
-# Branches: status write (set, replace, append, NOT SET kept, duplicate, blank id, bad status,
-# missing candidate); legacy ciphertext left until that server is edited; malformed column;
-# legacy singular column unread; schema; hard-delete.
+# Branches: update (set, replace in place, append, "" removes, duplicate server, unknown server, blank id,
+# missing candidate); hydrate (empty, undecryptable omitted, malformed column/entries dropped, legacy column
+# never exposed, list rows hydrated); schema (fresh + existing column, candidate_key dropped); hard-delete.
 class TestAst1901CandidateApiKeysArray:
-    """AST-1901 column + AST-2251 status records. api_keys is not ciphertext."""
+    """AST-1901: candidate.api_keys JSON array of {server, key(Fernet)}; hydrated as candidate_api_keys."""
 
     @pytest.fixture
     def db(self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch):
-        monkeypatch.delenv("ASTRAL_RAILWAY_TOKEN", raising=False)
+        monkeypatch.setattr(sqlite_in_memory, "_fernet", Fernet(Fernet.generate_key()))
         sqlite_in_memory.save_candidate("cand-1", state="NEW_CANDIDATE")
         return sqlite_in_memory
 
@@ -116,109 +118,71 @@ class TestAst1901CandidateApiKeysArray:
         finally:
             conn.close()
 
-    def _raw(self, db, cid: str = "cand-1"):
-        cell = self._sql(db, "SELECT api_keys FROM candidate WHERE astral_candidate_id = ?", (cid,))[0][0]
-        if not cell:
-            return []
-        return json.loads(cell)
+    def _raw(self, db, cid: str = "cand-1") -> list:
+        # Stored column, parsed — the single copy of the keys (ciphertext).
+        return json.loads(self._sql(db, "SELECT api_keys FROM candidate WHERE astral_candidate_id = ?", (cid,))[0][0])
 
-    def test_status_write_never_encrypts(self, db, monkeypatch: pytest.MonkeyPatch) -> None:
-        def _boom(plaintext: str) -> str:
-            raise AssertionError("encrypt_value")
-        monkeypatch.setattr(db, "encrypt_value", _boom)
-        db.update_candidate_api_keys("cand-1", [
-            {"server": "kimi", "status": "SET", "expires_at": "2999-01-01 00:00:00"},
-            {"server": "openrouter", "status": "NOT SET", "expires_at": None},
-        ])
+    @staticmethod
+    def _keys(db, cid: str = "cand-1") -> dict:
+        return db.get_candidate(cid)["candidate_api_keys"]
+
+    def test_two_servers_store_two_ciphertext_entries(self, db) -> None:
+        # Parent AC 6 (Susan's to-be): two entries in the candidate's array, both encrypted at rest, key stripped.
+        db.update_candidate_api_keys("cand-1", [{"server": "kimi", "key": "sk-kimi"}, {"server": "openrouter", "key": " sk-or "}])
         raw = self._raw(db)
-        assert raw == [
-            {"server": "kimi", "status": "SET", "expires_at": "2999-01-01 00:00:00"},
-            {"server": "openrouter", "status": "NOT SET", "expires_at": None},
-        ]
-        assert all("key" not in e for e in raw)
-        row = db.get_candidate("cand-1")
-        assert row["candidate_secret_status"]["kimi"]["status"] == "SET"
-        assert "candidate_api_key" not in row
-        assert "api_keys" not in row
+        assert [e["server"] for e in raw] == ["kimi", "openrouter"]
+        assert all(set(e) == {"server", "key"} for e in raw)
+        assert all(e["key"] not in ("sk-kimi", "sk-or", " sk-or ") for e in raw)
+        assert db.decrypt_value(raw[1]["key"]) == "sk-or"
 
-    def test_list_rows_carry_status(self, db) -> None:
-        db.update_candidate_api_keys("cand-1", [
-            {"server": "kimi", "status": "SET", "expires_at": "2999-01-01 00:00:00"},
-        ])
+    def test_get_candidate_hydrates_map_without_legacy_or_raw_column(self, db) -> None:
+        # AC 5: no single candidate_api_key string, no ciphertext array — server → plaintext map only.
+        db.update_candidate_api_keys("cand-1", [{"server": "kimi", "key": "sk-kimi"}, {"server": "deepseek", "key": "sk-ds"}])
+        row = db.get_candidate("cand-1")
+        assert {"candidate_api_key", "api_keys"}.isdisjoint(row)
+        assert row["candidate_api_keys"] == {"kimi": "sk-kimi", "deepseek": "sk-ds"}
+
+    def test_list_rows_are_hydrated_too(self, db) -> None:
+        # Every parsed row carries the map, so list readers need no per-row get_candidate.
+        db.update_candidate_api_keys("cand-1", [{"server": "kimi", "key": "sk-kimi"}])
         (row,) = db.list_candidates()
-        assert row["candidate_secret_status"]["kimi"]["expires_at"] == "2999-01-01 00:00:00"
+        assert row["candidate_api_keys"] == {"kimi": "sk-kimi"}
         assert {"candidate_api_key", "api_keys"}.isdisjoint(row)
 
-    def test_candidate_without_keys_has_empty_map(self, db) -> None:
+    def test_candidate_without_keys_has_empty_array_and_map(self, db) -> None:
         assert self._raw(db) == []
-        assert db.get_candidate("cand-1")["candidate_api_keys"] == {}
-        assert db.get_candidate("cand-1")["candidate_secret_status"] == {}
+        assert self._keys(db) == {}
 
     def test_legacy_column_value_is_never_exposed(self, db) -> None:
-        # Column is unread. A value there must not become candidate_api_keys.
-        self._sql(
-            db,
-            "UPDATE candidate SET candidate_api_key = ? WHERE astral_candidate_id = ?",
-            ("legacy-blob", "cand-1"),
-        )
+        self._sql(db, "UPDATE candidate SET candidate_api_key = ? WHERE astral_candidate_id = ?",
+                  (db.encrypt_value("old-single-key"), "cand-1"))
         row = db.get_candidate("cand-1")
         assert "candidate_api_key" not in row
         assert row["candidate_api_keys"] == {}
 
-    def test_edit_replaces_in_place_and_appends(self, db) -> None:
-        db.update_candidate_api_keys("cand-1", [
-            {"server": "kimi", "status": "SET", "expires_at": "2999-01-01 00:00:00"},
-            {"server": "openrouter", "status": "SET", "expires_at": "2999-01-02 00:00:00"},
-        ])
-        db.update_candidate_api_keys("cand-1", [
-            {"server": "kimi", "status": "SET", "expires_at": "2999-06-01 00:00:00"},
-            {"server": "deepseek", "status": "NOT SET", "expires_at": None},
-        ])
+    def test_edit_replaces_in_place_and_appends_new_servers(self, db) -> None:
+        db.update_candidate_api_keys("cand-1", [{"server": "kimi", "key": "first"}, {"server": "openrouter", "key": "or"}])
+        db.update_candidate_api_keys("cand-1", [{"server": "kimi", "key": "second"}, {"server": "deepseek", "key": "ds"}])
         assert [e["server"] for e in self._raw(db)] == ["kimi", "openrouter", "deepseek"]
-        assert self._raw(db)[0]["expires_at"] == "2999-06-01 00:00:00"
-        assert self._raw(db)[1]["status"] == "SET"
+        assert self._keys(db) == {"kimi": "second", "openrouter": "or", "deepseek": "ds"}
 
-    def test_clear_keeps_not_set_row(self, db) -> None:
-        db.update_candidate_api_keys("cand-1", [
-            {"server": "kimi", "status": "SET", "expires_at": "2999-01-01 00:00:00"},
-            {"server": "openrouter", "status": "SET", "expires_at": "2999-01-01 00:00:00"},
-        ])
-        db.update_candidate_api_keys("cand-1", [
-            {"server": "kimi", "status": "NOT SET", "expires_at": None},
-        ])
-        raw = self._raw(db)
-        assert [e["server"] for e in raw] == ["kimi", "openrouter"]
-        assert raw[0] == {"server": "kimi", "status": "NOT SET", "expires_at": None}
-        assert raw[1]["status"] == "SET"
-
-    def test_untouched_legacy_ciphertext_survives_another_servers_edit(self, db) -> None:
-        self._sql(
-            db,
-            "UPDATE candidate SET api_keys = ? WHERE astral_candidate_id = ?",
-            (json.dumps([{"server": "kimi", "key": "cipher-kimi"}]), "cand-1"),
-        )
-        db.update_candidate_api_keys("cand-1", [
-            {"server": "openrouter", "status": "SET", "expires_at": "2999-01-01 00:00:00"},
-        ])
-        raw = self._raw(db)
-        assert raw[0] == {"server": "kimi", "key": "cipher-kimi"}
-        assert raw[1]["server"] == "openrouter"
-        assert "key" not in raw[1]
+    def test_blank_key_removes_entry_and_absent_removal_is_noop(self, db) -> None:
+        db.update_candidate_api_keys("cand-1", [{"server": "kimi", "key": "k"}, {"server": "openrouter", "key": "or"}])
+        db.update_candidate_api_keys("cand-1", [{"server": "kimi", "key": ""}, {"server": "deepseek", "key": "   "}])
+        assert [e["server"] for e in self._raw(db)] == ["openrouter"]
+        assert self._keys(db) == {"openrouter": "or"}
 
     def test_duplicate_server_rejected_and_nothing_written(self, db) -> None:
         with pytest.raises(ValueError, match="Duplicate api_keys entry for server 'kimi'"):
-            db.update_candidate_api_keys("cand-1", [
-                {"server": "kimi", "status": "SET", "expires_at": "2999-01-01 00:00:00"},
-                {"server": "kimi", "status": "NOT SET", "expires_at": None},
-            ])
+            db.update_candidate_api_keys("cand-1", [{"server": "kimi", "key": "a"}, {"server": "kimi", "key": "b"}])
         assert self._raw(db) == []
 
     @pytest.mark.parametrize(
         ("cid", "entries", "exc", "match"),
         [
-            ("  ", [{"server": "kimi", "status": "SET", "expires_at": "2999-01-01 00:00:00"}], ValueError, "candidate_id is required"),
-            ("cand-1", [{"server": "kimi", "key": "sk"}], ValueError, "Invalid api_keys status"),
-            ("ghost", [{"server": "kimi", "status": "SET", "expires_at": "2999-01-01 00:00:00"}], LookupError, "Candidate not found: ghost"),
+            ("  ", [{"server": "kimi", "key": "k"}], ValueError, "candidate_id is required"),
+            ("cand-1", [{"server": "__nope__", "key": "k"}], ValueError, "Unknown LLM server"),
+            ("ghost", [{"server": "kimi", "key": "k"}], LookupError, "Candidate not found: ghost"),
         ],
     )
     def test_update_rejects_bad_input(self, db, cid: str, entries: list, exc: type, match: str) -> None:
@@ -226,23 +190,21 @@ class TestAst1901CandidateApiKeysArray:
             db.update_candidate_api_keys(cid, entries)
         assert self._raw(db) == []
 
-    def test_malformed_column_reads_as_empty(self, db) -> None:
+    def test_undecryptable_entry_is_omitted(self, db, monkeypatch: pytest.MonkeyPatch) -> None:
+        db.update_candidate_api_keys("cand-1", [{"server": "kimi", "key": "sk-kimi"}])
+        monkeypatch.setattr(db, "_fernet", Fernet(Fernet.generate_key()))
+        db.update_candidate_api_keys("cand-1", [{"server": "deepseek", "key": "sk-ds"}])
+        assert self._keys(db) == {"deepseek": "sk-ds"}
+
+    def test_malformed_column_or_entries_read_as_not_set(self, db) -> None:
         set_col = "UPDATE candidate SET api_keys = ? WHERE astral_candidate_id = ?"
         self._sql(db, set_col, ("not json", "cand-1"))
-        assert db.get_candidate("cand-1")["candidate_api_keys"] == {}
-        assert db.get_candidate("cand-1")["candidate_secret_status"] == {}
-        self._sql(db, set_col, (json.dumps([{"server": "kimi"}, "x", {"key": "only"}, {"nope": 1}]), "cand-1"))
-        row = db.get_candidate("cand-1")
-        assert row["candidate_secret_status"] == {}
-        assert row["candidate_api_keys"] == {}
-
-    def test_required_metadata_columns_unchanged(self, db) -> None:
-        cols = {r[1] for r in self._sql(db, "PRAGMA table_info(candidate)")}
-        for name in (
-            "state", "state_history", "state_changed_at", "batch_id", "batch_created_at",
-            "created_at", "updated_at",
-        ):
-            assert name in cols
+        assert self._keys(db) == {}
+        self._sql(db, set_col, (json.dumps({"server": "kimi"}), "cand-1"))
+        assert self._keys(db) == {}
+        good = db.encrypt_value("sk-ds")
+        self._sql(db, set_col, (json.dumps([{"server": "kimi"}, "x", {"key": good}, {"server": "deepseek", "key": good}]), "cand-1"))
+        assert self._keys(db) == {"deepseek": "sk-ds"}
 
     def test_schema_setup_adds_column_and_drops_candidate_key_table(self, db, monkeypatch: pytest.MonkeyPatch) -> None:
         # Existing pre-AST-1901 database: legacy candidate table without api_keys + a candidate_key table.
@@ -268,13 +230,13 @@ class TestAst1901CandidateApiKeysArray:
             assert not hasattr(db, name), name
 
     def test_hard_delete_takes_keys_with_the_row(self, db) -> None:
-        db.update_candidate_api_keys("cand-1", [{"server": "kimi", "status": "SET", "expires_at": "2999-01-01 00:00:00"}])
+        db.update_candidate_api_keys("cand-1", [{"server": "kimi", "key": "sk-kimi"}])
         counts = db.hard_delete_candidate("cand-1")
         assert "candidate_key" not in counts
         assert counts["candidate"] == 1
         # A re-created candidate with the same id must not inherit the deleted person's keys.
         db.save_candidate("cand-1", state="NEW_CANDIDATE")
-        assert db.get_candidate("cand-1")["candidate_api_keys"] == {}
+        assert self._keys(db) == {}
 
 
 # Branches: candidate.last_email_check column + stamp helper (AST-1134).
