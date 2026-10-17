@@ -4176,3 +4176,21 @@ cd src/ui/frontend && npm run test:component -- \
 Manifest: [`components.md`](components.md) § AST-2234.
 
 **AST-2252 Manage Candidates expiry:** [`../ui/api/api_candidate.md`](../ui/api/api_candidate.md) § QA test manifest — AST-2252.
+
+### AST-2267 · AST-2225 (state dropdown labels)
+
+**Parent:** [AST-2225](https://linear.app/astralcareermatch/issue/AST-2225). **Publish:** `origin/sub/AST-2225/AST-2267-manage-candidates-state-dropdown`. API: [`../ui/api/api_candidate.md`](../ui/api/api_candidate.md) § AST-2267.
+
+Existing `/api/candidates/states` stubs are `{state, label}` objects (`pickerStates`) so option **values** stay the raw key after the page stops accepting a string array. `[bug-repro]` page node expects `5:ACTIVE_SEARCH` / `0:DELETED` text and a raw extra option when the candidate’s current state is omitted (`RESUME_READY_STALE`). Red on the pre-fix page (it prints the object). §6c: this file already renders `AdminManageCandidates`.
+
+## QA test manifest — AST-2267
+
+Page node (with the API node in [`../ui/api/api_candidate.md`](../ui/api/api_candidate.md)):
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminManageCandidates.test.tsx \
+  -t 'AST-2267'
+```
+
+**Pass criterion:** `[bug-repro] AST-2267: stage labels…` red on this tip; green once the select renders `label` and keeps an omitted current state as a raw option.

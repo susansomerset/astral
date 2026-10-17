@@ -313,3 +313,130 @@ Confirm estimate **5**: footprint is registry + two core helpers + data-model do
 - Optional for `resolve-child` / UT notes only: one line in issue doc that topic-labeled rows heal on first `age_stale_candidate_states` if operators care about the window (already in plan + data model).
 
 context_tokens≈28000
+
+## Bug: AST-2267 — Manage Candidates state dropdown
+
+### As-is
+
+`GET /api/candidates/states` returns every `CANDIDATE_STATES` key (`src/ui/api/api_candidate.py` `get_candidate_states`). Manage Candidates renders each string as both option value and label (`AdminManageCandidates.tsx` state `<select>`). The list includes `ERROR_*`, `INTAKE_INITIATED`, and `*_STALE`, with no stage prefix and no alphanumeric sort.
+
+### To-be
+
+The dropdown omits `ERROR_*`, `INTAKE_INITIATED`, and `*_STALE`. Each remaining item’s visible text is `{stage}:{STATE}` (example `5:ACTIVE_SEARCH`). The list is sorted alphanumeric by that label. The option **value** stays the raw registry key so save still posts `ACTIVE_SEARCH`, not the label. Those omitted names stay in `CANDIDATE_STATES`.
+
+### Repro
+
+Open Manage Candidates, edit any candidate, open **State (admin override)**. The options include `ERROR_SHAPE_THE_STORY` (and other `ERROR_*`), `INTAKE_INITIATED`, `RESUME_READY_STALE`, `ARTIFACTS_READY_STALE`, shown as bare names in registry insertion order.
+
+### Root cause
+
+`get_candidate_states` dumps `list(CANDIDATE_STATES.keys())` with no picker filter. The select prints that string; it never reads `stage`.
+
+### Proposed change
+
+1. In `src/ui/api/api_candidate.py`, replace the body of `get_candidate_states` so the JSON is a list of objects, not bare strings. Build it only from `CANDIDATE_STATES` (do not edit the registry):
+
+   - Skip a key when `name.startswith("ERROR_")` or `name == "INTAKE_INITIATED"` or `name.endswith("_STALE")`.
+   - For each kept key, `label = f"{int(cfg['stage'])}:{name}"`.
+   - Sort by `label` ascending (plain string order).
+   - Return `jsonify([{"state": name, "label": label}, ...])`.
+
+   Example head: `{"state": "DELETED", "label": "0:DELETED"}`, `{"state": "INACTIVE", "label": "0:INACTIVE"}`, then stage 1 names, through `{"state": "ACTIVE_SEARCH", "label": "5:ACTIVE_SEARCH"}`. No `ERROR_*`, no `INTAKE_INITIATED`, no `RESUME_READY_STALE`, no `ARTIFACTS_READY_STALE`.
+
+2. In `src/ui/frontend/src/pages/AdminManageCandidates.tsx`:
+
+   - Change `validStates` state to `{ state: string; label: string }[]`.
+   - On `/api/candidates/states`, keep the array only when every element is an object with string `state` and string `label`; otherwise set `[]`.
+   - Render:
+
+     ```tsx
+     {validStates.map(s => (
+       <option key={s.state} value={s.state}>{s.label}</option>
+     ))}
+     ```
+
+   - If `editForm.state` is non-empty and not in `validStates`, render one extra `<option value={editForm.state}>{editForm.state}</option>` **before** the mapped options so a candidate already in an omitted state stays selected. Do not invent a stage prefix for that extra option.
+
+3. Do not change `CANDIDATE_STATES`, transition rules, or any other caller. Do not edit `tests/`.
+
+### Blast radius
+
+`/api/candidates/states` is only consumed by `AdminManageCandidates.tsx` in product code. Component tests that stub or assert a **string** array (`tests/component/ui/api/test_api_candidate.py`, `tests/component/frontend/pages/test_AdminManageCandidates.test.tsx`) will not match the object list — Betty owns that tree.
+
+### What must still hold
+
+- Every `CANDIDATE_STATES` entry still has `stage`, including omitted picker names (`ERROR_*` stage 3 or 4, `INTAKE_INITIATED` stage 1, `*_STALE` stage 4).
+- No `candidate.stage` column.
+- Saving the select posts the raw state key. Dispatch and stale aging still use the registry keys, not the label.
+
+## Radia review (AST-2267)
+
+[code-rubric]
+**Ticket:** AST-2267
+**Publish ref:** `5e3584001505220e91d384da8b35ea1bcef748d3` (`origin/sub/AST-2225/AST-2267-manage-candidates-state-dropdown`)
+**Corpus:** (no frozen `## Citations` on AST-2267 — Joan `[board-joan] CANON: OK` at plan-fix; no `canon_clerk` expand run)
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| (no frozen canon list on ticket) | — | | Issue description has no `## Citations`; fix scored via plan-fix + board-joan scope (registry/dispatch/metadata unchanged) |
+
+## Column diff vs plan stage
+
+no plan-stage canon scores attached (bug ticket)
+
+## Frame diff
+
+(none)
+
+## [bug-repro]
+
+**OK** — Assertions pin **To-be** behavior and would fail pre-fix:
+
+- `tests/component/ui/api/test_api_candidate.py` — `TestAst2267PickerStates::test_ast2267_picker_states_are_stage_labels`: `{state, label}` objects only; sorted labels; omits `ERROR_*` / `INTAKE_INITIATED` / `*_STALE`; `5:ACTIVE_SEARCH`, `0:DELETED`, `1:PROSPECT`.
+- `tests/component/frontend/pages/test_AdminManageCandidates.test.tsx` — `[bug-repro] AST-2267: stage labels, and a raw option when current state is omitted`: visible `5:ACTIVE_SEARCH` / `0:DELETED` with **values** `ACTIVE_SEARCH` / `DELETED`; extra raw `RESUME_READY_STALE` option when current state omitted from list; no `ERROR_*` options.
+
+## What must still hold
+
+**OK**
+
+- Registry untouched: filter/sort only in `get_candidate_states`; no `CANDIDATE_STATES` edits.
+- `stage` on every entry (including omitted names) unchanged — still read from `cfg['stage']` for labels.
+- No `candidate.stage` column.
+- Select **value** remains raw registry key (`value={s.state}`); save path unchanged.
+- Dispatch / stale aging still use full registry (omitted keys remain in `CANDIDATE_STATES`).
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **Location:** `git diff origin/ftr/AST-2225-revise-candidate-ui-and-candidate-states...origin/sub/AST-2225/AST-2267-manage-candidates-state-dropdown`
+- **Finding:** Three-dot diff vs `origin/ftr/AST-2225-…` is **not** fix-sized (~271 files) — branch history includes `sync(dev)`, AST-2268, platform/agent work, and other epic merges while `ftr` lags. **AST-2267 product delta** is isolated to `get_candidate_states` + `AdminManageCandidates.tsx` (`331ce0537`, `5e3584001`) plus Betty tests.
+- **Note:** Chuckles should merge/review **2267 slice** by commit/path, not treat the whole ftr…sub stat as this bug.
+
+- **Location:** `TestAst2267PickerStates` / `test_list_candidates_and_states`
+- **Finding:** `5e3584001` correctly keeps **PROSPECT** (`1:PROSPECT`) after AST-2228 vocabulary; omit list is only `ERROR_*`, `INTAKE_INITIATED`, `*_STALE` per plan — aligns with Ada’s `[bug-repro] nuance` comment.
+
+## Plan fidelity (non-canon)
+
+Matches plan-fix **Proposed change**: object payload, filter rules, `label = f"{stage}:{name}"`, alphanumeric sort, page consumes `{state, label}`, raw extra option for omitted current state. Blast radius respected (only Manage Candidates consumer updated in product code).
+
+## Recommended actions (downstream — not for Radia)
+
+- Chuckles: append artifact, `docs(AST-2267): Radia review — clean`, push, post slim upshot `--as radia`, **Review Posted** → fix-lane **§3h clean shortcut** → **User Testing** (`resolve-child` skipped).
+- **Parent shape:** Normal (AST-2225 not orphaned) — `merge-child` / ftr rollup per fix-lane; use path/commit filter when landing 2267 amid stacked branch history.
+
+context_tokens≈38000
+
+```
+[code-rubric] PROCEED (Commit: 5e3584001505220e91d384da8b35ea1bcef748d3) picker labels clean
