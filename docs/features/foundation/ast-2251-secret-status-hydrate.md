@@ -339,3 +339,80 @@ Advisory only. ftr three-dot includes unrelated sibling carry; scored 2275 commi
 ```
 [code-rubric] PROCEED (Commit: 7e32100) Vault set plants process env
 ```
+
+## Bug: AST-2283 — vault-set OpenRouter key still missing for scheduled actions and ad hoc
+
+### As-is
+
+After a vault set (including AST-2275's in-process plant), scheduled-action validation still marks the task invalid for a missing OpenRouter key, and Agent Ad Hoc still fails with `Candidate … has no API key for server 'openrouter'`, while Manage Candidates shows OpenRouter status SET.
+
+### To-be
+
+After Admin saves a non-empty OpenRouter key for that candidate (production Railway path), both `_candidate_dispatch_api_key_error` (scheduled actions / Run / Auto) and Ad Hoc resolve a non-empty `candidate_api_keys["openrouter"]` for that candidate — on the process that handled the save, and on the process that comes up after the deploy that follows the write — so those paths do not fail for a missing OpenRouter key.
+
+### Repro
+
+1. Production probe true (`ASTRAL_RAILWAY_TOKEN` set and non-empty). Candidate `somerset` OpenRouter status may already show SET from an earlier vault write.
+2. In Manage Candidates, **re-type** a non-empty OpenRouter key, pick a future expiry date, save. (The UI only PUTs `api_keys` rows that changed; leaving the key blank does not re-enter the write path.)
+3. Open Scheduled Actions for a task whose agent server is `openrouter`, and/or POST `/api/admin/adhoc/test` (Agent Ad Hoc) for `somerset` with an OpenRouter-backed agent.
+4. Fail: `invalid_reason` / skipped dispatch cites a missing OpenRouter key; Ad Hoc returns `Candidate somerset has no API key for server 'openrouter'`. GET still shows OpenRouter status SET.
+
+### Root cause
+
+Production Admin PUT (`src/ui/api/api_candidate.py`) runs Railway upsert/delete, then **`trigger_service_deploy()`**, then `update_candidate_api_keys` (AST-2275 plant + status). Production uses a single gunicorn worker. The deploy restarts that worker and clears process-local `os.environ`, so the plant does not survive the deploy that the same PUT requested. Hydrate still builds `candidate_api_keys` only from environ; when the post-deploy process does not yet have `CANDIDATE_<ID>_OPENROUTER` (deploy signaled before plant/status finished, or the plant never ran because the worker was replaced first), the map stays empty while `candidate_secret_status` remains SET. Scheduled-action validation and Ad Hoc both gate on that map (`_candidate_dispatch_api_key_error`, `_candidate_server_key`). AST-2275 only covered the pre-restart writer process and does not reorder the Admin PUT relative to deploy.
+
+### Proposed change
+
+Scope (parent Component / Technical scope): `src/external/railway.py`, `src/ui/api/api_candidate.py`. Do not change hydrate's EXPIRED / missing-env rules. Do not read secrets back from Railway. Do not store ciphertext.
+
+1. In `src/external/railway.py`, add `upsert_service_variables(variables: dict[str, str]) -> None` that one-shots the existing `variableCollectionUpsert` mutation with the full `variables` object, `skipDeploys: True`, same auth/target/`RailwayCallFailed` / redaction behavior as `upsert_service_variable`. Keep `upsert_service_variable(name=..., value=...)` as a thin wrapper that calls `upsert_service_variables({name: value})` (or equivalent one-key call) so existing callers and tests stay valid. Do not add a variable-read API.
+
+2. In `src/ui/api/api_candidate.py`, inside the production `api_keys` branch of the candidate data PUT, replace the per-edit upsert + deploy + status order with:
+   1. Build two collections from `api_key_edits` (same `candidate_secret_variable_name(server, candidate_id)` as today): `to_set` = `{env_name: stripped key}` for every non-empty key; `to_delete` = `[env_name, …]` for every clear.
+   2. If `to_set` is non-empty: `upsert_service_variables(to_set)` once (all sets in one Railway call).
+   3. For each name in `to_delete`: `delete_service_variable(name=name)` as today.
+   4. Then `update_candidate_api_keys(candidate_id, api_key_edits)` — status + AST-2275 plant/pop — **before** any deploy trigger.
+   5. Then, if `to_set` or `to_delete` is non-empty: `trigger_service_deploy()` once.
+   6. Keep `RailwayCallFailed` → 502 without writing status when a Railway call fails before step 4. Local path (`ASTRAL_RAILWAY_TOKEN` unset/blank) stays: no Railway calls; only `update_candidate_api_keys`.
+
+3. Do not change `_candidate_dispatch_api_key_error`, Ad Hoc resolve, or `hydrate_candidate_secrets` beyond what step 2 already guarantees via plant + post-deploy Railway env. Do not log key material or env values.
+
+Done when: a production Admin set of OpenRouter (mocked Railway) calls upsert (batch) → `update_candidate_api_keys` → one `trigger_service_deploy`, in that order; after `update_candidate_api_keys` returns, `database.get_candidate` → hydrate includes `openrouter` in `candidate_api_keys` from the planted environ name; clear still deletes, plants pop, then one deploy.
+
+### Blast radius
+
+- `src/ui/api/api_candidate.py` — production `api_keys` PUT order and batched upsert only.
+- `src/external/railway.py` — new multi-variable upsert helper; one-key wrapper behavior unchanged for callers.
+- Consumers unchanged: `api_admin._candidate_dispatch_api_key_error`, `dispatcher` missing-key gate, `agent._candidate_server_key` / Ad Hoc.
+- AST-2275 plant in `update_candidate_api_keys` stays; this ticket makes it run before the deploy the same PUT requests.
+- Not in scope: date-select midnight expiry (AST-2265); migration script deploy policy; Railway variable read-back; multi-worker (production stays one worker).
+
+### What must still hold
+
+- Parent AC: Admin set records upsert + one deploy trigger and status/expiry only on the row (no ciphertext).
+- Parent AC: EXPIRED (now ≥ expires_at) omits the server from `candidate_api_keys` and blocks dispatch like unset.
+- Parent AC: local with Railway unset shares one stub per secret id; no Railway call on hydrate or on local Admin set.
+- Parent AC: GET / sanitize never returns plaintext.
+- AST-2275: set still plants (and clear pops) the process env name hydrate reads; hydrate still warns (candidate id + secret id, not the value) when status is SET and the env value is missing.
+- `stat.logging.error` / `stat.logging.info.api`: Railway failures and Admin completion logs stay free of secret material.
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-2283
+**Publish ref:** `3a24cd5075b770a78c1af744f9f7af62f13ce450` (`origin/sub/AST-2246/AST-2283-vault-key-still-missing`)
+**Overall:** CLEAN
+
+## Fix-specific checks
+
+**[bug-repro]** — OK. Plant before deploy order + hydrate keeps OpenRouter.
+
+**## What must still hold** — OK. Upsert + one deploy, EXPIRED/local/GET, AST-2275 plant, no-secret logging.
+
+## Findings
+
+Advisory only. Deletes-before-upserts order vs plan text; multi-key batch untested; post-restart env is UAT.
+
+```
+[code-rubric] PROCEED (Commit: 3a24cd5) Plant before deploy reorder
+```

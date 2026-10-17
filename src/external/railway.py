@@ -8,7 +8,7 @@ A missing ASTRAL_RAILWAY_* env var is a bare KeyError from os.environ.
 from __future__ import annotations
 
 import os
-from typing import NoReturn
+from typing import Dict, NoReturn
 
 import requests
 
@@ -174,31 +174,43 @@ def _post(
     return data
 
 
-def upsert_service_variable(*, name: str, value: str) -> None:
-    """Upsert one service variable. skipDeploys so the caller triggers deploy."""
-    if not (name or "").strip() or value is None or value == "":
-        raise ValueError("name and value are required")
+def upsert_service_variables(variables: Dict[str, str]) -> None:
+    """Upsert one or more service variables in one call. skipDeploys so the caller triggers deploy."""
+    if not variables:
+        raise ValueError("variables is required")
+    for name, value in variables.items():
+        if not (name or "").strip() or value is None or value == "":
+            raise ValueError("name and value are required")
+    first_name = next(iter(variables))
+    # Join values so _post / _fail redact every secret in the batch, not only the first.
+    redact_blob = "\n".join(variables.values())
+    label = first_name if len(variables) == 1 else f"{first_name}+{len(variables) - 1}"
     data = _post(
         _UPSERT,
         {
             "projectId": "",
             "serviceId": "",
             "environmentId": "",
-            "variables": {name: value},
+            "variables": dict(variables),
             "skipDeploys": True,
         },
         operation="upsert",
-        variable_name=name,
-        secret_value=value,
+        variable_name=label,
+        secret_value=redact_blob,
     )
     if data.get("variableCollectionUpsert") is not True:
         _fail(
             "upsert",
-            name,
+            label,
             RuntimeError("variableCollectionUpsert was not true"),
-            value,
+            redact_blob,
             os.environ[CANDIDATE_SECRET_RAILWAY_CONFIG["token_env"]],
         )
+
+
+def upsert_service_variable(*, name: str, value: str) -> None:
+    """Upsert one service variable. skipDeploys so the caller triggers deploy."""
+    upsert_service_variables({name: value})
 
 
 def delete_service_variable(*, name: str) -> None:
