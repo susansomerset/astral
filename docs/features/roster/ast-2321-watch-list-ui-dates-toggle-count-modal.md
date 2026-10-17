@@ -314,3 +314,13 @@ no plan-stage canon scores attached (fix-lane `plan-fix` patch only)
 | After clean **PROCEED** | Normal | → **Review Posted** → fix-lane clean shortcut → **User Testing** (skip resolve-child) |
 
 Do **not** treat meteorite changes as part of AST-2326 acceptance until scope is split or Susan explicitly approves bundling.
+
+## Resolution (AST-2326) — 2026-10-17
+
+**fix-now (scope strip):** Restored from `origin/ftr/AST-2318-company-roster-list-updates` so this publish tip no longer carries AST-2325/2216 meteorite chrome:
+
+- `src/ui/frontend/src/components/MeteoriteDetailModal.tsx`
+- `tests/component/frontend/components/test_MeteoriteDetailModal.test.tsx`
+- `docs/features/agent/ast-2224-meteorite-modal-edit-form.md` (advisory doc carry)
+
+AST-2325 remains on its own `sub/*` / `origin/dev` lineage; Watch List polish commits unchanged. Re-ran AST-2326 qa-fix manifest after the restore.
