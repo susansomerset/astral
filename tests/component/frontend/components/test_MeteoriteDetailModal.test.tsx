@@ -263,14 +263,19 @@ describe("MeteoriteDetailModal — AST-2224 candidate edit form", () => {
     for (const opt of STATE_OPTIONS) {
       expect(within(stateSelect).getByRole("option", { name: opt })).toBeInTheDocument()
     }
-    // Labels follow server editable_fields order inside the edit form.
+    // AST-2325 layout: non-content keys in profile-contact-grid, then content full-width
+    // (DOM label order ≠ raw editable_fields when content is mid-list on the server).
     const form = document.querySelector(".meteorite-edit-form")
     expect(form).not.toBeNull()
     const labelKeys = Array.from(form!.querySelectorAll("label")).map(lab => {
       const t = lab.firstChild
       return t && t.nodeType === Node.TEXT_NODE ? String(t.textContent) : ""
     })
-    expect(labelKeys).toEqual(EDITABLE_FIELDS)
+    const expectedLabelOrder = [
+      ...EDITABLE_FIELDS.filter(k => k !== "content"),
+      ...EDITABLE_FIELDS.filter(k => k === "content"),
+    ]
+    expect(labelKeys).toEqual(expectedLabelOrder)
   })
 
   it("non-editable detail: read-only sections, no Save", async () => {
