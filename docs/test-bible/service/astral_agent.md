@@ -108,6 +108,24 @@ Isolated FastAPI Postgres queue consumer — **not** under `src/`. Flat imports 
 
 **Broken / obsolete revised:** AST-2237 stub echo / `stub_error` / requirements-without-providers asserts. Platform `send_to_*` HTTP suites skipped (`@_SEND_RETIRED`) — wire coverage lives under `service/astral_agent/providers` until AST-2240 retargets callers.
 
+### cursor-microservice-tweaks · step 2 (async provider client)
+
+**Scope:** `service/astral_agent/providers/*` — `AsyncAnthropic` replaces sync `Anthropic` + `asyncio.to_thread`; budget helper cancels the inner call; 429 backoff sleeps are awaited; `_slots` is a plain dict of `asyncio.Semaphore` (no lock); probe waiters are shielded. 429/backoff behavior, probe and pin unchanged.
+
+| Area | Component tests |
+| --- | --- |
+| Cancel aborts the HTTP socket (real local server; compat + anthropic) | `test_astral_agent_providers.py::TestStep2AsyncProviderClient::test_cancel_aborts_the_http_call` |
+| Budget expiry cancels the call → `provider_call_timeout` | `…::TestStep2AsyncProviderClient::test_budget_expiry_aborts_the_call` |
+| Client closed on success / failure | `…::TestStep2AsyncProviderClient::test_client_closed_after_success_and_failure` |
+| 100 concurrent calls in flight (no thread-pool cap) | `…::TestStep2AsyncProviderClient::test_no_hidden_concurrency_cap` |
+| 429 backoff delays awaited, same doubling | `…::TestStep2CompatBackoffAndSlots::test_429_retry_sleeps_are_awaited_with_same_backoff` |
+| Cancel during backoff sleep sends no further call | `…::TestStep2CompatBackoffAndSlots::test_cancel_during_backoff_sends_no_further_call` |
+| `max_concurrent` still limits in flight (semaphore swap) | `…::TestStep2CompatBackoffAndSlots::test_max_concurrent_still_limits_in_flight` |
+| Probe → pin unchanged; later jobs reuse host | `…::TestStep2ProbeAndPin::test_probe_then_pin_unchanged` |
+| Cancelled probe waiter leaves owner + other waiters intact | `…::TestStep2ProbeAndPin::test_cancelled_waiter_does_not_break_owner_or_other_waiters` |
+
+An autouse fixture clears `llm_compat_provider._slots` and `openrouter_provider._hosts` per test (semaphores bind to the first loop that contends on them).
+
 ## QA test manifest
 
 1. **Service providers + queue revise (required):**

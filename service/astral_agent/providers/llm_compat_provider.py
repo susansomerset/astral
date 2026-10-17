@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
+import asyncio
 import random
-import threading
-import time
 from contextlib import nullcontext
 from typing import Any, Dict, Optional
 
 import httpx
-from anthropic import Anthropic, RateLimitError
+from anthropic import AsyncAnthropic, RateLimitError
 
 from logging_util import get_logger
 from providers import openrouter_provider
@@ -31,8 +30,8 @@ from providers.errors import (
 
 _log = get_logger("providers.llm_compat_provider")
 
-_slots: Dict[str, threading.BoundedSemaphore] = {}
-_slots_lock = threading.Lock()
+# Per-server in-flight limit (step 6 removes it). Single event loop, so no lock.
+_slots: Dict[str, asyncio.Semaphore] = {}
 
 
 def _int_or(request: Dict[str, Any], key: str, default: int) -> int:
@@ -40,9 +39,9 @@ def _int_or(request: Dict[str, Any], key: str, default: int) -> int:
     return default if raw is None else int(raw)
 
 
-def _client(request: Dict[str, Any], timeout_s: int, max_retries: int) -> Anthropic:
+def _client(request: Dict[str, Any], timeout_s: int, max_retries: int) -> AsyncAnthropic:
     cred = {"auth_token": request["api_key"]} if request.get("auth") == "bearer" else {"api_key": request["api_key"]}
-    return Anthropic(
+    return AsyncAnthropic(
         base_url=request["base_url"],
         timeout=httpx.Timeout(timeout_s),
         max_retries=max_retries,
@@ -50,21 +49,20 @@ def _client(request: Dict[str, Any], timeout_s: int, max_retries: int) -> Anthro
     )
 
 
-def _create(client: Anthropic, api_kwargs: Dict[str, Any], server_id: str, concurrency: Optional[Dict[str, Any]]) -> Any:
+async def _create(client: AsyncAnthropic, api_kwargs: Dict[str, Any], server_id: str, concurrency: Optional[Dict[str, Any]]) -> Any:
     """Same jittered doubling 429 backoff as the platform compat client."""
     if not concurrency:
-        return client.messages.create(**api_kwargs)
+        return await client.messages.create(**api_kwargs)
     sem: Any = nullcontext()
     if concurrency.get("max_concurrent"):
-        with _slots_lock:
-            sem = _slots.setdefault(server_id, threading.BoundedSemaphore(int(concurrency["max_concurrent"])))
+        sem = _slots.setdefault(server_id, asyncio.Semaphore(int(concurrency["max_concurrent"])))
     attempts = int(concurrency["rate_limit_retries"]) + 1
     base = float(concurrency["backoff_base_seconds"])
     cap = concurrency.get("backoff_max_seconds")
     for attempt in range(attempts):
         try:
-            with sem:
-                return client.messages.create(**api_kwargs)
+            async with sem:
+                return await client.messages.create(**api_kwargs)
         except RateLimitError:
             if attempt == attempts - 1:
                 raise
@@ -73,7 +71,7 @@ def _create(client: Anthropic, api_kwargs: Dict[str, Any], server_id: str, concu
                 delay = min(delay, float(cap))
             delay *= random.uniform(0.5, 1.0)
             _log.warning("%s 429; retry %d/%d in %.1fs", server_id, attempt + 1, attempts - 1, delay)
-            time.sleep(delay)
+            await asyncio.sleep(delay)
 
 
 def _kwargs(request: Dict[str, Any]) -> Dict[str, Any]:
@@ -113,13 +111,18 @@ def _from_exception(exc: BaseException, timeout_s: int, *, host: str, stops_batc
 
 async def send(request: Dict[str, Any]) -> Dict[str, Any]:
     timeout_s = _int_or(request, "timeout_seconds", int(CALL_BUDGET["timeout_seconds"]))
-    grace = _int_or(request, "grace_seconds", int(CALL_BUDGET["grace_seconds"]))
     max_retries = _int_or(request, "max_retries", int(CALL_BUDGET["max_retries"]))
+    # Client is closed on every exit, including a cancel (no leaked sockets).
+    async with _client(request, timeout_s, max_retries) as client:
+        return await _run(request, client, timeout_s)
+
+
+async def _run(request: Dict[str, Any], client: AsyncAnthropic, timeout_s: int) -> Dict[str, Any]:
+    grace = _int_or(request, "grace_seconds", int(CALL_BUDGET["grace_seconds"]))
     server_id = str(request.get("server_id") or "compat")
     host_label = server_id
     concurrency = request.get("concurrency") if isinstance(request.get("concurrency"), dict) else None
     stops_batch = bool((concurrency or {}).get("exhausted_stops_batch"))
-    client = _client(request, timeout_s, max_retries)
     api_kwargs = _kwargs(request)
     wall = float(timeout_s) + float(grace)
 

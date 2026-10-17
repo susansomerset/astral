@@ -60,7 +60,8 @@ async def get_batch_host(
             fut = _hosts[key] = Future()
     if not owner:
         _log.debug("Host map: awaiting probe result for batch=%s", batch_id)
-        return await asyncio.wrap_future(fut)
+        # shield: cancelling this waiter must not cancel the shared Future (owner + others use it).
+        return await asyncio.shield(asyncio.wrap_future(fut))
     _log.debug("Host map: probing for batch=%s", batch_id)
     try:
         fut.set_result((await probe_host(api_kwargs, send), None))

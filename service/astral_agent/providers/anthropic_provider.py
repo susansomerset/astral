@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any, Dict
 
 import httpx
-from anthropic import Anthropic
+from anthropic import AsyncAnthropic
 
 from providers.errors import (
     CALL_BUDGET,
@@ -58,19 +58,20 @@ async def send(request: Dict[str, Any]) -> Dict[str, Any]:
     timeout_s = _int_or(request, "timeout_seconds", int(CALL_BUDGET["timeout_seconds"]))
     grace = _int_or(request, "grace_seconds", int(CALL_BUDGET["grace_seconds"]))
     max_retries = _int_or(request, "max_retries", int(CALL_BUDGET["max_retries"]))
-    client = Anthropic(
-        api_key=request["api_key"],
-        timeout=httpx.Timeout(timeout_s),
-        max_retries=max_retries,
-    )
     api_kwargs = _kwargs(request)
     wall = float(timeout_s) + float(grace)
     try:
-        response = await await_provider_call_with_budget(
-            lambda: client.messages.create(**api_kwargs),
-            timeout_seconds=wall,
-            timeout_message=timeout_error_message(timeout_s),
-        )
+        # Client is closed on every exit, including a cancel (no leaked sockets).
+        async with AsyncAnthropic(
+            api_key=request["api_key"],
+            timeout=httpx.Timeout(timeout_s),
+            max_retries=max_retries,
+        ) as client:
+            response = await await_provider_call_with_budget(
+                lambda: client.messages.create(**api_kwargs),
+                timeout_seconds=wall,
+                timeout_message=timeout_error_message(timeout_s),
+            )
     except Exception as exc:
         return _from_exception(exc, timeout_s)
     usage = usage_from_response(response)

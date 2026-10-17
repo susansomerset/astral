@@ -7,7 +7,7 @@ Change both sides together when classes change. No platform imports.
 from __future__ import annotations
 
 import asyncio
-from typing import Any, Callable, List, Optional
+from typing import Any, Awaitable, Callable, List, Optional
 
 # Mirror src/utils/config.py PROVIDER_BALANCE_REFUSAL.
 BALANCE_REFUSAL = {
@@ -230,14 +230,17 @@ def success_result(response: Any, *, host: Optional[str] = None) -> dict:
 
 
 async def await_provider_call_with_budget(
-    make_call: Callable[[], Any],
+    make_call: Callable[[], Awaitable[Any]],
     *,
     timeout_seconds: float,
     timeout_message: str,
 ) -> Any:
-    """Run a blocking SDK call in a worker thread; release the caller at timeout_seconds."""
-    task = asyncio.create_task(asyncio.to_thread(make_call))
-    done, _pending = await asyncio.wait({task}, timeout=timeout_seconds)
-    if task in done:
-        return task.result()
-    raise TimeoutError(timeout_message)
+    """Await an async SDK call under a wall clock.
+
+    wait_for cancels the inner call on expiry and on an outer cancel, so the HTTP
+    connection is closed and nothing keeps running (or billing) behind the caller.
+    """
+    try:
+        return await asyncio.wait_for(make_call(), timeout=timeout_seconds)
+    except TimeoutError:
+        raise TimeoutError(timeout_message) from None

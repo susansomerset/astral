@@ -79,7 +79,7 @@ Each step: one small change, compile + lint + touched tests green before Susan r
    `connectivity_failure` fall through to `ERROR_SELECT_JOB_PAGE_NO_JOBLIST`. Audit every `do_task` caller
    (prefilter, grade_*, evaluate_jd, parse_job_list, upshot, …) for the same gap, then fix in one place if the
    callers allow it (`is_provider_state_hold` in `src/utils/llm_external.py` is the likely seam).
-2. **[todo] astral-agent: async provider client.** Replace `Anthropic` + `asyncio.to_thread` with `AsyncAnthropic`
+2. **[done] astral-agent: async provider client.** Replace `Anthropic` + `asyncio.to_thread` with `AsyncAnthropic`
    in `service/astral_agent/providers/` (compat, anthropic, OpenRouter probe). Cancelling a job then really aborts
    the HTTP call (no orphaned billed calls, no 429 bursts after cancel waves) and the default thread pool stops
    being a hidden concurrency cap. 429 retry sleeps become `await asyncio.sleep`.
