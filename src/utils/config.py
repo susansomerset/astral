@@ -717,6 +717,14 @@ TASK_CONFIG = {
         "requires_candidate_key": True,
         "trigger_state": None,
     },
+    # AST-2319: company dispatch — parse-success validate only (LLM still uses parse_job_list).
+    "test_watch": {
+        "entity_type": "company",
+        "requires_candidate_key": True,
+        "trigger_state": "TEST_WATCH",
+        "pass_state": "WATCH",
+        "fail_state": "WEBSITE_FOUND",
+    },
     "vet_inflow_discovery": {
         "output_type": "grades_encoded_vet_meta",
         "response_schema": {
@@ -1561,6 +1569,8 @@ COMPANY_STATES = {
         "batch_criteria": {"limit": 10, "sort_by": "updated_at"},
         "retry_state": retry_of("UPSHOT_READY"),
     },
+    # AST-2319: reclaim / add-company holding — parse-validate only → WATCH or WEBSITE_FOUND.
+    "TEST_WATCH": {"batch_criteria": {"limit": 10, "sort_by": "updated_at"}},
     "WATCH": {"batch_criteria": {"limit": 10, "sort_by": "last_scan_at", "scan_interval_hours": 24}},
     "IGNORE": {},
     "METEORITE": {},  # AST-1493: roster-inert meteorite placeholders (stem-keyed); no batch_criteria
@@ -2632,6 +2642,13 @@ ROSTER_CONFIG = {
         # Empty-token data defect — bare, never a retry (AST-2000 / AST-2086).
         "error_state": error_state_for("parse_job_list"),
         "selected_pjl_url_key": "selected_pjl_url",
+    },
+    # AST-2319: TEST_WATCH validate — parse ok → WATCH; else WEBSITE_FOUND (no retry hop).
+    "test_watch": {
+        "task_key": "test_watch",
+        "dispatch_trigger_state": "TEST_WATCH",
+        "pass_state": "WATCH",
+        "fail_state": "WEBSITE_FOUND",
     },
     # AST-2054: Estelle company upshot hop. Retry once via UPSHOT_READY_RETRY, then ERROR_COMPANY_UPSHOT.
     "company_upshot": {
@@ -4063,6 +4080,21 @@ SEED_CONFIG = {
         "'land_meteorite', 'meteorite_bot_blocked_notify'"
         ")",
     ),
+    # AST-2319: Linear paste only — TEST_WATCH company validate (never auto-executed).
+    "dispatch_task-test-watch": (
+        "INSERT INTO dispatch_task ("
+        "candidate_id, task_key, entity_type, trigger_state, sort_by, "
+        "batch_call_mode, freq_hrs, min_count, batch_size, auto_mode, score_floor"
+        ") SELECT c.candidate_id, 'test_watch', 'company', "
+        "'TEST_WATCH', 'updated_at', 0, 0, 1, 10, 1, NULL "
+        "FROM candidate c "
+        "WHERE NOT EXISTS ("
+        "  SELECT 1 FROM dispatch_task d "
+        "  WHERE d.candidate_id = c.candidate_id "
+        "    AND d.task_key = 'test_watch' "
+        "    AND d.trigger_state = 'TEST_WATCH'"
+        ")",
+    ),
 }
 
 # AST-1974: Jobs → Ready / Review lists (two of the four explicit lists; Processing is their complement).
@@ -4328,7 +4360,7 @@ _DISPATCH_BATCH_CALL_MODE_ONE = frozenset({
 _DISPATCH_COMPANY_ENTITY_TASK_KEYS = frozenset({
     "prefilter_company", "fetch_website", "fetch_job_pages", "select_job_page", "parse_job_list",
     "recheck_no_openings", "gaze", "inflow_resolve_website", "vet_inflow_discovery",
-    "resolve_website", "fetch_company_culture_pages", "company_upshot",
+    "resolve_website", "fetch_company_culture_pages", "company_upshot", "test_watch",
 })
 
 def resolve_dispatch_task_config_key(task_key: str) -> str:
@@ -4585,6 +4617,19 @@ def dispatch_task_admin_defaults(
         "sort_by": _dispatch_sort_by_for(entity_type, effective_ts),
         "batch_call_mode": _dispatch_batch_call_mode_for(tk),
     }
+
+
+# AST-2319: TEST_WATCH dispatch registration invariants.
+assert ROSTER_CONFIG["test_watch"]["pass_state"] == "WATCH"
+assert ROSTER_CONFIG["test_watch"]["fail_state"] == "WEBSITE_FOUND"
+assert ROSTER_CONFIG["test_watch"]["dispatch_trigger_state"] == "TEST_WATCH"
+assert "TEST_WATCH" in COMPANY_STATES
+assert "retry_state" not in COMPANY_STATES["TEST_WATCH"]
+_test_watch_defaults = dispatch_task_admin_defaults("test_watch")
+assert _test_watch_defaults["entity_type"] == "company"
+assert _test_watch_defaults["trigger_state"] == "TEST_WATCH"
+assert _test_watch_defaults["sort_by"] == "updated_at"
+assert _test_watch_defaults["batch_call_mode"] == 0
 
 
 def dispatch_task_key_is_scored(task_key: str) -> bool:
@@ -5547,6 +5592,11 @@ ASTRAL_CONFIG = {
         (retry_of("JOBLIST_IDENTIFIED"), error_state_for("parse_job_list")),
         # AST-2054: upshot hops. WATCH → GET_UPSHOT is Susan's manual re-run via company state controls.
         ("WATCH", "GET_UPSHOT"),
+        # AST-2319: Watch List ignore / Ignored restore / TEST_WATCH validate outcomes.
+        ("WATCH", "IGNORE"),
+        ("IGNORE", "TEST_WATCH"),
+        ("TEST_WATCH", "WATCH"),
+        ("TEST_WATCH", "WEBSITE_FOUND"),
         ("GET_UPSHOT", "UPSHOT_READY"),
         ("UPSHOT_READY", "WATCH"),
         ("UPSHOT_READY", retry_of("UPSHOT_READY")),
