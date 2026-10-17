@@ -47,7 +47,7 @@ Isolated FastAPI microservice — **not** under `src/`. Flat imports (`from auth
 
 ### AST-1727 · AST-1721 (Railway Phase 1 deploy + import-boundary CI)
 
-**Scope:** `service/telescope/railway.toml` (Phase 1 `numReplicas = 1`, Dockerfile builder, memory ceiling, no `healthcheckPath`); `scripts/ci/check-service-src-import-fence.sh` + `.github/workflows/service-src-import-fence.yml` — bidirectional anchored import fence (`service/telescope` ↔ `src`).
+**Scope:** `service/telescope/railway.toml` (Phase 1 `numReplicas = 1`, Dockerfile builder, memory ceiling); `scripts/ci/check-service-src-import-fence.sh` + `.github/workflows/service-src-import-fence.yml` — bidirectional import fence (`service` ↔ `src`).
 
 | Area | Component tests |
 | --- | --- |
@@ -55,6 +55,8 @@ Isolated FastAPI microservice — **not** under `src/`. Flat imports (`from auth
 | `src` → `service` import scan | `test_telescope_deploy_ci.py::TestBidirectionalImportFence::test_src_py_files_have_zero_service_imports` |
 | CI script green + catches service→src | `test_telescope_deploy_ci.py::TestBidirectionalImportFence` (script exit 0 + probe) |
 | Workflow wires script | `test_telescope_deploy_ci.py::…::test_workflow_invokes_fence_script` |
+
+**AST-2241 revise:** fence script now scans all `service/**/*.py` (not only Telescope); ok line is `import fence: ok (service ↔ src)`. `TestRailwayPhase1Toml::test_no_healthcheck_path_and_no_phase2_hooks` renamed to `test_healthcheck_and_no_phase2_hooks` — live toml has `healthcheckPath = "/healthz"`. Astral-agent Railway + fence probe: [`astral_agent.md`](astral_agent.md) § AST-2241.
 
 **AST-1727** narrowed run:
 
@@ -243,7 +245,7 @@ cd src/ui/frontend && npm run test:component -- \
 
 New nodes are red on pre-change product (`origin/dev` versions of the four product files) except the regression guards (unchanged-shape / `scrape_failed` controls), which pass on both.
 
-**Broken / obsolete:** none caused by this diff. **Pre-existing red on `origin/dev` (not AST-2023):** `test_telescope_deploy_ci.py::TestRailwayPhase1Toml::test_no_healthcheck_path_and_no_phase2_hooks` — live `railway.toml` now sets `healthcheckPath`; Phase-1 assert is stale. Left for Susan to scope.
+**Broken / obsolete:** none caused by this diff. *(AST-2241 revised the stale `test_no_healthcheck_path_and_no_phase2_hooks` node — see § AST-1727.)*
 
 **Integration tier:** no existing `tests/integration/` scenario exercises Telescope. No integration revision.
 

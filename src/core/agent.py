@@ -46,18 +46,27 @@ from src.data.database import (
 )
 from src.core.timesheets import record_timesheet_entry
 from src.core.grade_schema import build_grade_tool_schema, grade_row_ids, hydrate_grade_tool_input
-from src.external.anthropic import send_to_anthropic, getTimestampPrefix
+from src.external.anthropic import (
+    getTimestampPrefix,
+    _effort_body,
+    _forced_tool_body,
+    _parse_json_response,
+    _parse_python_code_response,
+)
+from src.external.astral_agent import AstralAgentError, submit
+from src.utils.cost_calculator import CALC_COST_KEYS, calculate_cost_components_from_counts
 from src.utils.llm_external import (
     extract_api_response_text,
     normalize_provider_error,
 )
-from src.external.llm_compat import send_to_llm_compat
 from src.utils.config import (
     TASK_CONFIG, BASE_SCHEMA, BLOCK_TYPES, ASTRAL_CONFIG, BUILD_CONFIG,
     INFLOW_CONFIG,
     resolve_tokens, CHARS_PER_TOKEN,
     chain_context_selected_agent,
     get_llm_server,
+    get_model_routing,
+    PROVIDER_CALL_BUDGET,
     resolve_agent_settings,
     CALLER_HOP_TOKEN_NAMES,
     ENTITY_TYPES,
@@ -1734,6 +1743,193 @@ def grade_forced_tool(task_key: str, ctx: Optional[Dict[str, Any]]) -> Optional[
     return {"name": GRADE_TOOL_NAME, "input_schema": schema}
 
 
+def _provider_answer_text(api_resp: Any) -> str:
+    """Worker results are plain text; older SDK objects still go through extract."""
+    if isinstance(api_resp, str):
+        return api_resp
+    return extract_api_response_text(api_resp)
+
+
+def _queue_timesheet(start: datetime, duration: float, usage: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    counts = usage or {}
+    def _n(key: str) -> int:
+        try:
+            return int(counts.get(key) or 0)
+        except (TypeError, ValueError):
+            return 0
+    return {
+        "calltime": start.strftime("%Y-%m-%d %H:%M:%S"),
+        "duration": duration,
+        "inputtotal": _n("input_tokens"),
+        "inputcached": _n("cache_read_input_tokens"),
+        "outputtotal": _n("output_tokens"),
+        "cache_creation_tokens": _n("cache_creation_input_tokens"),
+    }
+
+
+def _record_queue_timesheet(
+    *,
+    remote: Dict[str, Any],
+    start: datetime,
+    stop: datetime,
+    server_id: str,
+    sku: str,
+    protocol: str,
+    answer: str,
+    success: bool,
+    error: Optional[str],
+    task_key_uuid: Optional[str],
+    candidate_id: Optional[str],
+    no_cache_prompt_tokens: int,
+    no_cache_live_tokens: int,
+    batch_size: int,
+    request_type: str,
+    entity_type: Optional[str],
+    entity_id: Optional[str],
+) -> None:
+    sheet = _queue_timesheet(start, (stop - start).total_seconds(), remote.get("usage"))
+    try:
+        if protocol == "anthropic" or get_model_routing(server_id, sku) == "direct":
+            cost_parts = calculate_cost_components_from_counts(
+                sheet["inputcached"],
+                sheet["inputtotal"],
+                sheet["outputtotal"],
+                sheet["cache_creation_tokens"],
+                sku=sku,
+                server_id=server_id,
+            )
+        else:
+            cost_parts = dict.fromkeys(CALC_COST_KEYS, 0.0)
+        record_timesheet_entry(
+            agent_req_id=remote.get("response_id"),
+            task_key_uuid=task_key_uuid,
+            model_code=sku,
+            candidate_id=candidate_id,
+            batch_id=log_batch_id.get(),
+            batch_size=batch_size,
+            cache_write_tokens=sheet["cache_creation_tokens"],
+            cache_read_tokens=sheet["inputcached"],
+            no_cache_prompt_tokens=no_cache_prompt_tokens,
+            no_cache_live_tokens=no_cache_live_tokens,
+            total_no_cache_input_tokens=sheet["inputtotal"],
+            total_output_tokens=sheet["outputtotal"],
+            calc_cost_cache_write=cost_parts["calc_cost_cache_write"],
+            calc_cost_cache_read=cost_parts["calc_cost_cache_read"],
+            calc_cost_no_cache_input=cost_parts["calc_cost_no_cache_input"],
+            calc_cost_output=cost_parts["calc_cost_output"],
+            provider=server_id,
+            request_type=request_type,
+            entity_type=entity_type,
+            entity_id=entity_id,
+            call_start=start.isoformat(),
+            call_stop=stop.isoformat(),
+            response_item_count=1 if answer else 0,
+            response_char_length=len(answer or ""),
+            agent_performance="success" if success else "failure",
+            failure_note=error or None,
+        )
+    except Exception:
+        logger.error_exc(
+            "%s | timesheet write failed for %s %s\n  Continuing without the row",
+            remote.get("response_id") or "-",
+            server_id,
+            sku,
+        )
+
+
+def _parse_queue_answer(
+    text: str,
+    *,
+    response_format: Optional[str],
+    forced_tool: Optional[Dict[str, Any]],
+) -> Tuple[bool, Any, Optional[str]]:
+    """Return (success, parsed_response, error). Parse misses are soft failures."""
+    if forced_tool:
+        if not text:
+            return True, None, None
+        try:
+            return True, json.loads(text), None
+        except json.JSONDecodeError as exc:
+            return False, None, str(exc)
+    if response_format == "json":
+        try:
+            return True, _parse_json_response(text), None
+        except ValueError as exc:
+            return False, None, str(exc)
+    if response_format == "python":
+        try:
+            return True, _parse_python_code_response(text), None
+        except ValueError as exc:
+            return False, None, str(exc)
+    return True, None, None
+
+
+def _provider_request(
+    user_blocks: List[Dict[str, Any]],
+    *,
+    server_id: str,
+    sku: str,
+    tier: Dict[str, Any],
+    api_key: str,
+    system_blocks: List[Dict[str, Any]],
+    temperature: Optional[float],
+    max_tokens: Optional[int],
+    forced_tool: Optional[Dict[str, Any]],
+) -> Dict[str, Any]:
+    server = get_llm_server(server_id)
+    protocol = server["protocol"]
+    routing = get_model_routing(server_id, sku)
+    request: Dict[str, Any] = {
+        "protocol": protocol,
+        "server_id": server_id,
+        "model": sku,
+        "api_key": api_key,
+        "messages": [{"role": "user", "content": user_blocks}],
+        "max_tokens": max_tokens,
+        "routing": routing,
+        "timeout_seconds": PROVIDER_CALL_BUDGET["timeout_seconds"],
+        "grace_seconds": PROVIDER_CALL_BUDGET["grace_seconds"],
+        "max_retries": PROVIDER_CALL_BUDGET["max_retries"],
+    }
+    if system_blocks:
+        request["system"] = system_blocks
+    if temperature is not None:
+        request["temperature"] = temperature
+    if protocol == "anthropic":
+        effort = _effort_body(tier.get("reasoning_effort"))
+        if effort:
+            request["extra_body"] = effort
+    else:
+        provider_obj = dict(tier.get("provider") or {})
+        if forced_tool and routing == "openrouter":
+            provider_obj["require_parameters"] = True
+        provider = {"provider": provider_obj} if provider_obj else {}
+        extra = {
+            **_effort_body(tier.get("reasoning_effort")),
+            **(server.get("request_extras") or {}),
+            **provider,
+        }
+        if extra:
+            request["extra_body"] = extra
+        if server.get("base_url"):
+            request["base_url"] = server["base_url"]
+        if server.get("auth"):
+            request["auth"] = server["auth"]
+    if any(isinstance(block, dict) and block.get("type") == "document" for block in user_blocks):
+        request["extra_headers"] = {"anthropic-beta": "files-api-2025-04-14"}
+    if forced_tool:
+        request.update(_forced_tool_body(forced_tool))
+    concurrency = server.get("concurrency")
+    if isinstance(concurrency, dict) and concurrency:
+        request["concurrency"] = concurrency
+    if routing == "openrouter":
+        request["probe"] = True
+    batch_id = log_batch_id.get()
+    if batch_id:
+        request["batch_id"] = batch_id
+    return request
+
+
 async def _send_to_server(
     user_blocks: List[Dict[str, Any]],
     *,
@@ -1757,31 +1953,77 @@ async def _send_to_server(
     entity_type: Optional[str] = None,
     entity_id: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """One outbound call on the server's protocol client: Anthropic SDK or the shared compat client."""
-    common = dict(
+    """Enqueue one assembled provider job and adapt the terminal result for do_task."""
+    del prompt_label, debug  # signature stays; queue logs stay free of prompt text
+    request = _provider_request(
+        user_blocks,
+        server_id=server_id,
+        sku=sku,
+        tier=tier,
+        api_key=api_key,
         system_blocks=system_blocks,
-        response_format=response_format,
-        prompt_label=prompt_label,
-        candidate_id=candidate_id,
         temperature=temperature,
         max_tokens=max_tokens,
+        forced_tool=forced_tool,
+    )
+    logger.debug(
+        "Calling astral_agent.submit: [server=%s, model=%s, protocol=%s]",
+        server_id, sku, request["protocol"],
+    )
+    start = datetime.now(timezone.utc)
+    try:
+        remote = await submit(request)
+    except AstralAgentError as exc:
+        stop = datetime.now(timezone.utc)
+        return {
+            "success": False,
+            "api_response": None,
+            "parsed_response": None,
+            "timesheet": _queue_timesheet(start, (stop - start).total_seconds(), None),
+            "error": exc.detail,
+            "failure_class": exc.failure_class,
+        }
+    stop = datetime.now(timezone.utc)
+    raw = remote.get("api_response")
+    answer = raw if isinstance(raw, str) else ""
+    if remote.get("success") is True:
+        ok, parsed, parse_error = _parse_queue_answer(
+            answer, response_format=response_format, forced_tool=forced_tool,
+        )
+    else:
+        ok, parsed, parse_error = False, None, remote.get("error")
+    out: Dict[str, Any] = {
+        "success": ok,
+        "api_response": raw,
+        "parsed_response": parsed,
+        "timesheet": _queue_timesheet(start, (stop - start).total_seconds(), remote.get("usage")),
+    }
+    if remote.get("host"):
+        out["host"] = remote["host"]
+    if not ok:
+        out["error"] = parse_error if remote.get("success") is True else remote.get("error")
+        if remote.get("success") is not True and remote.get("failure_class") is not None:
+            out["failure_class"] = remote.get("failure_class")
+    _record_queue_timesheet(
+        remote=remote,
+        start=start,
+        stop=stop,
+        server_id=server_id,
+        sku=sku,
+        protocol=request["protocol"],
+        answer=answer,
+        success=ok,
+        error=out.get("error"),
         task_key_uuid=task_key_uuid,
+        candidate_id=candidate_id,
         no_cache_prompt_tokens=no_cache_prompt_tokens,
         no_cache_live_tokens=no_cache_live_tokens,
         batch_size=batch_size,
-        record_timesheet=record_timesheet_entry,
-        forced_tool=forced_tool,
         request_type=request_type,
         entity_type=entity_type,
         entity_id=entity_id,
     )
-    if get_llm_server(server_id)["protocol"] == "anthropic":
-        # api_key is always non-empty here, so send_to_anthropic never takes its env-key client.
-        return await send_to_anthropic(
-            user_blocks, model_code=sku, api_key_override=api_key, debug=debug,
-            reasoning_effort=tier.get("reasoning_effort"), **common,
-        )
-    return await send_to_llm_compat(user_blocks, server_id=server_id, sku=sku, tier=tier, api_key=api_key, **common)
+    return out
 
 
 @_with_log_debug
@@ -2224,7 +2466,7 @@ async def do_task(
         api_resp = result.get("api_response")
         if api_resp:
             try:
-                raw_for_audit = extract_api_response_text(api_resp)
+                raw_for_audit = _provider_answer_text(api_resp)
             except ValueError:
                 pass
         # Banner so raw agent_performance.status=success envelopes are not mistaken for finished hops (AST-1380).
@@ -2264,7 +2506,7 @@ async def do_task(
         api_resp = result.get("api_response")
         if api_resp:
             try:
-                raw_text = extract_api_response_text(api_resp)
+                raw_text = _provider_answer_text(api_resp)
             except ValueError:
                 pass
     parsed = result.get("parsed_response")
@@ -3137,7 +3379,7 @@ async def run_adhoc_workbench_test(
             api_resp = result.get("api_response")
             if api_resp:
                 try:
-                    raw_for_audit = extract_api_response_text(api_resp)
+                    raw_for_audit = _provider_answer_text(api_resp)
                 except ValueError:
                     pass
             _fc = result.get("failure_class")

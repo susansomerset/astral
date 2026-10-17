@@ -224,8 +224,12 @@ class TestCandidateRoutes:
         assert len(candidate_client.get("/api/candidates?include_deleted=true", headers=auth_headers).get_json()) == 1
         states = candidate_client.get("/api/candidates/states", headers=auth_headers)
         assert states.status_code == 200
-        assert "NEW_CANDIDATE" in states.get_json()
-        assert "PROSPECT" not in states.get_json()
+        # AST-2267: payload becomes {state, label} objects; membership is the state key.
+        payload = states.get_json()
+        names = [row["state"] if isinstance(row, dict) else row for row in payload]
+        assert "NEW_CANDIDATE" in names
+        # AST-2267: PROSPECT is a live stage-1 key — keep it in the picker.
+        assert "PROSPECT" in names
 
     def test_list_rows_carry_stored_key_servers_only(
         self, candidate_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
@@ -522,6 +526,37 @@ class TestCandidateRoutes:
         monkeypatch.setattr(candidate_mod, "get_candidate", lambda candidate_id: None)
         resp = candidate_client.post("/api/candidates/cand-1/generate/craft_resume_base", headers=auth_headers)
         assert resp.status_code == 404
+
+
+class TestAst2267PickerStates:
+    """[bug-repro] Manage Candidates state list is stage-prefixed objects, not every registry key."""
+
+    def test_ast2267_picker_states_are_stage_labels(
+        self, candidate_client: FlaskClient, auth_headers: dict[str, str]
+    ) -> None:
+        resp = candidate_client.get("/api/candidates/states", headers=auth_headers)
+        assert resp.status_code == 200
+        payload = resp.get_json()
+        assert isinstance(payload, list) and payload
+        assert all(
+            isinstance(row, dict)
+            and isinstance(row.get("state"), str)
+            and isinstance(row.get("label"), str)
+            for row in payload
+        )
+        names = [row["state"] for row in payload]
+        labels = [row["label"] for row in payload]
+        assert labels == sorted(labels)
+        assert not any(
+            n.startswith("ERROR_") or n == "INTAKE_INITIATED" or n.endswith("_STALE")
+            for n in names
+        )
+        by_state = {row["state"]: row["label"] for row in payload}
+        assert by_state["ACTIVE_SEARCH"] == "5:ACTIVE_SEARCH"
+        assert by_state["DELETED"] == "0:DELETED"
+        assert "NEW_CANDIDATE" in by_state
+        # Live registry key — omit list is ERROR_*/INTAKE_INITIATED/*_STALE only.
+        assert by_state["PROSPECT"] == "1:PROSPECT"
 
 
 class TestAst1253GenerateArtifactsApi:
@@ -3257,3 +3292,55 @@ class TestAst2067CandidateVersionRoutes:
         assert res.get_json()["exception_type"] == "RuntimeError"
         errors = [r for r in caplog.records if r.levelname == "ERROR" and "failed" in r.getMessage()]
         assert len(errors) == 1 and "Returning 500" in errors[0].getMessage()
+
+
+class TestAst2261GradeRollupApi:
+    def test_get_returns_rollup_and_leaves_candidate_document(
+        self, candidate_client: FlaskClient, auth_headers, seeded_db, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        caplog.set_level("INFO")
+        got = candidate_client.get(
+            "/api/candidates/cand-1/rubric/do_rubric/grade_rollup", headers=auth_headers
+        )
+        assert got.status_code == 200
+        assert got.get_json() == {"artifact_key": "do_rubric", "vectors": []}
+        assert not any("grade_rollup" in r.getMessage() for r in caplog.records if r.levelname == "INFO")
+        doc = candidate_client.get("/api/candidates/cand-1", headers=auth_headers)
+        assert doc.status_code == 200
+        assert "grade_rollup" not in doc.get_json()
+
+    def test_missing_candidate_404(self, candidate_client: FlaskClient, auth_headers, seeded_db) -> None:
+        res = candidate_client.get(
+            "/api/candidates/missing/rubric/do_rubric/grade_rollup", headers=auth_headers
+        )
+        assert res.status_code == 404
+        assert res.get_json()["error"] == "Candidate not found: missing"
+
+    def test_bad_key_400(self, candidate_client: FlaskClient, auth_headers, seeded_db) -> None:
+        res = candidate_client.get(
+            "/api/candidates/cand-1/rubric/base_resume/grade_rollup", headers=auth_headers
+        )
+        assert res.status_code == 400
+        assert "not a rubric criteria key" in res.get_json()["error"]
+
+    def test_unexpected_error_logged_once_500(
+        self,
+        candidate_client: FlaskClient,
+        auth_headers,
+        seeded_db,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        def _boom(*_a, **_k):
+            raise RuntimeError("db down")
+
+        monkeypatch.setattr(candidate_mod, "rollup_current_vector_grades", _boom)
+        caplog.set_level("ERROR")
+        res = candidate_client.get(
+            "/api/candidates/cand-1/rubric/do_rubric/grade_rollup", headers=auth_headers
+        )
+        assert res.status_code == 500
+        assert res.get_json()["exception_type"] == "RuntimeError"
+        errors = [r for r in caplog.records if r.levelname == "ERROR" and "failed" in r.getMessage()]
+        assert len(errors) == 1
+        assert "the criteria editor has no grade rollup" in errors[0].getMessage()

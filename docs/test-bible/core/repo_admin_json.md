@@ -828,3 +828,9 @@ These read the JSON directly, independent of the pre-existing seed defects (`bra
 **New:** `TestAst2221BaseResumeChainCatalogRows::test_run_next_chain_order_prompts_and_agents` — walk `run_next` from `shape_the_story` (current rows) yields exactly `BASE_RESUME_CHAIN_TASK_KEYS` and empty terminal; each row is `Candidate Artifacts` / group order `2000` / seq `20`–`28`; agents Estelle (story + title patterns) / Judith (middle seven); exact seed `user_prompt`s; empty system/cache prompts; unique `task_key_uuid`s. Config half: **`docs/test-bible/utils/config.md`** § AST-2221.
 
 **Masked, not revised:** `TestAst786AgentTaskRepoJsonSeed` — add the nine AST-2221 keys when that lock is re-pinned.
+
+### AST-2263 · AST-2260 (`check_unique_meteorite` Land Meteorite row)
+
+**New:** `TestAst2263CheckUniqueMeteoriteAgentTask::test_land_meteorite_row_seq_3_2` — exactly one current `agent_task` row, `task_key` `check_unique_meteorite`, group **Land Meteorite** / `4200` / seq `3.2` (after scrape `3`, before `review_duplicate_meteorite` `3.5`), agent `telescope`, empty prompts, unique `task_key_uuid`. Dispatch hop stays **`TestAst1773StageEmployerNameAndReviewDuplicateCatalog::test_dispatch_check_unique_row`**.
+
+**Masked, not revised:** `TestAst786AgentTaskRepoJsonSeed` (pinned 57-key set) was already red; whoever re-pins it must add `check_unique_meteorite`. Do not retarget the AST-756 fixture byte lock in this ticket.

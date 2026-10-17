@@ -38,6 +38,9 @@ describe("ArtifactsDoJobCriteria", () => {
       if (url === "/api/candidates/c1/data" && init?.method === "PUT") {
         return { ok: true, json: async () => ({}) } as Response
       }
+      if (url.includes("/grade_rollup")) {
+        return { ok: true, json: async () => ({ vectors: [] }) } as Response
+      }
       throw new Error(`unexpected api call: ${url}`)
     })
   })
@@ -89,10 +92,40 @@ describe("ArtifactsDoJobCriteria", () => {
         puts.push(url)
         return { ok: true, json: async () => ({}) } as Response
       }
+      if (url === `${rub}/grade_rollup`) {
+        const current = cur01 === "u-b"
+        return {
+          ok: true,
+          json: async () => ({
+            vectors: [{
+              code: "V01",
+              run_count: current ? 4 : 1,
+              letters: current
+                ? [
+                    { grade: "C", count: 1, last_seen: "2026-03-01 00:00:00" },
+                    { grade: "A", count: 0, last_seen: "2026-01-01 00:00:00" },
+                    { grade: "Z", count: 3, last_seen: "2026-01-01 00:00:00" },
+                    { grade: "B", count: 2, last_seen: "2026-02-01 12:00:00" },
+                  ]
+                : [{ grade: "A", count: 1, last_seen: "2026-01-01 00:00:00" }],
+            }],
+          }),
+        } as Response
+      }
       throw new Error(`unexpected api call: ${url} ${init?.method ?? "GET"}`)
     })
     renderWithProviders(<ArtifactsDoJobCriteria />)
     await waitFor(() => expect(screen.getAllByRole("button", { name: "Previous version" })).toHaveLength(2))
+    // Current version: count 4, B then C. Zero A and letter Z take no width.
+    expect(screen.getAllByTitle("grading runs").map(el => el.textContent)).toEqual(["4", "0"])
+    const segs = document.querySelectorAll(".rubric-grade-thermometer-seg")
+    expect([...segs].map(el => el.className)).toEqual([
+      "rubric-grade-thermometer-seg seg-b",
+      "rubric-grade-thermometer-seg seg-c",
+    ])
+    expect(segs[0].getAttribute("title")).toBe("B, 2, 2026-02-01")
+    expect(segs[1].getAttribute("title")).toBe("C, 1, 2026-03-01")
+    expect((segs[0] as HTMLElement).style.flexGrow).toBe("2")
     expect(screen.getByText("2 of 2")).toBeInTheDocument()
     expect(screen.getByText("1 of 1")).toBeInTheDocument()
     // AC2: focus + blur on an unchanged body → no PUT.
@@ -104,6 +137,9 @@ describe("ArtifactsDoJobCriteria", () => {
     const [backV01] = screen.getAllByRole("button", { name: "Previous version" })
     await userEvent.click(backV01)
     await screen.findByDisplayValue("Ship v1")
+    expect(screen.getAllByTitle("grading runs").map(el => el.textContent)).toEqual(["1", "0"])
+    const after = document.querySelectorAll(".rubric-grade-thermometer-seg")
+    expect([...after].map(el => el.getAttribute("title"))).toEqual(["A, 1, 2026-01-01"])
     expect(screen.getByText("1 of 2")).toBeInTheDocument()
     expect(screen.getAllByRole("button", { name: "Previous version" })[0]).toBeDisabled()
     expect(screen.getByDisplayValue("Keep")).toBeInTheDocument()

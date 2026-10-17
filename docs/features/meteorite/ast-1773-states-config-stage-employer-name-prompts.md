@@ -488,19 +488,179 @@ _(generated from epic registry — do not hand-edit; edits are overwritten)_
 
 | Agent | Role | Thread |
 |--------|-------|--------|
-| Ada | engineer | `/home/susan/.cursor/chats/bc44b48ab0c29dc946549d9ee2952571/28311f28-c8c5-48e2-8350-066adaca98db/store.db` |
-| Hedy | engineer | `/home/susan/.cursor/chats/bc44b48ab0c29dc946549d9ee2952571/b3eca673-1e2e-4a87-86ae-1de70f98e0e6/store.db` |
-| Katherine | engineer | `/home/susan/.cursor/chats/bc44b48ab0c29dc946549d9ee2952571/0922e1e0-af2c-429b-9268-6e77160e16d8/store.db` |
-| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/999fb298-3c72-4ff6-9936-46d96d5bbbd4/store.db` |
-| Radia | review | `/home/susan/.cursor/chats/bc44b48ab0c29dc946549d9ee2952571/cb46519f-3997-4698-af00-6c68509481d3/store.db` |
+| Ada | engineer | `/home/susan/.cursor/chats/7dca962380cdca41da4206d925a98cc5/f021d9ff-41c3-42b3-a740-cca1c15b18fe/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/7dca962380cdca41da4206d925a98cc5/3f8063d2-77d9-4825-8c5f-a1ed245d979d/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/7dca962380cdca41da4206d925a98cc5/c01f6602-02c3-4436-89bb-9aaf1e57db69/store.db` |
 
 ### Git
 
 | Ticket | `origin/…` |
 |--------|------------|
-| AST-1762 (parent) | ftr/AST-1762-meteorite-state-check-unique-before-landed |
-| AST-1773 | sub/AST-1762/AST-1773-states-config-stage-employer-name-prompts |
-| AST-1774 | sub/AST-1762/AST-1774-check-unique-meteorite-sql-transitions |
-| AST-1775 | sub/AST-1762/AST-1775-ruth-duplicate-review-invoke-duplicate-map |
+| AST-2260 (parent) | ftr/AST-2260-check-unique-meteorite-agent-task |
+| AST-2263 | sub/AST-2260/AST-2263-check-unique-meteorite-agent-task |
+| AST-2266 | sub/AST-2260/AST-2266-check-unique-meteorite-agent-task-coverage |
 
-**Epic worktree:** `astral-AST-1762/` — one active sub checked out at a time.
+**Epic worktree:** `astral-AST-2260/` — one active sub checked out at a time.
+
+## Bug: AST-2263 — check_unique_meteorite agent_task row
+
+Delta only. AST-1773 Stage 3 stays as shipped: it added the Ruth `review_duplicate_meteorite` catalog row and the `dispatch_task` / `SEED_CONFIG` hop for `check_unique_meteorite`, and kept that SQL key out of `agent_task`. This bug adds the missing grouping row. It does not reopen registry, ingress, prompts, or the SQL runner.
+
+Parent AST-2260 names no Canon Scope. AST-1773 citations (`astral.dispatch.entity-state-bound`, `astral.entity.required-metadata`, `stat.logging.debug`) stay id-only: this delta does not touch `src/utils/config.py`, entity columns, or logging.
+
+### As-is
+
+`check_unique_meteorite` is a meteorite ingress dispatch hop (`dispatch_task`, trigger `CHECK_UNIQUE`) and has no `agent_task` row. Manage Tasks groups from `agent_task` (`task_group_name`, `task_group_order`, `task_seq`). The other Land Meteorite hops (`task_group_order` `4200`) are already current: `stage_meteorite` (seq 1), `stage_email_meteorite` (seq 2), `scrape_meteorite` (seq 3, agent `telescope`), `review_duplicate_meteorite` (seq 3.5), `land_meteorite` (seq 4, agent `telescope`). This SQL hop is the one missing, so it does not show in that group.
+
+### To-be
+
+`check_unique_meteorite` has one current `agent_task` row in the Land Meteorite group, sequenced after scrape and before duplicate review, with the same non-LLM shape as `scrape_meteorite` and `land_meteorite` (agent `telescope`, empty prompts). The dispatch runner stays the SQL uniqueness hop. The row does not become a model call.
+
+### Repro
+
+Load `data/admin/agent_task.json` (78 objects on this tip). No object has `"task_key": "check_unique_meteorite"`. The Land Meteorite / `4200` objects that do exist:
+
+| task_key | task_seq | agent_id |
+|----------|----------|----------|
+| `stage_meteorite` | 1 | `college_intern_ruth` |
+| `stage_email_meteorite` | 2 | `""` |
+| `scrape_meteorite` | 3 | `telescope` |
+| `review_duplicate_meteorite` | 3.5 | `job_filter_lucy` |
+| `land_meteorite` | 4 | `telescope` |
+
+`src/utils/config.py` `SEED_CONFIG["dispatch_task-meteorite-ingress"]` and `data/admin/dispatch_task.json` already carry `check_unique_meteorite` / `CHECK_UNIQUE`. Grouping never reads those.
+
+### Root cause
+
+AST-1773 Stage 3’s task-key decision put only the Ruth review key in `agent_task` and left the SQL hop key on `dispatch_task` alone. Manage Tasks has no group fields on `dispatch_task`, so the hop cannot sort with the Land Meteorite shells that later got `agent_id` `telescope` for the same reason (`scrape_meteorite`, `land_meteorite`).
+
+### Proposed change
+
+One file: `data/admin/agent_task.json`. Append one object at the end of the array (after the current last object). Do not edit any existing object. Do not add a column. Do not edit `src/utils/config.py`, `data/admin/dispatch_task.json`, `src/core/meteorite.py`, `src/core/dispatcher.py`, or `src/core/agent.py`.
+
+Copy the `scrape_meteorite` key order and empty prompt strings. Set:
+
+| Field | Value |
+|-------|--------|
+| `agent_id` | `telescope` |
+| `cache_prompt`, `cache_prompt_b`, `cache_prompt_c`, `cache_prompt_d`, `nocache_prompt`, `system_prompt`, `user_prompt` | `""` |
+| `current` | `1` |
+| `run_next` | `""` |
+| `task_group_name` | `Land Meteorite` |
+| `task_group_order` | `4200` (string, same as the siblings) |
+| `task_key` | `check_unique_meteorite` |
+| `task_key_uuid` | `f582dad4-0a0a-4df1-ad5c-a27e6cf81955` |
+| `task_name` | `check_unique_meteorite` |
+| `task_seq` | `3.2` |
+| `updated_at` | `2026-09-19 22:51:13` (same stamp as the `scrape_meteorite` / `land_meteorite` shells) |
+
+Literal object:
+
+```json
+{
+  "agent_id": "telescope",
+  "cache_prompt": "",
+  "cache_prompt_b": "",
+  "cache_prompt_c": "",
+  "cache_prompt_d": "",
+  "current": 1,
+  "nocache_prompt": "",
+  "run_next": "",
+  "system_prompt": "",
+  "task_group_name": "Land Meteorite",
+  "task_group_order": "4200",
+  "task_key": "check_unique_meteorite",
+  "task_key_uuid": "f582dad4-0a0a-4df1-ad5c-a27e6cf81955",
+  "task_name": "check_unique_meteorite",
+  "task_seq": 3.2,
+  "updated_at": "2026-09-19 22:51:13",
+  "user_prompt": ""
+}
+```
+
+Keep the file’s existing 2-space indent. The new object is valid JSON (comma after the previous last object). `python3 -c 'import json; json.load(open("data/admin/agent_task.json"))'` must succeed.
+
+Done when, among `current == 1` rows with `task_group_name == "Land Meteorite"` and `task_group_order == "4200"`, numeric `task_seq` order is:
+
+1. `stage_meteorite` (1)
+2. `stage_email_meteorite` (2)
+3. `scrape_meteorite` (3)
+4. `check_unique_meteorite` (3.2)
+5. `review_duplicate_meteorite` (3.5)
+6. `land_meteorite` (4)
+
+And the new row’s prompt fields are all empty, `agent_id` is `telescope`, and `task_key` occurs once.
+
+⚠️ **Decision — task_seq 3.2:** The open gap is `(3, 3.5)`. Existing fractional seqs in this file are one decimal (`0.1`, `3.5`, `6.5`, `9.5`). `3.2` sits in the gap at that precision. Do not renumber `3.5` or `4`.
+
+⚠️ **Decision — no TASK_CONFIG key:** `scrape_meteorite` and `land_meteorite` are grouping shells, not `TASK_CONFIG` entries. `check_unique_meteorite` stays that way. `task_llm_server_id_or_none` already treats `agent_id` `telescope` as no model (`src/core/agent.py`); do not change that function.
+
+⚠️ **Decision — append, do not reorder:** File order is not the Manage Tasks order. Appending avoids rewriting the other 78 objects.
+
+### Blast radius
+
+- Manage Tasks grouping for Land Meteorite / `4200` gains one row between scrape and duplicate review. Sibling seqs stay put.
+- Dispatch already routes `check_unique_meteorite` to `run_check_unique_meteorite` by task key (`src/core/dispatcher.py`). A `telescope` catalog row does not add a model call.
+- `tests/component/core/test_repo_admin_json.py::TestAst786AgentTaskRepoJsonSeed` still locks `len(rows) == 57` and `AST786_EXPECTED_TASK_KEYS`. This tip already has 78 rows, so that lock is already stale; this change makes it 79. Betty owns the test tree.
+- Several tests in that file compare `data/admin/agent_task.json` to `docs/uat-fixtures/AST-756/expected-agent_task.json` (byte identity or per-key lockstep). The fixture is outside this ticket’s scope. Do not edit it here.
+- Tests that pin `stage_meteorite` seq 1, `review_duplicate_meteorite` seq 3.5, or `land_meteorite` seq 4 keep passing if those objects are not edited.
+
+### What must still hold
+
+- AST-1773 acceptance: `STAGE_METEORITE_CONFIG["outcomes"]` length 6; `land_trigger_state` stays `READY`; `METEORITE_STATES` still includes `CHECK_UNIQUE` and `DUPLICATE`; `stage_meteorite` `employer_name` stays optional with no `company_name`.
+- `review_duplicate_meteorite` stays the Ruth/Lucy prompt row at seq 3.5. Do not retarget it to `telescope` or empty its prompts.
+- `dispatch_task` `check_unique_meteorite` keeps `trigger_state` `CHECK_UNIQUE`. `SEED_CONFIG` ingress paste and retire-null-pool list stay as they are.
+- `run_check_unique_meteorite` remains the SQL uniqueness hop. This row does not add prompt text, a `TASK_CONFIG` entry, or a new `agent_task` column.
+- `agent_id` `telescope` on the new row matches the scrape/land shells so the hop stays non-LLM.
+
+## Radia review — AST-2263
+
+[code-rubric]
+**Ticket:** AST-2263
+**Publish ref:** `eac49d8927359c5dd13115731502f75c7cb16dad` (`origin/sub/AST-2260/AST-2263-check-unique-meteorite-agent-task`)
+**Corpus:** `b7ab2203048ce0beb2869a12200ab7fa696c8066`
+**Overall:** CLEAN
+
+## Canon scores
+
+No frozen Canon Scope on parent AST-2260 or child AST-2263. Plan-fix records AST-1773 citations as id-only because this delta does not touch `src/utils/config.py`, entity columns, or logging. Empty frozen list, not invented off-list ids.
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| — | — | — | empty frozen list |
+
+## Column diff vs plan stage
+
+No plan-stage scores attached. fix-board `[board-joan] CANON: OK` only.
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+**[bug-repro]** not applicable — qa-fix did not run. Test coverage is sibling gap AST-2266.
+
+**## What must still hold — OK**
+
+- AST-1773 registry / stage config / optional `employer_name`: no `src/**`, `dispatch_task`, or `config.py` edits.
+- `review_duplicate_meteorite` stays current at seq 3.5. Append-only.
+- Dispatch seed for `check_unique_meteorite` / `CHECK_UNIQUE` untouched.
+- New row is a `telescope` shell with empty prompts. Land Meteorite order `1 → 2 → 3 → 3.2 → 3.5 → 4`.
+
+## Findings
+
+### discuss
+
+- Board `[board-betty] TESTS: REVISE` is tracked on sibling [AST-2266](https://linear.app/astralcareermatch/issue/AST-2266), not a product defect on this diff.
+- No frozen Canon Scope on the bug tickets. Observation only. Proceed.
+
+### advisory
+
+- Row count and stale catalog-length locks are Betty's, per the plan's blast radius.
+
+## What's solid
+
+Literal row matches the plan-fix table. Append-only. JSON grouping order holds.
+
+context_tokens≈22000

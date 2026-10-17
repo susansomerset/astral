@@ -48,6 +48,7 @@ from src.core.candidate import (
     save_candidate_data,
     set_candidate_artifact_current,
     set_rubric_criterion_current,
+    rollup_current_vector_grades,
     start_requested_artifacts,
     transition_candidate_state,
     update_candidate_api_keys,
@@ -139,7 +140,15 @@ def list_candidates():
 @candidate_bp.route("/states")
 @require_auth
 def get_candidate_states():
-    return jsonify(list(CANDIDATE_STATES.keys()))
+    # AST-2267: Manage Candidates picker — stage-labeled objects; omit ERROR_*/INTAKE_INITIATED/*_STALE.
+    rows = []
+    for name, cfg in CANDIDATE_STATES.items():
+        if name.startswith("ERROR_") or name == "INTAKE_INITIATED" or name.endswith("_STALE"):
+            continue
+        label = f"{int(cfg['stage'])}:{name}"
+        rows.append({"state": name, "label": label})
+    rows.sort(key=lambda r: r["label"])
+    return jsonify(rows)
 
 
 # Must be registered before the /<candidate_id> catch-all
@@ -313,6 +322,29 @@ def put_rubric_criterion_current_api(candidate_id, artifact_key, code):
         return server_error_from_exception(exc)
     logger.info("%s | api %s completed: PUT %s", candidate_id, route, 200)
     return jsonify({"current": current, "versions": versions})
+
+
+@candidate_bp.route("/<candidate_id>/rubric/<artifact_key>/grade_rollup", methods=["GET"])
+@require_auth
+def get_rubric_grade_rollup_api(candidate_id, artifact_key):
+    """AST-2261: current-vector run counts and letter tallies for one rubric."""
+    if not get_candidate(candidate_id):
+        return jsonify({"error": f"Candidate not found: {candidate_id}"}), 404
+    route = f"/api/candidates/{candidate_id}/rubric/{artifact_key}/grade_rollup"
+    try:
+        payload = rollup_current_vector_grades(candidate_id, artifact_key)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    except Exception as exc:
+        logger.exception(
+            "%s | api %s failed\n  %s: %s\n  Returning 500; the criteria editor has no grade rollup",
+            candidate_id,
+            route,
+            type(exc).__name__,
+            exc,
+        )
+        return server_error_from_exception(exc)
+    return jsonify(payload)
 
 
 @candidate_bp.route("", methods=["POST"])

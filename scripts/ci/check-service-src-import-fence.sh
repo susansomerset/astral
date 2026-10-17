@@ -1,17 +1,18 @@
 #!/usr/bin/env bash
-# AST-1727 — fail if service/telescope ↔ src imports exist either direction.
-# Matches real import lines only (not docstrings/comments saying "import src").
+# Fail if service/* ↔ src imports exist either direction (Telescope, astral-agent,
+# and future service packages). Matches real import lines only (not docstrings/
+# comments saying "import src").
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
 
 # Same spirit as tests/component/service/test_telescope_fence.py
-SRC_IN_SERVICE="$(rg -n --glob '*.py' -e '^\s*(from|import)\s+src(\.|\s|,|$)' service/telescope || true)"
+SRC_IN_SERVICE="$(rg -n --glob '*.py' -e '^\s*(from|import)\s+src(\.|\s|,|$)' service || true)"
 SERVICE_IN_SRC="$(rg -n --glob '*.py' -e '^\s*(from|import)\s+service(\.|\s|,|$)' src || true)"
 
 fail=0
 if [[ -n "$SRC_IN_SERVICE" ]]; then
-  echo "import fence: service/telescope must not import src:"
+  echo "import fence: service must not import src:"
   echo "$SRC_IN_SERVICE"
   fail=1
 fi
@@ -23,4 +24,4 @@ fi
 if [[ "$fail" -ne 0 ]]; then
   exit 1
 fi
-echo "import fence: ok (service/telescope ↔ src)"
+echo "import fence: ok (service ↔ src)"

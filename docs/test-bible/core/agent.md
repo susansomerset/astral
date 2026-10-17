@@ -2204,7 +2204,7 @@ Expect **23 passed**.
 
 **Primary manifest** for AST-2180. Other blocks: [`consult.md`](consult.md) § AST-2180, [`roster.md`](roster.md) § AST-2180, [`../ui/api/api_admin.md`](../ui/api/api_admin.md) § AST-2180, [`../utils/config.md`](../utils/config.md) § AST-2180.
 
-Every grader `do_task` builds `grade_forced_tool(task_key, ctx)` (`submit_grades`, schema from `grade_call_codes` + `grade_row_ids`; `vector_reviews` added to a copy of `agent_performance` for vector-feedback tasks) and sends it with the structured timestamp prefix. The reply is the tool input, hydrated by `grade_schema.hydrate_grade_tool_input`. A grader ctx with no rubric codes logs ERROR and returns `success: False` before send (intentional `_RETRY`). The text decoder (`_decode_payload` and the consult normalize cluster) is gone. Provider calls are mocked (`send_to_anthropic` / `send_to_llm_compat`); there are no live calls, and AC 8 is Susan's staging check.
+Every grader `do_task` builds `grade_forced_tool(task_key, ctx)` (`submit_grades`, schema from `grade_call_codes` + `grade_row_ids`; `vector_reviews` added to a copy of `agent_performance` for vector-feedback tasks) and sends it with the structured timestamp prefix. The reply is the tool input, hydrated by `grade_schema.hydrate_grade_tool_input`. A grader ctx with no rubric codes logs ERROR and returns `success: False` before send (intentional `_RETRY`). The text decoder (`_decode_payload` and the consult normalize cluster) is gone. Provider calls are mocked at `_send_to_server` (AST-2240; the in-process `send_to_*` clients are gone from `agent.py`); there are no live calls, and AC 8 is Susan's staging check.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
@@ -2263,3 +2263,30 @@ git checkout -- data/
 **Broken / obsolete:** none — additive field.
 
 **Integration:** none.
+
+### AST-2240 · AST-2235 (do_task and Ad Hoc enqueue through astral_agent.submit)
+
+**Parent:** [AST-2235](https://linear.app/astralcareermatch/issue/AST-2235). **Publish:** `origin/sub/AST-2235/AST-2240-do-task-ad-hoc-full-cutover`.
+
+`do_task` and `run_adhoc` call `_send_to_server`, which builds a provider request and `await submit(...)`. `AstralAgentError` becomes `success: False` plus `failure_class`. Prompt blocks are stored before that call. `database.py` has no `agent_job` / `astral_agent` sync. Daisy-chain `run_next` and `get_entity_agent_story` stay on the platform. Existing agent tests that patched `send_to_anthropic` / `send_to_llm_compat` now patch `_send_to_server` (one mock, or a `server_id` router when a test still distinguishes the two old clients).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| No `send_to_*` in `agent.py`; no queue sync in `database.py`; prompt store before send; Ad Hoc uses `_send_to_server` | `src/core/agent.py`, `src/data/database.py` | **`tests/component/core/test_agent_ast2240.py::TestAst2240CutoverGrep`** |
+| Request shape, success mapping, `AstralAgentError` | `_provider_request`, `_send_to_server` | **`::TestAst2240SubmitAdapter`** |
+| Candidate key / route still reaches submit, not the platform SDK | `do_task` | **`tests/component/core/test_agent_ast1879.py`** |
+| Prompt before provider; bare Ad Hoc stores nothing | `do_task`, `run_adhoc` | **`tests/component/core/test_agent_ast1448.py`** |
+
+**Integration:** none — do not invent.
+
+## QA test manifest — AST-2240
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent_ast2240.py \
+  tests/component/core/test_agent_ast1879.py \
+  tests/component/core/test_agent_ast1448.py \
+  -q
+```
+
+Expect **55 passed**. `tests/component/core/test_agent.py` was retargeted off `send_to_*` in the same commit; it is not in this manifest (pre-existing reds outside the cutover assertions).

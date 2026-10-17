@@ -45,10 +45,11 @@ class TestRailwayPhase1Toml:
         assert "restartPolicyType" in text and "ON_FAILURE" in text
         assert "memoryBytes = 2147483648" in text
 
-    def test_no_healthcheck_path_and_no_phase2_hooks(self, railway_toml: Path) -> None:
+    def test_healthcheck_and_no_phase2_hooks(self, railway_toml: Path) -> None:
+        # AST-2241 / live Telescope: private-network /healthz is set (AST-1727
+        # "no healthcheckPath" assert went stale when the toml gained healthcheck).
         text = railway_toml.read_text(encoding="utf-8")
-        # Comment may mention healthcheckPath — ban live deploy key assignment
-        assert "healthcheckPath =" not in text
+        assert 'healthcheckPath = "/healthz"' in text
         assert "Judoscale" not in text
         assert "serviceInstanceUpdate" not in text
 
@@ -73,7 +74,9 @@ class TestBidirectionalImportFence:
             check=False,
         )
         assert proc.returncode == 0, proc.stdout + proc.stderr
+        # AST-2241 widened wording; still matches the ok prefix.
         assert "import fence: ok" in proc.stdout
+        assert "service ↔ src" in proc.stdout
 
     def test_ci_fence_script_catches_src_import_in_service(
         self, fence_script: Path, telescope_root: Path, tmp_path: Path

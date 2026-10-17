@@ -92,6 +92,9 @@ function mockApis(state = "ACTIVE_SEARCH") {
         }),
       } as Response
     }
+    if (url.includes("/grade_rollup")) {
+      return { ok: true, json: async () => ({ vectors: [] }) } as Response
+    }
     throw new Error(url)
   })
 }
@@ -116,6 +119,9 @@ function mockBaseResumeUnsupported(state: string) {
           },
         }),
       } as Response
+    }
+    if (url.includes("/grade_rollup")) {
+      return { ok: true, json: async () => ({ vectors: [] }) } as Response
     }
     throw new Error(url)
   })
@@ -153,6 +159,9 @@ function mockJobResume(putBodies: { resume_content?: Record<string, string> }[])
       putBodies.push(JSON.parse(String(init.body)))
       return okResponse()
     }
+    if (url.includes("/grade_rollup")) {
+      return { ok: true, json: async () => ({ vectors: [] }) } as Response
+    }
     throw new Error(`${url} ${init?.method ?? "GET"}`)
   })
 }
@@ -188,6 +197,9 @@ describe("ArtifactEditor", () => {
       if (url === "/api/shapes/candidates") {
         return { json: async () => ({ detail: { resume: [] } }) } as Response
       }
+      if (url.includes("/grade_rollup")) {
+        return { ok: true, json: async () => ({ vectors: [] }) } as Response
+      }
       throw new Error(url)
     })
     renderWithProviders(<ArtifactEditor title="Rubric" artifactKey="rubric" taskKey="craft_rubric" />)
@@ -205,6 +217,9 @@ describe("ArtifactEditor", () => {
       if (isPendingGenerateUrl(url)) return pendingNotFoundResponse()
       if (url === "/api/shapes/candidates") {
         return { json: async () => ({ detail: { resume: [] } }) } as Response
+      }
+      if (url.includes("/grade_rollup")) {
+        return { ok: true, json: async () => ({ vectors: [] }) } as Response
       }
       throw new Error(url)
     })
@@ -253,6 +268,9 @@ describe("ArtifactEditor", () => {
       }
       if (url === "/api/candidates/c1/generate/craft_rubric" && init?.method === "POST") {
         return generatePromise
+      }
+      if (url.includes("/grade_rollup")) {
+        return { ok: true, json: async () => ({ vectors: [] }) } as Response
       }
       throw new Error(url)
     })
@@ -333,6 +351,9 @@ describe("ArtifactEditor", () => {
           json: async () => ({ success: true, parsed_response: { criteria: [] } }),
         } as Response
       }
+      if (url.includes("/grade_rollup")) {
+        return { ok: true, json: async () => ({ vectors: [] }) } as Response
+      }
       throw new Error(url)
     })
     renderWithProviders(<ArtifactEditor title="Rubric" artifactKey="rubric" taskKey="craft_rubric" />)
@@ -377,6 +398,9 @@ describe("ArtifactEditor", () => {
             candidate_data: { artifacts: { get_rubric: [] } },
           }),
         } as Response
+      }
+      if (url.includes("/grade_rollup")) {
+        return { ok: true, json: async () => ({ vectors: [] }) } as Response
       }
       throw new Error(url)
     })
@@ -431,6 +455,9 @@ describe("ArtifactEditor", () => {
           }),
         } as Response
       }
+      if (url.includes("/grade_rollup")) {
+        return { ok: true, json: async () => ({ vectors: [] }) } as Response
+      }
       throw new Error(url)
     })
     renderWithProviders(
@@ -465,6 +492,9 @@ describe("ArtifactEditor", () => {
       }
       if (url === "/api/candidates/c1/generate/craft_rubric" && init?.method === "POST") {
         throw new TypeError("Failed to fetch")
+      }
+      if (url.includes("/grade_rollup")) {
+        return { ok: true, json: async () => ({ vectors: [] }) } as Response
       }
       throw new Error(url)
     })
@@ -521,6 +551,9 @@ describe("ArtifactEditor", () => {
           json: async () => ({ error: "criterion content invalid" }),
         } as Response
       }
+      if (url.includes("/grade_rollup")) {
+        return { ok: true, json: async () => ({ vectors: [] }) } as Response
+      }
       throw new Error(url)
     })
     renderWithProviders(
@@ -566,6 +599,9 @@ describe("ArtifactEditor", () => {
           }),
         } as Response
       }
+      if (url.includes("/grade_rollup")) {
+        return { ok: true, json: async () => ({ vectors: [] }) } as Response
+      }
       throw new Error(url)
     })
     renderWithProviders(
@@ -608,6 +644,9 @@ describe("ArtifactEditor", () => {
       if (url === "/api/candidates/c1/data" && init?.method === "PUT") {
         return { ok: true, json: async () => ({}) } as Response
       }
+      if (url.includes("/grade_rollup")) {
+        return { ok: true, json: async () => ({ vectors: [] }) } as Response
+      }
       throw new Error(url)
     })
     renderWithProviders(
@@ -639,6 +678,9 @@ describe("ArtifactEditor", () => {
             },
           }),
         } as Response
+      }
+      if (url.includes("/grade_rollup")) {
+        return { ok: true, json: async () => ({ vectors: [] }) } as Response
       }
       throw new Error(`${url} ${init?.method ?? "GET"}`)
     })
@@ -679,6 +721,9 @@ describe("ArtifactEditor", () => {
           }),
         } as Response
       }
+      if (url.includes("/grade_rollup")) {
+        return { ok: true, json: async () => ({ vectors: [] }) } as Response
+      }
       throw new Error(url)
     })
     renderWithProviders(
@@ -709,6 +754,9 @@ describe("ArtifactEditor", () => {
       if (url === "/api/candidates/c1/generate_artifacts" && init?.method === "POST") {
         posts.push(url)
         return { ok: true, json: async () => ({ ok: true, state: "REQUESTED_ARTIFACTS" }) } as Response
+      }
+      if (url.includes("/grade_rollup")) {
+        return { ok: true, json: async () => ({ vectors: [] }) } as Response
       }
       throw new Error(url)
     })
@@ -749,6 +797,9 @@ describe("ArtifactEditor", () => {
         posts.push(url)
         return { ok: true, json: async () => ({ ok: true, state: "REQUESTED_ARTIFACTS" }) } as Response
       }
+      if (url.includes("/grade_rollup")) {
+        return { ok: true, json: async () => ({ vectors: [] }) } as Response
+      }
       throw new Error(url)
     })
     renderWithProviders(
@@ -786,6 +837,9 @@ describe("ArtifactEditor", () => {
             job_data: { artifacts: { cover_letter: { body } } },
           }),
         } as Response
+      }
+      if (url.includes("/grade_rollup")) {
+        return { ok: true, json: async () => ({ vectors: [] }) } as Response
       }
       throw new Error(`${url} ${init?.method ?? "GET"}`)
     })
@@ -832,6 +886,9 @@ describe("ArtifactEditor", () => {
       if (url === "/api/jobs/j1/artifacts/job_resume" && init?.method === "PUT") {
         putBodies.push(JSON.parse(String(init.body)))
         return { ok: true, json: async () => ({ ok: true }) } as Response
+      }
+      if (url.includes("/grade_rollup")) {
+        return { ok: true, json: async () => ({ vectors: [] }) } as Response
       }
       throw new Error(`${url} ${init?.method ?? "GET"}`)
     })
@@ -882,6 +939,9 @@ describe("ArtifactEditor", () => {
       if (url === "/api/candidates/c1/data" && init?.method === "PUT") {
         putBodies.push(JSON.parse(String(init.body)))
         return { ok: true, json: async () => ({}) } as Response
+      }
+      if (url.includes("/grade_rollup")) {
+        return { ok: true, json: async () => ({ vectors: [] }) } as Response
       }
       throw new Error(url)
     })
@@ -965,6 +1025,9 @@ describe("ArtifactEditor", () => {
         current = JSON.parse(String(init.body)).artifact_uuid
         return { ok: true, json: async () => ({ current, versions: map() }) } as Response
       }
+      if (url.includes("/grade_rollup")) {
+        return { ok: true, json: async () => ({ vectors: [] }) } as Response
+      }
       throw new Error(`${url} ${init?.method ?? "GET"}`)
     })
     renderWithProviders(
@@ -990,5 +1053,32 @@ describe("ArtifactEditor", () => {
     expect(await screen.findByText("not a version")).toBeInTheDocument()
     expect(screen.getByDisplayValue("letter v1")).toBeInTheDocument()
     expect(screen.getByText("1 of 2")).toBeInTheDocument()
+  })
+
+  it("AST-2262: a shapes editor does not fetch grade_rollup", async () => {
+    const urls: string[] = []
+    mockedApi.mockImplementation(async (url: string) => {
+      urls.push(url)
+      if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
+      if (url === "/api/ui_config") return uiConfigResponse()
+      if (url === "/api/candidates") {
+        return { json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }] } as Response
+      }
+      if (isPendingGenerateUrl(url)) return pendingNotFoundResponse()
+      if (url === "/api/candidates/c1") {
+        return {
+          json: async () => ({
+            candidate_data: { artifacts: { base_resume: { summary: "Saved summary" } } },
+          }),
+        } as Response
+      }
+      if (url === "/api/shapes/candidates") {
+        return { json: async () => ({ detail: { base_resume: [{ key: "summary", label: "Summary" }] } }) } as Response
+      }
+      throw new Error(url)
+    })
+    renderWithProviders(<ArtifactEditor title="Base Resume" artifactKey="base_resume" shapesKey="base_resume" />)
+    await screen.findByDisplayValue("Saved summary")
+    expect(urls.some(url => url.includes("grade_rollup"))).toBe(false)
   })
 })

@@ -681,3 +681,37 @@ class TestAst1440AuthPassthroughRoute:
         monkeypatch.setenv("ASTRAL_DEPLOY_ENV", "staging")
         assert system_client.get("/api/me").status_code == 401
 
+
+class TestAst2261CriteriaNavCounts:
+    def test_empty_candidate_and_swallowed_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        assert system_mod._get_criteria_nav_counts(None) == {}
+        assert system_mod._get_criteria_nav_counts("") == {}
+
+        def _boom(*_a, **_k):
+            raise RuntimeError("db down")
+
+        monkeypatch.setattr(system_mod, "rubric_criteria_for_task", _boom)
+        assert system_mod._get_criteria_nav_counts("cand-1") == {}
+
+    def test_seven_paths_count_current_vectors_terms_stay_uncounted(
+        self, system_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(system_mod, "get_candidate", lambda candidate_id: {"state": "ACTIVE_SEARCH"})
+        monkeypatch.setattr(system_mod, "_get_company_counts", lambda candidate_id: {"/companies/watch_list": 4})
+        monkeypatch.setattr(system_mod, "_get_job_counts", lambda candidate_id: {"/jobs/ready": 2})
+
+        def _criteria(_cid, owner):
+            return [{"code": "VA"}, {"code": "VB"}] if owner == "grade_do" else []
+
+        monkeypatch.setattr(system_mod, "rubric_criteria_for_task", _criteria)
+        payload = system_client.get("/api/nav_config?candidate_id=cand-1", headers=auth_headers).get_json()
+        by_path = {item["path"]: item for group in payload for item in group["items"]}
+        assert by_path["/artifacts/do_job_criteria"]["count"] == 2
+        for path in system_mod._CRITERIA_NAV_PATH_ARTIFACT:
+            if path != "/artifacts/do_job_criteria":
+                assert by_path[path]["count"] == 0
+        assert "count" not in by_path["/artifacts/company_search_terms"]
+        jobs = next(group for group in payload if group["label"] == "Job Opportunities")
+        ready = next(item for item in jobs["items"] if item["path"] == "/jobs/ready")
+        assert ready["count"] == 2
+

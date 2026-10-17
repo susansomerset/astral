@@ -1867,6 +1867,162 @@ def set_rubric_criterion_current(
     return uid
 
 
+# Same trailing " (XX)" strip as consult._strip_code. Inlined: consult imports candidate.
+_ROLLUP_CODE_SUFFIX = re.compile(r"\s*\([A-Z]{2}\)\s*$")
+
+
+def _rollup_strip_code(name: str) -> str:
+    return _ROLLUP_CODE_SUFFIX.sub("", name).strip()
+
+
+def rollup_current_vector_grades(candidate_id: str, artifact_key: str) -> Dict[str, Any]:
+    """Current-vector run counts and letter tallies for one rubric (AST-2261).
+
+    A run counts only when vector_feedback recorded this vector's current
+    rubric_vector_uuid on a consumer task (not craft). Letters come from that
+    run's saved RESPONSE grades, not from feedback codes or the latest blob.
+    """
+    owner = _rubric_owner_task(artifact_key)
+    cid = (candidate_id or "").strip()
+    if not cid:
+        raise ValueError("candidate_id required")
+    criteria = rubric_criteria_for_task(cid, owner)
+    uuid_by_code: Dict[str, str] = {}
+    for row in database.list_rubric_vectors(cid, owner, current_only=True):
+        code = str(row.get("code") or "").strip().upper()
+        uid = str(row.get("rubric_vector_uuid") or "").strip()
+        if code and uid and code not in uuid_by_code:
+            uuid_by_code[code] = uid
+    # owner_task_key expands to owner + craft only, so twins never come back.
+    # Query each consumer task_key (plan step 4) and still drop blank uuids.
+    consumers = frozenset(
+        tk
+        for tk in TASK_CONFIG
+        if rubric_owner_task_key(tk) == owner and tk not in CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY
+    )
+    # (batch_id, task_key, code) -> (pinned uuid, run timestamp)
+    pins: Dict[Tuple[str, str, str], Tuple[str, str]] = {}
+    feedback_rows: List[Dict[str, Any]] = []
+    for task_key in consumers:
+        feedback_rows.extend(
+            database.list_vector_feedback(candidate_id=cid, task_key=task_key)
+        )
+    for row in feedback_rows:
+        task_key = str(row.get("task_key") or "")
+        uid = str(row.get("rubric_vector_uuid") or "").strip()
+        if task_key not in consumers or not uid:
+            continue
+        batch_id = str(row.get("batch_id") or "").strip()
+        code = str(row.get("vector_code") or "").strip().upper()
+        if not batch_id or not code:
+            continue
+        ts = str(row.get("completed_at") or row.get("created_at") or "")
+        key = (batch_id, task_key, code)
+        prev = pins.get(key)
+        if prev is None or ts > prev[1]:
+            pins[key] = (uid, ts)
+    current_uuids = set(uuid_by_code.values())
+    batches = {
+        (batch_id, task_key)
+        for (batch_id, task_key, code), (uid, _ts) in pins.items()
+        if uid in current_uuids and uuid_by_code.get(code) == uid
+    }
+    valid = set(ASTRAL_CONFIG["valid_grades"])
+    by_code = {
+        str(item.get("code") or "").strip().upper(): item
+        for item in criteria
+        if isinstance(item, dict) and str(item.get("code") or "").strip()
+    }
+    # (batch_id, entity_id, code) -> (letter, response created_at, run timestamp)
+    runs: Dict[Tuple[str, str, str], Tuple[str, str, str]] = {}
+    for batch_id, task_key in batches:
+        for block in database.get_agent_data_by_batch(batch_id, block_type="RESPONSE"):
+            if str(block.get("task_key") or "") != task_key:
+                continue
+            raw = block.get("block_data")
+            if not isinstance(raw, str):
+                continue
+            stripped = raw.lstrip()
+            if not stripped or stripped[0] not in "{[":
+                continue
+            try:
+                parsed = json.loads(stripped)
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(parsed, dict):
+                continue
+            created = str(block.get("created_at") or "")
+            entities: List[Tuple[str, dict]] = []
+            jobs = parsed.get("jobs")
+            if isinstance(jobs, list):
+                entities.extend(("job", ent) for ent in jobs if isinstance(ent, dict))
+            companies = parsed.get("companies")
+            if isinstance(companies, list):
+                entities.extend(("company", ent) for ent in companies if isinstance(ent, dict))
+            for kind, ent in entities:
+                entity_id = str(
+                    ent.get("astral_job_id") if kind == "job" else ent.get("company_id") or ""
+                ).strip()
+                if not entity_id:
+                    continue
+                grades = ent.get("grades")
+                if not isinstance(grades, list):
+                    continue
+                for grade in grades:
+                    if not isinstance(grade, dict):
+                        continue
+                    letter = str(grade.get("grade") or "").strip().upper()
+                    if letter not in valid:
+                        continue
+                    target = _rollup_strip_code(str(grade.get("vector") or ""))
+                    target_upper = target.upper()
+                    matched: Optional[str] = None
+                    for code, item in by_code.items():
+                        pin = pins.get((batch_id, task_key, code))
+                        if pin is None or pin[0] != uuid_by_code.get(code):
+                            continue
+                        label = _rollup_strip_code(str(item.get("label") or ""))
+                        if label != target and code != target_upper:
+                            continue
+                        matched = code
+                        break
+                    if matched is None:
+                        continue
+                    run_key = (batch_id, entity_id, matched)
+                    run_ts = pins[(batch_id, task_key, matched)][1]
+                    prev_run = runs.get(run_key)
+                    if prev_run is None or created > prev_run[1]:
+                        runs[run_key] = (letter, created, run_ts)
+    letter_order = list(ASTRAL_CONFIG["valid_grades"])
+    vectors: List[Dict[str, Any]] = []
+    for item in criteria:
+        if not isinstance(item, dict):
+            continue
+        code_up = str(item.get("code") or "").strip().upper()
+        counts: Dict[str, int] = {}
+        last_seen: Dict[str, str] = {}
+        run_count = 0
+        for (_batch_id, _entity_id, code), (letter, _created, run_ts) in runs.items():
+            if code != code_up:
+                continue
+            run_count += 1
+            counts[letter] = counts.get(letter, 0) + 1
+            if letter not in last_seen or run_ts > last_seen[letter]:
+                last_seen[letter] = run_ts
+        vectors.append({
+            "code": item.get("code"),
+            "label": item.get("label"),
+            "rubric_vector_uuid": uuid_by_code.get(code_up),
+            "run_count": run_count,
+            "letters": [
+                {"grade": grade, "count": counts[grade], "last_seen": last_seen[grade]}
+                for grade in letter_order
+                if counts.get(grade)
+            ],
+        })
+    return {"artifact_key": (artifact_key or "").strip(), "vectors": vectors}
+
+
 def hydrate_operative_base_resume_for_response(candidate_id: str, cd: dict) -> None:
     """Overlay operative current base_resume into candidate_data (display only)."""
     if not isinstance(cd, dict):

@@ -2653,3 +2653,42 @@ Primary command + pass criterion: [`../utils/config.md`](../utils/config.md) § 
 | Area | Component tests |
 | --- | --- |
 | Walk labels use renamed Criteria/Company item labels | revised **`TestAst1253RequestedArtifactsHandoff::test_walk_helpers_order_labels_and_rubric_keys`** |
+
+
+### AST-2261 · AST-2257 (version-scoped grade rollup)
+
+**Parent:** [AST-2257](https://linear.app/astralcareermatch/issue/AST-2257). **Publish:** `origin/sub/AST-2257/AST-2261-version-scoped-grade-rollup`. Routes: [`../ui/api/api_candidate.md`](../ui/api/api_candidate.md) § AST-2261. Nav counts: [`../ui/api/api_system.md`](../ui/api/api_system.md) § AST-2261.
+
+`rollup_current_vector_grades` returns one row per current criterion. A run is one `(batch_id, entity_id)` whose `vector_feedback.rubric_vector_uuid` is that criterion's current uuid, on a consumer task (owner and twins such as `meteorite_grade_do`). Craft tasks, blank uuids, letters outside `valid_grades`, and a retired version's batches do not count. Letters come from that batch's `RESPONSE` grades (`jobs` / `companies`), later `created_at` wins inside one batch, `last_seen` is the max run timestamp. Company Gazing (`company_prefilter`) reads `companies`. A criterion with no table uuid still appears (`rubric_vector_uuid` null, `run_count` 0).
+
+| Area | Component tests |
+| --- | --- |
+| Current uuid only; twin counts; craft / blank uuid / bad letter / empty id out; arrow back to the old version restores its letter | new **`TestAst2261GradeRollup::test_only_current_uuid_counts_and_old_version_returns`** |
+| Company `companies` letter; embedded criteria with no table row | new **`TestAst2261GradeRollup::test_company_grades_and_unpinned_embedded_vector`** |
+| Blank candidate and non-rubric key | new **`TestAst2261GradeRollup::test_rejects_blank_candidate_and_non_rubric`** |
+
+**Broken / obsolete:** none. `list_vector_feedback(owner_task_key=)` still limits to owner + craft, so the twin letter **C** is absent and the first node is red until that read includes the plan's consumer set. Do not drop the twin assert.
+
+**Integration:** `tests/integration/scenarios/test_candidate_nav_api.py` still holds (jobs badges, facing order, 401). Criteria counts are additive; the scenario does not assert them. No new integration file.
+
+## QA test manifest — AST-2261
+
+1. Rollup: `tests/component/core/test_candidate.py::TestAst2261GradeRollup`
+2. GET grade_rollup: `tests/component/ui/api/test_api_candidate.py::TestAst2261GradeRollupApi`
+3. Nav counts: `tests/component/ui/api/test_api_system.py::TestAst2261CriteriaNavCounts`
+4. Existing nav regression (job badge still attached): `tests/component/ui/api/test_api_system.py::TestSystemAuthRoutes::test_nav_config_uses_candidate_state`
+5. Existing integration nav (not revised): `tests/integration/scenarios/test_candidate_nav_api.py`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst2261GradeRollup \
+  tests/component/ui/api/test_api_candidate.py::TestAst2261GradeRollupApi \
+  tests/component/ui/api/test_api_system.py::TestAst2261CriteriaNavCounts \
+  tests/component/ui/api/test_api_system.py::TestSystemAuthRoutes::test_nav_config_uses_candidate_state \
+  tests/integration/scenarios/test_candidate_nav_api.py \
+  -q
+```
+
+**Pass criterion:** those nodes green, including meteorite-twin letter C on the current uuid. Not the zero-arg harness.
+
+**Bible shasum (after publish):** `git show origin/sub/AST-2257/AST-2261-version-scoped-grade-rollup:docs/test-bible/core/candidate.md | shasum`; same for `docs/test-bible/ui/api/api_candidate.md` and `docs/test-bible/ui/api/api_system.md`.

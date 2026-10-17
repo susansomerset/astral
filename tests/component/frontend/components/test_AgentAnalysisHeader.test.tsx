@@ -137,6 +137,23 @@ describe("AgentAnalysisHeader", () => {
     expect(mockedApi).toHaveBeenCalledWith("/api/candidates/c1")
   })
 
+  it("[bug-repro] AST-2268: job-carried rubric content beats a blank live row", async () => {
+    mockApiRoutes({
+      detail: detailWith([{ label: "Fit", code: "FIT", importance: 8 }]),
+    })
+    renderWithProviders(
+      <AgentAnalysisHeader
+        grades={[{ vector: "fit", grade: "A" }]}
+        rubricItems={[{ code: "FIT", label: "Fit", content: "Job carried body", importance: 1 }]}
+        rubricArtifact="joblist_rubric"
+      />,
+    )
+    await waitFor(() => expect(screen.getByRole("button", { name: "show rubric" })).toBeInTheDocument())
+    await userEvent.click(screen.getByRole("button", { name: "show rubric" }))
+    expect(await screen.findByText("Job carried body")).toBeInTheDocument()
+    expect(screen.queryByText("No rubric found for this vector.")).not.toBeInTheDocument()
+  })
+
   it("AST-2059: failed detail fetch ends on the fallback, not stuck loading", async () => {
     let detail: Detail = { ok: false, json: async () => ({}) } as Response
     mockApiRoutes({ detail: () => (typeof detail === "function" ? detail() : detail) })

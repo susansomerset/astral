@@ -973,9 +973,11 @@ describe("JobAnalysisReportModal — AST-1348 Analysis score title chrome", () =
     renderWithProviders(<JobAnalysisReportModal jobId="j1348" onClose={() => {}} />)
     await waitForShell()
     await userEvent.click(within(topTabBar()).getByRole("button", { name: "Analysis" }))
-    expect(
-      screen.getByText("JD Analysis - 8.5 - score: 137 out of 150 possible (321 max total)"),
-    ).toBeInTheDocument()
+    // AST-2268: phase title is score + breakdown gradable %, not the earned/possible template.
+    expect(screen.getByText("JD Analysis - 8.5 (47% gradable)")).toBeInTheDocument()
+    expect(screen.queryByText(/score: 137 out of 150/)).not.toBeInTheDocument()
+    const total = document.querySelector(".recommended-report-total-gradable") as HTMLElement
+    expect(total.textContent).toMatch(/Total Score:/)
     expect(screen.getByText("DO Analysis")).toBeInTheDocument()
     expect(screen.queryByText(/^DO Analysis - score:/)).not.toBeInTheDocument()
     expect(screen.getByText("GET Analysis")).toBeInTheDocument()
@@ -1227,7 +1229,12 @@ describe("JobAnalysisReportModal — AST-1695 listing_href title", () => {
     renderWithProviders(<JobAnalysisReportModal jobId="j1695-b" onClose={() => {}} />)
     await waitForShell()
     expect(screen.queryByRole("link", { name: "Analyst" })).not.toBeInTheDocument()
-    expect(document.querySelector(".recommended-report-title")).toHaveTextContent("Analyst")
+    // AST-2268: identity is company; http job_link is the line when listing_href is not http(s).
+    expect(document.querySelector(".recommended-report-title")).toHaveTextContent("Globex")
+    expect(screen.getByRole("link", { name: "https://jobs.example/apply" })).toHaveAttribute(
+      "href",
+      "https://jobs.example/apply",
+    )
   })
 
   it("non-http listing_href → plain title span", async () => {
@@ -1259,7 +1266,8 @@ describe("JobAnalysisReportModal — AST-1704 non-http job_link chrome", () => {
     renderWithProviders(<JobAnalysisReportModal jobId="j-crumb" onClose={() => {}} />)
     await waitForShell()
     expect(screen.queryByRole("link", { name: "Analyst" })).not.toBeInTheDocument()
-    expect(screen.getByText("Analyst")).toHaveClass("recommended-report-title")
+    expect(document.querySelector(".recommended-report-title")).toHaveTextContent("Globex")
+    expect(screen.getByText("Analyst")).toHaveClass("recommended-report-job-title-secondary")
     expect(screen.getByText(crumb)).toHaveClass("recommended-report-job-link-text")
   })
 })
@@ -1295,24 +1303,21 @@ describe("JobAnalysisReportModal — AST-1874 Analysis default, list score, Skip
     expect(within(topTabBar()).getByRole("button", { name: "Summary" })).not.toHaveClass("active")
   })
 
-  // AC3: list score (one decimal) in the JD header; absent → segment dropped.
-  it("JD header carries the one-decimal list score", async () => {
+  // AST-2268: one-decimal list score + breakdown possible/max percent; no earned/possible template.
+  it("[bug-repro] AST-2268 JD header is score and gradable percent", async () => {
     installBaseApiMocks(mockedApi, jobHandler("j-s1", scored({ jd_score: 3.66 })))
     renderWithProviders(<JobAnalysisReportModal jobId="j-s1" onClose={() => {}} />)
     await waitForShell()
-    expect(
-      await screen.findByText("JD Analysis - 3.7 - score: 42 out of 50 possible (60 max total)"),
-    ).toBeInTheDocument()
+    expect(await screen.findByText("JD Analysis - 3.7 (83% gradable)")).toBeInTheDocument()
+    expect(screen.queryByText(/score: 42 out of 50/)).not.toBeInTheDocument()
   })
 
-  it("JD header drops the score segment when jd_score is absent", async () => {
+  it("JD header is the plain phase label when jd_score is absent", async () => {
     installBaseApiMocks(mockedApi, jobHandler("j-s2", scored()))
     renderWithProviders(<JobAnalysisReportModal jobId="j-s2" onClose={() => {}} />)
     await waitForShell()
-    expect(
-      await screen.findByText("JD Analysis - score: 42 out of 50 possible (60 max total)"),
-    ).toBeInTheDocument()
-    expect(screen.queryByText(/JD Analysis - (\u2014|-) /)).not.toBeInTheDocument()
+    expect(await screen.findByText("JD Analysis")).toBeInTheDocument()
+    expect(screen.queryByText(/JD Analysis -/)).not.toBeInTheDocument()
   })
 
   // AC5: visibility is the server's can_skip only.
