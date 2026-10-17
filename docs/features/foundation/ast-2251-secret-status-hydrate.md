@@ -318,3 +318,24 @@ After a successful Admin set on the current process, `database.get_candidate` �
 - Parent AC: no Fernet encrypt on the key-update path; secret not stored in `api_keys` JSON.
 - GET / sanitize never returns plaintext.
 - Hydrate still warns (candidate id + secret id, not the value) when status is SET and the env value is missing — that path remains for rows SET without a matching environ entry (e.g. another replica before deploy).
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-2275
+**Publish ref:** `7e321006f8a06a99e7126176d448ab70b787a0c4` (`origin/sub/AST-2246/AST-2275-dispatch-vault-openrouter`)
+**Overall:** CLEAN
+
+## Fix-specific checks
+
+**[bug-repro]** — OK. Production probe + update_candidate_api_keys plants CANDIDATE_*_OPENROUTER; hydrate sees openrouter.
+
+**## What must still hold** — OK. EXPIRED/local stub/no Fernet/GET/hydrate warning unchanged.
+
+## Findings
+
+Advisory only. ftr three-dot includes unrelated sibling carry; scored 2275 commit range. Env planted before DB commit accepted as rare retry case.
+
+```
+[code-rubric] PROCEED (Commit: 7e32100) Vault set plants process env
+```
