@@ -288,3 +288,25 @@ From AST-2272 / AST-1875 (regression locks, not re-implements):
 ### Radia review (AST-2273)
 
 PROCEED / CLEAN @ `f1f3aa8a` — §3h User Testing.
+
+## Threads (generated — epic_registry mirror)
+
+_(generated from epic registry — do not hand-edit; edits are overwritten)_
+
+### Team
+
+| Agent | Role | Thread |
+|--------|-------|--------|
+| Hedy | engineer | `/home/susan/.cursor/chats/70d015cb516ffe99de3cb1a858fb2fca/38cd90ce-8c6f-468c-86b6-a674b96152c3/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/70d015cb516ffe99de3cb1a858fb2fca/f9221031-e3a2-4b35-abab-f5a9eb6cc1c1/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/70d015cb516ffe99de3cb1a858fb2fca/ba2b4006-5455-4167-8151-fa7eae83ced9/store.db` |
+
+### Git
+
+| Ticket | `origin/…` |
+|--------|------------|
+| AST-2270 (parent) | ftr/AST-2270-max-auto-cap-observability |
+| AST-2272 | sub/AST-2270/AST-2272-max-auto-cap-observability |
+| AST-2273 | sub/AST-2270/AST-2273-badge-split-tests |
+
+**Epic worktree:** `astral-AST-2270/` — one active sub checked out at a time.
