@@ -174,3 +174,8 @@ AC 10 → Stage 1 (transitions) + Stage 2 (`run_test_watch_validate` → WATCH /
 
 context_tokens≈42000
 ```
+
+## Review
+
+- **Publish ref:** `sub/AST-2318/AST-2319-test-watch-state-and-validate-dispatch`
+- **Tip:** `c2b33405d` — `code(AST-2319): TEST_WATCH parse-validate producer`
