@@ -697,6 +697,18 @@ export default function ScheduledActions() {
     Object.entries(threadStatus).filter(([, e]) => e.running),
     [threadStatus]
   )
+  // AST-2272: badge next to Max AUTO must not look like a total-vs-cap breach when CLICK runs too.
+  const runningAuto = useMemo(
+    () => activeThreads.filter(([, e]) => e.is_auto).length,
+    [activeThreads],
+  )
+  const runningClick = activeThreads.length - runningAuto
+  const runningBadgeLabel =
+    runningAuto > 0 && runningClick > 0
+      ? `${runningAuto} AUTO · ${runningClick} CLICK`
+      : runningAuto > 0
+        ? `${runningAuto} AUTO running`
+        : `${runningClick} CLICK running`
 
   const openAdd = () => {
     setEditRow(null)
@@ -831,7 +843,7 @@ export default function ScheduledActions() {
           )}
           {activeThreads.length > 0 && (
             <span className="dispatch-status-badge dispatch-status-warn">
-              {activeThreads.length} running
+              {runningBadgeLabel}
             </span>
           )}
           <button
