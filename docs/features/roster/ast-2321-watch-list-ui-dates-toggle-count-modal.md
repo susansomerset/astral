@@ -169,4 +169,19 @@ context_tokens≈85000
 ## Review
 
 - **Publish ref:** `sub/AST-2318/AST-2321-watch-list-ui-dates-toggle-count-modal`
-- **Tip:** `c7ee2455b` — `code(AST-2321): Watch List dates toggle, count clicks, ignore-only`
+- **Tip:** `269aacb2a` — `code(AST-2321): Watch List dates toggle, count clicks, ignore-only`
+
+## Radia review
+
+```text
+[code-rubric]
+**Ticket:** AST-2321
+**Publish ref:** `269aacb2a084d1bb978375046fb37f285281553b`
+**Overall:** CLEAN
+## Findings
+### fix-now
+(none)
+### discuss
+(none)
+context_tokens≈48000
+```
