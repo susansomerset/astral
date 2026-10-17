@@ -736,6 +736,68 @@ class TestAst2252AdminSecretExpiry:
         assert resp.status_code == 404
 
 
+class TestAst2283PlantBeforeDeploy:
+    """AST-2283: production Admin PUT must plant process env before the deploy restart."""
+
+    def test_production_put_plants_before_deploy_so_hydrate_keeps_openrouter(
+        self,
+        candidate_client: FlaskClient,
+        auth_headers: dict[str, str],
+        sqlite_in_memory,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        import os
+
+        db = sqlite_in_memory
+        monkeypatch.setenv("ASTRAL_RAILWAY_TOKEN", "tok")
+        monkeypatch.delenv("CANDIDATE_SOMERSET_OPENROUTER", raising=False)
+        monkeypatch.setattr(candidate_mod, "normalize_rubric_artifacts_on_save", MagicMock())
+        monkeypatch.setattr(candidate_mod, "hydrate_rubric_artifacts_for_response", MagicMock())
+        order: list[str] = []
+        planted_when_deploy: list[str | None] = []
+        real_update = candidate_mod.update_candidate_api_keys
+
+        def _upsert(*_a, **_kw):
+            order.append("upsert")
+
+        def _delete(*_a, **_kw):
+            order.append("delete")
+
+        def _update(cid: str, edits):
+            order.append("update")
+            real_update(cid, edits)
+
+        def _deploy():
+            planted_when_deploy.append(os.environ.get("CANDIDATE_SOMERSET_OPENROUTER"))
+            order.append("deploy")
+            return "dep-1"
+
+        monkeypatch.setattr(candidate_mod, "upsert_service_variable", _upsert)
+        monkeypatch.setattr(candidate_mod, "delete_service_variable", _delete)
+        monkeypatch.setattr(candidate_mod, "update_candidate_api_keys", _update)
+        monkeypatch.setattr(candidate_mod, "trigger_service_deploy", _deploy)
+        # make-fix may call the batch helper instead of the one-key wrapper
+        if hasattr(candidate_mod, "upsert_service_variables"):
+            monkeypatch.setattr(candidate_mod, "upsert_service_variables", _upsert)
+        db.save_candidate("somerset", state="NEW_CANDIDATE", candidate_data={})
+        resp = candidate_client.put(
+            "/api/candidates/somerset/data",
+            json={"api_keys": [{
+                "server": "openrouter",
+                "key": "sk-or-vault",
+                "expires_at": "2999-01-01 00:00:00",
+            }]},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        assert order.index("update") < order.index("deploy")
+        assert planted_when_deploy == ["sk-or-vault"]
+        assert os.environ.get("CANDIDATE_SOMERSET_OPENROUTER") == "sk-or-vault"
+        row = db.get_candidate("somerset")
+        assert row["candidate_api_keys"].get("openrouter") == "sk-or-vault"
+        assert b"sk-or-vault" not in resp.data
+
+
 class TestAst1253GenerateArtifactsApi:
     """AST-1253: POST /generate_artifacts handoff + chain-key ad-hoc generate 409."""
 

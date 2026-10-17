@@ -603,3 +603,8 @@ cd src/ui/frontend && npm run test:component -- \
 **Fixture:** `tests/component/ui/conftest.py` `_DB_SCHEMA_FLAGS` includes `_vector_feedback_schema_ensured` so a fresh SQLite file creates `vector_feedback` (same leak class as AST-2067's rubric flag).
 
 **Broken / obsolete:** none. Manifest command: [`../../core/candidate.md`](../../core/candidate.md) § QA test manifest — AST-2261.
+
+
+### AST-2283 · AST-2246 (plant before deploy)
+
+**Bug-repro (qa-fix):** `tests/component/ui/api/test_api_candidate.py::TestAst2283PlantBeforeDeploy::test_production_put_plants_before_deploy_so_hydrate_keeps_openrouter` — production Admin PUT must call `update_candidate_api_keys` before `trigger_service_deploy` so `CANDIDATE_SOMERSET_OPENROUTER` is planted when deploy runs and hydrate keeps OpenRouter. Red on the pre-fix tree (deploy runs before the plant).
