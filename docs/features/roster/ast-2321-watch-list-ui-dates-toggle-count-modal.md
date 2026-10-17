@@ -165,3 +165,8 @@ AC 5 → Stage 2 (dates toggle + count `Column.render` using `{key}_newest_at`);
 
 context_tokens≈85000
 ```
+
+## Review
+
+- **Publish ref:** `sub/AST-2318/AST-2321-watch-list-ui-dates-toggle-count-modal`
+- **Tip:** `c7ee2455b` — `code(AST-2321): Watch List dates toggle, count clicks, ignore-only`
