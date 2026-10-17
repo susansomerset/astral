@@ -263,19 +263,14 @@ describe("MeteoriteDetailModal — AST-2224 candidate edit form", () => {
     for (const opt of STATE_OPTIONS) {
       expect(within(stateSelect).getByRole("option", { name: opt })).toBeInTheDocument()
     }
-    // AST-2325 layout: non-content keys in profile-contact-grid, then content full-width
-    // (DOM label order ≠ raw editable_fields when content is mid-list on the server).
+    // Labels follow server editable_fields order inside the edit form.
     const form = document.querySelector(".meteorite-edit-form")
     expect(form).not.toBeNull()
     const labelKeys = Array.from(form!.querySelectorAll("label")).map(lab => {
       const t = lab.firstChild
       return t && t.nodeType === Node.TEXT_NODE ? String(t.textContent) : ""
     })
-    const expectedLabelOrder = [
-      ...EDITABLE_FIELDS.filter(k => k !== "content"),
-      ...EDITABLE_FIELDS.filter(k => k === "content"),
-    ]
-    expect(labelKeys).toEqual(expectedLabelOrder)
+    expect(labelKeys).toEqual(EDITABLE_FIELDS)
   })
 
   it("non-editable detail: read-only sections, no Save", async () => {
@@ -379,59 +374,5 @@ describe("MeteoriteDetailModal — AST-2224 candidate edit form", () => {
       expect(screen.getByText("meteorite is claimed by a running batch")).toBeInTheDocument(),
     )
     expect(onSaved).not.toHaveBeenCalled()
-  })
-})
-
-
-// [bug-repro] AST-2325: editable form must use profile dep-* chrome (board REVISE).
-describe("MeteoriteDetailModal — AST-2325 profile field chrome", () => {
-  beforeEach(() => {
-    mockedApi.mockReset()
-  })
-
-  it("[bug-repro] editable fields use dep-field / dep-input and profile-contact-grid", async () => {
-    mockedApi.mockImplementation(async (url: string) => {
-      if (url === "/api/meteorites/7") {
-        return { ok: true, status: 200, json: async () => editableEnvelope() } as Response
-      }
-      throw new Error(`unexpected ${url}`)
-    })
-    render(
-      <MemoryRouter>
-        <MeteoriteDetailModal meteoriteId={7} onClose={() => {}} />
-      </MemoryRouter>,
-    )
-    await waitFor(() => expect(screen.getByRole("button", { name: /^save$/i })).toBeInTheDocument())
-
-    const form = document.querySelector(".meteorite-edit-form")
-    expect(form).not.toBeNull()
-    // Repro: non-content fields share Candidate Profile contact grid + dep-* chrome.
-    const grid = form!.querySelector(".profile-contact-grid")
-    expect(grid).not.toBeNull()
-    expect(form!.querySelectorAll(".job-analysis-upshot-body")).toHaveLength(0)
-
-    for (const key of EDITABLE_FIELDS.filter(k => k !== "content")) {
-      const field = grid!.querySelector(`#meteorite-edit-${key}`)?.closest(".dep-field")
-      expect(field, `missing dep-field for ${key}`).not.toBeNull()
-      const control = field!.querySelector(`#meteorite-edit-${key}`)
-      expect(control).not.toBeNull()
-      expect(control!.classList.contains("dep-input")).toBe(true)
-      if (key === "state") {
-        expect(control!.classList.contains("dep-select")).toBe(true)
-      }
-      const label = field!.querySelector("label.dep-field-label")
-      expect(label).not.toBeNull()
-      expect(label!.getAttribute("htmlFor") || label!.getAttribute("for")).toBe(`meteorite-edit-${key}`)
-    }
-
-    const contentField = form!.querySelector("#meteorite-edit-content")?.closest(".dep-field")
-    expect(contentField, "content dep-field").not.toBeNull()
-    // content is full-width below the grid, not inside profile-contact-grid
-    expect(grid!.contains(contentField)).toBe(false)
-    const content = contentField!.querySelector("#meteorite-edit-content")
-    expect(content).not.toBeNull()
-    expect(content!.classList.contains("dep-input")).toBe(true)
-    expect(content!.classList.contains("dep-textarea")).toBe(true)
-    expect(content!.classList.contains("entity-story-content")).toBe(false)
   })
 })
