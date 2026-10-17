@@ -6,6 +6,7 @@ import ExperienceJobsEditor, {
   type ExperienceJobField,
 } from "./ExperienceJobsEditor"
 import LabeledTextArea from "./LabeledTextArea"
+import RubricGradeThermometer from "./RubricGradeThermometer"
 import type { SideTab } from "./SideTabPanel"
 import Toast, { type ToastMessage } from "./Toast"
 import { useCandidate } from "../contexts/CandidateContext"
@@ -168,6 +169,12 @@ export default function ArtifactEditor({
   // AST-2068 version arrows: maps keyed by row uuid; per-criterion maps keyed by rubric code.
   const [artifactVersions, setArtifactVersions] = useState<VersionMap | null>(null)
   const [criterionVersions, setCriterionVersions] = useState<Record<string, VersionMap>>({})
+  type GradeRollupVector = {
+    code?: string
+    run_count?: number
+    letters?: { grade: string; count: number; last_seen: string }[]
+  }
+  const [gradeRollup, setGradeRollup] = useState<GradeRollupVector[] | null>(null)
   const [moving, setMoving] = useState(false)
 
   // Unmount: abort in-flight Generate; gate late setState
@@ -496,15 +503,37 @@ export default function ArtifactEditor({
     }
   }, [artifactVersionsBase, criterionVersionsOn, selectedId, artifactKey])
 
+  const refreshGradeRollup = useCallback(async () => {
+    if (!(criterionVersionsOn && selectedId)) {
+      setGradeRollup(null)
+      return
+    }
+    try {
+      const r = await api(`/api/candidates/${selectedId}/rubric/${encodeURIComponent(artifactKey)}/grade_rollup`)
+      if (!mountedRef.current) return
+      if (!r.ok) {
+        setGradeRollup(null)
+        return
+      }
+      const body = await r.json()
+      if (!mountedRef.current) return
+      setGradeRollup(Array.isArray(body.vectors) ? body.vectors : [])
+    } catch {
+      if (mountedRef.current) setGradeRollup(null)
+    }
+  }, [criterionVersionsOn, selectedId, artifactKey])
+
   // Version maps follow every (re)load; clear on unload so a previous candidate's map never drives a move.
   useEffect(() => {
     if (!loaded) {
       setArtifactVersions(null)
       setCriterionVersions({})
+      setGradeRollup(null)
       return
     }
     void refreshVersions()
-  }, [loaded, refreshVersions])
+    void refreshGradeRollup()
+  }, [loaded, refreshVersions, refreshGradeRollup])
 
   // Build the payload from current tabs
   function buildPayload(t: SideTab[]) {
@@ -862,6 +891,7 @@ export default function ArtifactEditor({
     api(`/api/candidates/${selectedId}`).then(r => r.json()).then(c => {
       applyCandidateArtifactResponse(c)
       setDirty(false)
+      void refreshGradeRollup()
     })
   }
 
@@ -1010,6 +1040,22 @@ export default function ArtifactEditor({
                         : tab.label}
                     </span>
                   )
+                }
+                metadata={
+                  criterionVersionsOn && rubricMode && tab.code && gradeRollup !== null
+                    ? (() => {
+                        const code = tab.code.trim().toUpperCase()
+                        const vector = gradeRollup.find(v => String(v.code ?? "").trim().toUpperCase() === code)
+                        const runCount = typeof vector?.run_count === "number" ? vector.run_count : 0
+                        const letters = Array.isArray(vector?.letters) ? vector.letters : []
+                        return (
+                          <span className="rubric-grade-rollup">
+                            <span className="rubric-grade-run-count" title="grading runs">{runCount}</span>
+                            <RubricGradeThermometer letters={letters} />
+                          </span>
+                        )
+                      })()
+                    : undefined
                 }
                 actions={
                   tabChromeEditable ? (
