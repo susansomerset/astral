@@ -336,3 +336,71 @@ In `MeteoriteDetailModal.tsx`, replace the editable-form markup inside `.meteori
 - Post-save `buildDraft(..., "stored")` (Joan round=1) unchanged.
 - No server / config / `database.py` / `JobsMeteorites.tsx` edits in this bug fix.
 
+
+
+## Radia review-fix (AST-2325)
+
+[code-rubric]
+**Ticket:** AST-2325
+**Publish ref:** `b7ce86ab34b4311e0801a720211d677e8a65e682` (`origin/sub/AST-2216/AST-2325-meteorite-modal-styling`)
+**Corpus:** b7ab2203048ce0beb2869a12200ab7fa696c8066
+**Overall:** FIX-NOW
+
+## Canon scores
+
+No frozen canon list on the bug ticket (`[board-joan] CANON: OK`; no Citations in Linear description).
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| *(none on frozen list)* | — | | |
+
+## Column diff vs plan stage
+
+no plan-stage canon scores attached
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+**[bug-repro]** OK — `test_MeteoriteDetailModal.test.tsx` › `[bug-repro] editable fields use dep-field / dep-input and profile-contact-grid` asserts concrete To-be chrome (`.profile-contact-grid`, `.dep-field` / `.dep-field-label`, `.dep-input` + `.dep-select` / `.dep-textarea`, no `job-analysis-upshot-body` / edit-path `entity-story-content`). Would fail on pre-fix markup.
+
+**## What must still hold** — **FAIL** — Product styling matches plan-fix `## Proposed change`, but **AST-2224 AC 12 regression**: `MeteoriteDetailModal — AST-2224 candidate edit form` › `editable detail: one control per server field…` still expects `labelKeys === EDITABLE_FIELDS` (server order with `content` second). After AST-2325, labels are `state, link, job_title, employer_name, electronic_contact, content` (content last below grid). Verified locally: that case **fails**; AST-2325-only pattern **passes**. Hedy’s Linear note matches this gap.
+
+## Findings
+
+### fix-now
+
+- **AST-2224 label-order test vs content-below-grid layout** — `tests/component/frontend/components/test_MeteoriteDetailModal.test.tsx` ~L273: `expect(labelKeys).toEqual(EDITABLE_FIELDS)` breaks after `MeteoriteDetailModal.tsx` AST-2325 markup (content full-width after `profile-contact-grid`). Violates plan-fix **## What must still hold** (“Parent / AST-2224 AC 12 …” full modal behaviors). **Default:** update the AST-2224 assertion to the plan’s DOM order (non-`content` keys in grid order, then `content`), or restore server-order labels without breaking the grid layout — prefer **test update** (smaller, matches approved plan-fix layout).
+
+### discuss
+
+- **@susan** — Is **visual** field order (content at bottom) allowed to diverge from **server `editable_fields` order** for label DOM traversal? Plan-fix chose content-last for profile-like layout. **Default:** allow content-last; Betty/engineer align the AST-2224 label-order assert (do not revert dep-* chrome).
+
+### advisory
+
+- **Publish ref diff isolation** — `origin/ftr/AST-2216-meteorite-text-editable...origin/sub/...` is ~399 commits / unrelated epic carry; **this bug’s own diff** is `fd7e7c06e` + `a8df4ad73` + `b7ce86ab3` (docs, `[bug-repro]`, one TSX file + test block). Scored that slice for fix review.
+
+- **Tests Passed vs manifest scope** — If `test-fix` only ran `--testNamePattern='AST-2325'`, **Tests Passed** can hide the AST-2224 failure above. **Default:** re-run full `test_MeteoriteDetailModal.test.tsx` before UT.
+
+- **AC1 `rg`** — Still clean on `MeteoriteDetailModal.tsx` (no `LANDED` / `"CHECK_UNIQUE"` / `"NEW"`).
+
+## What's solid
+
+- Single-file product scope: `dep-*` / `profile-contact-grid`, `entity-error` / `entity-loading`, `.meteorite-edit-form` retained; no server / `JobsMeteorites` / `App.css` edits.
+- Save/PUT/`buildDraft`/`onSaved` logic untouched in diff.
+- `[bug-repro]` pins the right styling contract and flips red→green for the bug.
+
+## Recommended actions (downstream)
+
+- Chuckles: append artifact, `docs(AST-2325): Radia review — findings`, push, slim upshot `--as radia`, **Review Posted** → **resolve-child** (normal parent AST-2216, not orphaned).
+- Hedy/Betty: fix AST-2224 label-order test (or DOM) per fix-now **Default**; run full modal component file green.
+
+**Chuckles branching:** gate **REVIEW** | parent **normal** → Review Posted → resolve-child → User Testing.
+
+```
+[code-rubric] REVIEW (Commit: b7ce86ab34b4311e0801a720211d677e8a65e682) AST-2224 label test red
+```
+
+context_tokens≈28000
