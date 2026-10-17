@@ -101,3 +101,34 @@ Ticket **Scope** names exactly these files/kinds: `src/core/roster.py` (new/modi
 ## Estimate
 
 Confirm Chuckles estimate: 3 — agree
+
+## Joan validate
+
+```text
+[plan-rubric]
+**Ticket:** AST-2322
+**Overall:** APPROVED
+**Corpus:** b7ab2203048ce0beb2869a12200ab7fa696c8066
+**Publish ref:** `sub/AST-2318/AST-2322-add-company-and-ignore-restore` @ `102e29572669003e3c3b889059b338e191f00f63`
+
+## Canon scores
+
+astral.dispatch.entity-state-bound | A | |
+stat.logging.info.api | A | |
+
+## Traceability
+
+AC 8 → Stage 1 (`add_company_for_test_watch`) + Stage 2 (`POST /api/companies/add`) + Stage 3 (Watch List form); AC 9 → Stage 2–3 (`IGNORE`→`TEST_WATCH` via `bulk_state` + Ignored restore UI); validate hop `TEST_WATCH`→`WATCH`/`WEBSITE_FOUND` N/A here (AST-2319 producer). Parent AC 1–7, 10–12 N/A (this child’s Scope).
+
+## Findings
+
+**discuss** — Linear assignee is Katherine, not Joan; Chuckles should assign Joan before status handoff per validate-plan §1 (review proceeded on spawn instruction).
+
+**acceptable** — Explicit scope gate matches ticket Scope; no `config.py` edits; `ignored_list_to_state` left `"TO_WATCH"` while Ignored posts `"TEST_WATCH"` is documented and partition-aligned with AST-2319.
+
+**acceptable** — `bulk_state` moves from `update_company(..., state=...)` to config-gated `transition_company_state`, which enforces real transitions (including blocking `WATCH`→`WEBSITE_FOUND` until AST-2321 removes Retry Scrape chrome).
+
+**discuss** — Manifest `ignored_list_to_state` will disagree with Ignored UI until a ticket owns `config.py`; intentional per plan, but operators reading manifest alone may be misled.
+
+context_tokens≈58000
+```
