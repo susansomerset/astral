@@ -47,23 +47,21 @@ export default function Ignored() {
     return <div className="list-page-status">State UI manifest unavailable.</div>
   }
 
-  const ignoredListToState = manifest.company.bulk_transitions.ignored_list_to_state
-
-  function handleMoveToWatch(ids: string[]) {
+  function handleRestoreToTestWatch(ids: string[]) {
     api("/api/companies/bulk_state", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         short_names: ids,
-        to_state: ignoredListToState,
+        to_state: "TEST_WATCH",
       }),
     })
       .then(r => r.json())
       .then(res => {
-        setToast({ text: `${res.updated} precious snowflakes moved to watch list`, variant: "success" })
+        setToast({ text: `${res.updated} companies restored to test watch`, variant: "success" })
         load()
       })
-      .catch(() => setToast({ text: "Move failed", variant: "error" }))
+      .catch(() => setToast({ text: "Restore failed", variant: "error" }))
   }
 
   return (
@@ -76,7 +74,7 @@ export default function Ignored() {
         loading={loading}
         onRowClick={row => setViewing(row.short_name)}
         bulkActions={[
-          { label: "Move to Watch", onClick: handleMoveToWatch },
+          { label: "Restore to Test Watch", onClick: handleRestoreToTestWatch },
         ]}
       />
       <CompanyDetailModal shortName={viewing} onClose={() => setViewing(null)} onSaved={load} />

@@ -5,18 +5,28 @@ from flask import Blueprint, jsonify, request
 from ui.auth import require_auth
 from src.core.agent import get_entity_agent_story
 from src.core.roster import (
+    add_company_for_test_watch,
     count_companies,
+    enrich_watch_list_company,
     get_active_trigger_states,
+    get_companies_job_state_stats,
     get_company,
     get_company_job_state_counts,
     list_companies,
     list_company_job_scans,
+    list_company_jobs_for_bucket,
     save_company,
+    transition_company_state,
     update_company,
 )
-from src.utils.config import METEORITE_CONFIG
+from src.utils.config import ASTRAL_CONFIG, METEORITE_CONFIG, WATCH_LIST_JOB_BUCKETS
+from src.utils.logging import get_logger
 
 companies_bp = Blueprint("companies", __name__, url_prefix="/api/companies")
+logger = get_logger(__name__)
+
+# Match api_jobs list payloads — drop bulky blobs from bucket job lists (AST-2320).
+_WATCH_JOB_LIST_DROP_KEYS = ("job_data", "state_history")
 
 
 def _flatten_for_view(company: dict) -> dict:
@@ -41,6 +51,14 @@ def list_view():
 
     if view == "watch_list":
         rows = list_companies(states=["WATCH"], candidate_id=candidate_id)
+        short_names = [r["short_name"] for r in rows if r.get("short_name")]
+        stats_by_company = get_companies_job_state_stats(short_names)
+        enriched = []
+        for r in rows:
+            sn = r.get("short_name")
+            enrich_watch_list_company(r, stats_by_company.get(sn, {}) if sn else {})
+            enriched.append(_flatten_for_view(r))
+        return jsonify(enriched)
     elif view == "new_list":
         active = get_active_trigger_states(candidate_id, "company") if candidate_id else []
         pipeline_states = [s for s in active if s not in ("WATCH", "IGNORE")]
@@ -108,6 +126,29 @@ def detail(short_name):
     return jsonify(company)
 
 
+@companies_bp.route("/<short_name>/jobs")
+@require_auth
+def company_jobs_by_bucket(short_name):
+    """Jobs for one company filtered to a Watch List count bucket (AST-2320)."""
+    bucket = (request.args.get("bucket") or "").strip()
+    candidate_id = (request.args.get("candidate_id") or "").strip()
+    if bucket not in WATCH_LIST_JOB_BUCKETS:
+        return jsonify({"error": "invalid bucket"}), 400
+    if not candidate_id:
+        return jsonify({"error": "candidate_id required"}), 400
+    if not get_company(short_name):
+        return jsonify({"error": "Not found"}), 404
+    states = list(WATCH_LIST_JOB_BUCKETS[bucket]["states"])
+    rows = list_company_jobs_for_bucket(short_name, states, candidate_id=candidate_id)
+    slim = []
+    for job in rows:
+        row = dict(job)
+        for key in _WATCH_JOB_LIST_DROP_KEYS:
+            row.pop(key, None)
+        slim.append(row)
+    return jsonify(slim)
+
+
 @companies_bp.route("/<short_name>", methods=["PUT"])
 @require_auth
 def edit(short_name):
@@ -135,10 +176,50 @@ def bulk_state():
     to_state = data.get("to_state", "")
     if not short_names or not to_state:
         return jsonify({"error": "short_names and to_state required"}), 400
-    updated = 0
+    transitions = ASTRAL_CONFIG["company_state_transitions"]
+    # Validate every found row before any write (no partial apply on illegal pair).
+    to_apply = []
     for sn in short_names:
-        updated += update_company(sn, state=to_state)
+        company = get_company(sn)
+        if not company:
+            continue
+        from_state = str(company.get("state") or "")
+        if (from_state, to_state) not in transitions:
+            return jsonify({"error": f"transition not allowed: {from_state} -> {to_state}"}), 400
+        to_apply.append(sn)
+    updated = 0
+    for sn in to_apply:
+        transition_company_state(sn, to_state)
+        updated += 1
+    logger.info("%s | api %s completed: POST %s", "-", "/api/companies/bulk_state", 200)
     return jsonify({"updated": updated})
+
+
+@companies_bp.route("/add", methods=["POST"])
+@require_auth
+def add_company():
+    """Create candidate-owned company in TEST_WATCH. Body: name/website/job_site + candidate_id."""
+    data = request.get_json(force=True) or {}
+    candidate_id = (data.get("candidate_id") or "").strip()
+    company_name = (data.get("company_name") or "").strip()
+    company_website = (data.get("company_website") or "").strip()
+    job_site = (data.get("job_site") or "").strip()
+    if not candidate_id:
+        return jsonify({"error": "candidate_id required"}), 400
+    if not company_name:
+        return jsonify({"error": "company_name required"}), 400
+    if not company_website:
+        return jsonify({"error": "company_website required"}), 400
+    if not job_site:
+        return jsonify({"error": "job_site required"}), 400
+    try:
+        sn = add_company_for_test_watch(
+            candidate_id, company_name, company_website, job_site,
+        )
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    logger.info("%s | api %s completed: POST %s", candidate_id, "/api/companies/add", 201)
+    return jsonify({"short_name": sn, "state": "TEST_WATCH"}), 201
 
 
 @companies_bp.route("/import", methods=["POST"])

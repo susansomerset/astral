@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import ListPage from "../components/ListPage"
 import CompanyDetailModal from "../components/CompanyDetailModal"
 import CompanyWatchJobsModal from "../components/CompanyWatchJobsModal"
+import Modal from "../components/Modal"
 import Toast, { type ToastMessage } from "../components/Toast"
 import { useCandidate } from "../contexts/CandidateContext"
 import { useStateUi } from "../contexts/StateUiContext"
@@ -56,6 +57,11 @@ export default function WatchList() {
   } | null>(null)
   const [toast, setToast] = useState<ToastMessage | null>(null)
   const clearToast = useCallback(() => setToast(null), [])
+  // AST-2322 add-company affordance (kept alongside AST-2321 dates / jobs modal)
+  const [addOpen, setAddOpen] = useState(false)
+  const [companyName, setCompanyName] = useState("")
+  const [companyWebsite, setCompanyWebsite] = useState("")
+  const [jobSite, setJobSite] = useState("")
 
   const load = useCallback(() => {
     if (!selectedId) return
@@ -144,6 +150,51 @@ export default function WatchList() {
       .catch(() => setToast({ text: "Bulk action failed", variant: "error" }))
   }
 
+  function handleAddCompany() {
+    if (!selectedId) return
+    api("/api/companies/add", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        candidate_id: selectedId,
+        company_name: companyName,
+        company_website: companyWebsite,
+        job_site: jobSite,
+      }),
+    })
+      .then(async r => {
+        const res = await r.json()
+        if (!r.ok) throw new Error(res.error || "Add failed")
+        return res
+      })
+      .then(res => {
+        setToast({ text: `Added ${res.short_name} (TEST_WATCH)`, variant: "success" })
+        setAddOpen(false)
+        setCompanyName("")
+        setCompanyWebsite("")
+        setJobSite("")
+        load()
+      })
+      .catch(() => setToast({ text: "Add company failed", variant: "error" }))
+  }
+
+  const fieldStyle = {
+    display: "block" as const,
+    marginBottom: 10,
+    fontSize: 13,
+  }
+  const inputStyle = {
+    display: "block" as const,
+    width: "100%",
+    marginTop: 4,
+    padding: "6px 8px",
+    fontSize: 13,
+    background: "var(--bg-deep)",
+    color: "var(--text-primary)",
+    border: "1px solid var(--border)",
+    borderRadius: 6,
+  }
+
   return (
     <>
       <ListPage<Company>
@@ -154,14 +205,19 @@ export default function WatchList() {
         loading={loading}
         onRowClick={row => setViewing(row.short_name)}
         actions={
-          <label className="recommended-analysis-toggle">
-            <input
-              type="checkbox"
-              checked={showDates}
-              onChange={e => setShowDates(e.target.checked)}
-            />
-            Show dates
-          </label>
+          <>
+            <label className="recommended-analysis-toggle">
+              <input
+                type="checkbox"
+                checked={showDates}
+                onChange={e => setShowDates(e.target.checked)}
+              />
+              Show dates
+            </label>
+            <button className="btn primary" onClick={() => setAddOpen(true)} disabled={!selectedId}>
+              Add Company
+            </button>
+          </>
         }
         bulkActions={[
           { label: "Set to Ignore", onClick: ids => handleIgnore(ids), variant: "danger" },
@@ -178,6 +234,35 @@ export default function WatchList() {
           onClose={() => setJobsModal(null)}
         />
       )}
+      <Modal open={addOpen} onClose={() => setAddOpen(false)} title="Add Company" onSave={handleAddCompany}>
+        <label style={fieldStyle}>
+          Company Name
+          <input
+            type="text"
+            value={companyName}
+            onChange={e => setCompanyName(e.target.value)}
+            style={inputStyle}
+          />
+        </label>
+        <label style={fieldStyle}>
+          Website
+          <input
+            type="text"
+            value={companyWebsite}
+            onChange={e => setCompanyWebsite(e.target.value)}
+            style={inputStyle}
+          />
+        </label>
+        <label style={fieldStyle}>
+          Careers Page URL
+          <input
+            type="text"
+            value={jobSite}
+            onChange={e => setJobSite(e.target.value)}
+            style={inputStyle}
+          />
+        </label>
+      </Modal>
       <Toast message={toast} onDone={clearToast} />
     </>
   )

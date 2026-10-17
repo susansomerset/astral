@@ -8,6 +8,8 @@ import { candidateId, companyListHandler, installBaseApiMocks, jsonResponse } fr
 
 vi.mock("../../../../src/ui/frontend/src/lib/api", () => ({
   default: vi.fn(),
+  setAuthTokenGetter: vi.fn(),
+  setUnauthorizedHandler: vi.fn(),
 }))
 
 const mockedApi = vi.mocked(api)
@@ -29,7 +31,7 @@ describe("CompaniesIgnored", () => {
     mockedApi.mockReset()
   })
 
-  it("loads companies and moves selected rows to watch", async () => {
+  it("AST-2322: restores selected rows to TEST_WATCH", async () => {
     installBaseApiMocks(mockedApi, (url, init) => {
       if (url === "/api/companies/bulk_state" && init?.method === "POST") {
         return jsonResponse({ updated: 1 })
@@ -39,8 +41,12 @@ describe("CompaniesIgnored", () => {
     renderWithProviders(<CompaniesIgnored />)
     await waitFor(() => expect(screen.getByText("Acme Corp")).toBeInTheDocument())
     await userEvent.click(screen.getAllByRole("checkbox")[0])
-    await userEvent.click(screen.getByRole("button", { name: "Move to Watch" }))
-    await waitFor(() => expect(screen.getByText("1 precious snowflakes moved to watch list")).toBeInTheDocument())
+    await userEvent.click(screen.getByRole("button", { name: "Restore to Test Watch" }))
+    await waitFor(() => expect(screen.getByText("1 companies restored to test watch")).toBeInTheDocument())
+    const bulkCall = mockedApi.mock.calls.find(([url]) => url === "/api/companies/bulk_state")
+    expect(bulkCall?.[1]?.body).toEqual(
+      JSON.stringify({ short_names: ["acme"], to_state: "TEST_WATCH" }),
+    )
   })
 
   it("falls back to empty columns when shape has no ignored list", async () => {
@@ -60,7 +66,7 @@ describe("CompaniesIgnored", () => {
     await waitFor(() => expect(document.querySelectorAll("tbody tr.clickable")).toHaveLength(1))
   })
 
-  it("handles non-array payloads and move failures", async () => {
+  it("handles non-array payloads and restore failures", async () => {
     installBaseApiMocks(mockedApi, companyListHandler("ignored", { bad: true } as unknown as typeof companies, "ignored"))
     renderWithProviders(<CompaniesIgnored />)
     await waitFor(() => expect(screen.getByText("No records found.")).toBeInTheDocument())
@@ -74,7 +80,7 @@ describe("CompaniesIgnored", () => {
     renderWithProviders(<CompaniesIgnored />)
     await waitFor(() => expect(screen.getByText("Acme Corp")).toBeInTheDocument())
     await userEvent.click(screen.getAllByRole("checkbox")[0])
-    await userEvent.click(screen.getByRole("button", { name: "Move to Watch" }))
-    await waitFor(() => expect(screen.getByText("Move failed")).toBeInTheDocument())
+    await userEvent.click(screen.getByRole("button", { name: "Restore to Test Watch" }))
+    await waitFor(() => expect(screen.getByText("Restore failed")).toBeInTheDocument())
   })
 })

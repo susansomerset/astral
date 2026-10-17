@@ -95,10 +95,20 @@ class TestCompaniesRoutes:
         assert resp.status_code == 400
 
     def test_bulk_state_updates_companies(self, companies_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(companies_mod, "update_company", lambda short_name, **kwargs: 1)
-        resp = companies_client.post("/api/companies/bulk_state", json={"short_names": ["acme"], "to_state": "IGNORE"}, headers=auth_headers)
+        # AST-2322: bulk_state validates (from,to) then transition_company_state (not update_company).
+        monkeypatch.setattr(
+            companies_mod, "get_company", lambda short_name: {"short_name": short_name, "state": "WATCH"},
+        )
+        transition = MagicMock()
+        monkeypatch.setattr(companies_mod, "transition_company_state", transition)
+        resp = companies_client.post(
+            "/api/companies/bulk_state",
+            json={"short_names": ["acme"], "to_state": "IGNORE"},
+            headers=auth_headers,
+        )
         assert resp.status_code == 200
         assert resp.get_json()["updated"] == 1
+        transition.assert_called_once_with("acme", "IGNORE")
 
     def test_import_requires_rows(self, companies_client: FlaskClient, auth_headers: dict[str, str]) -> None:
         resp = companies_client.post("/api/companies/import", json={}, headers=auth_headers)
@@ -128,3 +138,197 @@ class TestCompaniesRoutes:
         assert resp.status_code == 201
         save.assert_called_once()
         update.assert_not_called()
+
+
+class TestAst2320WatchListEnrichmentAndJobs:
+    """AST-2320: watch_list enrichment + GET /<short_name>/jobs?bucket=."""
+
+    def test_watch_list_enriches_rows(
+        self, companies_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(
+            companies_mod,
+            "list_companies",
+            lambda **kwargs: [{
+                "short_name": "acme",
+                "company_name": "Acme",
+                "company_data": {},
+                "state_history": [
+                    {"to_state": "WATCH", "timestamp": "2026-01-02T00:00:00Z"},
+                ],
+            }],
+        )
+        monkeypatch.setattr(
+            companies_mod,
+            "get_companies_job_state_stats",
+            lambda ids: {
+                "acme": {
+                    "PASSED_LIKE": {"count": 1, "newest_at": "2026-01-09"},
+                    "FAILED_JOBLIST": {"count": 2, "newest_at": "2026-01-01"},
+                },
+            },
+        )
+        resp = companies_client.get(
+            "/api/companies?view=watch_list&candidate_id=cand-1", headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        row = resp.get_json()[0]
+        assert row["scan_start"] == "2026-01-02T00:00:00Z"
+        assert row["best_fit_label"] == "LIKE"
+        assert row["best_fit_at"] == "2026-01-09"
+        assert "FAILED_" not in (row.get("best_fit_label") or "")
+        assert row["jl"] == 2 and row["like"] == 1 and row["jobs"] == 3
+
+    def test_company_jobs_by_bucket(
+        self, companies_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(
+            companies_mod, "get_company", lambda sn: {"short_name": sn, "state": "WATCH"},
+        )
+        listed = MagicMock(return_value=[
+            {"astral_job_id": "j1", "state": "RECOMMENDED", "job_data": {"x": 1}, "state_history": []},
+        ])
+        monkeypatch.setattr(companies_mod, "list_company_jobs_for_bucket", listed)
+        ok = companies_client.get(
+            "/api/companies/acme/jobs?bucket=active&candidate_id=cand-1",
+            headers=auth_headers,
+        )
+        assert ok.status_code == 200
+        rows = ok.get_json()
+        assert rows[0]["astral_job_id"] == "j1"
+        assert "job_data" not in rows[0]
+        assert "state_history" not in rows[0]
+        listed.assert_called_once_with(
+            "acme",
+            list(companies_mod.WATCH_LIST_JOB_BUCKETS["active"]["states"]),
+            candidate_id="cand-1",
+        )
+        bad_bucket = companies_client.get(
+            "/api/companies/acme/jobs?bucket=nope&candidate_id=cand-1",
+            headers=auth_headers,
+        )
+        assert bad_bucket.status_code == 400
+        missing_cand = companies_client.get(
+            "/api/companies/acme/jobs?bucket=jl",
+            headers=auth_headers,
+        )
+        assert missing_cand.status_code == 400
+        monkeypatch.setattr(companies_mod, "get_company", lambda sn: None)
+        missing_co = companies_client.get(
+            "/api/companies/acme/jobs?bucket=jl&candidate_id=cand-1",
+            headers=auth_headers,
+        )
+        assert missing_co.status_code == 404
+class TestAst2322AddCompanyAndBulkState:
+    """AST-2322: POST /add → TEST_WATCH; bulk_state transition-gated."""
+
+    def test_add_company_success(self, companies_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:
+        add = MagicMock(return_value="acme_co")
+        monkeypatch.setattr(companies_mod, "add_company_for_test_watch", add)
+        resp = companies_client.post(
+            "/api/companies/add",
+            json={
+                "candidate_id": "cand-1",
+                "company_name": "Acme Co",
+                "company_website": "https://acme.test",
+                "job_site": "https://acme.test/careers",
+            },
+            headers=auth_headers,
+        )
+        assert resp.status_code == 201
+        assert resp.get_json() == {"short_name": "acme_co", "state": "TEST_WATCH"}
+        add.assert_called_once_with(
+            "cand-1", "Acme Co", "https://acme.test", "https://acme.test/careers",
+        )
+
+    def test_add_company_missing_fields_and_value_error(
+        self, companies_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        missing = companies_client.post(
+            "/api/companies/add",
+            json={"candidate_id": "cand-1", "company_name": "Acme"},
+            headers=auth_headers,
+        )
+        assert missing.status_code == 400
+        monkeypatch.setattr(
+            companies_mod,
+            "add_company_for_test_watch",
+            MagicMock(side_effect=ValueError("invalid short_name from company name")),
+        )
+        bad = companies_client.post(
+            "/api/companies/add",
+            json={
+                "candidate_id": "cand-1",
+                "company_name": "!!!",
+                "company_website": "https://x.test",
+                "job_site": "https://x.test/jobs",
+            },
+            headers=auth_headers,
+        )
+        assert bad.status_code == 400
+        assert "invalid short_name" in bad.get_json()["error"]
+
+    def test_bulk_state_allows_ignore_to_test_watch(
+        self, companies_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(
+            companies_mod, "get_company", lambda short_name: {"short_name": short_name, "state": "IGNORE"},
+        )
+        transition = MagicMock()
+        monkeypatch.setattr(companies_mod, "transition_company_state", transition)
+        resp = companies_client.post(
+            "/api/companies/bulk_state",
+            json={"short_names": ["acme"], "to_state": "TEST_WATCH"},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        assert resp.get_json()["updated"] == 1
+        transition.assert_called_once_with("acme", "TEST_WATCH")
+
+    def test_bulk_state_rejects_watch_to_website_found(
+        self, companies_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(
+            companies_mod, "get_company", lambda short_name: {"short_name": short_name, "state": "WATCH"},
+        )
+        transition = MagicMock()
+        monkeypatch.setattr(companies_mod, "transition_company_state", transition)
+        resp = companies_client.post(
+            "/api/companies/bulk_state",
+            json={"short_names": ["acme"], "to_state": "WEBSITE_FOUND"},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 400
+        assert "transition not allowed" in resp.get_json()["error"]
+        transition.assert_not_called()
+
+    def test_bulk_state_skips_missing_and_prevalidates(
+        self, companies_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        def get_company(short_name: str):
+            if short_name == "gone":
+                return None
+            if short_name == "bad":
+                return {"short_name": "bad", "state": "WATCH"}
+            return {"short_name": short_name, "state": "IGNORE"}
+
+        monkeypatch.setattr(companies_mod, "get_company", get_company)
+        transition = MagicMock()
+        monkeypatch.setattr(companies_mod, "transition_company_state", transition)
+        # Mixed batch with illegal pair → 400 before any write.
+        illegal = companies_client.post(
+            "/api/companies/bulk_state",
+            json={"short_names": ["ok", "bad"], "to_state": "TEST_WATCH"},
+            headers=auth_headers,
+        )
+        assert illegal.status_code == 400
+        transition.assert_not_called()
+        # Missing row skipped; legal IGNORE→TEST_WATCH applies.
+        ok = companies_client.post(
+            "/api/companies/bulk_state",
+            json={"short_names": ["gone", "ok"], "to_state": "TEST_WATCH"},
+            headers=auth_headers,
+        )
+        assert ok.status_code == 200
+        assert ok.get_json()["updated"] == 1
+        transition.assert_called_once_with("ok", "TEST_WATCH")

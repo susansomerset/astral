@@ -1660,19 +1660,86 @@ def _ensure_job_schema(conn: sqlite3.Connection) -> None:
     _drop_entity_agent_responses_column(conn, "job")
     _job_schema_ensured = True
 
-def get_company_job_counts(short_name: str) -> Dict[str, int]:
-    """Return {state: count} for all jobs belonging to company short_name."""
-    def _with_conn() -> Dict[str, int]:
+def get_company_job_state_stats(
+    company_ids: List[str],
+) -> Dict[str, Dict[str, Dict[str, Any]]]:
+    """Per company_id → state → {count, newest_at} for Watch List aggregates (AST-2320)."""
+    ids = []
+    seen = set()
+    for raw in company_ids or []:
+        cid = (raw or "").strip()
+        if not cid or cid in seen:
+            continue
+        seen.add(cid)
+        ids.append(cid)
+    if not ids:
+        return {}
+
+    def _with_conn() -> Dict[str, Dict[str, Dict[str, Any]]]:
         conn = _get_connection()
         try:
             _ensure_job_schema(conn)
+            placeholders = ",".join("?" for _ in ids)
             rows = conn.execute(
-                "SELECT state, COUNT(*) FROM job WHERE company_id = ? GROUP BY state",
-                (short_name,),
+                f"""SELECT company_id, state, COUNT(*) AS cnt, MAX(state_changed_at) AS newest_at
+                    FROM job
+                    WHERE company_id IN ({placeholders})
+                    GROUP BY company_id, state""",
+                ids,
             ).fetchall()
-            return {row[0]: row[1] for row in rows}
+            out: Dict[str, Dict[str, Dict[str, Any]]] = {}
+            for company_id, state, cnt, newest_at in rows:
+                bucket = out.setdefault(company_id, {})
+                bucket[state] = {"count": int(cnt), "newest_at": newest_at}
+            return out
         finally:
             conn.close()
+
+    return _run_with_retry(_with_conn)
+
+
+def get_company_job_counts(short_name: str) -> Dict[str, int]:
+    """Return {state: count} for all jobs belonging to company short_name."""
+    stats = get_company_job_state_stats([short_name]).get(short_name, {})
+    return {state: int(info.get("count") or 0) for state, info in stats.items()}
+
+
+def list_jobs_for_company(
+    company_id: str,
+    states: Optional[List[str]] = None,
+    candidate_id: Optional[str] = None,
+    order_by: str = "state_changed_at",
+) -> List[Dict[str, Any]]:
+    """Jobs for one employer company_id, optional state IN + candidate_id (AST-2320)."""
+    emp = (company_id or "").strip()
+    if not emp:
+        raise ValueError("company_id required")
+    _SORTABLE = {"state_changed_at", "created_at", "updated_at", "job_title", "company_id", "company", "state"}
+
+    def _with_conn() -> List[Dict[str, Any]]:
+        conn = _get_connection()
+        try:
+            _ensure_job_schema(conn)
+            clauses: List[str] = ["company_id = ?"]
+            params: List[Any] = [emp]
+            cid = (candidate_id or "").strip()
+            if cid:
+                clauses.append("candidate_id = ?")
+                params.append(cid)
+            if states:
+                clauses.append(f"state IN ({','.join('?' for _ in states)})")
+                params.extend(states)
+            where = f" WHERE {' AND '.join(clauses)}"
+            col = order_by if order_by in _SORTABLE else "rowid"
+            if col == "company":
+                col = "company_id"
+            rows = conn.execute(
+                f"SELECT * FROM job{where} ORDER BY {col} DESC NULLS LAST", params
+            ).fetchall()
+            return [_job_row_to_dict(r) for r in rows]
+        finally:
+            conn.close()
+
     return _run_with_retry(_with_conn)
 
 
