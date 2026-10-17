@@ -45,7 +45,9 @@ from src.data.database import (
     get_company,
     get_company_batch,
     get_company_job_counts,
+    get_company_job_state_stats,
     list_companies,
+    list_jobs_for_company,
     list_company_job_scans,
     list_stale_company_search_terms,
     save_company,
@@ -71,6 +73,7 @@ from src.utils.config import (
     PROVIDER_CALL_BUDGET,
     ROSTER_CONFIG,
     TASK_CONFIG,
+    WATCH_LIST_JOB_BUCKETS,
     WEB_DATA_CONFIG,
     is_registered_state,
     registered_base,
@@ -3824,3 +3827,97 @@ def _validate_parse_job_list_raw_job_listings(
 def get_company_job_state_counts(short_name: str) -> Dict[str, int]:
     """Return {state: count} for all jobs belonging to company."""
     return get_company_job_counts(short_name)
+
+
+def get_companies_job_state_stats(
+    company_ids: List[str],
+) -> Dict[str, Dict[str, Dict[str, Any]]]:
+    """Thin facade: per-company job state counts + newest_at (AST-2320)."""
+    return get_company_job_state_stats(company_ids)
+
+
+def list_company_jobs_for_bucket(
+    company_id: str,
+    states: List[str],
+    candidate_id: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    """Thin facade: jobs for one company filtered to a Watch List bucket (AST-2320)."""
+    return list_jobs_for_company(company_id, states=states, candidate_id=candidate_id)
+
+
+def company_watch_scan_start(company: Dict[str, Any]) -> Optional[str]:
+    """Timestamp of the first state_history entry whose to_state is WATCH (AST-2320)."""
+    for entry in company.get("state_history") or []:
+        if not isinstance(entry, dict):
+            continue
+        if (entry.get("to_state") or "").strip() != "WATCH":
+            continue
+        ts = entry.get("timestamp")
+        if ts is None:
+            return None
+        text = str(ts).strip()
+        return text or None
+    return None
+
+
+def company_watch_best_fit(
+    state_stats: Dict[str, Dict[str, Any]],
+) -> Tuple[Optional[str], Optional[str]]:
+    """Furthest Best Fit ladder UI label + that state's newest_at (AST-2320)."""
+    ladder: Dict[str, Tuple[int, str]] = {}
+    for bucket in WATCH_LIST_JOB_BUCKETS.values():
+        order = bucket["best_fit_order"]
+        if order is None:
+            continue
+        label = bucket["label"]
+        for state in bucket["states"]:
+            ladder[state] = (order, label)
+    best_order = -1
+    best_label: Optional[str] = None
+    best_at: Optional[str] = None
+    for state, info in state_stats.items():
+        if int(info.get("count") or 0) <= 0:
+            continue
+        rung = ladder.get(state)
+        if rung is None:
+            continue
+        order, label = rung
+        if order > best_order:
+            best_order = order
+            best_label = label
+            newest = info.get("newest_at")
+            best_at = str(newest).strip() if newest is not None and str(newest).strip() else None
+    return best_label, best_at
+
+
+def company_watch_bucket_aggregates(
+    state_stats: Dict[str, Dict[str, Any]],
+) -> Dict[str, Any]:
+    """Named Watch List count buckets + *_newest_at + total jobs (AST-2320)."""
+    out: Dict[str, Any] = {}
+    for key, bucket in WATCH_LIST_JOB_BUCKETS.items():
+        count = 0
+        newest_vals: List[str] = []
+        for state in bucket["states"]:
+            info = state_stats.get(state) or {}
+            count += int(info.get("count") or 0)
+            newest = info.get("newest_at")
+            if newest is not None and str(newest).strip():
+                newest_vals.append(str(newest).strip())
+        out[key] = count
+        out[f"{key}_newest_at"] = max(newest_vals) if newest_vals else None
+    out["jobs"] = sum(int((info or {}).get("count") or 0) for info in state_stats.values())
+    return out
+
+
+def enrich_watch_list_company(
+    company: Dict[str, Any],
+    state_stats: Dict[str, Dict[str, Any]],
+) -> Dict[str, Any]:
+    """Attach Scan Start, Best Fit, Jobs, and named count buckets to a WATCH row (AST-2320)."""
+    company["scan_start"] = company_watch_scan_start(company)
+    label, at = company_watch_best_fit(state_stats)
+    company["best_fit_label"] = label
+    company["best_fit_at"] = at
+    company.update(company_watch_bucket_aggregates(state_stats))
+    return company
