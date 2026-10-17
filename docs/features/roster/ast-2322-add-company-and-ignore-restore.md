@@ -136,4 +136,55 @@ context_tokens≈58000
 ## Review
 
 - **Publish ref:** `sub/AST-2318/AST-2322-add-company-and-ignore-restore`
-- **Tip:** `0078c81c7` — `code(AST-2322): Watch List add form and Ignored restore`
+- **Tip:** `7d8b6562da1a5451c2961beab99ef78947a9e5b5` — `code(AST-2322): Watch List add form and Ignored restore`
+
+## Radia review
+
+```text
+[code-rubric]
+**Ticket:** AST-2322
+**Publish ref:** `7d8b6562da1a5451c2961beab99ef78947a9e5b5` (`origin/sub/AST-2318/AST-2322-add-company-and-ignore-restore`)
+**Corpus:** b7ab2203048ce0beb2869a12200ab7fa696c8066
+**Overall:** CLEAN
+
+## Canon scores
+
+astral.dispatch.entity-state-bound | A | |
+stat.logging.info.api | A | |
+
+## Column diff vs plan stage
+
+(aligned)
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+- **`ignored_list_to_state` vs Ignored UI** — `build_state_ui_manifest()` still exposes `ignored_list_to_state: "TO_WATCH"` while `CompaniesIgnored.tsx` bulk restore posts `to_state: "TEST_WATCH"` (plan-intentional until a ticket owns `config.py`).  
+  **@susan** Should manifest `ignored_list_to_state` be updated to `TEST_WATCH` in the same epic wave as restore UI, or stay `TO_WATCH` until a dedicated config ticket?  
+  **Default:** Leave manifest unchanged on this ticket; restore keeps hard-coded `TEST_WATCH` (smaller, matches approved plan).
+
+### advisory
+
+- **Sibling product carry on publish ref:** `src/utils/config.py` TEST_WATCH / `test_watch` registration and `src/core/roster.py` `run_test_watch_validate` + `TEST_WATCH` dispatch branch are **AST-2319** work stacked on this sub tip (required for `add_company_for_test_watch` and `IGNORE→TEST_WATCH`); not AST-2322 scope violations.
+- **Sibling doc carry:** `docs/features/roster/ast-2319-*.md`, `ast-2320-*.md`, and bible sections for 2319/2320 appear in the three-dot diff — expected ftr/sub stacking.
+- Issue doc `## Review` tip `7d8b6562da1a5451c2961beab99ef78947a9e5b5` lags published tip `7d8b6562`; refresh when Chuckles appends this review.
+
+## What's solid
+
+- `add_company_for_test_watch`: validates inputs, collision-safe slug (`base` + `_2`…`_99`), `save_company` with `candidate_id`, `job_site`, `state="TEST_WATCH"`.
+- `POST /api/companies/add`: field validation, `ValueError` → 400, `201` + body; single `logger.info` on success.
+- `bulk_state`: pre-validates transitions; `transition_company_state`; blocks `WATCH→WEBSITE_FOUND`.
+- Frontend: Watch List Add Company modal; Ignored restore → `TEST_WATCH`.
+- Component tests cover slug/collision, API add/bulk gates, and revised bulk_state route test.
+
+context_tokens≈62000
+```
