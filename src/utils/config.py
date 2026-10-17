@@ -7039,6 +7039,7 @@ DATA_SHAPES = {
                 {"key": "last_scan_at", "label": "Last Scan", "sortable": True, "defaultDesc": True, "type": "datetime"},
                 {"key": "best_fit_label", "label": "Best Fit", "sortable": True},
                 {"key": "best_fit_at", "label": "Best Fit Date", "sortable": True, "type": "datetime"},
+                {"key": "scan_count", "label": "Scan", "sortable": True, "type": "int"},
                 {"key": "jobs", "label": "Jobs", "sortable": True, "type": "int"},
                 {"key": "jl", "label": "JL", "sortable": True, "type": "int"},
                 {"key": "jd", "label": "JD", "sortable": True, "type": "int"},

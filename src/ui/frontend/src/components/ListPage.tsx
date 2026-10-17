@@ -17,6 +17,7 @@ export interface Column<T = Row> {
   sortable?: boolean                                    // default: true
   defaultDesc?: boolean                                 // if true, default sort for this column is descending
   expandable?: boolean                                  // truncate long text with expand/collapse toggle
+  align?: "left" | "right" | "center"                   // overrides column_types[type].align when set
   render?: (value: unknown, row: T) => ReactNode
 }
 
@@ -279,6 +280,7 @@ export default function ListPage<T extends Row>({
   }
 
   function colAlign(col: Column<T>): CSSProperties | undefined {
+    if (col.align) return { textAlign: col.align }
     const cfg = colTypeConfig(col)
     return cfg ? { textAlign: cfg.align } : undefined
   }

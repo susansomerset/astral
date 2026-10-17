@@ -1427,6 +1427,38 @@ def list_company_job_scans(candidate_id: Optional[str] = None) -> List[Dict[str,
     return _run_with_retry(_with_conn)
 
 
+def count_company_job_scans(company_ids: List[str]) -> Dict[str, int]:
+    """Per short_name → COUNT(*) of company_job_scan rows (AST-2326). Empty input → {}."""
+    ids: List[str] = []
+    seen = set()
+    for raw in company_ids or []:
+        cid = (raw or "").strip()
+        if not cid or cid in seen:
+            continue
+        seen.add(cid)
+        ids.append(cid)
+    if not ids:
+        return {}
+
+    def _with_conn() -> Dict[str, int]:
+        conn = _get_connection()
+        try:
+            _ensure_company_job_scan_schema(conn)
+            placeholders = ",".join("?" for _ in ids)
+            rows = conn.execute(
+                f"""SELECT short_name, COUNT(*) AS cnt
+                    FROM company_job_scan
+                    WHERE short_name IN ({placeholders})
+                    GROUP BY short_name""",
+                ids,
+            ).fetchall()
+            return {str(short_name): int(cnt) for short_name, cnt in rows}
+        finally:
+            conn.close()
+
+    return _run_with_retry(_with_conn)
+
+
 # ---- Job ----
 
 # Allowed sort columns for job batch (avoid SQL injection)

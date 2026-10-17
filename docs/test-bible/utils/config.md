@@ -5365,3 +5365,11 @@ Primary narrowed run: [`../core/roster.md`](../core/roster.md) § QA test manife
 **Broken / obsolete this pass:** AST-2319 assert `watch_list_ack_to_state == WEBSITE_FOUND`.
 
 Primary narrowed run: [`../ui/api/api_companies.md`](../ui/api/api_companies.md) § QA test manifest — AST-2320.
+
+### AST-2326 · AST-2318 (scan_count shape — qa-fix)
+
+**Publish:** `origin/sub/AST-2318/AST-2326-watch-list-job-popup-count-date-polish`.
+
+**[bug-repro]** `DATA_SHAPES` watch_list keys insert `scan_count` immediately before `jobs` — revises `TestAst2320WatchListConfig::test_watch_list_shape_columns` in place.
+
+Primary narrowed run: [`../frontend/pages.md`](../frontend/pages.md) § QA test manifest — AST-2326.

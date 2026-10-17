@@ -201,17 +201,18 @@ export default function MeteoriteDetailModal({ meteoriteId, onClose, onSaved }: 
         <>
           {editable ? (
             <div className="meteorite-edit-form">
-              {/* Profile chrome (AST-2325): non-content in profile-contact-grid; content full-width below. */}
-              <div className="profile-contact-grid">
-                {editableFields.filter(k => k !== "content").map(key => (
-                  <div key={key} className="dep-field">
-                    <label className="dep-field-label" htmlFor={`meteorite-edit-${key}`}>
-                      {key}
-                    </label>
-                    {key === "state" ? (
+              {editableFields.map(key => (
+                <div key={key} className="job-analysis-upshot-body">
+                  <label>
+                    {key}
+                    {key === "content" ? (
+                      <textarea
+                        className="entity-story-content"
+                        value={draft[key] ?? ""}
+                        onChange={e => setDraft(d => ({ ...d, [key]: e.target.value }))}
+                      />
+                    ) : key === "state" ? (
                       <select
-                        id={`meteorite-edit-${key}`}
-                        className="dep-input dep-select"
                         value={draft[key] ?? ""}
                         onChange={e => setDraft(d => ({ ...d, [key]: e.target.value }))}
                       >
@@ -221,31 +222,16 @@ export default function MeteoriteDetailModal({ meteoriteId, onClose, onSaved }: 
                       </select>
                     ) : (
                       <input
-                        id={`meteorite-edit-${key}`}
                         type="text"
-                        className="dep-input"
                         value={draft[key] ?? ""}
                         onChange={e => setDraft(d => ({ ...d, [key]: e.target.value }))}
                       />
                     )}
-                  </div>
-                ))}
-              </div>
-              {editableFields.includes("content") ? (
-                <div className="dep-field">
-                  <label className="dep-field-label" htmlFor="meteorite-edit-content">
-                    content
                   </label>
-                  <textarea
-                    id="meteorite-edit-content"
-                    className="dep-input dep-textarea"
-                    value={draft.content ?? ""}
-                    onChange={e => setDraft(d => ({ ...d, content: e.target.value }))}
-                  />
                 </div>
-              ) : null}
-              {saveError ? <p className="entity-error">{saveError}</p> : null}
-              {saving ? <p className="entity-loading">Saving…</p> : null}
+              ))}
+              {saveError ? <p className="list-page-status">{saveError}</p> : null}
+              {saving ? <p className="list-page-status">Saving…</p> : null}
             </div>
           ) : null}
           <ReportSectionList

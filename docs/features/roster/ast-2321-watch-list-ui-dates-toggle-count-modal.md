@@ -185,3 +185,142 @@ context_tokens≈85000
 (none)
 context_tokens≈48000
 ```
+
+## Bug: AST-2326 — Watch List job popup + count/date polish
+
+### As-is
+
+Gaze Roster Watch List job popup (`CompanyWatchJobsModal`) rows use a bare `clickable` table with Title / State / Changed — they do not read as interactive list items, omit rubric analysis dots (API drops `job_data` before grades can render), and expose a State column candidates do not need. Count cells show `0` for empty buckets; Scan Start / Last Scan use full datetime; count cells follow default int right-align. The **Jobs** total column is display-only (no popup). There is no Scan count column — only job totals / bucket counts.
+
+### To-be
+
+Popup rows look clickable, show `PhaseAnalysisLines` when phase grades exist, and still open `JobDetailModal` on row click; State column removed. **Jobs** opens a modal of all company jobs grouped by State (group headers = title case with `_` → spaces). Watch List shows a **Scan** count (number of `company_job_scan` rows for that company). Empty count cells render `-` (sort still uses numeric 0). Scan Start / Last Scan show date-only with a tooltip of the full timestamp. Count columns (Scan, Jobs, JL…APPLIED) are center-aligned.
+
+### Repro
+
+1. Open Gaze Roster Watch List for a candidate with at least one WATCH company that has jobs in ACTIVE and at least one empty bucket; company should have ≥1 gazer scan row in `company_job_scan` and ≥1 job with phase grades in `job_data`.
+2. Observe empty bucket cells show `0`; Scan Start / Last Scan include clock time; count cells are right-aligned; no Scan column; Jobs is not clickable.
+3. Click an ACTIVE count → modal shows State column, plain title rows without analysis dots; row affords little click cue beyond default cursor.
+
+### Root cause
+
+AST-2321 shipped a minimal jobs modal and count renders against the AST-2320 slim payload: `_WATCH_JOB_LIST_DROP_KEYS` removes `job_data` (so no grades for `PhaseAnalysisLines`), State is listed as a column, empty counts stringify `0`, datetime shape type drives full timestamps, int type right-aligns counts, Jobs was intentionally non-clickable, and Scan was never part of the watch_list shape/enrichment.
+
+### Proposed change
+
+1. **`src/data/database.py`** — add `count_company_job_scans(company_ids: List[str]) -> Dict[str, int]`: one `SELECT short_name, COUNT(*) FROM company_job_scan WHERE short_name IN (…) GROUP BY short_name` (empty input → `{}`). No schema change.
+
+2. **`src/core/roster.py`** — thin facade `get_companies_scan_counts(company_ids)`; in `enrich_watch_list_company` (or the watch_list enrich loop in the API) set `scan_count` from that map (missing → `0`).
+
+3. **`src/utils/config.py`** — in `DATA_SHAPES["companies"]["list"]["watch_list"]`, insert `{key: "scan_count", label: "Scan", sortable: True, type: "int"}` immediately before the `jobs` column. Keep existing count keys.
+
+4. **`src/ui/api/api_companies.py`**
+   - Watch_list enrichment: attach `scan_count` via the new roster/DB helper for the same short_name batch.
+   - `company_jobs_by_bucket`: accept `bucket=all` (literal) meaning **no** state `IN` filter — return all jobs for `company_id` + `candidate_id`. Keep existing named buckets unchanged.
+   - Before dropping blobs, flatten grades the same way `api_jobs._slim_list_row` does: call `api_jobs._flatten_grades` (import from `ui.api.api_jobs` or move the helper to a shared import the companies route already may use — prefer importing `_flatten_grades` / mirroring the lift of `*_grades`/`*_score`/`*_rubric` keys, then pop `job_data` and `state_history`). Result must still open JobDetailModal by id (detail fetch remains full).
+
+5. **`src/ui/frontend/src/components/ListPage.tsx`** — add optional `align?: "left" | "right" | "center"` on `Column`; when set, `colAlign` uses it instead of `column_types[type].align` (header + cells). No other ListPage behavior change.
+
+6. **`src/ui/frontend/src/components/CompanyWatchJobsModal.tsx`**
+   - Props: add `mode: "bucket" | "all"` (or derive: when `bucket === "all"` → all-jobs mode). Title: bucket label as today, or `Jobs — {shortName}` for all.
+   - Fetch: same URL with `bucket` query (`all` or named key).
+   - Remove State column. Rows: `className="clickable"` plus visible affordance (e.g. reuse `recommended-analysis-row` / underline title via `dispatch-batch-link` styling on the title cell so rows read as interactive).
+   - Body columns: **Title** (+ `PhaseAnalysisLines` under the title when the slim job carries any phase grades — same component as Jobs Recommended; pass the job row dict), **Changed** (`<Time />` or date+tooltip).
+   - **All mode only:** group rows by `state`; render a non-clickable group header row whose text is title-cased `state.replaceAll("_", " ")` (e.g. `FAILED_JOBLIST` → `Failed Joblist`); jobs under each group still open JobDetailModal. Sort groups by state string ascending; within group keep API order.
+   - Empty list copy unchanged in spirit (“No jobs…”).
+
+7. **`src/ui/frontend/src/pages/CompaniesWatchList.tsx`**
+   - Count keys for `-` / center / click: `scan_count`, `jobs`, and existing `COUNT_BUCKET_KEYS`.
+   - Empty display: when `Number(value) || 0 === 0`, render `-` (not a button); sort still uses numeric `0` on the row.
+   - `jobs` click (n ≥ 1): open `CompanyWatchJobsModal` with `bucket: "all"` / label `"Jobs"`.
+   - Named buckets unchanged except empty → `-` and centered text.
+   - `scan_start` / `last_scan_at` column renders: visible text = `formatCell(raw, "date")`; wrap in `<span title={formatCell(raw, "datetime")}>` (or equivalent full timestamp string). Missing → `—`.
+   - Apply `align: "center"` on Scan / Jobs / JL…APPLIED columns when mapping shapes.
+   - Do not regress Add Company, Show dates toggle, Ignore-only bulk, or Best Fit combined label+date.
+
+⚠️ **Decision:** Scan count = `COUNT(*)` of `company_job_scan` rows for the company (not last-scan `total_found`). “Jobs found” remains the existing `jobs` total; Scan is the missing scan-history tally Susan asked for beside it.
+
+⚠️ **Decision:** `bucket=all` extends the existing jobs-by-bucket route rather than a second path — modal + page already speak bucket keys.
+
+### Blast radius
+
+- Watch List shapes/payload consumers (AST-2321 UI, any tests asserting shape keys or `0` empty cells).
+- `GET /api/companies/<short_name>/jobs` clients (only Watch List modal today); `bucket=all` must not break named buckets.
+- ListPage `align` is additive — other pages unchanged unless they set it.
+- `PhaseAnalysisLines` / grade flatten share paths with Jobs Recommended list slim rows.
+- AST-2322 Add Company on the same page must keep working in the `actions` slot.
+
+### What must still hold
+
+- AST-2320/2321 AC: named bucket counts match state sets; Scan Start = first WATCH history; Best Fit ladder labels without `FAILED_`; dates toggle still expands count cells to `N (m/d/yy)` when on and N≥1; count header sort remains numeric; Ignore-only bulk; no Retry Scrape; Add Company (AST-2322) still posts to `/api/companies/add`.
+- Job detail still loads via `GET /api/jobs/<id>` from the stacked modal; popup does not need full `job_data` blob after grade flatten.
+- Idempotent GETs still do not emit `stat.logging.info.api` completion lines.
+
+## Radia review (AST-2326)
+
+[code-rubric]
+**Ticket:** AST-2326
+**Publish ref:** `64a23512839d1dcbcbe1e6758c87acb50ff715a8` (`origin/sub/AST-2318/AST-2326-watch-list-job-popup-count-date-polish`)
+**Diff base:** `origin/ftr/AST-2318-company-roster-list-updates...origin/sub/AST-2318/AST-2326-watch-list-job-popup-count-date-polish`
+**Parent shape:** Normal (merge via epic `ftr`, not orphaned)
+**Corpus:** b7ab2203048ce0beb2869a12200ab7fa696c8066
+**Overall:** FIX-NOW
+
+## Canon scores
+
+(no frozen directive ids on this bug ticket — nothing to score)
+
+## Column diff vs plan stage
+
+no plan-stage canon scores attached (fix-lane `plan-fix` patch only)
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+**[bug-repro]** OK — repro tests pin AST-2326 to-be behavior (not tautologies): `scan_count` shape order; `bucket=all` grade flatten + `states` unfiltered; empty counts `-` + Jobs → `bucket=all` modal; modal without State column + `.grade-dot` when `jd_grades` present; all-mode group headers `Failed Joblist` / `Recommended`.
+
+**## What must still hold** OK — against plan-fix list: named buckets + enrichment path intact; `bucket=all` additive; dates toggle / numeric sort / ignore-only / Add Company / stacked job detail unchanged on Watch List paths; no new `logger.info` on the GET jobs route in this diff.
+
+## Findings
+
+### fix-now
+
+- **Cross-ticket product scope on fix sub** — `src/ui/frontend/src/components/MeteoriteDetailModal.tsx` and `tests/component/frontend/components/test_MeteoriteDetailModal.test.tsx` ([bug-repro] AST-2325 profile `dep-*` chrome) are **not** in AST-2326 `## Proposed change` / blast radius (Watch List + jobs modal + scan_count only). Shipping them on `sub/AST-2318/AST-2326-…` couples an unrelated meteorite fix to this bug branch and confuses fix-lane review/merge. **Default for resolve-child:** drop meteorite (+ its tests) from this publish ref; land AST-2325 under its own `sub/*` (or split commit) before User Testing.
+
+### discuss
+
+(none)
+
+### advisory
+
+- **Doc carry unrelated to AST-2326:** `docs/features/agent/ast-2224-meteorite-modal-edit-form.md`, `docs/features/team-chuckles/ast-2325-…` appear in the ftr…sub diff — note for Chuckles if those commits should ride this sub or a different ref.
+- **Private API import:** `company_jobs_by_bucket` imports `ui.api.api_jobs._flatten_grades` — matches plan (“prefer importing `_flatten_grades`”); acceptable but couples companies route to jobs module internals (already called out in plan).
+
+## What's solid
+
+- `count_company_job_scans` + watch_list enrichment → `scan_count` before `jobs` in shape.
+- `bucket=all` on existing jobs route; grades flattened before blob drop; named buckets unchanged.
+- `ListPage` optional `align`; Watch List centered counts, `-` for zero, Jobs opens all-jobs modal, scan/last-scan date + tooltip.
+- `CompanyWatchJobsModal`: no State column; `recommended-analysis-row` + grade dots; all-mode grouping with title-cased headers.
+
+## Recommended actions (Chuckles)
+
+| Gate | Parent | Next |
+|------|--------|------|
+| **REVIEW** | Normal | → **Review Posted** → **resolve-child** (strip meteorite scope from sub, re-run manifest) → **User Testing** when clean |
+| After clean **PROCEED** | Normal | → **Review Posted** → fix-lane clean shortcut → **User Testing** (skip resolve-child) |
+
+Do **not** treat meteorite changes as part of AST-2326 acceptance until scope is split or Susan explicitly approves bundling.
+
+## Resolution (AST-2326) — 2026-10-17
+
+**fix-now (scope strip):** Restored from `origin/ftr/AST-2318-company-roster-list-updates` so this publish tip no longer carries AST-2325/2216 meteorite chrome on product/docs:
+
+- `src/ui/frontend/src/components/MeteoriteDetailModal.tsx` — restored (resolve commit)
+- `docs/features/agent/ast-2224-meteorite-modal-edit-form.md` — restored (advisory doc carry)
+- `tests/component/frontend/components/test_MeteoriteDetailModal.test.tsx` — restored by Betty (`test(AST-2326): restore MeteoriteDetailModal tests to ftr`)
+
+AST-2325 remains on its own `sub/*` / `origin/dev` lineage. `origin/ftr/AST-2318-company-roster-list-updates…origin/sub/…AST-2326…` has **no** meteorite / AST-2325 paths. Radia fix-now closed.

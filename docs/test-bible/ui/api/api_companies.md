@@ -69,6 +69,19 @@
 **Pass criterion:** pytest green on the nodes above. Not the zero-arg harness.
 
 **Bible shasums (after publish):** `git show origin/sub/AST-2318/AST-2320-watch-list-aggregates-api-and-shapes:docs/test-bible/<path> | shasum`
+
+### AST-2326 · AST-2318 (bucket=all + grade flatten — qa-fix)
+
+**Publish:** `origin/sub/AST-2318/AST-2326-watch-list-job-popup-count-date-polish`.
+
+**[bug-repro]** `GET …/jobs?bucket=all` returns 200 with phase grades lifted off `job_data` (blob still dropped).
+
+| Area | Component tests |
+| --- | --- |
+| bucket=all + grades | **`TestAst2320WatchListEnrichmentAndJobs::test_company_jobs_bucket_all_flattens_grades`** |
+
+Primary narrowed run: [`../../frontend/pages.md`](../../frontend/pages.md) § QA test manifest — AST-2326.
+
 ### AST-2322 · AST-2318 (add route + transition-gated bulk_state)
 
 **Parent:** [AST-2318](https://linear.app/astralcareermatch/issue/AST-2318). **Publish:** `origin/sub/AST-2318/AST-2322-add-company-and-ignore-restore`. Core create: [`../../core/roster.md`](../../core/roster.md) § AST-2322. Pages: [`../../frontend/pages.md`](../../frontend/pages.md) § AST-2322.

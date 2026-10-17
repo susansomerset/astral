@@ -260,14 +260,43 @@ describe("CompaniesWatchList", () => {
     await waitFor(() => expect(screen.getByText("Acme Corp")).toBeInTheDocument())
 
     const acmeRow = screen.getByRole("row", { name: /Acme Corp/ })
-    // Toggle off (default): plain count; zero JL is not a button
+    // Toggle off (default): plain count; empty JL is `-` (AST-2326), not a button
     expect(within(acmeRow).getByRole("button", { name: "10" })).toBeInTheDocument()
     expect(within(acmeRow).queryByRole("button", { name: "0" })).not.toBeInTheDocument()
-    expect(within(acmeRow).getByText("0")).toBeInTheDocument()
+    expect(within(acmeRow).queryByRole("button", { name: "-" })).not.toBeInTheDocument()
+    expect(within(acmeRow).getByText("-")).toBeInTheDocument()
 
     await userEvent.click(screen.getByRole("checkbox", { name: /Show dates/i }))
     const expectedDate = formatCell("2026-03-15T12:00:00Z", "date")
     expect(within(acmeRow).getByRole("button", { name: `10 (${expectedDate})` })).toBeInTheDocument()
+  })
+
+  it("[bug-repro] AST-2326: empty counts are dash; Jobs opens all-jobs modal", async () => {
+    const allJobsUrl =
+      `/api/companies/acme/jobs?bucket=all&candidate_id=${candidateId}`
+    installBaseApiMocks(
+      mockedApi,
+      enrichedWatchListHandler((url) => {
+        if (url === allJobsUrl) {
+          return jsonResponse([
+            {
+              astral_job_id: "j-all-1",
+              job_title: "Grouped Eng",
+              state: "FAILED_JOBLIST",
+              state_changed_at: "2026-03-15T12:00:00Z",
+            },
+          ])
+        }
+        return undefined
+      }),
+    )
+    renderWithProviders(<CompaniesWatchList />)
+    await waitFor(() => expect(screen.getByText("Acme Corp")).toBeInTheDocument())
+    const acmeRow = screen.getByRole("row", { name: /Acme Corp/ })
+    expect(within(acmeRow).getByText("-")).toBeInTheDocument()
+    await userEvent.click(within(acmeRow).getByRole("button", { name: "12" }))
+    expect(await screen.findByRole("heading", { name: "Jobs — acme" })).toBeInTheDocument()
+    expect(mockedApi.mock.calls.some(([u]) => String(u) === allJobsUrl)).toBe(true)
   })
 
   it("AST-2321: ACTIVE header sorts numerically (10 after 2)", async () => {
