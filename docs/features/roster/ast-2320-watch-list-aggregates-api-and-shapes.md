@@ -255,3 +255,37 @@ No `src/ui/frontend/**` in this ticket.
 ## Estimate
 
 Confirm Chuckles estimate: 5 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-2320
+**Overall:** APPROVED
+**Corpus:** b7ab2203048ce0beb2869a12200ab7fa696c8066
+**Publish ref:** `sub/AST-2318/AST-2320-watch-list-aggregates-api-and-shapes` @ `0cf0d905a5f0e50e6ece1cb004284f60af18b9cb`
+
+## Canon scores
+
+astral.entity.required-metadata | A | |
+stat.logging.info.api | A | |
+
+## Traceability
+
+AC 1 → Stage 2–4 (`get_company_job_state_stats`, bucket helpers, `list_view` enrichment + shapes); AC 2 → Stage 3 (`company_watch_scan_start`); AC 3 → Stage 3 (`company_watch_best_fit`); AC 4 → Stage 1 (shape labels + Best Fit label from bucket map, not raw job states). Parent AC 5–12 N/A (dates-toggle UI, modal chrome, add/restore, TEST_WATCH producer, build/lint — siblings).
+
+## Findings
+
+**acceptable** — Explicit scope gate matches ticket Scope; no frontend files; batch `get_company_job_state_stats(company_ids)` avoids Watch List N+1.
+
+**acceptable** — `stat.logging.info.api`: plan omits `logger.info` on `list_view` and `company_jobs_by_bucket` with explicit statute citation (idempotent GETs).
+
+**acceptable** — `astral.entity.required-metadata`: no new company columns; Scan Start derived from existing `state_history` only.
+
+**discuss** — Parent map double-counts jobs in SKIPPED vs JL/JD/DO buckets; plan documents that as intentional per independent bucket AC checks.
+
+**discuss** — Removing `watch_list_ack_to_state` in Stage 1 may land before AST-2321 drops Retry Scrape UI; harmless with AST-2322 `bulk_state` guard, but merge order can briefly leave a dead control until sibling UI ships.
+
+**discuss** — Best Fit date uses `MAX(state_changed_at)` on the winning ladder state when multiple jobs share that rung; plan states this explicitly — confirm it matches Susan’s intent for AC 3 wording (“that job’s `state_changed_at`”).
+
+context_tokens≈72000
+
