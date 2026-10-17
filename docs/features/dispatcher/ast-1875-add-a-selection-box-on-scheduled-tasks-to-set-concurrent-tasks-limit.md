@@ -284,3 +284,7 @@ From AST-2272 / AST-1875 (regression locks, not re-implements):
 2. Max AUTO dropdown contract (AST-1917) unchanged: bounds from API, GET effective matches select.
 3. Stop All remains total-running based (enabled whenever any thread is running).
 4. No DeepSeek / persistence / enforcement changes on this gap ticket.
+
+### Radia review (AST-2273)
+
+PROCEED / CLEAN @ `f1f3aa8a` — §3h User Testing.
