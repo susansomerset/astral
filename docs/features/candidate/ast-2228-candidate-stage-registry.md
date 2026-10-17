@@ -368,3 +368,75 @@ Open Manage Candidates, edit any candidate, open **State (admin override)**. The
 - Every `CANDIDATE_STATES` entry still has `stage`, including omitted picker names (`ERROR_*` stage 3 or 4, `INTAKE_INITIATED` stage 1, `*_STALE` stage 4).
 - No `candidate.stage` column.
 - Saving the select posts the raw state key. Dispatch and stale aging still use the registry keys, not the label.
+
+## Radia review (AST-2267)
+
+[code-rubric]
+**Ticket:** AST-2267
+**Publish ref:** `5e3584001505220e91d384da8b35ea1bcef748d3` (`origin/sub/AST-2225/AST-2267-manage-candidates-state-dropdown`)
+**Corpus:** (no frozen `## Citations` on AST-2267 — Joan `[board-joan] CANON: OK` at plan-fix; no `canon_clerk` expand run)
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| (no frozen canon list on ticket) | — | | Issue description has no `## Citations`; fix scored via plan-fix + board-joan scope (registry/dispatch/metadata unchanged) |
+
+## Column diff vs plan stage
+
+no plan-stage canon scores attached (bug ticket)
+
+## Frame diff
+
+(none)
+
+## [bug-repro]
+
+**OK** — Assertions pin **To-be** behavior and would fail pre-fix:
+
+- `tests/component/ui/api/test_api_candidate.py` — `TestAst2267PickerStates::test_ast2267_picker_states_are_stage_labels`: `{state, label}` objects only; sorted labels; omits `ERROR_*` / `INTAKE_INITIATED` / `*_STALE`; `5:ACTIVE_SEARCH`, `0:DELETED`, `1:PROSPECT`.
+- `tests/component/frontend/pages/test_AdminManageCandidates.test.tsx` — `[bug-repro] AST-2267: stage labels, and a raw option when current state is omitted`: visible `5:ACTIVE_SEARCH` / `0:DELETED` with **values** `ACTIVE_SEARCH` / `DELETED`; extra raw `RESUME_READY_STALE` option when current state omitted from list; no `ERROR_*` options.
+
+## What must still hold
+
+**OK**
+
+- Registry untouched: filter/sort only in `get_candidate_states`; no `CANDIDATE_STATES` edits.
+- `stage` on every entry (including omitted names) unchanged — still read from `cfg['stage']` for labels.
+- No `candidate.stage` column.
+- Select **value** remains raw registry key (`value={s.state}`); save path unchanged.
+- Dispatch / stale aging still use full registry (omitted keys remain in `CANDIDATE_STATES`).
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **Location:** `git diff origin/ftr/AST-2225-revise-candidate-ui-and-candidate-states...origin/sub/AST-2225/AST-2267-manage-candidates-state-dropdown`
+- **Finding:** Three-dot diff vs `origin/ftr/AST-2225-…` is **not** fix-sized (~271 files) — branch history includes `sync(dev)`, AST-2268, platform/agent work, and other epic merges while `ftr` lags. **AST-2267 product delta** is isolated to `get_candidate_states` + `AdminManageCandidates.tsx` (`331ce0537`, `5e3584001`) plus Betty tests.
+- **Note:** Chuckles should merge/review **2267 slice** by commit/path, not treat the whole ftr…sub stat as this bug.
+
+- **Location:** `TestAst2267PickerStates` / `test_list_candidates_and_states`
+- **Finding:** `5e3584001` correctly keeps **PROSPECT** (`1:PROSPECT`) after AST-2228 vocabulary; omit list is only `ERROR_*`, `INTAKE_INITIATED`, `*_STALE` per plan — aligns with Ada’s `[bug-repro] nuance` comment.
+
+## Plan fidelity (non-canon)
+
+Matches plan-fix **Proposed change**: object payload, filter rules, `label = f"{stage}:{name}"`, alphanumeric sort, page consumes `{state, label}`, raw extra option for omitted current state. Blast radius respected (only Manage Candidates consumer updated in product code).
+
+## Recommended actions (downstream — not for Radia)
+
+- Chuckles: append artifact, `docs(AST-2267): Radia review — clean`, push, post slim upshot `--as radia`, **Review Posted** → fix-lane **§3h clean shortcut** → **User Testing** (`resolve-child` skipped).
+- **Parent shape:** Normal (AST-2225 not orphaned) — `merge-child` / ftr rollup per fix-lane; use path/commit filter when landing 2267 amid stacked branch history.
+
+context_tokens≈38000
+
+```
+[code-rubric] PROCEED (Commit: 5e3584001505220e91d384da8b35ea1bcef748d3) picker labels clean
