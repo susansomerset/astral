@@ -289,3 +289,8 @@ AC 1 → Stage 2–4 (`get_company_job_state_stats`, bucket helpers, `list_view`
 
 context_tokens≈72000
 
+## Review
+
+- **Publish ref:** `sub/AST-2318/AST-2320-watch-list-aggregates-api-and-shapes`
+- **Tip:** `8ad98062e` — `code(AST-2320): enrich watch_list and jobs-by-bucket route`
+
