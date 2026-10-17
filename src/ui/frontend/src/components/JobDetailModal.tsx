@@ -55,9 +55,11 @@ interface Props {
   jobId: string | null
   onClose: () => void
   onRefresh?: () => void
+  /** Layer over another open modal (e.g. Watch List jobs list) — AST-2321. */
+  stacked?: boolean
 }
 
-export default function JobDetailModal({ jobId, onClose, onRefresh }: Props) {
+export default function JobDetailModal({ jobId, onClose, onRefresh, stacked }: Props) {
   const [job, setJob] = useState<JobDetail | null>(null)
   const [loading, setLoading] = useState(false)
   const [skipping, setSkipping] = useState(false)
@@ -224,6 +226,7 @@ export default function JobDetailModal({ jobId, onClose, onRefresh }: Props) {
         onClose={onClose}
         title={<JobTitleText title={job?.job_title} fallback={job?.company || "Job Detail"} />}
         size="wide"
+        stacked={stacked}
         dirty={isDraftDirty}
         onSave={fieldsEditable ? () => { void handleSave() } : undefined}
       >
