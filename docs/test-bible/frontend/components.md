@@ -2400,6 +2400,32 @@ JD is display-only: no JD textarea, not in the draft / dirty check / Save payloa
 
 See **`docs/test-bible/frontend/pages.md`** § AST-2224 (shared numbered list).
 
+### AST-2325 · AST-2216 (bug-repro — meteorite edit form profile chrome)
+
+**Parent:** [AST-2216](https://linear.app/astralcareermatch/issue/AST-2216). **Bug:** [AST-2325](https://linear.app/astralcareermatch/issue/AST-2325). **Publish:** `origin/sub/AST-2216/AST-2325-meteorite-modal-styling`.
+
+Editable `.meteorite-edit-form` must reuse Candidate Profile field chrome: non-`content` keys in `.profile-contact-grid` with `.dep-field` / `.dep-field-label` / `.dep-input` (+ `.dep-select` for state); `content` full-width `.dep-field` with `.dep-input.dep-textarea` (no `entity-story-content` / `job-analysis-upshot-body` on the edit path). Behavior coverage stays **`### AST-2224`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| **[bug-repro]** dep-* + profile-contact-grid chrome | `MeteoriteDetailModal.tsx` | **`test_MeteoriteDetailModal.test.tsx`** › **`MeteoriteDetailModal — AST-2325 profile field chrome`** › **`[bug-repro] editable fields use dep-field / dep-input and profile-contact-grid`** |
+
+**Broken / obsolete:** none — additive assert; AST-2224 behavior cases unchanged.
+
+## QA test manifest
+
+1. **[bug-repro] (required):** `tests/component/frontend/components/test_MeteoriteDetailModal.test.tsx` — **`MeteoriteDetailModal — AST-2325 profile field chrome`**
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_MeteoriteDetailModal.test.tsx \
+  --testNamePattern='AST-2325'
+```
+
+**Pass criterion (test-fix):** red on pre-fix tip → green after `make-fix`. Not zero-arg harness.
+
+**Bible shasum (after publish):** fill on tip.
+
 ### AST-2233 · AST-2226 (report header chrome + triage actions)
 
 **Parent:** [AST-2226](https://linear.app/astralcareermatch/issue/AST-2226). **Publish:** `origin/sub/AST-2226/AST-2233-report-header-chrome-triage-actions`.
