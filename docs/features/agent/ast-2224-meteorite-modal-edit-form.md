@@ -277,3 +277,62 @@ no plan-stage canon scores attached (Joan R3 table also empty)
 - **AC 12:** Component tests cover editable controls + default state select, non-editable (no Save), 200 + stored state after save + single `onSaved`, 409 server text without callback; page test covers list reload via `onSaved={load}`.
 - **Joan round=1 fix:** Post-save state from `meteorite.state`, not `default_save_state` — implemented and asserted in tests.
 
+## Bug: AST-2325 — Meteorite edit modal styling should match profile modal
+
+### As-is
+
+The Jobs → Meteorites detail edit form looks rough / unstyled relative to the rest of the app — it does not match the profile modal's look.
+
+### To-be
+
+The meteorite edit form is styled similarly to the profile modal (same visual language / layout density / field presentation).
+
+### Repro
+
+1. Open Jobs → Meteorites; click a non-`LANDED` row so the detail modal loads with `editable: true`.
+2. Observe the edit block above the section list: bare `job-analysis-upshot-body` rows, unstyled `<label>` + naked `<input>`/`<select>`, content still using read-only `entity-story-content`.
+3. Open Candidate Profile (`CandidateProfile` / `FormFields`): fields use `dep-field` / `dep-field-label` / `dep-input` (+ `dep-textarea` / `dep-select`) and the contact block uses `profile-contact-grid`.
+4. Fail: meteorite edit chrome does not share that field presentation.
+
+### Root cause
+
+AST-2224 Stage 1 step 5 wired the edit form for behavior only: each field was wrapped in `job-analysis-upshot-body` (a report prose class) with an unclassed `<label>` and bare controls. It never adopted the Candidate Profile / `FormFields` `dep-*` field chrome already in `App.css`, so the form reads as an unstyled dump next to the rest of the UI.
+
+### Proposed change
+
+Scope bound (parent AST-2216 Component / Technical scope): **only** `src/ui/frontend/src/components/MeteoriteDetailModal.tsx`. Do **not** edit `JobsMeteorites.tsx`, `App.css`, `FormFields.tsx`, or server files.
+
+In `MeteoriteDetailModal.tsx`, replace the editable-form markup inside `.meteorite-edit-form` (keep that class — Betty's AST-2224 tests query it) as follows:
+
+1. **Reuse profile field chrome (existing classes only — no new CSS):**
+   - Outer keep: `<div className="meteorite-edit-form">`.
+   - Split `editableFields`: keys other than `content` render inside `<div className="profile-contact-grid">` with each field in its own column flow (same grid as Candidate Profile contact). `content` renders full-width below the grid in its own `dep-field`.
+   - Per field row: `<div className="dep-field">` (replace `job-analysis-upshot-body`).
+   - Label + control matching profile association pattern while preserving the AST-2224 label contract:
+     ```tsx
+     <div className="dep-field">
+       <label className="dep-field-label" htmlFor={`meteorite-edit-${key}`}>{key}</label>
+       {/* control: id={`meteorite-edit-${key}`} */}
+     </div>
+     ```
+     - Label **firstChild must remain a text node** equal to the server field key (Betty: `labelKeys === editable_fields`). Do **not** wrap the key in a `<span>`.
+     - `content` → `<textarea id=… className="dep-input dep-textarea" … />` (drop `entity-story-content` on the **edit** path; read-only section path unchanged).
+     - `state` → `<select id=… className="dep-input dep-select" …>` with the same `stateOptions` mapping.
+     - All other keys → `<input type="text" id=… className="dep-input" … />`.
+2. **Errors / saving status:** replace `list-page-status` on `saveError` / saving lines with `entity-error` / `entity-loading` (already used by `CompanyDetailModal` / other modals).
+3. **Behavior unchanged:** still iterate `editableFields` in server order; Save still Modal footer `onSave`; PUT body / `buildDraft` / `onSaved` / AC1 `rg` ban unchanged. No hard-coded state name literals.
+4. ⚠️ **Decision:** Do not import or call `FormFields` (would force a label/value schema and risk breaking the text-node label assertion). Mirror its class names in place. Do not add `App.css` rules — parent Component scope lists only the two frontend TSX files; reuse existing `dep-*` / `profile-contact-grid` / `entity-*` definitions.
+
+### Blast radius
+
+- Visual only on the editable branch of `MeteoriteDetailModal`; read-only modal path and `ReportSectionList` sections unchanged.
+- Betty's `MeteoriteDetailModal — AST-2224 candidate edit form` and `JobsMeteorites — AST-2224 onSaved list refresh` assume `.meteorite-edit-form`, label text keys, roles (`textbox` / `combobox` / Save). Markup must keep those query hooks (`htmlFor`/`id` so accessible names still resolve).
+- Sibling AST-2223 API / envelope untouched. SearchResults modal usage (no `onSaved`) unaffected.
+
+### What must still hold
+
+- Parent / AST-2224 AC 1 React half: `rg -n 'LANDED|"CHECK_UNIQUE"|"NEW"' src/ui/frontend/src/components/MeteoriteDetailModal.tsx` still empty.
+- Parent / AST-2224 AC 12: editable → one control per server field, state select pre-selected to `default_save_state` on first open; non-editable → no Save; Save 200 → stored draft state + `onSaved` once; Save 409 → server error text, no `onSaved`.
+- Post-save `buildDraft(..., "stored")` (Joan round=1) unchanged.
+- No server / config / `database.py` / `JobsMeteorites.tsx` edits in this bug fix.
+
