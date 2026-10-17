@@ -13,6 +13,11 @@ vi.mock("../../../../src/ui/frontend/src/lib/api", () => ({
 
 const mockedApi = vi.mocked(api)
 
+/** AST-2267: /api/candidates/states is {state, label} objects; option value stays the raw key. */
+function pickerStates(names: string[]) {
+  return names.map(state => ({ state, label: state }))
+}
+
 // AST-1920: one key field per catalog server, from the models catalog (two DeepSeek models → one server).
 const models = {
   claude: { order: 0, server_id: "anthropic", server_label: "Anthropic" },
@@ -115,7 +120,7 @@ describe("AdminManageCandidates", () => {
   ) {
     installBaseApiMocks(mockedApi, async (url: string, init?: RequestInit) => {
       if (url === "/api/shapes/candidates") return { json: async () => shapes } as Response
-      if (url === "/api/candidates/states") return { json: async () => ["ACTIVE", "DELETED"] } as Response
+      if (url === "/api/candidates/states") return { json: async () => pickerStates(["ACTIVE", "DELETED"]) } as Response
       if (url === "/api/candidates?include_deleted=true") return { json: async () => [candidate] } as Response
       if (url === "/api/admin/dispatch_tasks/counts") return { ok: true, json: async () => ({ counts }) } as Response
       // AST-1668 sibling GET — default empty so Add/Edit open does not throw Unhandled api.
@@ -313,7 +318,7 @@ describe("AdminManageCandidates", () => {
     let putBody: Record<string, unknown> | null = null
     installBaseApiMocks(mockedApi, async (url: string, init?: RequestInit) => {
       if (url === "/api/shapes/candidates") return { json: async () => shapes } as Response
-      if (url === "/api/candidates/states") return { json: async () => ["ACTIVE", "DELETED"] } as Response
+      if (url === "/api/candidates/states") return { json: async () => pickerStates(["ACTIVE", "DELETED"]) } as Response
       if (url === "/api/candidates?include_deleted=true") return { json: async () => [candidate] } as Response
       if (url === "/api/admin/dispatch_tasks/counts") return { ok: true, json: async () => ({ counts: { doe_jane: 3 } }) } as Response
       if (url === "/api/admin/contact/slack_channels") {
@@ -368,7 +373,7 @@ describe("AdminManageCandidates", () => {
     let putBody: Record<string, unknown> | null = null
     installBaseApiMocks(mockedApi, async (url: string, init?: RequestInit) => {
       if (url === "/api/shapes/candidates") return { json: async () => shapes } as Response
-      if (url === "/api/candidates/states") return { json: async () => ["ACTIVE", "DELETED"] } as Response
+      if (url === "/api/candidates/states") return { json: async () => pickerStates(["ACTIVE", "DELETED"]) } as Response
       if (url === "/api/candidates?include_deleted=true") return { json: async () => [candidate] } as Response
       if (url === "/api/admin/dispatch_tasks/counts") return { ok: true, json: async () => ({ counts: { doe_jane: 3 } }) } as Response
       if (url === "/api/admin/contact/slack_channels") {
@@ -411,7 +416,7 @@ describe("AdminManageCandidates", () => {
     let postBody: Record<string, unknown> | null = null
     installBaseApiMocks(mockedApi, async (url: string, init?: RequestInit) => {
       if (url === "/api/shapes/candidates") return { json: async () => shapes } as Response
-      if (url === "/api/candidates/states") return { json: async () => ["ACTIVE"] } as Response
+      if (url === "/api/candidates/states") return { json: async () => pickerStates(["ACTIVE"]) } as Response
       if (url === "/api/candidates?include_deleted=true") return { json: async () => [] } as Response
       if (url === "/api/admin/dispatch_tasks/counts") return { ok: true, json: async () => ({ counts: {} }) } as Response
       if (url === "/api/admin/contact/slack_channels") {
@@ -442,7 +447,7 @@ describe("AdminManageCandidates", () => {
     let countsCalls = 0
     installBaseApiMocks(mockedApi, async (url: string, init?: RequestInit) => {
       if (url === "/api/shapes/candidates") return { json: async () => shapes } as Response
-      if (url === "/api/candidates/states") return { json: async () => ["ACTIVE", "DELETED"] } as Response
+      if (url === "/api/candidates/states") return { json: async () => pickerStates(["ACTIVE", "DELETED"]) } as Response
       if (url === "/api/candidates?include_deleted=true") return { json: async () => [candidate] } as Response
       if (url === "/api/admin/contact/slack_channels") {
         return { ok: true, json: async () => ({ channels: [] }) } as Response
@@ -510,7 +515,7 @@ describe("AdminManageCandidates", () => {
   it("surfaces set_from_template API errors", async () => {
     installBaseApiMocks(mockedApi, async (url: string, init?: RequestInit) => {
       if (url === "/api/shapes/candidates") return { json: async () => shapes } as Response
-      if (url === "/api/candidates/states") return { json: async () => ["ACTIVE", "DELETED"] } as Response
+      if (url === "/api/candidates/states") return { json: async () => pickerStates(["ACTIVE", "DELETED"]) } as Response
       if (url === "/api/candidates?include_deleted=true") return { json: async () => [candidate] } as Response
       if (url === "/api/admin/contact/slack_channels") {
         return { ok: true, json: async () => ({ channels: [] }) } as Response
@@ -552,7 +557,7 @@ describe("AdminManageCandidates", () => {
     installBaseApiMocks(mockedApi, async (url: string, init?: RequestInit) => {
       if (url === "/api/shapes/candidates") return { json: async () => shapes } as Response
       if (url === "/api/candidates/states") {
-        return { json: async () => ["NEW_CANDIDATE", "ACTIVE_SEARCH", "NOT_A_STATE"] } as Response
+        return { json: async () => pickerStates(["NEW_CANDIDATE", "ACTIVE_SEARCH", "NOT_A_STATE"]) } as Response
       }
       if (url === "/api/candidates?include_deleted=true") {
         return { json: async () => [hopCandidate] } as Response
@@ -711,7 +716,7 @@ describe("AdminManageCandidates", () => {
     ]
     installBaseApiMocks(mockedApi, async (url: string, init?: RequestInit) => {
       if (url === "/api/shapes/candidates") return { json: async () => shapes } as Response
-      if (url === "/api/candidates/states") return { json: async () => ["ACTIVE", "DELETED"] } as Response
+      if (url === "/api/candidates/states") return { json: async () => pickerStates(["ACTIVE", "DELETED"]) } as Response
       if (url === "/api/candidates?include_deleted=true") return { json: async () => [candidate] } as Response
       if (url === "/api/admin/dispatch_tasks/counts") {
         return { ok: true, json: async () => ({ counts: { doe_jane: 3 } }) } as Response
@@ -768,7 +773,7 @@ describe("AdminManageCandidates", () => {
     let putBody: Record<string, unknown> | null = null
     installBaseApiMocks(mockedApi, async (url: string, init?: RequestInit) => {
       if (url === "/api/shapes/candidates") return { json: async () => shapes } as Response
-      if (url === "/api/candidates/states") return { json: async () => ["ACTIVE", "DELETED"] } as Response
+      if (url === "/api/candidates/states") return { json: async () => pickerStates(["ACTIVE", "DELETED"]) } as Response
       if (url === "/api/candidates?include_deleted=true") {
         return { json: async () => [boundCandidate] } as Response
       }
@@ -817,7 +822,7 @@ describe("AdminManageCandidates", () => {
     const free = { slack_user_id: "U_FREE", username: "free.user" }
     installBaseApiMocks(mockedApi, async (url: string, init?: RequestInit) => {
       if (url === "/api/shapes/candidates") return { json: async () => shapes } as Response
-      if (url === "/api/candidates/states") return { json: async () => ["ACTIVE", "DELETED"] } as Response
+      if (url === "/api/candidates/states") return { json: async () => pickerStates(["ACTIVE", "DELETED"]) } as Response
       if (url === "/api/candidates?include_deleted=true") return { json: async () => [candidate] } as Response
       if (url === "/api/admin/dispatch_tasks/counts") return { ok: true, json: async () => ({ counts: { doe_jane: 3 } }) } as Response
       if (url === "/api/admin/contact/slack_channels") {
@@ -874,7 +879,7 @@ describe("AdminManageCandidates", () => {
     }
     installBaseApiMocks(mockedApi, async (url: string, init?: RequestInit) => {
       if (url === "/api/shapes/candidates") return { json: async () => shapes } as Response
-      if (url === "/api/candidates/states") return { json: async () => ["ACTIVE", "DELETED"] } as Response
+      if (url === "/api/candidates/states") return { json: async () => pickerStates(["ACTIVE", "DELETED"]) } as Response
       if (url === "/api/candidates?include_deleted=true") return { json: async () => [boundCand] } as Response
       if (url === "/api/admin/dispatch_tasks/counts") return { ok: true, json: async () => ({ counts: { doe_jane: 3 } }) } as Response
       if (url === "/api/admin/contact/slack_channels") {
@@ -927,7 +932,7 @@ describe("AdminManageCandidates", () => {
     }
     installBaseApiMocks(mockedApi, async (url: string, init?: RequestInit) => {
       if (url === "/api/shapes/candidates") return { json: async () => shapes } as Response
-      if (url === "/api/candidates/states") return { json: async () => ["ACTIVE", "DELETED"] } as Response
+      if (url === "/api/candidates/states") return { json: async () => pickerStates(["ACTIVE", "DELETED"]) } as Response
       if (url === "/api/candidates?include_deleted=true") {
         return { json: async () => [withUser, unbound] } as Response
       }
@@ -957,7 +962,7 @@ describe("AdminManageCandidates", () => {
     ]
     installBaseApiMocks(mockedApi, async (url: string, init?: RequestInit) => {
       if (url === "/api/shapes/candidates") return { json: async () => shapes } as Response
-      if (url === "/api/candidates/states") return { json: async () => ["ACTIVE", "DELETED"] } as Response
+      if (url === "/api/candidates/states") return { json: async () => pickerStates(["ACTIVE", "DELETED"]) } as Response
       if (url === "/api/candidates?include_deleted=true") return { json: async () => [candidate] } as Response
       if (url === "/api/admin/dispatch_tasks/counts") {
         return { ok: true, json: async () => ({ counts: { doe_jane: 3 } }) } as Response
@@ -1019,7 +1024,7 @@ describe("AdminManageCandidates", () => {
     let membershipCalls = 0
     installBaseApiMocks(mockedApi, async (url: string, init?: RequestInit) => {
       if (url === "/api/shapes/candidates") return { json: async () => shapes } as Response
-      if (url === "/api/candidates/states") return { json: async () => ["ACTIVE", "DELETED"] } as Response
+      if (url === "/api/candidates/states") return { json: async () => pickerStates(["ACTIVE", "DELETED"]) } as Response
       if (url === "/api/candidates?include_deleted=true") return { json: async () => [bound] } as Response
       if (url === "/api/admin/dispatch_tasks/counts") {
         return { ok: true, json: async () => ({ counts: { doe_jane: 1 } }) } as Response
@@ -1107,7 +1112,7 @@ describe("AdminManageCandidates", () => {
 
     installBaseApiMocks(mockedApi, async (url: string, init?: RequestInit) => {
       if (url === "/api/shapes/candidates") return { json: async () => shapes } as Response
-      if (url === "/api/candidates/states") return { json: async () => ["ACTIVE", "DELETED"] } as Response
+      if (url === "/api/candidates/states") return { json: async () => pickerStates(["ACTIVE", "DELETED"]) } as Response
       if (url === "/api/candidates?include_deleted=true") {
         return { json: async () => [withChannel] } as Response
       }
@@ -1140,5 +1145,42 @@ describe("AdminManageCandidates", () => {
     expect(mockedApi.mock.calls.every(c => !String(c[0]).includes("slack.com"))).toBe(true)
   }, 20000)
 
+  it("[bug-repro] AST-2267: stage labels, and a raw option when current state is omitted", async () => {
+    installBaseApiMocks(mockedApi, async (url: string) => {
+      if (url === "/api/shapes/candidates") return { json: async () => shapes } as Response
+      if (url === "/api/candidates/states") {
+        return {
+          json: async () => [
+            { state: "DELETED", label: "0:DELETED" },
+            { state: "ACTIVE_SEARCH", label: "5:ACTIVE_SEARCH" },
+          ],
+        } as Response
+      }
+      if (url === "/api/candidates?include_deleted=true") {
+        return {
+          json: async () => [{ ...candidate, state: "RESUME_READY_STALE" }],
+        } as Response
+      }
+      if (url === "/api/admin/dispatch_tasks/counts") {
+        return { ok: true, json: async () => ({ counts: { doe_jane: 0 } }) } as Response
+      }
+      if (url === "/api/admin/contact/slack_channels") {
+        return { ok: true, json: async () => ({ channels: [] }) } as Response
+      }
+      if (url === "/api/admin/contact/unbound_slack_users") {
+        return { ok: true, json: async () => ({ users: [] }) } as Response
+      }
+    })
+    renderWithProviders(<ManageCandidates />)
+    await waitFor(() => expect(screen.getByText("Manage Candidates")).toBeInTheDocument())
+    await userEvent.click(screen.getByRole("button", { name: "Edit" }))
+    const editModal = screen.getByText(/Edit: doe_jane/).closest(".modal-card") as HTMLElement
+    const select = comboboxByFieldLabel(editModal, "State (admin override)")
+    expect(within(select).getByRole("option", { name: "5:ACTIVE_SEARCH" })).toHaveValue("ACTIVE_SEARCH")
+    expect(within(select).getByRole("option", { name: "0:DELETED" })).toHaveValue("DELETED")
+    expect(within(select).getByRole("option", { name: "RESUME_READY_STALE" })).toHaveValue("RESUME_READY_STALE")
+    expect(within(select).queryByRole("option", { name: /ERROR_/ })).toBeNull()
+    expect(select).toHaveValue("RESUME_READY_STALE")
+  })
 
 })

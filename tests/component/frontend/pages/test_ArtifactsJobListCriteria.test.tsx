@@ -44,6 +44,9 @@ describe("ArtifactsJobListCriteria", () => {
       if (url === "/api/candidates/c1/data" && init?.method === "PUT") {
         return { ok: true, json: async () => ({}) } as Response
       }
+      if (url.includes("/grade_rollup")) {
+        return { ok: true, json: async () => ({ vectors: [] }) } as Response
+      }
       throw new Error(`unexpected api call: ${url}`)
     })
   })

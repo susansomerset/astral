@@ -528,6 +528,34 @@ Production PUT upserts or deletes, then one deploy, then stores status and expir
 
 **Broken / obsolete:** outbound `{server, label}` only, and the Manage Candidates “(set)” / “(not set)” labels. Revised in place. **Integration:** none.
 
+### AST-2267 · AST-2225 (Manage Candidates state dropdown)
+
+**Parent:** [AST-2225](https://linear.app/astralcareermatch/issue/AST-2225). **Publish:** `origin/sub/AST-2225/AST-2267-manage-candidates-state-dropdown`. Plan patch: `docs/features/candidate/ast-2228-candidate-stage-registry.md` § Bug AST-2267.
+
+`GET /api/candidates/states` becomes `[{state, label}]` (`label` is `{stage}:{STATE}`), omits `ERROR_*` / `INTAKE_INITIATED` / `*_STALE`, sorted by label. Option value stays the raw key. Live keys such as `PROSPECT` stay (`1:PROSPECT`).
+
+| Area | Component tests |
+| --- | --- |
+| [bug-repro] object list, omit, stage labels, sort; `PROSPECT` kept | **`TestAst2267PickerStates::test_ast2267_picker_states_are_stage_labels`** |
+| List membership reads `state` when the row is an object; `PROSPECT` present | revised **`TestCandidateRoutes::test_list_candidates_and_states`** |
+
+Page half: [`../../frontend/pages.md`](../../frontend/pages.md) § AST-2267.
+
+## QA test manifest — AST-2267
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_candidate.py::TestAst2267PickerStates::test_ast2267_picker_states_are_stage_labels \
+  -q
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminManageCandidates.test.tsx \
+  -t 'AST-2267'
+```
+
+**Pass criterion:** `[bug-repro]` `test_ast2267_picker_states_are_stage_labels` is red on this pre-fix tip (rows are strings, so the dict check fails). It goes green once `get_candidate_states` returns sorted `{state, label}` objects and omits `ERROR_*` / `INTAKE_INITIATED` / `*_STALE`. Page node: [`../../frontend/pages.md`](../../frontend/pages.md).
+
+**Bible shasum (after publish):** `git show origin/sub/AST-2225/AST-2267-manage-candidates-state-dropdown:docs/test-bible/ui/api/api_candidate.md | shasum`
+
 ## QA test manifest — AST-2252
 
 1. `tests/component/ui/api/test_api_candidate.py::TestSanitizeCandidate`
@@ -560,3 +588,18 @@ cd src/ui/frontend && npm run test:component -- \
 **Bible shasum (after publish):** `git show origin/sub/AST-2246/AST-2252-admin-secret-expiry:docs/test-bible/ui/api/api_candidate.md | shasum`
 
 `git show origin/sub/AST-2246/AST-2252-admin-secret-expiry:docs/test-bible/frontend/pages.md | shasum`
+
+### AST-2261 · AST-2257 (grade_rollup GET)
+
+**Publish:** `origin/sub/AST-2257/AST-2261-version-scoped-grade-rollup`. Primary: [`../../core/candidate.md`](../../core/candidate.md) § AST-2261.
+
+`GET /api/candidates/<id>/rubric/<artifact_key>/grade_rollup` returns `rollup_current_vector_grades`. Missing candidate → 404. `ValueError` → 400, no log. Other exceptions → one ERROR line ending `the criteria editor has no grade rollup`, then 500. Success does not log. `GET /api/candidates/<id>` has no `grade_rollup` key.
+
+| Area | Component tests |
+| --- | --- |
+| 200 empty do rubric; no info line; candidate document unchanged | **`TestAst2261GradeRollupApi::test_get_returns_rollup_and_leaves_candidate_document`** |
+| 404 / 400 / 500 | **`…::test_missing_candidate_404`**, **`…::test_bad_key_400`**, **`…::test_unexpected_error_logged_once_500`** |
+
+**Fixture:** `tests/component/ui/conftest.py` `_DB_SCHEMA_FLAGS` includes `_vector_feedback_schema_ensured` so a fresh SQLite file creates `vector_feedback` (same leak class as AST-2067's rubric flag).
+
+**Broken / obsolete:** none. Manifest command: [`../../core/candidate.md`](../../core/candidate.md) § QA test manifest — AST-2261.

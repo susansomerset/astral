@@ -12,6 +12,7 @@ from src.core.candidate import (
     requested_artifacts_chain_artifact_keys,
     requested_artifacts_chain_hop_labels,
     requested_artifacts_chain_task_keys,
+    rubric_criteria_for_task,
 )
 from src.utils.config import (
     NAV_CONFIG,
@@ -25,6 +26,7 @@ from src.utils.config import (
     REVIEW_JOB_STATES,
     SKIPPED_STATES,
     UI_CONFIG,
+    RUBRIC_OWNER_TASK_BY_ARTIFACT_KEY,
     BUILD_CONFIG,
     PREAMBLE_CONFIG,
     TOPIC_MENU_GEN_CONFIG,
@@ -56,6 +58,17 @@ _log = get_logger(__name__)
 _CANDIDATE_FACING_NAV_LABELS = frozenset(
     {"Candidate", "Criteria", "Company", "Job Opportunities"}
 )
+
+# Criteria pages → artifact keys ArtifactEditor already uses. Company Discovery Terms is absent.
+_CRITERIA_NAV_PATH_ARTIFACT = {
+    "/artifacts/job_list_criteria": "joblist_rubric",
+    "/artifacts/meteorite_criteria": "meteorite_jobdesc_rubric",
+    "/artifacts/job_description_criteria": "jobdesc_rubric",
+    "/artifacts/do_job_criteria": "do_rubric",
+    "/artifacts/get_job_criteria": "get_rubric",
+    "/artifacts/like_job_criteria": "like_rubric",
+    "/artifacts/company_watch_criteria": "company_prefilter",
+}
 
 
 def _nav_stage(candidate_state: str) -> int:
@@ -134,12 +147,28 @@ def _get_job_counts(candidate_id: Optional[str]) -> dict:
         return {}
 
 
+def _get_criteria_nav_counts(candidate_id: Optional[str]) -> dict:
+    """Current-vector counts for the seven criteria nav paths. Path -> count."""
+    if not candidate_id:
+        return {}
+    try:
+        counts = {}
+        for path, artifact_key in _CRITERIA_NAV_PATH_ARTIFACT.items():
+            owner = RUBRIC_OWNER_TASK_BY_ARTIFACT_KEY[artifact_key]
+            counts[path] = len(rubric_criteria_for_task(candidate_id, owner))
+        return counts
+    except Exception:
+        _log.debug("Failed to compute criteria nav counts", exc_info=True)
+        return {}
+
+
 def _resolve_nav(candidate_state: str, candidate_id: Optional[str] = None) -> list:
     """Walk NAV_CONFIG; gate item enabled on registry stage; attach recent/attention."""
     stage = _nav_stage(candidate_state)
     company_counts = _get_company_counts(candidate_id)
     job_counts = _get_job_counts(candidate_id)
-    nav_counts = {**company_counts, **job_counts}
+    criteria_counts = _get_criteria_nav_counts(candidate_id)
+    nav_counts = {**company_counts, **job_counts, **criteria_counts}
     incomplete = _profile_incomplete(candidate_id)
     resolved = []
     for group in NAV_CONFIG:

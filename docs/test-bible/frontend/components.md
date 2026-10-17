@@ -2520,6 +2520,44 @@ cd src/ui/frontend && npm run test:component -- \
 
 **Bible shasum (after publish):** `git show origin/sub/AST-2225/AST-2231-candidate-shell-ux:docs/test-bible/frontend/components.md | shasum`
 
+### AST-2262 · AST-2257 (vector-header thermometer)
+
+**Parent:** [AST-2257](https://linear.app/astralcareermatch/issue/AST-2257). **Publish:** `origin/sub/AST-2257/AST-2262-vector-header-thermometer`. Rollup feed: [`../core/candidate.md`](../core/candidate.md) § AST-2261.
+
+`RubricGradeThermometer` draws one segment per positive A/B/C/D/F/X count, ordered that way, `flexGrow` = count, class `seg-<letter>`, `title` = `LETTER, count, YYYY-MM-DD` (`last_seen` trimmed, first 10 characters). Segment background is `var(--grade-*)`. `ArtifactEditor` shows `run_count` plus that bar on each coded rubric header when `grade_rollup` has loaded, and calls the read again after a version move (`reloadFromServer`). A shapes editor does not request it. No page under `src/ui/frontend/src/pages/` imports the component. No page-file product diff — the Do the Job screen is the existing `ArtifactEditor` wrapper, so AC1–AC4 are asserted on that routed page.
+
+| Area | Component tests |
+| --- | --- |
+| Order, zeros and other letters dropped, tooltip date, empty track | new **`test_RubricGradeThermometer.test.tsx`** |
+| Grade-token CSS and the single caller (`ArtifactEditor`) | same file, **`segment colors are the existing grade tokens…`** |
+| Do the Job header count, B-then-C bar, reload after the version arrow | revised **`AST-2068 AC4/AC2: one criterion steps back alone…`** (`test_ArtifactsDoJobCriteria.test.tsx`) |
+| Shapes editor does not fetch `grade_rollup` | new **`AST-2262: a shapes editor does not fetch grade_rollup`** |
+| Criteria mocks that throw on an unknown URL | stubbed empty `vectors` in **`test_ArtifactEditor.test.tsx`**, **`test_ArtifactsJobListCriteria.test.tsx`**, **`test_ArtifactsCompanyWatchCriteria.test.tsx`**, and the Do Job first-paint mock |
+
+**Broken / obsolete:** those strict mocks. Get / Like / Job Description criteria page tests stay red on a missing `setAuthTokenGetter` mock export; they never reach `grade_rollup`.
+
+**Integration:** none.
+
+## QA test manifest — AST-2262
+
+1. Thermometer: `tests/component/frontend/components/test_RubricGradeThermometer.test.tsx`
+2. Editor + shapes non-fetch: `tests/component/frontend/components/test_ArtifactEditor.test.tsx`
+3. Do the Job screen: `tests/component/frontend/pages/test_ArtifactsDoJobCriteria.test.tsx`
+4. Stubbed criteria pages: `tests/component/frontend/pages/test_ArtifactsJobListCriteria.test.tsx`, `tests/component/frontend/pages/test_ArtifactsCompanyWatchCriteria.test.tsx`
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_RubricGradeThermometer.test.tsx \
+  ../../../tests/component/frontend/components/test_ArtifactEditor.test.tsx \
+  ../../../tests/component/frontend/pages/test_ArtifactsDoJobCriteria.test.tsx \
+  ../../../tests/component/frontend/pages/test_ArtifactsJobListCriteria.test.tsx \
+  ../../../tests/component/frontend/pages/test_ArtifactsCompanyWatchCriteria.test.tsx
+```
+
+**Pass criterion:** those Vitest files green. Not the zero-arg harness.
+
+**Bible shasum (after publish):** `git show origin/sub/AST-2257/AST-2262-vector-header-thermometer:docs/test-bible/frontend/components.md | shasum`
+
 ### AST-2268 · AST-2226 (score labels, header identity, show-rubric content)
 
 **Parent:** AST-2226. **Publish:** `origin/sub/AST-2226/AST-2268-recommended-modal-header-score-labels-and-show-rubric-miss-uat`.

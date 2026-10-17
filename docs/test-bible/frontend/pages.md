@@ -3308,6 +3308,48 @@ git diff --stat origin/ftr/AST-1875-runtime-auto-thread-cap...HEAD -- src/   # e
 
 **Bible shasum (publish tip):** fill after `merge-tests` — `docs/test-bible/frontend/pages.md`
 
+### AST-2273 · AST-2272 (Scheduled Actions header AUTO/CLICK running badge)
+
+**Parent:** [AST-2270](https://linear.app/astralcareermatch/issue/AST-2270) (orphaned mini-epic). **Sibling product:** [AST-2272](https://linear.app/astralcareermatch/issue/AST-2272) (`runningBadgeLabel` on `AdminScheduledActions.tsx`). **Publish:** `origin/sub/AST-2270/AST-2273-badge-split-tests`. Gap from Betty `[board-betty] TESTS: REVISE` on AST-2272: AST-1917 covers Max AUTO dropdown only — no assertion that mixed AUTO+CLICK running cannot read as a bare total next to the cap.
+
+`AdminScheduledActions.tsx` derives `runningAuto` / `runningClick` from `threadStatus` (`running && is_auto`) and renders:
+
+| running AUTO | running CLICK | badge text (`runningBadgeLabel`) |
+| ---: | ---: | --- |
+| A>0 | 0 | `{A} AUTO running` |
+| 0 | C>0 | `{C} CLICK running` |
+| A>0 | C>0 | `{A} AUTO · {C} CLICK` |
+
+Stop All stays total-based (`activeThreads.length > 0`). Max AUTO dropdown contract unchanged (AST-1917).
+
+| AC | Source | Component tests (`tests/component/frontend/pages/test_AdminScheduledActions_AST2273.test.tsx`) |
+| --- | --- | --- |
+| Mixed board repro (Max AUTO = 3, 3 AUTO + 2 CLICK) | header badge | **`mixed: shows 3 AUTO · 2 CLICK, not 5 running; Max AUTO stays 3; Stop All enabled`** |
+| AUTO only | same | **`AUTO only: shows 3 AUTO running (no bare 3 running, no CLICK)`** |
+| CLICK only | same | **`CLICK only: shows 2 CLICK running; Max AUTO still shown`** |
+
+**Repro-first:** all three fail on pre-AST-2272 UI (`{N} running`); green on AST-2272 labeled badge (already on this sub / ftr). **Existing coverage (must stay green):** `test_AdminScheduledActions_AST1917.test.tsx` + `test_AdminScheduledActions.test.tsx` + `test_AdminScheduledActions_AST1104.test.tsx`. **Broken / obsolete:** none. **Integration:** none.
+
+## QA test manifest (AST-2273)
+
+1. **Page Vitest (§6c, bug-repro + regression):**
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminScheduledActions_AST2273.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminScheduledActions_AST1917.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminScheduledActions_AST1104.test.tsx
+```
+
+Expect AST-2273 **3 passed** + AST-1917 / main / AST-1104 still green.
+
+2. **Scope:** `git diff --stat origin/ftr/AST-2270-max-auto-cap-observability...HEAD -- src/` empty on this ticket (test-tree + bible only).
+
+**Pass criterion:** item 1 green; no product `src/` on the AST-2273 tip.
+
+**Bible shasum (publish tip):** fill after publish — `docs/test-bible/frontend/pages.md`
+
 ### AST-1920 · AST-1851 (bug: Manage Candidate key fields for every server)
 
 `AdminManageCandidates.tsx` Edit shows one API key field per server in `/api/admin/agents/models`, deduped by server, in catalog order. A server with a stored `api_keys` entry shows `(set — leave blank to keep current)` with Show and Clear; a server without one shows `(not set)` with Show only. A stored entry whose server isn't in the catalog is appended after the catalog rows and stays clearable. There is no picker and no Remove. Save sends only changed rows as `[{server, key}]` in row order (`""` = clear a stored entry) and omits `api_keys` when nothing changed. The array storage, PUT contract and list column are unchanged from AST-1901.
@@ -4134,3 +4176,21 @@ cd src/ui/frontend && npm run test:component -- \
 Manifest: [`components.md`](components.md) § AST-2234.
 
 **AST-2252 Manage Candidates expiry:** [`../ui/api/api_candidate.md`](../ui/api/api_candidate.md) § QA test manifest — AST-2252.
+
+### AST-2267 · AST-2225 (state dropdown labels)
+
+**Parent:** [AST-2225](https://linear.app/astralcareermatch/issue/AST-2225). **Publish:** `origin/sub/AST-2225/AST-2267-manage-candidates-state-dropdown`. API: [`../ui/api/api_candidate.md`](../ui/api/api_candidate.md) § AST-2267.
+
+Existing `/api/candidates/states` stubs are `{state, label}` objects (`pickerStates`) so option **values** stay the raw key after the page stops accepting a string array. `[bug-repro]` page node expects `5:ACTIVE_SEARCH` / `0:DELETED` text and a raw extra option when the candidate’s current state is omitted (`RESUME_READY_STALE`). Red on the pre-fix page (it prints the object). §6c: this file already renders `AdminManageCandidates`.
+
+## QA test manifest — AST-2267
+
+Page node (with the API node in [`../ui/api/api_candidate.md`](../ui/api/api_candidate.md)):
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminManageCandidates.test.tsx \
+  -t 'AST-2267'
+```
+
+**Pass criterion:** `[bug-repro] AST-2267: stage labels…` red on this tip; green once the select renders `label` and keeps an omitted current state as a raw option.

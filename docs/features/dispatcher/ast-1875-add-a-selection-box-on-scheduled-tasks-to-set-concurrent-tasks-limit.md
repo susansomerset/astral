@@ -149,3 +149,142 @@ Add to the header a dropdown  that defaults to the cap set in [config.py](<http:
 ---
 
 _Implementation detail may live in git history on `origin/dev`._
+
+## Bug: AST-2272 — Max AUTO cap vs running count on Scheduled Actions
+
+Parent mini-epic: [AST-2270](https://linear.app/astralcareermatch/issue/AST-2270) (orphaned bug → own `ftr`; this is the `fix` child). Ancestor contract: this doc (AST-1875) + child plans AST-1916 (enforcement/API) / AST-1917 (header dropdown).
+
+### As-is
+
+With Max AUTO threads set to 3 on Scheduled Actions, the header badge can show a larger total (e.g. **5 running**) immediately beside the Max AUTO control, so operators read it as a cap breach. Unclear from the surface alone whether five AUTO threads actually exceeded the cap, or whether CLICK/manual Run threads (outside the AST-1875 cap) are mixed into the same number.
+
+### To-be
+
+With Max AUTO = 3, at most 3 AUTO scheduler threads are in flight after the next tick. Any CLICK/manual runners are labeled separately (or the badge otherwise cannot be compared naively to Max AUTO). Cap contract unchanged: AUTO-only, lowering is non-destructive, process-local override, `GET /api/admin/scheduler/auto_thread_cap` matches the dropdown.
+
+### Repro
+
+1. Fresh admin session on Scheduled Actions; Max AUTO threads dropdown shows 3 (config default).
+2. Leave ≥3 AUTO-mode tasks due so the tick fills AUTO slots; also start ≥2 manual **Run** (CLICK) tasks so both kinds are in flight.
+3. `GET /api/admin/scheduler/thread_status`: note each entry's `is_auto` / `running`.
+4. Observe the header badge next to Max AUTO — today it shows total running (AUTO+CLICK) as a bare `N running`, which can exceed 3 while AUTO-only count stays ≤3.
+
+Fixture shape (no DB seed): registry / `thread_status` entries already carry `is_auto: true|false` and `running: true` (see `task_status_all` in `dispatcher.py`).
+
+### Root cause
+
+**Observability mismatch (confirmed on tip):** `AdminScheduledActions.tsx` builds `activeThreads` as every `threadStatus` entry with `running: true` and renders `{activeThreads.length} running` next to the Max AUTO dropdown. CLICK threads are correctly outside the cap (AST-1875 § Functional scope 4) and already tagged `is_auto: false` in `thread_status`, but the badge does not use that split — so a mixed total looks like a breach of Max AUTO.
+
+**Enforcement path (verify, do not assume broken):** `_tick_loop` already does `running_auto = sum(... if e["is_auto"])` and `slots = get_auto_thread_cap() - running_auto`. If a live check ever shows `is_auto: true` count > effective cap after a tick, that is a separate slot-math defect in the same functions; current tip looks correct.
+
+### Proposed change
+
+Explicit scope = AST-2272 ## Scope (Component + Technical). Stay inside it.
+
+1. **`src/core/dispatcher.py` — verify then only change if broken.** Under the registry lock in `_tick_loop`, confirm spawn slots still use `get_auto_thread_cap()` minus a count of registry entries with `is_auto` true (not total registry size). Confirm `set_auto_thread_cap` still does not cancel threads. **If** after a tick with Max AUTO = N the count of running `is_auto: true` entries exceeds N, fix that counter / slot math so new AUTO spawns stop at the live cap; leave the non-destructive lower-cap rule alone. **If** AUTO-only count already respects the cap, leave dispatcher unchanged.
+
+2. **`src/ui/api/api_admin.py` — only if the UI cannot split from the existing payload.** `scheduler_thread_status` already returns per-task `is_auto` via `task_status_all()`. Prefer no API change. Only extend the `thread_status` (or, if truly needed, `auto_thread_cap`) JSON with an explicit AUTO-vs-total summary when client-side filtering on `is_auto` is insufficient — do not invent a second cap field that can drift from `get_auto_thread_cap()`.
+
+3. **`src/ui/frontend/src/pages/AdminScheduledActions.tsx` — primary fix (header observability).** Next to the Max AUTO `<select>` in the `list-page-header` controls cluster:
+   - From `threadStatus` / `activeThreads`, derive `runningAuto` = count with `running && is_auto`, and `runningClick` = count with `running && !is_auto` (existing `ThreadStatusEntry.is_auto`; no hardcoded cap bounds).
+   - Replace the bare `{activeThreads.length} running` badge text so it cannot be read as “total vs Max AUTO”:
+     - AUTO only: `{runningAuto} AUTO running`
+     - CLICK only: `{runningClick} CLICK running`
+     - both: `{runningAuto} AUTO · {runningClick} CLICK`
+   - Keep **Stop All** enabled when `activeThreads.length > 0` (total still drives stop).
+   - Do not change the Max AUTO load/POST/`<select>` options path (AST-1917); after any cap change, the select value must still equal `GET .../auto_thread_cap` → `max_auto_threads`.
+
+4. **`src/utils/config.py` — leave alone** unless a real `max_auto_threads` / min / max drift is found while verifying; this bug is not a bounds change.
+
+### Blast radius
+
+- Scheduled Actions header badge copy only (same page; Stop All still total-based).
+- Sibling docs AST-1916 / AST-1917 describe the original split (API vs dropdown); this bug section is the observability/enforcement follow-up — do not reopen their shipped stages.
+- Tests that assert badge text `"N running"` or treat total running as the cap signal will need Betty’s attention if present; product code must not edit `tests/`.
+- Dispatcher tick / registry lock path only if step 1 finds a real AUTO-over-cap defect; otherwise no scheduler blast.
+
+### What must still hold
+
+From AST-1875 acceptance / Functional scope (and AST-1916/1917):
+
+1. Cap applies to **AUTO only**; CLICK/manual Run stays outside the cap.
+2. Tick honours live `get_auto_thread_cap()` with no restart; no capture-once of the cap inside `_tick_loop`.
+3. Lowering the cap below running AUTO does **not** cancel those threads; no new AUTO spawn while running AUTO ≥ cap.
+4. Dropdown options still come from API min/max (no `100` literal as dropdown max in the page); GET effective cap matches the select.
+5. Override remains process-local; restart returns to `config.py` default.
+6. Admin auth on cap routes unchanged; no DeepSeek / `max_concurrent` / batch_size / stagger changes.
+
+### Delivery notes (AST-2272)
+
+- **Docs-acceptance:** test-tree delivery lands on gap sibling [AST-2273](https://linear.app/astralcareermatch/issue/AST-2273) (Betty TESTS: REVISE).
+- **Radia review:** PROCEED / CLEAN @ `80993a5f` — §3h User Testing (resolve-child skipped).
+<!-- Radia review artifact: PROCEED 80993a5f -->
+
+## Bug: AST-2273 — gap: AUTO/CLICK header badge split tests (AST-2272)
+
+Parent mini-epic: [AST-2270](https://linear.app/astralcareermatch/issue/AST-2270). Sibling product fix: [AST-2272](https://linear.app/astralcareermatch/issue/AST-2272) (`## Bug: AST-2272` above). Betty `[board-betty] TESTS: REVISE` on AST-2272: bible/tests cover AST-1917 dropdown only — missing badge-split coverage for the mixed-running repro.
+
+### As-is
+
+`docs/test-bible/frontend/pages.md` § AST-1917 and `test_AdminScheduledActions_AST1917.test.tsx` assert Max AUTO dropdown load/POST/bounds only. No case mocks mixed `thread_status` (`is_auto: true` + `is_auto: false`, both `running`) and asserts the header badge next to Max AUTO. A regression to bare `{N} running` (pre-AST-2272) would not fail the suite.
+
+### To-be
+
+Bible + component tests lock AST-2272’s badge labels so mixed AUTO+CLICK cannot look like a Max AUTO cap breach, and AUTO-only / CLICK-only forms stay explicit.
+
+### Repro
+
+Against **pre-AST-2272** product (badge = `{activeThreads.length} running`):
+
+1. Mount Scheduled Actions with `GET .../auto_thread_cap` → `{max_auto_threads: 3, default: 3, min: 1, max: 100}`.
+2. Mock `GET .../thread_status` with **3** running AUTO entries (`is_auto: true`) and **2** running CLICK entries (`is_auto: false`) — total 5, AUTO ≤ cap.
+3. Header shows **`5 running`** beside Max AUTO = 3 → looks like a breach.
+
+Fixture: plain `thread_status` JSON map (no DB); same shape as `task_status_all` / existing page mocks (`running`, `draining`, `task_key`, `candidate_id`, `is_auto`).
+
+### Root cause
+
+Test gap only — product contract is already specified in `## Bug: AST-2272` Proposed change §3. Coverage never followed the observability fix Betty flagged at the board.
+
+### Proposed change
+
+Explicit scope = AST-2273 ## Scope (bible + AdminScheduledActions component tests). **No product code.** AST-2272 badge copy on `ftr` / this sub is the oracle:
+
+| running AUTO | running CLICK | badge text |
+| ---: | ---: | --- |
+| A>0 | 0 | `{A} AUTO running` |
+| 0 | C>0 | `{C} CLICK running` |
+| A>0 | C>0 | `{A} AUTO · {C} CLICK` |
+
+1. **`docs/test-bible/frontend/pages.md` — modified.** Add an **AST-2273 · AST-2272** subsection under / next to § AST-1917 (Scheduled Actions header):
+   - Name the mixed-running repro (Max AUTO = 3, 3 AUTO + 2 CLICK → badge must not be `5 running`).
+   - Table the three badge forms above against `AdminScheduledActions.tsx` `runningBadgeLabel`.
+   - Point component tests at `tests/component/frontend/pages/test_AdminScheduledActions_AST1917.test.tsx` (extend) **or** a sibling `test_AdminScheduledActions_AST2273.test.tsx` if extending would muddy the dropdown suite — pick one file, document the path.
+   - Manifest: `cd src/ui/frontend && npm run test:component -- <chosen file(s)>` plus the existing AST-1917 / main Scheduled Actions files still green (same posture as AST-1917 manifest).
+
+2. **Component tests — new/extended (Betty lands via qa-fix / test-tree; engineers do not edit `tests/` on make-fix).** In the chosen file, reuse AST-1917’s `mockApi` / `installBaseApiMocks` pattern but return a non-empty `thread_status`:
+   - **Mixed (board repro):** cap GET = `freshCap` (3); `thread_status` = three `{running: true, is_auto: true, …}` + two `{running: true, is_auto: false, …}`. Assert header text **`3 AUTO · 2 CLICK`** is present; assert **`5 running`** is **absent**; Max AUTO select still value `"3"`; Stop All enabled.
+   - **AUTO only:** three AUTO running, zero CLICK → **`3 AUTO running`**; no `CLICK` in that badge; no bare `3 running` as the sole badge.
+   - **CLICK only:** two CLICK running, zero AUTO → **`2 CLICK running`**; Max AUTO still shown when cap GET succeeds.
+   - Do **not** assert dispatcher slot math or change `auto_thread_cap` POST cases (AST-1917 owns those).
+
+3. **Repro-first gate:** at least the mixed case must fail on a tree that still renders `{N} running` and pass on AST-2272’s labeled badge (already on `origin/ftr/AST-2270-max-auto-cap-observability` / this sub). If product lands first, still ship the asserts — green is fine; the lock is the point.
+
+### Blast radius
+
+- Test-bible + Vitest under `tests/component/frontend/pages/` only.
+- Existing AST-1917 dropdown cases and `test_AdminScheduledActions.test.tsx` / `_AST1104` must stay green (they already mock or ignore running-badge copy).
+- No `dispatcher.py` / `api_admin.py` / `config.py` / product TSX changes on this ticket.
+
+### What must still hold
+
+From AST-2272 / AST-1875 (regression locks, not re-implements):
+
+1. Cap applies to AUTO only; CLICK outside the cap — badge labeling must not imply otherwise.
+2. Max AUTO dropdown contract (AST-1917) unchanged: bounds from API, GET effective matches select.
+3. Stop All remains total-running based (enabled whenever any thread is running).
+4. No DeepSeek / persistence / enforcement changes on this gap ticket.
+
+### Radia review (AST-2273)
+
+PROCEED / CLEAN @ `f1f3aa8a` — §3h User Testing.

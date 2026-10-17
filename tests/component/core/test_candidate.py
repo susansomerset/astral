@@ -8314,3 +8314,188 @@ class TestAst2275VaultKeyInProcessEnviron:
             "server": "openrouter", "key": "",
         }])
         assert "CANDIDATE_SOMERSET_OPENROUTER" not in os.environ
+
+
+class TestAst2261GradeRollup:
+    """Current-vector run counts. Letters come from that run's RESPONSE, not the latest blob."""
+
+    def _sync(self, db, content: str) -> str:
+        db.save_agent_task("grade_do", agent_id="a1", user_prompt="p")
+        db.sync_rubric_vectors_from_criteria(
+            "cand-1",
+            "grade_do",
+            [{"code": "VA", "label": "Voice", "content": content, "importance": 5}],
+        )
+        rows = db.list_rubric_vectors("cand-1", "grade_do", current_only=True)
+        return rows[0]["rubric_vector_uuid"]
+
+    def _pin(self, task_key: str, batch_id: str, completed: str) -> None:
+        from src.core.agent import _capture_rubric_vector_feedback
+
+        _capture_rubric_vector_feedback(
+            task_key=task_key,
+            owner_task_key="grade_do",
+            candidate_id="cand-1",
+            batch_id=batch_id,
+            entity_type="job",
+            index=None,
+            perf={"status": "success", "vector_reviews": ["VARACOVK"]},
+            debug=False,
+            prompt_blocks=[],
+            batch_size=1,
+            completed_at=completed,
+        )
+
+    def _jobs(self, db, task_key: str, batch_id: str, jobs: list, created: str) -> None:
+        db.save_agent_data(
+            agent_data_id=f"{batch_id}-{created}",
+            entity_type="job",
+            task_key=task_key,
+            batch_id=batch_id,
+            block_type="RESPONSE",
+            block_data=json.dumps({"jobs": jobs}),
+            token_size=1,
+            created_at=created,
+        )
+
+    def test_only_current_uuid_counts_and_old_version_returns(
+        self, seeded_db
+    ) -> None:
+        db = seeded_db
+        old = self._sync(db, "v1\nA = one")
+        self._pin("grade_do", "batch-old", "2026-01-01 00:00:00")
+        self._jobs(db, "grade_do", "batch-old", [
+            {"astral_job_id": "job-old", "grades": [{"vector": "Voice (VA)", "grade": "A"}]},
+        ], "2026-01-01 00:00:01")
+        self._sync(db, "v2\nA = two")
+        self._pin("grade_do", "batch-new", "2026-02-01 00:00:00")
+        self._jobs(db, "grade_do", "batch-new", [
+            {"astral_job_id": "job-b", "grades": [{"vector": "Voice", "grade": "B"}]},
+            {"astral_job_id": "job-dup", "grades": [{"vector": "VA", "grade": "A"}]},
+            {"astral_job_id": "job-z", "grades": [{"vector": "Voice (VA)", "grade": "Z"}]},
+            {"astral_job_id": "", "grades": [{"vector": "Voice", "grade": "F"}]},
+        ], "2026-02-01 00:00:01")
+        # Later block in the same batch replaces the letter; still one run.
+        self._jobs(db, "grade_do", "batch-new", [
+            {"astral_job_id": "job-dup", "grades": [{"vector": "VA", "grade": "D"}]},
+        ], "2026-02-01 00:00:02")
+        self._jobs(db, "grade_do", "batch-new", [], "2026-02-01 00:00:03")
+        db.save_agent_data(
+            agent_data_id="batch-new-garbage",
+            entity_type="job",
+            task_key="grade_do",
+            batch_id="batch-new",
+            block_type="RESPONSE",
+            block_data="not-json",
+            token_size=1,
+            created_at="2026-02-01 00:00:04",
+        )
+        self._pin("meteorite_grade_do", "batch-twin", "2026-03-01 00:00:00")
+        self._jobs(db, "meteorite_grade_do", "batch-twin", [
+            {"astral_job_id": "job-c", "grades": [{"vector": "Voice (VA)", "grade": "C"}]},
+        ], "2026-03-01 00:00:01")
+        self._pin("grade_do", "batch-b2", "2026-04-01 00:00:00")
+        self._jobs(db, "grade_do", "batch-b2", [
+            {"astral_job_id": "job-b2", "grades": [{"vector": "Voice (VA)", "grade": "B"}]},
+        ], "2026-04-01 00:00:01")
+        self._pin("craft_do_rubric", "batch-craft", "2026-05-01 00:00:00")
+        self._jobs(db, "craft_do_rubric", "batch-craft", [
+            {"astral_job_id": "job-craft", "grades": [{"vector": "Voice (VA)", "grade": "F"}]},
+        ], "2026-05-01 00:00:01")
+        self._pin("grade_do", "batch-blank", "2026-06-01 00:00:00")
+        self._jobs(db, "grade_do", "batch-blank", [
+            {"astral_job_id": "job-blank", "grades": [{"vector": "Voice (VA)", "grade": "A"}]},
+        ], "2026-06-01 00:00:01")
+        conn = db._get_connection()
+        try:
+            conn.execute(
+                "UPDATE vector_feedback SET rubric_vector_uuid = '' WHERE batch_id = ?",
+                ("batch-blank",),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        out = candidate_mod.rollup_current_vector_grades("cand-1", "do_rubric")
+        assert out["artifact_key"] == "do_rubric"
+        assert len(out["vectors"]) == 1
+        vec = out["vectors"][0]
+        assert vec["code"] == "VA" and vec["label"] == "Voice"
+        assert vec["rubric_vector_uuid"]
+        assert vec["rubric_vector_uuid"] != old
+        # B×2 (grade_do), C (meteorite_grade_do twin), D (later RESPONSE in the same batch).
+        # Craft, blank uuid, grade Z, empty job id, and the retired version stay out.
+        assert vec["letters"] == [
+            {"grade": "B", "count": 2, "last_seen": "2026-04-01 00:00:00"},
+            {"grade": "C", "count": 1, "last_seen": "2026-03-01 00:00:00"},
+            {"grade": "D", "count": 1, "last_seen": "2026-02-01 00:00:00"},
+        ]
+        assert vec["run_count"] == 4
+        assert vec["run_count"] == sum(row["count"] for row in vec["letters"])
+
+        candidate_mod.set_rubric_criterion_current("cand-1", "do_rubric", "VA", old)
+        back = candidate_mod.rollup_current_vector_grades("cand-1", "do_rubric")["vectors"][0]
+        assert back["rubric_vector_uuid"] == old
+        assert back["run_count"] == 1
+        assert back["letters"] == [
+            {"grade": "A", "count": 1, "last_seen": "2026-01-01 00:00:00"},
+        ]
+
+    def test_company_grades_and_unpinned_embedded_vector(self, seeded_db) -> None:
+        db = seeded_db
+        db.save_agent_task("prefilter_company", agent_id="a1", user_prompt="p")
+        db.sync_rubric_vectors_from_criteria(
+            "cand-1",
+            "prefilter_company",
+            [{"code": "WG", "label": "Watch", "content": "w\nA = one", "importance": 5}],
+        )
+        from src.core.agent import _capture_rubric_vector_feedback
+
+        codes = {
+            str(row.get("code") or "").strip().upper()
+            for row in db.list_rubric_vectors("cand-1", "prefilter_company", current_only=True)
+        }
+        reviews = [f"{code}RACOVK" for code in sorted(codes)]
+        _capture_rubric_vector_feedback(
+            task_key="prefilter_company",
+            owner_task_key="prefilter_company",
+            candidate_id="cand-1",
+            batch_id="batch-co",
+            entity_type="company",
+            index=None,
+            perf={"status": "success", "vector_reviews": reviews},
+            debug=False,
+            prompt_blocks=[],
+            batch_size=1,
+            completed_at="2026-07-01 00:00:00",
+        )
+        db.save_agent_data(
+            agent_data_id="batch-co-resp",
+            entity_type="company",
+            task_key="prefilter_company",
+            batch_id="batch-co",
+            block_type="RESPONSE",
+            block_data=json.dumps({
+                "companies": [{
+                    "company_id": "co-1",
+                    "grades": [{"vector": "Watch (WG)", "grade": "A"}],
+                }],
+            }),
+            token_size=1,
+            created_at="2026-07-01 00:00:01",
+        )
+        out = candidate_mod.rollup_current_vector_grades("cand-1", "company_prefilter")
+        wg = next(v for v in out["vectors"] if v["code"] == "WG")
+        assert wg["run_count"] == 1
+        assert wg["letters"] == [
+            {"grade": "A", "count": 1, "last_seen": "2026-07-01 00:00:00"},
+        ]
+        bare = candidate_mod.rollup_current_vector_grades("cand-1", "jobdesc_rubric")
+        assert bare["vectors"]
+        assert all(v["rubric_vector_uuid"] is None and v["run_count"] == 0 and v["letters"] == [] for v in bare["vectors"])
+
+    def test_rejects_blank_candidate_and_non_rubric(self) -> None:
+        with pytest.raises(ValueError, match="candidate_id required"):
+            candidate_mod.rollup_current_vector_grades("  ", "do_rubric")
+        with pytest.raises(ValueError, match="not a rubric criteria key"):
+            candidate_mod.rollup_current_vector_grades("cand-1", "base_resume")
