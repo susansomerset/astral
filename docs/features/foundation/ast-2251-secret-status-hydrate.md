@@ -271,3 +271,50 @@ context_tokens≈38000
 Discuss "Migration upsert without deploy": Susan had not answered. Took the finding **Default** — no `trigger_service_deploy` in the script. One line in `scripts/migrations/migrate_candidate_api_keys_to_railway.py` tells the operator to deploy the Astral service after `--execute`.
 
 Advisory items left as written: sibling AST-2250 files in the three-dot diff, off-list statutes not scored, AC 2 covered by the hydrate omission rather than a dispatcher test. Frame-diff AC 1 and AC 2 rows ticked.
+
+## Bug: AST-2275 — dispatch validation misses vault-set OpenRouter key
+
+### As-is
+
+After Admin sets a candidate OpenRouter key through the Railway vault, Manage Candidates shows status SET, but scheduled-action / dispatch validation marks the task invalid for a missing OpenRouter key. Agent Ad Hoc fails with `Candidate somerset has no API key for server 'openrouter'`.
+
+### To-be
+
+When that candidate's OpenRouter key is SET via the vault, `_candidate_dispatch_api_key_error` and Agent Ad Hoc resolve a non-empty `candidate_api_keys["openrouter"]` for that candidate, so validation does not mark the task invalid for a missing OpenRouter key.
+
+### Repro
+
+1. On a host where `ASTRAL_RAILWAY_TOKEN` is set (production probe true), Admin PUT for candidate `somerset` with `api_keys: [{server: "openrouter", key: "<secret>", expires_at: "<future YYYY-MM-DD HH:MM:SS>"}]`. Railway upsert and deploy trigger succeed; row status is SET.
+2. Before a new process has the injected env — or on the same process that never received `CANDIDATE_SOMERSET_OPENROUTER` in `os.environ` — open Scheduled Actions for a task whose agent server is `openrouter`, or POST `/admin/anthropic_ad_hoc` for `somerset` / OpenRouter.
+3. Fail: `invalid_reason` / 400 cites a missing OpenRouter key; Ad Hoc returns `Candidate somerset has no API key for server 'openrouter'`. GET still shows OpenRouter status SET (hydrate leaves stored SET when the env value is missing).
+
+### Root cause
+
+Hydrate builds `candidate_api_keys` only from `os.environ` (per-candidate name in production, shared stub locally). Admin set (and `update_candidate_api_keys`) persist status SET and write Railway, but never put the plaintext into the **current** process environment. Until a redeployed process inherits the Railway variable — or a local stub is exported by hand — status stays SET while the map stays empty. Dispatch validation and Ad Hoc both read the map (`_candidate_dispatch_api_key_error`, `_candidate_server_key`), so they treat the key as missing while the UI shows SET.
+
+### Proposed change
+
+In `src/core/candidate.py`, inside `update_candidate_api_keys`, after the catalog / expiry checks and before `database.update_candidate_api_keys`:
+
+1. Use the same production probe as `hydrate_candidate_secrets`: `token_env = CANDIDATE_SECRET_RAILWAY_CONFIG["token_env"]`; production when that name is in `os.environ` and `os.environ[token_env].strip()` is non-empty.
+2. For each edit with a non-empty `key`: `env_name = candidate_secret_variable_name(server, candidate_id)` when production, else `candidate_secret_local_stub_env(server)`. Set `os.environ[env_name] = key` (the stripped plaintext already validated for SET).
+3. For each clear (`key` empty): compute `env_name` the same way and `os.environ.pop(env_name, None)`.
+4. Do not log `key` or `env_name` values beyond the existing warning shapes in hydrate. Do not call Railway here (Admin PUT still owns upsert/delete/deploy). Do not change hydrate's EXPIRED / missing-env rules.
+
+After a successful Admin set on the current process, `database.get_candidate` → hydrate must include that server in `candidate_api_keys` when status is SET and `expires_at` is still in the future.
+
+### Blast radius
+
+- `src/core/candidate.py` — `update_candidate_api_keys` only; hydrate logic unchanged.
+- Callers: `src/ui/api/api_candidate.py` Admin PUT (production Railway then this function; local skips Railway and still gets stub env from this change).
+- Consumers of the map unchanged: `src/ui/api/api_admin.py` `_candidate_dispatch_api_key_error`, `src/core/dispatcher.py` missing-key gate, `src/core/agent.py` `_candidate_server_key` / Ad Hoc.
+- Other workers / replicas still need the Railway deploy (or their own set) to inherit the variable; this ticket fixes the writer process and any process that runs `update_candidate_api_keys`.
+- Not in scope: changing the date-select midnight expiry rule (AST-2265). A past `expires_at` still reports EXPIRED and omits the server — intentional parent AC 2.
+
+### What must still hold
+
+- Parent AC: EXPIRED (now ≥ expires_at) omits the server from `candidate_api_keys` and blocks dispatch the same as unset.
+- Parent AC: local with Railway unset shares one stub value per secret id across candidates; no Railway call on hydrate.
+- Parent AC: no Fernet encrypt on the key-update path; secret not stored in `api_keys` JSON.
+- GET / sanitize never returns plaintext.
+- Hydrate still warns (candidate id + secret id, not the value) when status is SET and the env value is missing — that path remains for rows SET without a matching environ entry (e.g. another replica before deploy).
