@@ -132,3 +132,8 @@ AC 8 → Stage 1 (`add_company_for_test_watch`) + Stage 2 (`POST /api/companies/
 
 context_tokens≈58000
 ```
+
+## Review
+
+- **Publish ref:** `sub/AST-2318/AST-2322-add-company-and-ignore-restore`
+- **Tip:** `0078c81c7` — `code(AST-2322): Watch List add form and Ignored restore`
