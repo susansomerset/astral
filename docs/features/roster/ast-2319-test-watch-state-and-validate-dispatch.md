@@ -178,4 +178,57 @@ context_tokens≈42000
 ## Review
 
 - **Publish ref:** `sub/AST-2318/AST-2319-test-watch-state-and-validate-dispatch`
-- **Tip:** `c2b33405d` — `code(AST-2319): TEST_WATCH parse-validate producer`
+- **Tip:** `8bd37ec1` — `code(AST-2319): TEST_WATCH parse-validate producer`
+
+## Radia review
+
+```text
+[code-rubric]
+**Ticket:** AST-2319
+**Publish ref:** `8bd37ec1e43f68ab2deaaec1b9b43df2d05bf2a1` (`origin/sub/AST-2318/AST-2319-test-watch-state-and-validate-dispatch`)
+**Corpus:** b7ab2203048ce0beb2869a12200ab7fa696c8066
+**Overall:** CLEAN
+
+## Canon scores
+
+astral.dispatch.entity-state-bound | A | |
+astral.batch.claim-process-release | A | |
+patt.entity.batch-processing | A | |
+patt.entity.batch-criteria | A | |
+patt.task.dispatch-retry | X | | Documented single-shot validate — no `_RETRY` hop; failures route to `WEBSITE_FOUND`
+
+## Column diff vs plan stage
+
+(aligned)
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- `dispatch_claim_states("TEST_WATCH")` still expands to `TEST_WATCH` + `TEST_WATCH_RETRY` while no `TEST_WATCH_RETRY` registry row or transitions exist — harmless until something lands in that companion state without registry work (Joan plan note; asserted in `TestAst2319TestWatchConfig::test_company_state_and_transitions`).
+- Issue doc `## Review` tip `c2b33405d` is behind the published sub tip (`8bd37ec1`); Chuckles should refresh when appending this review.
+
+## What's solid
+
+- Stage 1 matches plan: `COMPANY_STATES["TEST_WATCH"]`, four transition tuples, `ROSTER_CONFIG` / `TASK_CONFIG` / frozenset / paste-only seed, module-level invariants after `dispatch_task_admin_defaults`, UI bulk manifest left unchanged (tests lock boundary).
+- Stage 2 `run_test_watch_validate` uses claimed `entity`, reads pass/fail from `ROSTER_CONFIG["test_watch"]`, scrape/cull/`do_task(parse_job_list)` path, provider hold without transition, `WEBSITE_FOUND` as `total_failed`, wrong `dispatch_task_key` as `total_errors`, no `clear_company_batch` / no `_fetch_parse_job_list`.
+- Betty manifest nodes are covered by focused component tests on config + roster validate + routing.
+
+## Recommended actions
+
+- Chuckles: append this artifact to `docs/features/roster/ast-2319-test-watch-state-and-validate-dispatch.md`, update `## Review` tip to `8bd37ec1`, commit `docs(AST-2319): Radia review — clean` on the sub-branch, post slim upshot `--as radia`, move to **Review Posted**; datt **§3h** → **resolve-child** only if Susan wants nothing from the advisory notes (no fix-now / discuss).
+
+context_tokens≈52000
+```
