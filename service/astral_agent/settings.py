@@ -6,6 +6,7 @@ import os
 from dataclasses import dataclass
 
 from agent_config import (
+    ADMIT_INTERVAL_SECONDS,
     DB_POOL_MAX_SIZE,
     HEARTBEAT_SECONDS,
     IDLE_SLEEP_SECONDS,
@@ -16,7 +17,6 @@ from agent_config import (
     PORT,
     QUEUE_POLL_SECONDS,
     SHUTDOWN_GRACE_SECONDS,
-    WORKER_CONCURRENCY,
     WORKER_STALE_SECONDS,
 )
 
@@ -24,7 +24,7 @@ from agent_config import (
 @dataclass(frozen=True)
 class Settings:
     database_url: str
-    worker_concurrency: int
+    admit_interval_seconds: float
     queue_poll_seconds: float
     lease_seconds: int
     heartbeat_seconds: float
@@ -47,7 +47,7 @@ def load_settings() -> Settings:
         idle = float(IDLE_SLEEP_SECONDS)
     return Settings(
         database_url=database_url,
-        worker_concurrency=WORKER_CONCURRENCY,
+        admit_interval_seconds=ADMIT_INTERVAL_SECONDS,
         queue_poll_seconds=QUEUE_POLL_SECONDS,
         lease_seconds=LEASE_SECONDS,
         heartbeat_seconds=HEARTBEAT_SECONDS,

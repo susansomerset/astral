@@ -13,6 +13,7 @@ Isolated FastAPI microservice — **not** under `src/`. Flat imports (`from auth
 | Import fence + Dockerfile / requirements | `tests/component/service/test_telescope_fence.py` | no |
 | Railway Phase 1 + bidirectional CI fence | `tests/component/service/test_telescope_deploy_ci.py` | no |
 | `service/telescope/{interact,scrape,worker}.py` click-then-capture | `tests/component/service/test_telescope_click.py` | no |
+| `service/telescope/{gate,worker,jobqueue}.py` holding area + memory gate | `tests/component/service/test_telescope_holding.py` | no |
 
 **Integration tier:** no existing `tests/integration/` scenario exercises Telescope (platform client is sibling **AST-1726**). No integration revision this pass.
 
@@ -248,6 +249,24 @@ New nodes are red on pre-change product (`origin/dev` versions of the four produ
 **Broken / obsolete:** none caused by this diff. *(AST-2241 revised the stale `test_no_healthcheck_path_and_no_phase2_hooks` node — see § AST-1727.)*
 
 **Integration tier:** no existing `tests/integration/` scenario exercises Telescope. No integration revision.
+
+### cursor-microservice-tweaks · step 3 / T3 + T6 (holding area + memory gate)
+
+**Scope:** the worker claims every claimable job (`claim(limit=None)`) into an in-memory waiting line; every held job stays leased and heartbeated. A gate (`gate.py`, same `admit(running)` shape as astral-agent) starts the oldest waiting job; every claim and finish wakes it. `MemoryGate` admits while the cgroup v2 working set (`memory.current` − `inactive_file`) is under `MEMORY_CUTOFF_PERCENT` of `memory.max`, read live per admit, paced by `ADMIT_INTERVAL_SECONDS`, always admits one when nothing runs, and fails loud at startup if the limit is unreadable. Attempts are charged by `jobqueue.start()` when the gate admits (claim charges nothing); `release_all` refunds only started jobs. `telescope_worker.concurrency` reports the held count (`in_flight` = running). `limitOverride` removed from `railway.toml`.
+
+| Area | Component tests |
+| --- | --- |
+| Cutoff, working set, nothing-running floor, pacing, live limit, fail-loud startup | `test_telescope_holding.py::TestMemoryGate` |
+| Claims all (no cap), held jobs leased + uncharged, gate opening starts them | `…::TestTelescopeHoldingArea::test_claims_all_and_holds_leased_until_the_gate_opens` |
+| Oldest first; a finish wakes the gate | `…::test_oldest_starts_first_and_a_finish_wakes_the_gate` |
+| Heartbeat covers waiting jobs; held vs running reported | `…::test_heartbeat_covers_waiting_jobs_and_reports_held_vs_running` |
+| Stop never starts waiting jobs; only started refunded | `…::test_stop_never_starts_waiting_jobs_and_refunds_only_started` |
+| Start's attempt count feeds the retry decision; gate error keeps jobs held | `…::test_started_attempt_count_feeds_the_retry_decision`, `…::test_gate_failure_keeps_jobs_held` |
+| Default gate + settings (no `worker_concurrency`) | `…::test_default_gate_is_the_memory_gate` |
+| claim / start / release_all SQL contract | `…::TestTelescopeQueueSql` |
+| `limitOverride` / `memoryBytes` gone from railway.toml | `test_telescope_deploy_ci.py::TestRailwayPhase1Toml::test_num_replicas_one_and_dockerfile_paths` (revised) |
+
+Not in component tests: the real attempts/refund/crash SQL was exercised once against a throwaway Postgres 16 (claim → start → heartbeat → release_all → lease reap → retry re-claim); component tests mirror it in memory.
 
 ## QA test manifest
 

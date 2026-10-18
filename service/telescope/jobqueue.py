@@ -5,8 +5,10 @@ results with the same table/column/channel names. Import fence forbids sharing c
 so change both sides together.
 
 Lifecycle: queued → running → done | failed | cancelled.
-  - Claim is FOR UPDATE SKIP LOCKED; attempts count claims (not failures), so a URL
-    that crashes the worker still runs out of attempts.
+  - Claim is FOR UPDATE SKIP LOCKED and takes every claimable job into the worker's
+    holding area. Attempts count *starts* (start(), when the gate admits), not claims or
+    failures, so a URL that crashes the worker still runs out of attempts while jobs
+    that were only waiting are never charged.
   - A running job holds a lease the worker heartbeats; an expired lease means the
     worker died and the job is re-queued (or failed when out of attempts).
   - Result is zlib-compressed JSON in bytea — jsonb rejects NUL and lone surrogates,
@@ -16,8 +18,9 @@ Lifecycle: queued → running → done | failed | cancelled.
 from __future__ import annotations
 
 import json
+import time
 import zlib
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, List, Optional, Sequence
 
 import asyncpg
@@ -76,6 +79,8 @@ class ClaimedJob:
     attempts: int
     max_attempts: int
     wait_s: float = 0.0  # time since the job became claimable (queue wait)
+    # Monotonic stamp of the claim; start - claimed_at is the time held in the waiting line.
+    claimed_at: float = field(default_factory=time.monotonic)
 
 
 def encode_result(result: Any) -> bytes:
@@ -108,8 +113,13 @@ async def ensure_schema(pool: asyncpg.Pool) -> None:
 
 
 async def claim(
-    pool: asyncpg.Pool, *, limit: int, worker_id: str, lease_seconds: int
+    pool: asyncpg.Pool, *, limit: Optional[int], worker_id: str, lease_seconds: int
 ) -> List[ClaimedJob]:
+    """Lease every claimable job (limit=None -> LIMIT NULL = no cap) into the holding area.
+
+    A claim charges nothing: attempts and started_at are set by start() when the gate admits
+    the job, so a crash only costs an attempt to jobs that actually began.
+    """
     rows = await pool.fetch(
         f"""
         WITH picked AS (
@@ -121,10 +131,9 @@ async def claim(
         )
         UPDATE {JOB_TABLE} j
         SET status = 'running',
-            attempts = j.attempts + 1,
             worker_id = $2,
             lease_until = now() + make_interval(secs => $3),
-            started_at = now()
+            started_at = NULL
         FROM picked
         WHERE j.id = picked.id
         RETURNING j.id, j.request, j.attempts, j.max_attempts,
@@ -144,6 +153,20 @@ async def claim(
         )
         for r in rows
     ]
+
+
+async def start(pool: asyncpg.Pool, *, job_id: str, worker_id: str) -> Optional[int]:
+    """Gate admitted the job: charge the attempt. New attempt count, or None when no longer ours."""
+    return await pool.fetchval(
+        f"""
+        UPDATE {JOB_TABLE}
+        SET attempts = attempts + 1, started_at = now()
+        WHERE id = $1 AND worker_id = $2 AND status = 'running'
+        RETURNING attempts
+        """,
+        job_id,
+        worker_id,
+    )
 
 
 async def complete(
@@ -217,9 +240,12 @@ async def heartbeat(
     worker_id: str,
     job_ids: Sequence[str],
     lease_seconds: int,
-    concurrency: int,
+    held: int,
+    running: int,
 ) -> set[str]:
-    """Extend leases; return the ids still ours (missing ids were cancelled/reaped)."""
+    """Extend leases for every held job (waiting + running); return the ids still ours
+    (missing ids were cancelled/reaped). The worker row's NOT NULL `concurrency` column
+    reports the held count — there is no cap any more — and `in_flight` the running count."""
     async with pool.acquire() as conn:
         await conn.execute(
             f"""
@@ -229,8 +255,8 @@ async def heartbeat(
             DO UPDATE SET last_seen = now(), concurrency = $2, in_flight = $3
             """,
             worker_id,
-            concurrency,
-            len(job_ids),
+            held,
+            running,
         )
         if not job_ids:
             return set()
@@ -309,12 +335,17 @@ async def has_pending(pool: asyncpg.Pool) -> bool:
 
 
 async def release_all(pool: asyncpg.Pool, *, worker_id: str) -> int:
-    """Shutdown: hand unfinished jobs back without charging them an attempt."""
+    """Shutdown: hand unfinished jobs back without charging them an attempt.
+
+    Only jobs that started (started_at set by start()) were charged one, so only those are
+    refunded; held-but-unstarted jobs were never charged.
+    """
     rows = await pool.fetch(
         f"""
         UPDATE {JOB_TABLE}
-        SET status = 'queued', attempts = GREATEST(attempts - 1, 0),
-            worker_id = NULL, lease_until = NULL, run_after = now()
+        SET status = 'queued',
+            attempts = GREATEST(attempts - (started_at IS NOT NULL)::int, 0),
+            started_at = NULL, worker_id = NULL, lease_until = NULL, run_after = now()
         WHERE worker_id = $1 AND status = 'running'
         RETURNING id
         """,

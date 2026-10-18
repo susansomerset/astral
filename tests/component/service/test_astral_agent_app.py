@@ -17,6 +17,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 def _fake_worker(*, db_ok: bool = True, loop_fresh: bool = True) -> MagicMock:
     w = MagicMock()
     w.worker_id = "test-worker:1:abc"
+    w.held = 0
     w.in_flight = 0
     w.db_ok = db_ok
     age = 1.0 if loop_fresh else 10_000.0

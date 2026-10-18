@@ -14,10 +14,15 @@ SCRAPE_RETRY_BASE_DELAY_SECONDS = 2.0
 # Timeouts are expensive — only this many attempts end in a timeout before the job fails.
 TIMEOUT_MAX_ATTEMPTS = 2
 
-# Queue worker (Postgres-backed). WORKER_CONCURRENCY = scrapes in flight per replica,
-# i.e. max live contexts in its one Firefox — the only concurrency knob (must fit the
-# replica's memory limit). Scale out by adding replicas.
-WORKER_CONCURRENCY = 20
+# Queue worker (Postgres-backed). The worker claims every claimable job into a holding
+# area (all stay leased + heartbeated); the memory gate decides when each one gets a
+# Firefox context. There is no concurrency cap — memory headroom is the only limit.
+# Start a context only while the container's working set (cgroup v2 memory.current minus
+# inactive_file) is below this share of memory.max. 80 is also acceptable.
+MEMORY_CUTOFF_PERCENT = 70
+# Minimum gap between two admissions: a new context's memory only shows up once its page
+# loads, so without a gap a whole waiting line would pass the same stale reading.
+ADMIT_INTERVAL_SECONDS = 0.1
 QUEUE_POLL_SECONDS = 2.0
 LEASE_SECONDS = 60
 HEARTBEAT_SECONDS = 15

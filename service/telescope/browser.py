@@ -1,6 +1,6 @@
 """One Firefox per process — a fresh context per job.
 
-The queue decides how much work this process takes on (WORKER_CONCURRENCY), so
+The worker's memory gate decides how much work this process takes on, so
 there is no pool here: every job gets its own context in the one live Firefox.
 All this module does is keep that Firefox alive:
   - launch it at startup,

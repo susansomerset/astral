@@ -24,6 +24,7 @@ _FLAT_SERVICE_MODULES = (
     "settings",
     "worker",
     "executor",
+    "gate",
     "agent_config",
     "logging_util",
     "auth",

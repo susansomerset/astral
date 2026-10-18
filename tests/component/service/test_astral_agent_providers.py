@@ -238,10 +238,13 @@ async def silent_server():
     connected, closed = asyncio.Event(), asyncio.Event()
 
     async def _handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
-        connected.set()
         try:
-            while await reader.read(65536):
-                pass
+            # "connected" = the request bytes arrived, not the TCP accept: cancelling while
+            # anyio's connect_tcp task group is still finishing gets the cancel swallowed.
+            if await reader.read(65536):
+                connected.set()
+                while await reader.read(65536):
+                    pass
         finally:
             closed.set()
             writer.close()
@@ -271,7 +274,7 @@ class TestStep2AsyncProviderClient:
         await asyncio.wait_for(silent_server.connected.wait(), 5)
         task.cancel()
         with pytest.raises(asyncio.CancelledError):
-            await task
+            await asyncio.wait_for(task, 5)  # a swallowed cancel fails here instead of hanging
         # The server sees the socket drop — nothing keeps the call (or its bill) alive.
         await asyncio.wait_for(silent_server.closed.wait(), 3)
 

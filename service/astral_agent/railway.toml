@@ -23,7 +23,8 @@
 #     Postgres pool so Railway can sleep it; platform GET /wake resumes.
 #   - Scale out by raising replicas in the dashboard (Phase 1 fixed fleet).
 #     Do not add Judoscale / serviceInstanceUpdate / autoscaler code.
-#   - Optional: raise memory in the dashboard if provider payloads OOMs.
+#   - No memory limitOverride: the worker holds every claimable job, so size the replica in the
+#     dashboard (vertical scaling) rather than capping it here.
 
 [build]
 builder = "DOCKERFILE"
@@ -40,5 +41,3 @@ healthcheckTimeout = 120
 # Old replica keeps running after SIGTERM so in-flight jobs finish;
 # leftovers are handed back to the queue (SHUTDOWN_GRACE_SECONDS = 25 in agent_config).
 drainingSeconds = 30
-# 1 GiB per replica — no Firefox; WORKER_CONCURRENCY=4 HTTP jobs (AST-2237 defaults).
-limitOverride = { containers = { memoryBytes = 1073741824 } }

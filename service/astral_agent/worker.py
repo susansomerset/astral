@@ -1,8 +1,10 @@
-"""Queue consumer — claims jobs up to WORKER_CONCURRENCY and runs the provider executor.
+"""Queue consumer — claims every claimable job into a holding area; the gate starts them.
 
-Wake-ups come from LISTEN agent_job_new; polling every QUEUE_POLL_SECONDS is the
-backstop. Every DB call is wrapped: a Postgres blip slows the worker down, it never
-kills it. No entity / dispatch / platform SQLite awareness.
+Every held job (waiting or running) stays leased and heartbeated, so a crash re-queues
+it and shutdown hands it back. The gate decides when a waiting job starts; every claim
+and every finish wakes it. Wake-ups come from LISTEN agent_job_new; polling every
+QUEUE_POLL_SECONDS is the backstop. Every DB call is wrapped: a Postgres blip slows the
+worker down, it never kills it. No entity / dispatch / platform SQLite awareness.
 """
 
 from __future__ import annotations
@@ -18,6 +20,7 @@ import asyncpg
 
 import executor
 import jobqueue
+from gate import AdmitAll, Gate
 from logging_util import get_logger, set_worker_label
 from providers.errors import ProviderJobError
 from settings import settings
@@ -43,13 +46,16 @@ class QueueWorker:
         db: asyncpg.Pool,
         *,
         worker_id: Optional[str] = None,
-        concurrency: Optional[int] = None,
+        gate: Optional[Gate] = None,
     ) -> None:
         self._db = db
         self.worker_id = worker_id or make_worker_id()
-        self._concurrency = concurrency or settings.worker_concurrency
-        self._in_flight: Dict[str, asyncio.Task] = {}
-        self._wake = asyncio.Event()
+        self._gate: Gate = gate or AdmitAll()
+        # Holding area: claimed + leased, not started (insertion order = claim order).
+        self._waiting: Dict[str, jobqueue.ClaimedJob] = {}
+        self._running: Dict[str, asyncio.Task] = {}
+        self._wake = asyncio.Event()  # claim loop: new work may be queued
+        self._gate_wake = asyncio.Event()  # gate loop: a claim, a finish, or a closing
         self._stopping = asyncio.Event()
         self._listener: Optional[asyncpg.Connection] = None
         self._tasks: list[asyncio.Task] = []
@@ -65,38 +71,42 @@ class QueueWorker:
         await self._connect_listener()
         self._tasks = [
             asyncio.create_task(self._claim_loop(), name="astral-agent-claim"),
+            asyncio.create_task(self._gate_loop(), name="astral-agent-gate"),
             asyncio.create_task(self._heartbeat_loop(), name="astral-agent-heartbeat"),
             asyncio.create_task(
                 self._maintenance_loop(), name="astral-agent-maintenance"
             ),
         ]
         _log.info(
-            "%s | astral-agent worker started: concurrency:%d worker_id:%s",
+            "%s | astral-agent worker started: worker_id:%s",
             self.label,
-            self._concurrency,
             self.worker_id,
         )
 
     async def stop(self) -> None:
-        """Stop claiming, let in-flight jobs finish (bounded), hand back the rest."""
+        """Stop claiming and admitting, let running jobs finish (bounded), hand back the rest
+        (including every job still waiting in the holding area)."""
         self._stopping.set()
         self._wake.set()
+        self._gate_wake.set()
         for t in self._tasks:
             t.cancel()
         await asyncio.gather(*self._tasks, return_exceptions=True)
-        draining = len(self._in_flight)
-        if draining:
+        draining = len(self._running)
+        if draining or self._waiting:
             _log.info(
-                "%s | astral-agent worker draining: in_flight:%d grace:%ss",
+                "%s | astral-agent worker draining: running:%d waiting:%d grace:%ss",
                 self.label,
                 draining,
+                len(self._waiting),
                 settings.shutdown_grace_seconds,
             )
+        if draining:
             await asyncio.wait(
-                list(self._in_flight.values()),
+                list(self._running.values()),
                 timeout=settings.shutdown_grace_seconds,
             )
-        leftovers = list(self._in_flight.values())
+        leftovers = list(self._running.values())
         for t in leftovers:
             t.cancel()
         await asyncio.gather(*leftovers, return_exceptions=True)
@@ -115,14 +125,21 @@ class QueueWorker:
                 type(exc).__name__,
                 exc,
             )
+        self._waiting.clear()
         await self._close_listener()
 
     @property
     def in_flight(self) -> int:
-        return len(self._in_flight)
+        """Jobs running now."""
+        return len(self._running)
+
+    @property
+    def held(self) -> int:
+        """Jobs claimed and leased by this worker: waiting + running."""
+        return len(self._waiting) + len(self._running)
 
     def idle_seconds(self) -> float:
-        if self._in_flight:
+        if self.held:
             return 0.0
         return time.monotonic() - self.last_busy_at
 
@@ -154,38 +171,33 @@ class QueueWorker:
         while not self._stopping.is_set():
             self.last_loop_at = time.monotonic()
             self._wake.clear()
-            free = self._concurrency - len(self._in_flight)
-            claimed = 0
-            if free > 0:
-                try:
-                    jobs = await jobqueue.claim(
-                        self._db,
-                        limit=free,
-                        worker_id=self.worker_id,
-                        lease_seconds=settings.lease_seconds,
-                    )
-                    self.db_ok = True
-                    backoff = 1.0
-                except asyncio.CancelledError:
-                    raise
-                except Exception as exc:
-                    self.db_ok = False
-                    _log.warning(
-                        "astral-agent claim failed retry_in_s=%s: %s: %s",
-                        backoff,
-                        type(exc).__name__,
-                        exc,
-                    )
-                    await asyncio.sleep(backoff)
-                    backoff = min(backoff * 2, _DB_RETRY_MAX_SECONDS)
-                    continue
-                for job in jobs:
-                    task = asyncio.create_task(self._run_job(job), name=f"job-{job.id}")
-                    self._in_flight[job.id] = task
-                    task.add_done_callback(lambda _t, jid=job.id: self._job_done(jid))
-                claimed = len(jobs)
-            if claimed and claimed == free:
+            try:
+                # No limit: everything claimable goes into the holding area.
+                jobs = await jobqueue.claim(
+                    self._db,
+                    limit=None,
+                    worker_id=self.worker_id,
+                    lease_seconds=settings.lease_seconds,
+                )
+                self.db_ok = True
+                backoff = 1.0
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                self.db_ok = False
+                _log.warning(
+                    "astral-agent claim failed retry_in_s=%s: %s: %s",
+                    backoff,
+                    type(exc).__name__,
+                    exc,
+                )
+                await asyncio.sleep(backoff)
+                backoff = min(backoff * 2, _DB_RETRY_MAX_SECONDS)
                 continue
+            for job in jobs:
+                self._waiting[job.id] = job
+            if jobs:
+                self._gate_wake.set()
             try:
                 await asyncio.wait_for(
                     self._wake.wait(), timeout=settings.queue_poll_seconds
@@ -193,31 +205,64 @@ class QueueWorker:
             except asyncio.TimeoutError:
                 pass
 
+    async def _gate_loop(self) -> None:
+        """Start waiting jobs, oldest first, for as long as the gate admits."""
+        while not self._stopping.is_set():
+            self._gate_wake.clear()
+            wait: Optional[float] = None
+            try:
+                while self._waiting and self._gate.admit(len(self._running)):
+                    self._start(next(iter(self._waiting)))
+                if self._waiting:
+                    wait = settings.admit_interval_seconds  # gate said not yet
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                _log.warning("astral-agent gate failed: %s: %s", type(exc).__name__, exc)
+                wait = settings.queue_poll_seconds  # jobs stay held; try again
+            try:
+                await asyncio.wait_for(self._gate_wake.wait(), timeout=wait)
+            except asyncio.TimeoutError:
+                pass
+
+    def _start(self, job_id: str) -> None:
+        job = self._waiting.pop(job_id)
+        task = asyncio.create_task(self._run_job(job), name=f"job-{job_id}")
+        self._running[job_id] = task
+        task.add_done_callback(lambda _t, jid=job_id: self._job_done(jid))
+
     def _job_done(self, job_id: str) -> None:
-        self._in_flight.pop(job_id, None)
+        self._running.pop(job_id, None)
         self.last_busy_at = time.monotonic()
-        self._wake.set()
+        self._gate_wake.set()  # a finish may open the gate
 
     async def _heartbeat_loop(self) -> None:
         while not self._stopping.is_set():
             try:
-                checked = list(self._in_flight)
+                # Every held job keeps its lease, started or not.
+                checked = [*self._waiting, *self._running]
                 alive = await jobqueue.heartbeat(
                     self._db,
                     worker_id=self.worker_id,
                     job_ids=checked,
                     lease_seconds=settings.lease_seconds,
-                    concurrency=self._concurrency,
+                    held=len(checked),
+                    running=len(self._running),
                 )
                 self.db_ok = True
                 for job_id in checked:
-                    task = self._in_flight.get(job_id)
-                    if job_id not in alive and task is not None and not task.done():
-                        _log.warning(
-                            "%s | astral-agent job cancelled: caller gave up or lease lost",
-                            _short_id(job_id),
-                            extra={"job": _short_id(job_id)},
-                        )
+                    if job_id in alive:
+                        continue
+                    task = self._running.get(job_id)
+                    dropped = self._waiting.pop(job_id, None) is not None  # never started
+                    if not dropped and (task is None or task.done()):
+                        continue
+                    _log.warning(
+                        "%s | astral-agent job cancelled: caller gave up or lease lost",
+                        _short_id(job_id),
+                        extra={"job": _short_id(job_id)},
+                    )
+                    if not dropped and task is not None:
                         task.cancel()
                 self._maybe_log_stats()
             except asyncio.CancelledError:
@@ -264,13 +309,14 @@ class QueueWorker:
         window = now - self._stats_at
         stats, self._stats = self._stats, {"done": 0, "failed": 0}
         self._stats_at = now
-        if not any(stats.values()) and not self._in_flight:
+        if not any(stats.values()) and not self.held:
             return
         _log.info(
-            "%s | astral-agent stats: in_flight:%d/%d done:%d failed:%d (%ds)",
+            "%s | astral-agent stats: held:%d (waiting:%d running:%d) done:%d failed:%d (%ds)",
             self.label,
-            len(self._in_flight),
-            self._concurrency,
+            self.held,
+            len(self._waiting),
+            len(self._running),
             stats["done"],
             stats["failed"],
             round(window),
@@ -278,8 +324,15 @@ class QueueWorker:
 
     async def _run_job(self, job: jobqueue.ClaimedJob) -> None:
         raw = job.request if isinstance(job.request, dict) else {}
+        # The gate admitted us: charge the attempt now (claim charges nothing).
+        if await self._db_write(jobqueue.start, job_id=job.id, worker_id=self.worker_id) is None:
+            _log.warning(
+                "%s | astral-agent job not started: no longer ours", _short_id(job.id)
+            )
+            return
         started = time.monotonic()
-        _log.debug("Claimed job %s (waited %.1fs)", job.id, job.wait_s)
+        held_s = started - job.claimed_at  # claim -> start
+        _log.debug("Started job %s (held %.1fs, queued %.1fs)", job.id, held_s, job.wait_s)
         try:
             result = await executor.execute(raw)
         except asyncio.CancelledError:
@@ -341,11 +394,12 @@ class QueueWorker:
             )
         self._stats["done"] += 1
         _log.info(
-            "%s | astral-agent job done: server:%s model:%s elapsed:%.1fs wait:%.1fs",
+            "%s | astral-agent job done: server:%s model:%s elapsed:%.1fs wait:%.1fs queued:%.1fs",
             _short_id(job.id),
             raw.get("server_id") or "-",
             raw.get("model") or "-",
             time.monotonic() - started,
+            held_s,
             job.wait_s,
         )
 

@@ -17,8 +17,11 @@
 #     closes Postgres + Firefox so Railway sleeps it. The platform pings
 #     $TELESCOPE_BASE_URL/wake (e.g. http://<telescope-service>.railway.internal:8080)
 #     — throttled — when it enqueues work and no worker is live.
-#   - Scale out by raising replicas; each replica claims up to WORKER_CONCURRENCY
-#     jobs (telescope_config.py). Queue depth is the signal for adding replicas.
+#   - No memory limitOverride and no concurrency cap: each replica claims every queued job
+#     and the memory gate (MEMORY_CUTOFF_PERCENT in telescope_config.py, read from cgroup v2
+#     memory.max / memory.current) starts a Firefox context only while memory headroom
+#     remains. Size the replica vertically in the dashboard; queue depth is the signal
+#     for adding replicas.
 #   - /dev/shm: if Firefox flakes on shared memory, raise container disk or
 #     follow Railway shm guidance; Dockerfile documents --shm-size for local Docker.
 
@@ -36,5 +39,3 @@ healthcheckTimeout = 120
 # Old replica keeps running this long after SIGTERM so in-flight scrapes finish;
 # anything still running is handed back to the queue (SHUTDOWN_GRACE_SECONDS = 25).
 drainingSeconds = 30
-# ~2 GiB per replica — WORKER_CONCURRENCY must fit inside it.
-limitOverride = { containers = { memoryBytes = 2147483648 } }

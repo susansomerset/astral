@@ -1,8 +1,11 @@
-"""Queue consumer — claims jobs up to WORKER_CONCURRENCY and runs each in its own Firefox context.
+"""Queue consumer — claims every claimable job into a holding area; the memory gate starts them.
 
-Wake-ups come from LISTEN telescope_job_new; polling every QUEUE_POLL_SECONDS is the
-backstop (missed notifies, retry back-offs coming due, a dropped listener connection).
-Every DB call is wrapped: a Postgres blip slows the worker down, it never kills it.
+Every held job (waiting or running) stays leased and heartbeated, so a crash re-queues
+it and shutdown hands it back. The gate decides when a waiting job gets its own Firefox
+context; every claim and every finish wakes it. Wake-ups come from LISTEN
+telescope_job_new; polling every QUEUE_POLL_SECONDS is the backstop (missed notifies,
+retry back-offs coming due, a dropped listener connection). Every DB call is wrapped: a
+Postgres blip slows the worker down, it never kills it.
 """
 
 from __future__ import annotations
@@ -12,12 +15,14 @@ import os
 import socket
 import time
 import uuid
+from dataclasses import replace
 from typing import Any, Dict, Optional
 
 import asyncpg
 
 import jobqueue
 from browser import Firefox
+from gate import Gate, MemoryGate
 from logging_util import get_logger, set_worker_label
 from scrape import CLICK_TARGET_MISSING, ScrapeError, parse_request, run_scrape
 from joblog import begin_job, end_job, short_id
@@ -45,15 +50,21 @@ class QueueWorker:
         firefox: Firefox,
         *,
         worker_id: Optional[str] = None,
-        concurrency: Optional[int] = None,
+        gate: Optional[Gate] = None,
     ) -> None:
         self._db = db
         self._firefox = firefox
         self.worker_id = worker_id or make_worker_id()
-        self._concurrency = concurrency or settings.worker_concurrency
-        self._in_flight: Dict[str, asyncio.Task] = {}
+        # Raises at startup when the container's memory limit isn't readable (no silent ungated run).
+        self._gate: Gate = gate or MemoryGate(
+            settings.memory_cutoff_percent, settings.admit_interval_seconds
+        )
+        # Holding area: claimed + leased, not started (insertion order = claim order).
+        self._waiting: Dict[str, jobqueue.ClaimedJob] = {}
+        self._running: Dict[str, asyncio.Task] = {}
         self._job_urls: Dict[str, str] = {}  # for lines logged outside the job's own task
-        self._wake = asyncio.Event()
+        self._wake = asyncio.Event()  # claim loop: new work may be queued
+        self._gate_wake = asyncio.Event()  # gate loop: a claim, a finish, or a closing
         self._stopping = asyncio.Event()
         self._listener: Optional[asyncpg.Connection] = None
         self._tasks: list[asyncio.Task] = []
@@ -72,36 +83,40 @@ class QueueWorker:
         await self._connect_listener()
         self._tasks = [
             asyncio.create_task(self._claim_loop(), name="telescope-claim"),
+            asyncio.create_task(self._gate_loop(), name="telescope-gate"),
             asyncio.create_task(self._heartbeat_loop(), name="telescope-heartbeat"),
             asyncio.create_task(self._maintenance_loop(), name="telescope-maintenance"),
         ]
         _log.info(
-            "%s | telescope worker started: concurrency:%d worker_id:%s",
+            "%s | telescope worker started: worker_id:%s",
             self.label,
-            self._concurrency,
             self.worker_id,
         )
 
     async def stop(self) -> None:
-        """Stop claiming, let in-flight scrapes finish (bounded), hand back the rest."""
+        """Stop claiming and admitting, let running scrapes finish (bounded), hand back the
+        rest (including every job still waiting in the holding area)."""
         self._stopping.set()
         self._wake.set()
+        self._gate_wake.set()
         for t in self._tasks:
             t.cancel()
         await asyncio.gather(*self._tasks, return_exceptions=True)
-        draining = len(self._in_flight)
-        if draining:
+        draining = len(self._running)
+        if draining or self._waiting:
             _log.info(
-                "%s | telescope worker draining: in_flight:%d grace:%ss",
+                "%s | telescope worker draining: running:%d waiting:%d grace:%ss",
                 self.label,
                 draining,
+                len(self._waiting),
                 settings.shutdown_grace_seconds,
             )
+        if draining:
             await asyncio.wait(
-                list(self._in_flight.values()),
+                list(self._running.values()),
                 timeout=settings.shutdown_grace_seconds,
             )
-        leftovers = list(self._in_flight.values())
+        leftovers = list(self._running.values())
         for t in leftovers:
             t.cancel()
         await asyncio.gather(*leftovers, return_exceptions=True)
@@ -121,15 +136,22 @@ class QueueWorker:
                 type(exc).__name__,
                 exc,
             )
+        self._waiting.clear()
         await self._close_listener()
 
     @property
     def in_flight(self) -> int:
-        return len(self._in_flight)
+        """Scrapes running now."""
+        return len(self._running)
+
+    @property
+    def held(self) -> int:
+        """Jobs claimed and leased by this worker: waiting + running."""
+        return len(self._waiting) + len(self._running)
 
     def idle_seconds(self) -> float:
-        """How long this worker has had nothing in flight (0 while busy)."""
-        if self._in_flight:
+        """How long this worker has held nothing (0 while anything is waiting or running)."""
+        if self.held:
             return 0.0
         return time.monotonic() - self.last_busy_at
 
@@ -164,43 +186,38 @@ class QueueWorker:
         backoff = 1.0
         while not self._stopping.is_set():
             self.last_loop_at = time.monotonic()
-            # Clear before claiming: anything that fires from here on (notify, a job
-            # finishing) re-arms the wait below, so no wake-up is lost or spun on.
+            # Clear before claiming: anything that fires from here on (notify) re-arms
+            # the wait below, so no wake-up is lost or spun on.
             self._wake.clear()
-            free = self._concurrency - len(self._in_flight)
-            claimed = 0
-            if free > 0:
-                try:
-                    jobs = await jobqueue.claim(
-                        self._db,
-                        limit=free,
-                        worker_id=self.worker_id,
-                        lease_seconds=settings.lease_seconds,
-                    )
-                    self.db_ok = True
-                    backoff = 1.0
-                except asyncio.CancelledError:
-                    raise
-                except Exception as exc:
-                    self.db_ok = False
-                    _log.warning(
-                        "telescope claim failed retry_in_s=%s: %s: %s",
-                        backoff,
-                        type(exc).__name__,
-                        exc,
-                    )
-                    await asyncio.sleep(backoff)
-                    backoff = min(backoff * 2, _DB_RETRY_MAX_SECONDS)
-                    continue
-                for job in jobs:
-                    raw = job.request if isinstance(job.request, dict) else {}
-                    self._job_urls[job.id] = str(raw.get("url") or "")
-                    task = asyncio.create_task(self._run_job(job), name=f"job-{job.id}")
-                    self._in_flight[job.id] = task
-                    task.add_done_callback(lambda _t, jid=job.id: self._job_done(jid))
-                claimed = len(jobs)
-            if claimed and claimed == free:
-                continue  # we were full-up on claims; there may be more ready
+            try:
+                # No limit: everything claimable goes into the holding area.
+                jobs = await jobqueue.claim(
+                    self._db,
+                    limit=None,
+                    worker_id=self.worker_id,
+                    lease_seconds=settings.lease_seconds,
+                )
+                self.db_ok = True
+                backoff = 1.0
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                self.db_ok = False
+                _log.warning(
+                    "telescope claim failed retry_in_s=%s: %s: %s",
+                    backoff,
+                    type(exc).__name__,
+                    exc,
+                )
+                await asyncio.sleep(backoff)
+                backoff = min(backoff * 2, _DB_RETRY_MAX_SECONDS)
+                continue
+            for job in jobs:
+                raw = job.request if isinstance(job.request, dict) else {}
+                self._job_urls[job.id] = str(raw.get("url") or "")
+                self._waiting[job.id] = job
+            if jobs:
+                self._gate_wake.set()
             try:
                 await asyncio.wait_for(
                     self._wake.wait(), timeout=settings.queue_poll_seconds
@@ -208,37 +225,72 @@ class QueueWorker:
             except asyncio.TimeoutError:
                 pass
 
+    async def _gate_loop(self) -> None:
+        """Start waiting jobs, oldest first, for as long as the gate admits."""
+        while not self._stopping.is_set():
+            self._gate_wake.clear()
+            wait: Optional[float] = None
+            try:
+                while self._waiting and self._gate.admit(len(self._running)):
+                    self._start(next(iter(self._waiting)))
+                if self._waiting:
+                    wait = settings.admit_interval_seconds  # gate said not yet
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                _log.warning("telescope gate failed: %s: %s", type(exc).__name__, exc)
+                wait = settings.queue_poll_seconds  # jobs stay held; try again
+            try:
+                await asyncio.wait_for(self._gate_wake.wait(), timeout=wait)
+            except asyncio.TimeoutError:
+                pass
+
+    def _start(self, job_id: str) -> None:
+        job = self._waiting.pop(job_id)
+        task = asyncio.create_task(self._run_job(job), name=f"job-{job_id}")
+        self._running[job_id] = task
+        task.add_done_callback(lambda _t, jid=job_id: self._job_done(jid))
+
     def _job_done(self, job_id: str) -> None:
-        self._in_flight.pop(job_id, None)
+        self._running.pop(job_id, None)
         self._job_urls.pop(job_id, None)
         self.last_busy_at = time.monotonic()
-        self._wake.set()  # a slot freed up
+        self._gate_wake.set()  # a finish may open the gate
 
     async def _heartbeat_loop(self) -> None:
         while not self._stopping.is_set():
             try:
-                # Judge only this snapshot — jobs claimed while the heartbeat awaits
-                # weren't in the query and must not look "lost".
-                checked = list(self._in_flight)
+                # Every held job keeps its lease, started or not. Judge only this
+                # snapshot — jobs claimed while the heartbeat awaits weren't in the
+                # query and must not look "lost".
+                checked = [*self._waiting, *self._running]
                 alive = await jobqueue.heartbeat(
                     self._db,
                     worker_id=self.worker_id,
                     job_ids=checked,
                     lease_seconds=settings.lease_seconds,
-                    concurrency=self._concurrency,
+                    held=len(checked),
+                    running=len(self._running),
                 )
                 self.db_ok = True
                 # Jobs we hold but the DB no longer gives us: cancelled or reaped.
                 for job_id in checked:
-                    task = self._in_flight.get(job_id)
-                    if job_id not in alive and task is not None and not task.done():
-                        url = self._job_urls.get(job_id, "")
-                        _log.warning(
-                            "%s | telescope job cancelled: %s caller gave up or lease lost",
-                            short_id(job_id),
-                            url or "-",
-                            extra={"job": short_id(job_id), "url": url},
-                        )
+                    if job_id in alive:
+                        continue
+                    task = self._running.get(job_id)
+                    dropped = self._waiting.pop(job_id, None) is not None  # never started
+                    if not dropped and (task is None or task.done()):
+                        continue
+                    url = self._job_urls.get(job_id, "")
+                    _log.warning(
+                        "%s | telescope job cancelled: %s caller gave up or lease lost",
+                        short_id(job_id),
+                        url or "-",
+                        extra={"job": short_id(job_id), "url": url},
+                    )
+                    if dropped:
+                        self._job_urls.pop(job_id, None)
+                    elif task is not None:
                         task.cancel()
                 self._maybe_log_stats()
             except asyncio.CancelledError:
@@ -282,14 +334,15 @@ class QueueWorker:
         window = now - self._stats_at
         stats, self._stats = self._stats, {"done": 0, "retried": 0, "failed": 0}
         self._stats_at = now
-        if not any(stats.values()) and not self._in_flight:
+        if not any(stats.values()) and not self.held:
             return
         firefox_id, served = self._firefox.status()
         _log.info(
-            "%s | telescope stats: in_flight:%d/%d done:%d retried:%d failed:%d (%ds) firefox:%s served:%d",
+            "%s | telescope stats: held:%d (waiting:%d running:%d) done:%d retried:%d failed:%d (%ds) firefox:%s served:%d",
             self.label,
-            len(self._in_flight),
-            self._concurrency,
+            self.held,
+            len(self._waiting),
+            len(self._running),
             stats["done"],
             stats["retried"],
             stats["failed"],
@@ -312,6 +365,18 @@ class QueueWorker:
     async def _run_job(self, job: jobqueue.ClaimedJob) -> None:
         raw = job.request if isinstance(job.request, dict) else {}
         url = str(raw.get("url") or "")
+        # The gate admitted us: charge the attempt now (claim charges nothing).
+        attempts = await self._db_write(
+            jobqueue.start, job_id=job.id, worker_id=self.worker_id
+        )
+        if attempts is None:
+            _log.warning(
+                "%s | telescope job not started: %s no longer ours", short_id(job.id), url
+            )
+            return
+        job = replace(job, attempts=attempts)
+        started = time.monotonic()
+        held_s = started - job.claimed_at  # claim -> start
         tokens = begin_job(
             job.id,
             attempt=job.attempts,
@@ -319,9 +384,10 @@ class QueueWorker:
             debug=bool(raw.get("debug")),
             url=url,
         )
-        started = time.monotonic()
         try:
-            _log.debug("Claimed job %s: %s (waited %.1fs)", job.id, raw, job.wait_s)
+            _log.debug(
+                "Started job %s: %s (held %.1fs, queued %.1fs)", job.id, raw, held_s, job.wait_s
+            )
             try:
                 req, sel = parse_request(raw)
                 result = await run_scrape(self._firefox, req, sel)
@@ -351,12 +417,13 @@ class QueueWorker:
                 return
             self._stats["done"] += 1
             _log.info(
-                "%s | telescope job done: %s -> %s fields:%s scrape:%.1fs wait:%.1fs",
+                "%s | telescope job done: %s -> %s fields:%s scrape:%.1fs wait:%.1fs queued:%.1fs",
                 short_id(job.id),
                 url,
                 result.get("final_url"),
                 ",".join(req.fields),
                 time.monotonic() - started,
+                held_s,
                 job.wait_s,
             )
         finally:

@@ -41,8 +41,9 @@ class TestAst2241RailwayPhase1Toml:
         assert 'dockerfilePath = "service/astral_agent/Dockerfile"' in text
         assert 'watchPatterns = ["service/astral_agent/**"]' in text
         assert "restartPolicyType" in text and "ON_FAILURE" in text
-        # 1 GiB — not Telescope's 2 GiB Firefox ceiling
-        assert "memoryBytes = 1073741824" in text
+        # Step 3: no memory cap — the worker holds every claimable job.
+        live = "\n".join(ln for ln in text.splitlines() if not ln.lstrip().startswith("#"))
+        assert "limitOverride" not in live and "memoryBytes" not in live
         assert 'healthcheckPath = "/healthz"' in text
         assert "drainingSeconds = 30" in text
 

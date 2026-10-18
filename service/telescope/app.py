@@ -179,6 +179,7 @@ async def healthz(request: Request):
     body = {
         "status": "ok" if (loop_ok and browser_ok and worker.db_ok) else "unhealthy",
         "worker_id": worker.worker_id,
+        "held": worker.held,
         "in_flight": worker.in_flight,
         "db_ok": worker.db_ok,
         "browser_ok": browser_ok,

@@ -43,7 +43,9 @@ class TestRailwayPhase1Toml:
         assert 'dockerfilePath = "service/telescope/Dockerfile"' in text
         assert 'builder = "DOCKERFILE"' in text
         assert "restartPolicyType" in text and "ON_FAILURE" in text
-        assert "memoryBytes = 2147483648" in text
+        # Step 3 / T3: no memory cap — the memory gate is the limit.
+        live = "\n".join(ln for ln in text.splitlines() if not ln.lstrip().startswith("#"))
+        assert "limitOverride" not in live and "memoryBytes" not in live
 
     def test_healthcheck_and_no_phase2_hooks(self, railway_toml: Path) -> None:
         # AST-2241 / live Telescope: private-network /healthz is set (AST-1727

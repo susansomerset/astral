@@ -126,6 +126,25 @@ Isolated FastAPI Postgres queue consumer — **not** under `src/`. Flat imports 
 
 An autouse fixture clears `llm_compat_provider._slots` and `openrouter_provider._hosts` per test (semaphores bind to the first loop that contends on them).
 
+### cursor-microservice-tweaks · step 3 / T6 (holding area, astral-agent)
+
+**Scope:** `WORKER_CONCURRENCY` and the 1 GiB `limitOverride` are gone. The worker claims every claimable job (`claim(limit=None)`) into a waiting line; all held jobs stay leased and heartbeated (`agent_worker.concurrency` = held, `in_flight` = running). `gate.py` (`AdmitAll` today; same `admit(running)` shape as Telescope) starts the oldest waiting job; every claim and finish wakes it. Attempts are charged by `jobqueue.start()` when the gate admits; `release_all` refunds only started jobs. The in-process 429 loop and DeepSeek semaphore are unchanged.
+
+| Area | Component tests |
+| --- | --- |
+| Claims all 12 (old cap 4); admit-all starts them | `test_astral_agent_queue.py::TestStep3HoldingArea::test_claims_every_job_no_cap_and_admit_all_starts_them` |
+| Closed gate: held jobs leased, uncharged, heartbeated (`held`/`running`) | `…::test_closed_gate_holds_jobs_leased_and_heartbeated` |
+| Finish wakes the gate; oldest first; one attempt each | `…::test_finish_wakes_gate_and_oldest_waiting_starts_first` |
+| Heartbeat drops a cancelled waiting job unstarted | `…::test_heartbeat_drops_cancelled_waiting_job_without_starting_it` |
+| Stop hands back waiting jobs; refunds only started | `…::test_stop_hands_back_waiting_jobs_and_refunds_only_the_started` |
+| Crash with 20 held charges only the 2 started | `…::test_crash_with_big_waiting_line_charges_only_started_jobs` |
+| Gate error keeps jobs held | `…::test_gate_error_keeps_jobs_held` |
+| claim / start / release_all / heartbeat SQL contract | `…::TestStep3QueueSql` |
+| Settings: no `worker_concurrency`; `admit_interval_seconds` | `…::TestAst2237Settings::test_load_settings_reads_required_dsn` (revised) |
+| No `limitOverride` / `memoryBytes` in railway.toml | `test_astral_agent_deploy_ci.py::…::test_num_replicas_dockerfile_memory_healthcheck` (revised) |
+
+**Revised:** `FakeAgentJobStore` (claim no longer charges; `start`, `heartbeat`, `release_all`, `reap` added); direct `_run_job` tests patch `jobqueue.start`; `/healthz` fake worker gains `held`. The AST-2241 "1 GiB" wording above is historical. The real attempts / refund / crash SQL was also run once against a throwaway Postgres 16; component tests mirror it in memory.
+
 ## QA test manifest
 
 1. **Service providers + queue revise (required):**

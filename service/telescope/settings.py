@@ -17,10 +17,12 @@ from telescope_config import (
     RECYCLE_AFTER_N,
     REQUEST_TIMEOUT_SECONDS,
     DB_POOL_MAX_SIZE,
+    ADMIT_INTERVAL_SECONDS,
     HEARTBEAT_SECONDS,
     JOB_RETENTION_HOURS,
     LEASE_SECONDS,
     MAINTENANCE_SECONDS,
+    MEMORY_CUTOFF_PERCENT,
     QUEUE_POLL_SECONDS,
     SCRAPE_RETRY_BASE_DELAY_SECONDS,
     SHUTDOWN_GRACE_SECONDS,
@@ -31,7 +33,6 @@ from telescope_config import (
     WAIT_READY_MIN_CHARS,
     WAIT_READY_POLL_MS,
     WAIT_READY_STABILITY_POLLS,
-    WORKER_CONCURRENCY,
     WORKER_STALE_SECONDS,
 )
 
@@ -42,7 +43,8 @@ class Settings:
     request_timeout_seconds: float
     scrape_retry_base_delay_seconds: float
     timeout_max_attempts: int
-    worker_concurrency: int
+    memory_cutoff_percent: float
+    admit_interval_seconds: float
     queue_poll_seconds: float
     lease_seconds: int
     heartbeat_seconds: float
@@ -88,7 +90,8 @@ def load_settings() -> Settings:
         request_timeout_seconds=float(REQUEST_TIMEOUT_SECONDS),
         scrape_retry_base_delay_seconds=SCRAPE_RETRY_BASE_DELAY_SECONDS,
         timeout_max_attempts=TIMEOUT_MAX_ATTEMPTS,
-        worker_concurrency=WORKER_CONCURRENCY,
+        memory_cutoff_percent=MEMORY_CUTOFF_PERCENT,
+        admit_interval_seconds=ADMIT_INTERVAL_SECONDS,
         queue_poll_seconds=QUEUE_POLL_SECONDS,
         lease_seconds=LEASE_SECONDS,
         heartbeat_seconds=HEARTBEAT_SECONDS,

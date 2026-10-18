@@ -210,7 +210,7 @@ class TestAst2023RunScrapeClick:
 class TestAst2023RetryDelay:
     @staticmethod
     def _worker() -> QueueWorker:
-        return QueueWorker(MagicMock(), MagicMock(), worker_id="w-test", concurrency=1)
+        return QueueWorker(MagicMock(), MagicMock(), worker_id="w-test", gate=MagicMock())
 
     def test_click_target_missing_not_retried(self) -> None:
         job = ClaimedJob(id="j1", request={}, attempts=1, max_attempts=5)

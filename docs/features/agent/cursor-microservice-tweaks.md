@@ -54,16 +54,21 @@ claim / heartbeat / maintenance / drain loops). Where they do the same job, they
   hold state instead of `_save_parse_dispatch_failure` (`src/core/roster.py` ~1328); also `fetch_jd`, `gazer`,
   homepage fetch. A real scrape timeout after its retry stays a real outcome, and so does `lease_expired`
   (attempts used up = a crash loop; deploys hand jobs back without charging an attempt).
-- [ ] **T3.** Holding area + memory gate (U1): claim everything; start a Firefox context only while memory use is
+- [done] **T3.** Holding area + memory gate (U1): claim everything; start a Firefox context only while memory use is
   below the cutoff; remove `WORKER_CONCURRENCY = 20` and the 2 GiB `limitOverride`. Verify Railway exposes the
   container limit in cgroup `memory.max` before relying on it. Cutoff is a config setting, default **70%**
-  (Susan: 80% also acceptable).
+  (Susan: 80% also acceptable). Built: `service/telescope/gate.py` `MemoryGate` (working set = `memory.current` −
+  `inactive_file`, live read per admit, `ADMIT_INTERVAL_SECONDS` 0.1 between admissions, admits one when nothing
+  runs, fails loud at startup if unreadable). Staging check 2026-10-17: `memory.max` = 32000000000 (the plan
+  ceiling — the toml's 2 GiB override never showed in staging's cgroup), `memory.stat` has `inactive_file`.
 - [ ] **T4.** Retries move into the waiting line (U2): `_retry_delay` 2/4/8s doubling → fixed delay (config
   setting, default **2s**, same value and setting for astral-agent transient retries);
   `TIMEOUT_MAX_ATTEMPTS = 2` keeps its meaning; permanent classes unchanged.
 - [done] **T5.** Optional `timeout_seconds` on the scrape request (U3); default unchanged.
-- [ ] **T6.** `telescope_worker.concurrency` (NOT NULL) reports held count instead of a cap; astral-core never
-  reads it (checked). `wait_s` / stats split *held* vs. *running*.
+- [done] **T6.** `telescope_worker.concurrency` (NOT NULL) reports held count instead of a cap; astral-core never
+  reads it (checked). `wait_s` / stats split *held* vs. *running*. Built: heartbeat writes `concurrency` = held,
+  `in_flight` = running; job-done line `wait:` = claim → start, `queued:` = the old DB wait; stats line
+  `held:N (waiting:W running:R)`. Same in astral-agent (`agent_worker`).
 - [ ] **T7.** Shared skeleton (U6, approved) — last, after both services behave the same.
 - [done] **T8.** One owner per setting (decision F): drop the `TELESCOPE_CONFIG` mirror note / copies and the
   duplicated cookie selectors (Telescope owns cookie dismiss; the platform copy is gone).
@@ -83,10 +88,11 @@ Each step: one small change, compile + lint + touched tests green before Susan r
    in `service/astral_agent/providers/` (compat, anthropic, OpenRouter probe). Cancelling a job then really aborts
    the HTTP call (no orphaned billed calls, no 429 bursts after cancel waves) and the default thread pool stops
    being a hidden concurrency cap. 429 retry sleeps become `await asyncio.sleep`.
-3. **[todo] astral-agent: remove the worker cap (U1).** Drop `WORKER_CONCURRENCY` (claim everything claimable into
+3. **[done] astral-agent: remove the worker cap (U1).** Drop `WORKER_CONCURRENCY` (claim everything claimable into
    the holding area) and the
    1 GiB `limitOverride` in `service/astral_agent/railway.toml`. Keep the `agent_worker.concurrency` column
-   contract sane (it is NOT NULL). Depends on step 2.
+   contract sane (it is NOT NULL). Depends on step 2. Built: `service/astral_agent/gate.py` (`AdmitAll`; same
+   `Gate.admit(running)` shape as Telescope, so U6 can merge them), gate loop in `worker.py`, `claim(limit=None)`.
 4. **[todo] Timeouts live on the call, not the batch.**
    - astral-core's job wait (`job_deadline_seconds` 900 → `expires_at`) becomes a **24h backstop** only — it
      exists so a permanently dead worker can't strand a dispatch thread, not to time work.
@@ -96,6 +102,8 @@ Each step: one small change, compile + lint + touched tests green before Susan r
    - A timed-out call goes **back into the batch's waiting line once**; a second timeout is the real
      `provider_call_timeout`. Unlike a 429, a timeout does **not** shrink the lot (one stalled car ≠ full lot);
      the async client (step 2) actually aborts it so the slot frees.
+   - The SDK client's `httpx.Timeout` must equal the per-call budget: a cancel that lands as a TCP connect
+     completes is swallowed by anyio (see Notes from step 3), so the SDK's own timeout is the real backstop.
    - Touches `src/external/astral_agent.py`, `service/astral_agent/jobqueue.py`, agent schema + admin agent form.
 5. **[todo] astral-agent: warm call replaces the probe (every provider, not only OpenRouter).** First job seen for
    a `batch_id` sends one warm call: the batch's real `system` (shared prefix + cache A–D), the same model /
@@ -174,6 +182,21 @@ Each step: one small change, compile + lint + touched tests green before Susan r
   service's config file, shared ones in `service/common/` (U6). Per-job values (timeout, max attempts, deadline)
   travel in the request / job row from astral-core. Remove hand-copied mirrors (`TELESCOPE_CONFIG` mirror note
   in `telescope_config.py`, Telescope cookie selectors) — one owner each.
+
+- **G.** (Susan, 2026-10-17, step 3) **Attempts are charged at start, not claim.** `jobqueue.claim` charges nothing and
+  clears `started_at`; `jobqueue.start()` (run when the gate admits) increments `attempts` and sets `started_at`;
+  `release_all` refunds only jobs that started. A crash with a big waiting line therefore costs an attempt only to
+  jobs that actually began. Telescope memory gate: working set (`memory.current` − `inactive_file`), admission
+  interval its own setting (0.1s), admit one whenever nothing is running, fail loud if cgroup memory is unreadable.
+
+## Notes from step 3
+
+- `test_cancel_aborts_the_http_call` (step 2) used to hang intermittently: `silent_server` set `connected` on TCP
+  accept, so `task.cancel()` could land while anyio's `connect_tcp` task group was finishing and get swallowed.
+  Fixed in the test: `connected` is set after the first request bytes arrive, and the cancel is awaited with
+  `asyncio.wait_for(task, 5)` so a regression fails instead of hanging.
+- `test_telescope_app.py` has 4 failures + 16 errors on `origin/dev` already (it still targets the retired HTTP
+  `TelescopeRequest` / `_run_browser_job`); unchanged by step 3.
 
 ## Verify (every step)
 
