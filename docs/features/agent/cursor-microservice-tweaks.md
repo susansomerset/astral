@@ -93,7 +93,7 @@ Each step: one small change, compile + lint + touched tests green before Susan r
    1 GiB `limitOverride` in `service/astral_agent/railway.toml`. Keep the `agent_worker.concurrency` column
    contract sane (it is NOT NULL). Depends on step 2. Built: `service/astral_agent/gate.py` (`AdmitAll`; same
    `Gate.admit(running)` shape as Telescope, so U6 can merge them), gate loop in `worker.py`, `claim(limit=None)`.
-4. **[todo] Timeouts live on the call, not the batch.**
+4. **[done] Timeouts live on the call, not the batch.**
    - astral-core's job wait (`job_deadline_seconds` 900 → `expires_at`) becomes a **24h backstop** only — it
      exists so a permanently dead worker can't strand a dispatch thread, not to time work.
    - The real timeout is **per provider call, per agent**: new timeout-window field on the **agent row**
@@ -105,6 +105,21 @@ Each step: one small change, compile + lint + touched tests green before Susan r
    - The SDK client's `httpx.Timeout` must equal the per-call budget: a cancel that lands as a TCP connect
      completes is swallowed by anyio (see Notes from step 3), so the SDK's own timeout is the real backstop.
    - Touches `src/external/astral_agent.py`, `service/astral_agent/jobqueue.py`, agent schema + admin agent form.
+   - Built (Susan, 2026-10-17): agent column `timeout_seconds` (NULL or a positive int; no bool / 0 / negatives,
+     checked at save, in the API, and in `agent.json` seed validation). NULL = `PROVIDER_CALL_BUDGET["timeout_seconds"]`
+     (600), applied only in `_provider_request`; existing rows stay NULL, no backfill. Admin form: "Call timeout (s)",
+     placeholder "default". `ASTRAL_AGENT_CONFIG["job_deadline_seconds"]` 900 → 86400.
+   - **`ASTRAL_CONFIG["dispatch_timeout_seconds"]` 3600 → 86400** (and the `.get` fallback in `dispatcher.py`): the AUTO
+     dispatch wall was a batch timer sitting above the 24h job backstop; it is now the same backstop (Decision A).
+   - Retry once is **in memory**: `ClaimedJob.timed_out`. The first `provider_call_timeout` result puts the job at the
+     back of `_waiting` (still leased and heartbeated) instead of completing it; the retry does **not** call `start()`
+     again (same attempt, so DB `attempts` stays crash-redelivery only). The second timeout completes as the real
+     `provider_call_timeout`. A crash while waiting for the retry re-delivers the job with a fresh "once". The gate
+     gets no signal from a timeout (step 6 must count only 429/529 as lot full). `_job_done` only pops `_running` when
+     the finishing task is the one registered, since the retry can restart before the old task's callback runs; the job
+     is briefly in both `_waiting` and `_running` (held count double-counts for that moment, heartbeat tolerates it).
+   - SDK timeout: both providers already build `httpx.Timeout(timeout_seconds)`; tests now pin it and show the SDK
+     timeout alone ends a call when the outer `wait_for` wall is far off.
 5. **[todo] astral-agent: warm call replaces the probe (every provider, not only OpenRouter).** First job seen for
    a `batch_id` sends one warm call: the batch's real `system` (shared prefix + cache A–D), the same model /
    reasoning / thinking settings, and the **real `max_tokens`**, with the user message replaced by

@@ -11,7 +11,7 @@ Tables used (inventory):
 - job       — Tracker: astral_job_id, company_id (nullable real employer; AST-1701), candidate_id (required owning candidate; AST-1598 / AST-1594), company_job_id, job_title, job_link, job_data, state, state_history, batch_id, source (company|meteorite parent/track; AST-1701 repurpose of AST-1469) + source_entity_id (company short_name or meteorite id text), etc.
 - meteorite — Ingress staging spine (AST-1557): one row per prospective job after classify fan-out; `state` from `METEORITE_STATES`; claim via `batch_id` / `batch_created_at`; eligibility count via `count_meteorites_unclaimed_in_states`; reverse lookup via `get_meteorite_by_astral_job_id(astral_job_id)`; candidate-scoped listing via `list_meteorites_for_candidate(candidate_id)` (+ landed `job_state`, AST-1974); listing-href fallback reverse lookup via `get_meteorite_link_by_astral_job_id(astral_job_id)` (AST-1694 — link column only; not AST-1685 provenance); columns id, candidate_id, source_kind, source_id, source_ref, state, content, classify_outcome, link, electronic_contact (AST-1689; config literal from AST-1688), job_title, employer_name (AST-1713; Ruth stage_meteorite response keys), astral_job_id, estelle_thread_ts, estelle_notified_at, nag_count, error, batch_id, batch_created_at, created_at, updated_at, state_changed_at.
 - candidate — Candidate: state, state_history JSON array, candidate_data JSON (contact/context/artifacts + meta), first/last/full/pronouns TEXT columns, candidate_api_key TEXT (legacy — not read or written since AST-1878), api_keys TEXT JSON array [{"server": LLM_SERVER_CONFIG id, "key": Fernet ciphertext}] — at most one entry per server; hydrated as candidate_api_keys {server: plaintext} (AST-1901), batch_id, batch_created_at (null/empty = unclaimed; AST-1258).
-- agent    — Agent: agent_id TEXT PK, agent_name TEXT (display string; AST-2232), content TEXT, model_id TEXT (LLM_MODEL_CONFIG key), max_tokens INTEGER, plain call settings sent as stored — quantization TEXT, temperature REAL, reasoning_effort TEXT, provider_allow_fallbacks INTEGER (bool), provider_only / provider_ignore TEXT (JSON array of provider slugs), provider_sort TEXT (AST-1955), requires_structured_output INTEGER (bool; gates model choice, never sent — AST-2172) — updated_at TIMESTAMP.
+- agent    — Agent: agent_id TEXT PK, agent_name TEXT (display string; AST-2232), content TEXT, model_id TEXT (LLM_MODEL_CONFIG key), max_tokens INTEGER, plain call settings sent as stored — quantization TEXT, temperature REAL, reasoning_effort TEXT, provider_allow_fallbacks INTEGER (bool), provider_only / provider_ignore TEXT (JSON array of provider slugs), provider_sort TEXT (AST-1955), requires_structured_output INTEGER (bool; gates model choice, never sent — AST-2172), timeout_seconds INTEGER (per-call provider budget, NULL = default) — updated_at TIMESTAMP.
 - agent_task — Task prompt config with versioning: task_key_uuid TEXT PK, task_key TEXT, current INTEGER (1=active), agent_id TEXT, seven prompt segments (`user_prompt`; `cache_prompt` = Anthropic cache block A; `cache_prompt_b|c|d` = blocks B–D; `nocache_prompt`; `system_prompt` per-task override, empty = use agent content at runtime), `run_next`, `task_group_order TEXT`, `task_group_name TEXT`, `task_seq REAL`, `task_name TEXT` (UI grouping metadata, global per task_key), `updated_at`. Any segment edit (all seven) retires prior row + inserts new `current=1`.
 - anthropic_timesheets — Anthropic-only token/cost ledger mirror: anthropic_req_id TEXT UNIQUE, same metric columns as the unified timesheet (batch_id, token counts, calc_cost_*, agent_performance, failure_note, created_at). Untouched by AST-2217 rename.
 - service_timesheet — Unified token/cost ledger for LLM + search/contact calls (renamed from agent_timesheets, AST-2217): agent_req_id TEXT UNIQUE (vendor / minted external id), same metric columns as anthropic_timesheets, attribution (provider/server id, request_type, entity_type, entity_id, call_start, call_stop, response_item_count, response_char_length, completion_status), plus nullable platform columns (AST-1965: platform_cost — NULL = not reconciled / stub, native_tokens_prompt/_completion/_cached/_reasoning, host, platform_reconciled_at) set by update_timesheet_platform; sum_cost_by_batch prefers platform_cost per row when present (stub null falls through to calc).
@@ -148,6 +148,8 @@ _AGENT_SETTING_TYPES: Dict[str, tuple] = {
     "provider_sort": (str,),
     # Not a call setting: gates which models the agent may use (AST-2172); resolve_agent_settings never reads it.
     "requires_structured_output": (bool,),
+    # Per-call provider budget sent as timeout_seconds; NULL = the default budget. Positive int only.
+    "timeout_seconds": (int,),
 }
 AGENT_SETTING_COLUMNS: Tuple[str, ...] = tuple(_AGENT_SETTING_TYPES)
 # List settings live in SQLite (and the repo seed) as JSON-array text.
@@ -158,15 +160,16 @@ _AGENT_PUBLIC_COLUMNS = ("agent_id", "agent_name", "content", "model_id", "max_t
 
 
 def _check_agent_setting(name: str, value: Any) -> None:
-    """None or the setting's type; list settings hold strings; a bool is not a temperature."""
+    """None or the setting's type; list settings hold strings; a bool is not a number; timeout_seconds is > 0."""
     ok = value is None or (
         isinstance(value, _AGENT_SETTING_TYPES[name])
-        and not (name == "temperature" and isinstance(value, bool))
+        and not (name in ("temperature", "timeout_seconds") and isinstance(value, bool))
         and (name not in _AGENT_LIST_SETTINGS or all(isinstance(s, str) for s in value))
+        and (name != "timeout_seconds" or value > 0)
     )
     if not ok:
         kinds = "/".join(t.__name__ for t in _AGENT_SETTING_TYPES[name])
-        raise ValueError(f"{name} must be {kinds} or null (got {value!r})")
+        raise ValueError(f"{name} must be {'a positive ' if name == 'timeout_seconds' else ''}{kinds} or null (got {value!r})")
 
 
 def _agent_setting_to_db(name: str, value: Any) -> Any:
@@ -6594,6 +6597,7 @@ def _ensure_agent_schema(conn: sqlite3.Connection) -> None:
                 provider_ignore TEXT,
                 provider_sort TEXT,
                 requires_structured_output INTEGER,
+                timeout_seconds INTEGER,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
@@ -6612,6 +6616,7 @@ def _ensure_agent_schema(conn: sqlite3.Connection) -> None:
             ("provider_ignore", "TEXT"),
             ("provider_sort", "TEXT"),
             ("requires_structured_output", "INTEGER"),
+            ("timeout_seconds", "INTEGER"),
         ]:
             if col_name not in cols:
                 try:
@@ -6648,6 +6653,7 @@ def save_agent(
     provider_ignore: Optional[List[str]] = None,
     provider_sort: Optional[str] = None,
     requires_structured_output: bool | None = None,
+    timeout_seconds: int | None = None,
 ) -> None:
     """Upsert an agent row (AST-1955). Settings are type-checked only; on an existing row None leaves a column as is.
     New rows default provider_allow_fallbacks to True and requires_structured_output to False.
@@ -6661,6 +6667,7 @@ def save_agent(
         "provider_ignore": provider_ignore,
         "provider_sort": provider_sort,
         "requires_structured_output": requires_structured_output,
+        "timeout_seconds": timeout_seconds,
     }
     for name, value in settings.items():
         _check_agent_setting(name, value)
@@ -6739,7 +6746,7 @@ def list_agents() -> List[Dict[str, Any]]:
                 SELECT agent_id, agent_name, LENGTH(content) AS content_length,
                        model_id, max_tokens, quantization, temperature, reasoning_effort,
                        provider_allow_fallbacks, provider_only, provider_ignore, provider_sort,
-                       requires_structured_output, updated_at,
+                       requires_structured_output, timeout_seconds, updated_at,
                        (SELECT COUNT(*) FROM agent_task WHERE agent_task.agent_id = agent.agent_id) AS task_count
                 FROM agent ORDER BY agent_id
             """).fetchall()

@@ -87,6 +87,7 @@ def _agent_repo_row(
         "provider_ignore": None,
         "provider_sort": None,
         "requires_structured_output": False,  # AST-2181: seed column tuple carries the gate setting.
+        "timeout_seconds": None,
         "updated_at": updated_at,
     }
     row.update(settings)
@@ -456,3 +457,65 @@ class TestAst2181RequiresStructuredOutput:
         with_flag = resolve_agent_settings("qwen/qwen3-235b-a22b-2507", {**base, "requires_structured_output": True})
         assert with_flag == resolve_agent_settings("qwen/qwen3-235b-a22b-2507", base)
         assert "requires_structured_output" not in json.dumps(with_flag, default=str)
+
+
+class TestStep4AgentTimeoutSeconds:
+    """Step 4: timeout_seconds — the per-call provider budget on the agent row. NULL = default; a positive int otherwise."""
+
+    def test_round_trip_null_default_update_and_clear(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        db.save_agent("a1", "c", model_id="kimi-k2.6")
+        assert db.get_agent("a1")["timeout_seconds"] is None
+        db.save_agent("a1", "c", timeout_seconds=1200)
+        assert db.get_agent("a1")["timeout_seconds"] == 1200
+        db.save_agent("a1", "c2")  # None on save leaves the stored value
+        assert db.get_agent("a1")["timeout_seconds"] == 1200
+        assert [r["timeout_seconds"] for r in db.list_agents()] == [1200]
+        db.update_agent("a1", timeout_seconds=None)  # None on update clears it back to the default
+        assert db.get_agent("a1")["timeout_seconds"] is None
+
+    @pytest.mark.parametrize("value", [0, -5, True, False, 1.5, "60", [60]])
+    def test_only_a_positive_int_is_accepted_nothing_written(self, sqlite_in_memory, value) -> None:
+        db = sqlite_in_memory
+        with pytest.raises(ValueError, match="timeout_seconds must be a positive int or null"):
+            db.save_agent("a1", "c", timeout_seconds=value)
+        assert db.get_agent("a1") is None
+        db.save_agent("a2", "c", timeout_seconds=30)
+        with pytest.raises(ValueError, match="timeout_seconds must be a positive int or null"):
+            db.update_agent("a2", timeout_seconds=value)
+        assert db.get_agent("a2")["timeout_seconds"] == 30
+
+    @pytest.mark.parametrize("value", [0, -1, True, "60", 2.5])
+    def test_seed_rejects_a_bad_timeout_before_any_write(self, sqlite_in_memory, value) -> None:
+        db = sqlite_in_memory
+        cols = db._agent_repo_json_columns()
+        row = {c: None for c in cols}
+        row.update(agent_id="a", model_id="kimi-k2.6", timeout_seconds=value)
+        with pytest.raises(ValueError, match="row 1: timeout_seconds must be a positive int or null"):
+            db._validate_agent_repo_json_rows([row])
+        db._validate_agent_repo_json_rows([{**row, "timeout_seconds": None}])  # NULL stays valid
+        db._validate_agent_repo_json_rows([{**row, "timeout_seconds": 900}])
+
+    def test_schema_ensure_adds_column_without_backfill(self, sqlite_in_memory, monkeypatch) -> None:
+        db = sqlite_in_memory
+        conn = db._get_connection()
+        try:
+            conn.execute(
+                "CREATE TABLE agent (agent_id TEXT PRIMARY KEY, content TEXT, model_id TEXT, max_tokens INTEGER, "
+                "quantization TEXT, temperature REAL, reasoning_effort TEXT, provider_allow_fallbacks INTEGER, "
+                "provider_only TEXT, provider_ignore TEXT, provider_sort TEXT, requires_structured_output INTEGER, "
+                "updated_at TIMESTAMP)"
+            )
+            conn.execute("INSERT INTO agent (agent_id, content, model_id) VALUES ('old', 'body', 'kimi-k2.6')")
+            conn.commit()
+        finally:
+            conn.close()
+        monkeypatch.setattr(db, "_agent_schema_ensured", False)
+        # Existing rows read NULL (= the default budget), so nothing changes at deploy.
+        assert db.get_agent("old")["timeout_seconds"] is None
+
+    def test_setting_reaches_the_call_tier_as_stored(self) -> None:
+        from src.utils.config import resolve_agent_settings
+
+        assert resolve_agent_settings("kimi-k2.6", {"timeout_seconds": 1500})["tier"]["timeout_seconds"] == 1500
+        assert resolve_agent_settings("kimi-k2.6", {})["tier"]["timeout_seconds"] is None

@@ -1899,7 +1899,7 @@ def _provider_request(
         "messages": [{"role": "user", "content": user_blocks}],
         "max_tokens": max_tokens,
         "routing": routing,
-        "timeout_seconds": PROVIDER_CALL_BUDGET["timeout_seconds"],
+        "timeout_seconds": tier.get("timeout_seconds") or PROVIDER_CALL_BUDGET["timeout_seconds"],
         "grace_seconds": PROVIDER_CALL_BUDGET["grace_seconds"],
         "max_retries": PROVIDER_CALL_BUDGET["max_retries"],
     }

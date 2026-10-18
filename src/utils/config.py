@@ -5303,6 +5303,7 @@ REPO_ADMIN_JSON_CONFIG = {
                 "provider_ignore",
                 "provider_sort",
                 "requires_structured_output",
+                "timeout_seconds",  # per-call provider budget; NULL = PROVIDER_CALL_BUDGET default
                 "updated_at",
             ),
         },
@@ -5410,7 +5411,7 @@ ASTRAL_CONFIG = {
     "max_auto_threads": 3,            # max concurrent AUTO task threads; CLICK threads are excluded from this limit
     "max_auto_threads_min": 1,        # lowest runtime override accepted for max_auto_threads (admin API / Scheduled Actions)
     "max_auto_threads_max": 100,      # highest runtime override accepted for max_auto_threads (admin API / Scheduled Actions)
-    "dispatch_timeout_seconds": 3600, # AUTO task timeout (60 min); CLICK tasks run unbounded
+    "dispatch_timeout_seconds": 86400, # AUTO task backstop (24h), never a work timer; the real timeout is per provider call (agent timeout_seconds). CLICK tasks run unbounded
     # Outbound probe before batch claim (stdlib HTTP in src.utils.network — not Playwright).
     "dispatch_network_check_url": "https://www.anthropic.com/",
     "dispatch_network_check_timeout_seconds": 30,
@@ -5775,10 +5776,12 @@ TELESCOPE_CONFIG = {
 # Provider calls are rows in agent_job (schema owned by service/astral_agent/jobqueue.py);
 # the platform inserts a job and waits for the worker to write the result.
 # database_url is env-only (ASTRAL_DATABASE_URL — never a code default).
+# job_deadline_seconds: caller backstop only (24h). Not a work timer — a dead worker must not
+# strand the dispatch thread. The call budget is timeout_seconds on the request (agent row).
 # ---------------------------------------------------------------------------
 ASTRAL_AGENT_CONFIG = {
     "database_url_env": "ASTRAL_DATABASE_URL",
-    "job_deadline_seconds": 900,
+    "job_deadline_seconds": 86400,
     "max_attempts": 4,
     "poll_interval_seconds": 1.0,
     "db_pool_max_size": 10,
@@ -6411,6 +6414,7 @@ def resolve_agent_settings(model_id: str, agent: Dict[str, Any]) -> Dict[str, An
         "temperature": agent.get("temperature"),
         "reasoning_effort": agent.get("reasoning_effort") or None,
         "provider": provider,
+        "timeout_seconds": agent.get("timeout_seconds"),
     }
     return {
         "model_id": model_id,
@@ -6465,7 +6469,8 @@ QUEUE_STATE_HOLD_FAILURE_CLASSES = frozenset({
     PROVIDER_RATE_LIMIT["failure_class"],
 })
 
-# PROVIDER_CALL_BUDGET — per-call LLM wall time (AST-1189 / Archie: 10 minutes).
+# PROVIDER_CALL_BUDGET — per-call LLM wall time (AST-1189 / Archie: 10 minutes). timeout_seconds is the
+# default for an agent whose timeout_seconds is NULL; the agent row's value wins when set.
 # httpx client timeout uses timeout_seconds; caller wait uses timeout_seconds + grace_seconds.
 # max_retries=0 → one attempt (SDK default 2 would allow up to 3× wall time inside the worker thread).
 PROVIDER_CALL_BUDGET = {

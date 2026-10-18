@@ -591,6 +591,132 @@ class TestStep3HoldingArea:
         assert calls == [] and w.held == 1
 
 
+_TIMEOUT = {"success": False, "api_response": "", "failure_class": "provider_call_timeout", "usage": {}}
+
+
+class TestStep4TimeoutRetryOnce:
+    """A timed-out call goes back in the waiting line once (same attempt); the second timeout is final."""
+
+    @pytest.fixture
+    def scripted(self, holding, monkeypatch: pytest.MonkeyPatch):
+        """executor.execute answers from per-job scripts: req["script"] = results popped one per run."""
+        import executor
+
+        store, make_worker, _calls, _release = holding
+        runs: list = []
+
+        async def _execute(req: dict) -> dict:
+            runs.append(req["n"])
+            return req["script"].pop(0)
+
+        monkeypatch.setattr(executor, "execute", _execute)
+        return store, make_worker, runs
+
+    @pytest.mark.asyncio
+    async def test_first_timeout_goes_behind_the_line_second_is_final(self, scripted) -> None:
+        store, make_worker, runs = scripted
+        ok = {"success": True, "api_response": "ok", "usage": {}}
+        slow = store.insert({"n": 0, "script": [dict(_TIMEOUT), dict(_TIMEOUT)]})
+        fast = store.insert({"n": 1, "script": [ok]})
+        make_worker(_FakeGate(limit=1))
+        await _until(lambda: store.jobs[slow].status == "done" and store.jobs[fast].status == "done")
+        # The retry waited behind the job that was already in line.
+        assert runs == [0, 1, 0]
+        assert store.jobs[slow].result["failure_class"] == "provider_call_timeout"
+        assert store.jobs[fast].result["success"] is True
+        # Same attempt: charged once at the first start, never again for the retry.
+        assert store.jobs[slow].attempts == 1
+
+    @pytest.mark.asyncio
+    async def test_a_retry_that_succeeds_completes_normally(self, scripted) -> None:
+        store, make_worker, runs = scripted
+        ok = {"success": True, "api_response": "ok", "usage": {}}
+        jid = store.insert({"n": 0, "script": [dict(_TIMEOUT), ok]})
+        w = make_worker()
+        await _until(lambda: store.jobs[jid].status == "done")
+        assert (runs, store.jobs[jid].result["success"], store.jobs[jid].attempts) == ([0, 0], True, 1)
+        await _until(lambda: w.held == 0)
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("failure_class", ["provider_rate_limit", "provider_balance_refusal", "max_tokens", None])
+    async def test_every_other_failure_completes_without_a_retry(self, scripted, failure_class) -> None:
+        store, make_worker, runs = scripted
+        soft = {"success": False, "api_response": "", "usage": {}, "failure_class": failure_class}
+        jid = store.insert({"n": 0, "script": [soft]})
+        make_worker()
+        await _until(lambda: store.jobs[jid].status == "done")
+        assert runs == [0]
+
+    @pytest.mark.asyncio
+    async def test_waiting_for_its_retry_the_job_stays_leased_and_heartbeated(self, scripted) -> None:
+        import asyncio
+
+        store, make_worker, runs = scripted
+        jid = store.insert({"n": 0, "script": [dict(_TIMEOUT), dict(_TIMEOUT)]})
+
+        class _Once:  # admits the first start only, so the retry stays in the waiting line
+            n = 1
+
+            def admit(self, running: int) -> bool:
+                self.n, was = 0, self.n
+                return bool(was)
+
+        w = make_worker(_Once())
+        await _until(lambda: jid in w._waiting and jid not in w._running)
+        assert runs == [0]
+        assert w._waiting[jid].timed_out is True and store.jobs[jid].status == "running"
+        w._tasks.append(asyncio.create_task(w._heartbeat_loop()))
+        await _until(lambda: store.heartbeats)
+        assert store.heartbeats[0][0] == [jid] and store.heartbeats[0][1:] == (1, 0)
+
+    @pytest.mark.asyncio
+    async def test_job_in_both_waiting_and_running_does_not_break_heartbeat_or_stats(
+        self, holding, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import asyncio
+
+        import dataclasses
+
+        import worker as worker_mod
+
+        monkeypatch.setattr(
+            worker_mod, "settings", dataclasses.replace(worker_mod.settings, heartbeat_seconds=0.02)
+        )
+        store, make_worker, _calls, _release = holding
+        jid = store.insert({"n": 0})
+        w = make_worker(_FakeGate(limit=0))
+        await _until(lambda: jid in w._waiting)
+        # The moment after a timeout: back in the waiting line, old task finished but not yet reaped.
+        old = asyncio.create_task(asyncio.sleep(0))
+        await old
+        w._running[jid] = old
+        assert w.held == 2  # a brief double count is fine
+        hb = asyncio.create_task(w._heartbeat_loop())
+        w._tasks.append(hb)
+        await _until(lambda: store.heartbeats)
+        assert not hb.done()
+        w._stats_at -= 3600
+        w._maybe_log_stats()  # must not raise
+        # Cancelled by the caller while in both: dropped from the line once, nothing to cancel, loop alive.
+        store.jobs[jid].status = "cancelled"
+        await _until(lambda: jid not in w._waiting)
+        assert not hb.done()
+
+    @pytest.mark.asyncio
+    async def test_old_tasks_done_callback_does_not_pop_the_new_task(self, holding) -> None:
+        import asyncio
+
+        _store, make_worker, _calls, _release = holding
+        w = make_worker(_FakeGate(limit=0))
+        old, new = asyncio.create_task(asyncio.sleep(0)), asyncio.create_task(asyncio.sleep(3600))
+        w._running["j"] = new  # the retry already restarted under a new task
+        w._job_done("j", old)
+        assert w._running["j"] is new
+        w._job_done("j", new)
+        assert "j" not in w._running
+        new.cancel()
+
+
 class _SqlPool:
     """Records the SQL + args the queue functions send (no Postgres)."""
 

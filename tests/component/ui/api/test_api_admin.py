@@ -208,6 +208,29 @@ class TestAdminConfigAndAgents:
         assert post.status_code == 400 and post.get_json()["error"]
         assert db.get_agent("bad") is None
 
+    def test_step4_timeout_seconds_round_trip_and_bad_values_rejected(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], sqlite_in_memory
+    ) -> None:
+        # Step 4 against the real data layer: positive int or null only, at create and at update.
+        db = sqlite_in_memory
+        base = {"agent_id": "t_agent", "content": "sys", "model_id": "qwen/qwen3-32b"}
+        for bad in (0, -1, True, "60", 1.5):
+            resp = admin_client.post("/api/admin/agents", json={**base, "timeout_seconds": bad}, headers=auth_headers)
+            assert resp.status_code == 400 and "timeout_seconds" in resp.get_json()["error"], bad
+            assert db.get_agent("t_agent") is None
+        assert admin_client.post(
+            "/api/admin/agents", json={**base, "timeout_seconds": 1200}, headers=auth_headers
+        ).status_code == 201
+        assert admin_client.get("/api/admin/agents/t_agent", headers=auth_headers).get_json()["timeout_seconds"] == 1200
+        for bad in (0, -1, True, "60", 1.5):
+            resp = admin_client.put("/api/admin/agents/t_agent", json={"timeout_seconds": bad}, headers=auth_headers)
+            assert resp.status_code == 400 and "timeout_seconds" in resp.get_json()["error"], bad
+            assert db.get_agent("t_agent")["timeout_seconds"] == 1200
+        ok = admin_client.put("/api/admin/agents/t_agent", json={"timeout_seconds": None}, headers=auth_headers)
+        assert (ok.status_code, ok.get_json()["timeout_seconds"]) == (200, None)
+        listed = {a["agent_id"]: a for a in admin_client.get("/api/admin/agents", headers=auth_headers).get_json()}
+        assert listed["t_agent"]["timeout_seconds"] is None
+
     def test_models_route_lists_whole_catalog(self, admin_client: FlaskClient, auth_headers: dict[str, str]) -> None:
         # AST-1947 + AST-1955: 101 models — per-SKU direct ids; claude / deepseek-v4 and kimi-k2.6-openrouter retired.
         body = admin_client.get("/api/admin/agents/models", headers=auth_headers).get_json()

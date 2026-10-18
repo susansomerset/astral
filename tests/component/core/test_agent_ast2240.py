@@ -62,6 +62,28 @@ class TestAst2240SubmitAdapter:
         assert req["temperature"] == 0.2
         assert "send_to" not in req
 
+    @pytest.mark.parametrize(
+        "tier, expected",
+        [
+            ({"timeout_seconds": 1500}, 1500),  # the agent row's value wins
+            ({"timeout_seconds": None}, agent_mod.PROVIDER_CALL_BUDGET["timeout_seconds"]),  # NULL → default budget
+            ({}, agent_mod.PROVIDER_CALL_BUDGET["timeout_seconds"]),
+        ],
+    )
+    def test_provider_request_timeout_comes_from_the_agent_tier(self, tier, expected) -> None:
+        req = agent_mod._provider_request(
+            [{"type": "text", "text": "hi"}],
+            server_id="anthropic",
+            sku="claude-haiku-4-5",
+            tier=tier,
+            api_key="sk-test",
+            system_blocks=[],
+            temperature=None,
+            max_tokens=32,
+            forced_tool=None,
+        )
+        assert req["timeout_seconds"] == expected
+
     @pytest.mark.asyncio
     async def test_send_maps_submit_success(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(

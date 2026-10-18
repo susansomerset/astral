@@ -41,6 +41,7 @@ interface Agent {
   provider_ignore?: string[] | null
   provider_sort?: string | null
   requires_structured_output?: boolean | null
+  timeout_seconds?: number | null
   max_tokens?: number
   task_count?: number
   updated_at?: string
@@ -57,12 +58,14 @@ interface SettingsForm {
   provider_ignore: string
   provider_sort: string
   requires_structured_output: boolean
+  timeout_seconds: string
 }
 
 // New agents start with fallbacks on (the data layer's new-row default) and everything else empty.
 const EMPTY_SETTINGS: SettingsForm = {
   quantization: "", temperature: "", reasoning_effort: "", provider_allow_fallbacks: true,
   provider_only: "", provider_ignore: "", provider_sort: "", requires_structured_output: false,
+  timeout_seconds: "",
 }
 
 function settingsFromAgent(a: Agent): SettingsForm {
@@ -76,6 +79,7 @@ function settingsFromAgent(a: Agent): SettingsForm {
     provider_ignore:          (a.provider_ignore ?? []).join(", "),
     provider_sort:            a.provider_sort ?? "",
     requires_structured_output: a.requires_structured_output ?? false,
+    timeout_seconds:          a.timeout_seconds != null ? String(a.timeout_seconds) : "",
   }
 }
 
@@ -96,6 +100,7 @@ function settingsBody(f: SettingsForm): Record<string, unknown> {
     provider_ignore:          slugList(f.provider_ignore),
     provider_sort:            f.provider_sort.trim() || null,
     requires_structured_output: f.requires_structured_output,
+    timeout_seconds:          f.timeout_seconds.trim() === "" ? null : Number(f.timeout_seconds),
   }
 }
 
@@ -549,6 +554,16 @@ function AgentSettingsFields({
             value={settings.temperature}
             placeholder="not sent"
             onChange={e => onSettingsChange({ ...settings, temperature: e.target.value })}
+          />
+        </div>
+        <div className="dep-field" style={{ flex: 1 }}>
+          <label className="dep-field-label">Call timeout (s)</label>
+          <input
+            className="dep-input"
+            type="number" step="1" min="1"
+            value={settings.timeout_seconds}
+            placeholder="default"
+            onChange={e => onSettingsChange({ ...settings, timeout_seconds: e.target.value })}
           />
         </div>
         {text("reasoning_effort", "Effort", "e.g. high, none")}

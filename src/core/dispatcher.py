@@ -1175,7 +1175,7 @@ async def _dispatch_one_body(task: Dict, debug: bool) -> None:
     task_id = task["id"]
     task_key = task["task_key"]
     candidate_id = task["candidate_id"]
-    timeout = ASTRAL_CONFIG.get("dispatch_timeout_seconds", 3600)
+    timeout = ASTRAL_CONFIG.get("dispatch_timeout_seconds", 86400)
     is_click = not bool(task.get("auto_mode"))
 
     # AST-1560: meteorite table transition runners — custom branch before mailbox / _run_unified.

@@ -14,6 +14,7 @@ import os
 import socket
 import time
 import uuid
+from dataclasses import replace
 from typing import Any, Dict, Optional
 
 import asyncpg
@@ -22,7 +23,7 @@ import executor
 import jobqueue
 from gate import AdmitAll, Gate
 from logging_util import get_logger, set_worker_label
-from providers.errors import ProviderJobError
+from providers.errors import CALL_BUDGET, ProviderJobError
 from settings import settings
 
 _log = get_logger(__name__)
@@ -229,10 +230,12 @@ class QueueWorker:
         job = self._waiting.pop(job_id)
         task = asyncio.create_task(self._run_job(job), name=f"job-{job_id}")
         self._running[job_id] = task
-        task.add_done_callback(lambda _t, jid=job_id: self._job_done(jid))
+        task.add_done_callback(lambda t, jid=job_id: self._job_done(jid, t))
 
-    def _job_done(self, job_id: str) -> None:
-        self._running.pop(job_id, None)
+    def _job_done(self, job_id: str, task: asyncio.Task) -> None:
+        # A timed-out job is back in the waiting line and may already run again under a new task.
+        if self._running.get(job_id) is task:
+            del self._running[job_id]
         self.last_busy_at = time.monotonic()
         self._gate_wake.set()  # a finish may open the gate
 
@@ -324,8 +327,11 @@ class QueueWorker:
 
     async def _run_job(self, job: jobqueue.ClaimedJob) -> None:
         raw = job.request if isinstance(job.request, dict) else {}
-        # The gate admitted us: charge the attempt now (claim charges nothing).
-        if await self._db_write(jobqueue.start, job_id=job.id, worker_id=self.worker_id) is None:
+        # The gate admitted us: charge the attempt now (claim charges nothing). A timeout retry
+        # is the same attempt, so it is not charged again.
+        if not job.timed_out and await self._db_write(
+            jobqueue.start, job_id=job.id, worker_id=self.worker_id
+        ) is None:
             _log.warning(
                 "%s | astral-agent job not started: no longer ours", _short_id(job.id)
             )
@@ -372,6 +378,21 @@ class QueueWorker:
             )
             if status == "failed":
                 self._stats["failed"] += 1
+            return
+        if (
+            not job.timed_out
+            and isinstance(result, dict)
+            and result.get("failure_class") == CALL_BUDGET["failure_class"]
+        ):
+            # First timeout: back of the waiting line, still leased. The second one is final.
+            self._waiting[job.id] = replace(job, timed_out=True, claimed_at=time.monotonic())
+            _log.info(
+                "%s | astral-agent job requeued: provider timeout, back of the line server:%s model:%s elapsed:%.1fs",
+                _short_id(job.id),
+                raw.get("server_id") or "-",
+                raw.get("model") or "-",
+                time.monotonic() - started,
+            )
             return
         ours = await self._db_write(
             jobqueue.complete,

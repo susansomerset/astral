@@ -335,6 +335,45 @@ class TestStep2AsyncProviderClient:
         assert all(r["success"] for r in results)
 
 
+@pytest.mark.parametrize("which", ["compat", "anthropic"])
+class TestStep4SdkTimeoutIsTheBudget:
+    async def test_client_timeout_equals_the_request_budget(
+        self, which: str, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from providers import anthropic_provider, llm_compat_provider
+
+        seen: dict = {}
+
+        def _capture(**kw: Any) -> _FakeClient:
+            seen.update(kw)
+
+            async def _ok(**_k: Any) -> Any:
+                return _ok_response()
+
+            return _FakeClient(_ok)
+
+        mod = anthropic_provider if which == "anthropic" else llm_compat_provider
+        monkeypatch.setattr(mod, "AsyncAnthropic", _capture)
+        request = _req() if which == "anthropic" else _compat_req()
+        assert (await mod.send({**request, "timeout_seconds": 1234}))["success"] is True
+        assert seen["timeout"] == httpx.Timeout(1234)
+
+    async def test_sdk_timeout_fires_first_when_the_outer_wall_is_far_off(
+        self, which: str, silent_server, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # The outer wait_for can lose a cancel to anyio; the SDK's own timeout is the real backstop.
+        from providers import anthropic_provider, llm_compat_provider
+
+        if which == "anthropic":
+            monkeypatch.setenv("ANTHROPIC_BASE_URL", silent_server.url)
+            send, request = anthropic_provider.send, _req()
+        else:
+            send, request = llm_compat_provider.send, {**_compat_req(), "base_url": silent_server.url}
+        out = await asyncio.wait_for(send({**request, "timeout_seconds": 1, "grace_seconds": 3600}), 10)
+        assert (out["success"], out["failure_class"]) == (False, "provider_call_timeout")
+        assert "(1s)" in out["error"]
+
+
 class TestStep2CompatBackoffAndSlots:
     @staticmethod
     def _rate_limit() -> RateLimitError:

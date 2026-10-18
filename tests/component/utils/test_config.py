@@ -1526,10 +1526,14 @@ class TestAst1726TelescopeConfig:
 class TestAst2238AstralAgentConfig:
     """AST-2238: ASTRAL_AGENT_CONFIG queue/wake keys — env key name only, no DSN literal."""
 
+    def test_dispatch_timeout_is_the_same_24h_backstop(self) -> None:
+        # Step 4 / Decision A: the AUTO dispatch wall is not a batch timer, it matches the job wait backstop.
+        assert cfg.ASTRAL_CONFIG["dispatch_timeout_seconds"] == cfg.ASTRAL_AGENT_CONFIG["job_deadline_seconds"] == 86400
+
     def test_astral_agent_config_keys(self) -> None:
         c = cfg.ASTRAL_AGENT_CONFIG
         assert c["database_url_env"] == "ASTRAL_DATABASE_URL"
-        assert c["job_deadline_seconds"] == 900
+        assert c["job_deadline_seconds"] == 86400  # step 4: 24h backstop, never a work timer
         assert c["max_attempts"] == 4
         assert c["poll_interval_seconds"] == 1.0
         assert c["db_pool_max_size"] == 10
@@ -7934,7 +7938,7 @@ _AST1955_SETTINGS = (
 # AST-2181 adds requires_structured_output; AST-2232 inserts agent_name after agent_id.
 _AST2232_AGENT_REPO_COLUMNS = (
     "agent_id", "agent_name", "content", "model_id", "max_tokens",
-    *_AST1955_SETTINGS, "requires_structured_output", "updated_at",
+    *_AST1955_SETTINGS, "requires_structured_output", "timeout_seconds", "updated_at",
 )
 
 

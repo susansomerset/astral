@@ -13,6 +13,7 @@
     "provider_ignore": null,
     "provider_sort": null,
     "requires_structured_output": true,
+    "timeout_seconds": null,
     "updated_at": "2026-10-08 00:08:28"
   },
   {
@@ -29,6 +30,7 @@
     "provider_ignore": null,
     "provider_sort": null,
     "requires_structured_output": false,
+    "timeout_seconds": null,
     "updated_at": "2026-10-04 03:56:24"
   },
   {
@@ -45,6 +47,7 @@
     "provider_ignore": null,
     "provider_sort": null,
     "requires_structured_output": false,
+    "timeout_seconds": null,
     "updated_at": "2026-10-04 03:56:24"
   },
   {
@@ -61,6 +64,7 @@
     "provider_ignore": null,
     "provider_sort": null,
     "requires_structured_output": false,
+    "timeout_seconds": null,
     "updated_at": "2026-10-04 03:56:24"
   },
   {
@@ -77,6 +81,7 @@
     "provider_ignore": null,
     "provider_sort": null,
     "requires_structured_output": false,
+    "timeout_seconds": null,
     "updated_at": "2026-10-04 03:56:24"
   },
   {
@@ -93,6 +98,7 @@
     "provider_ignore": null,
     "provider_sort": null,
     "requires_structured_output": false,
+    "timeout_seconds": null,
     "updated_at": "2026-10-04 03:56:24"
   },
   {
@@ -109,6 +115,7 @@
     "provider_ignore": null,
     "provider_sort": null,
     "requires_structured_output": false,
+    "timeout_seconds": null,
     "updated_at": "2026-10-04 04:41:38"
   },
   {
@@ -125,6 +132,7 @@
     "provider_ignore": null,
     "provider_sort": null,
     "requires_structured_output": true,
+    "timeout_seconds": null,
     "updated_at": "2026-10-04 03:56:24"
   },
   {
@@ -141,6 +149,7 @@
     "provider_ignore": null,
     "provider_sort": null,
     "requires_structured_output": false,
+    "timeout_seconds": null,
     "updated_at": "2026-10-06 04:00:23"
   },
   {
@@ -157,6 +166,7 @@
     "provider_ignore": null,
     "provider_sort": null,
     "requires_structured_output": true,
+    "timeout_seconds": null,
     "updated_at": "2026-10-08 00:21:12"
   }
 ]

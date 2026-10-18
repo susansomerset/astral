@@ -79,6 +79,8 @@ class ClaimedJob:
     wait_s: float = 0.0  # time since the job became claimable (queue wait)
     # Monotonic stamp of the claim; start - claimed_at is the time held in the waiting line.
     claimed_at: float = field(default_factory=time.monotonic)
+    # In memory only: timed out once and re-queued in the waiting line (same attempt, no second start()).
+    timed_out: bool = False
 
 
 def encode_result(result: Any) -> bytes:

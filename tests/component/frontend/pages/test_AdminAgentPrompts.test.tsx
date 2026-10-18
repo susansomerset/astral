@@ -28,7 +28,7 @@ const models = {
 // AST-1957: rows carry the seven plain settings as the data layer exposes them (lists decoded, bool fallbacks).
 const emptySettings = {
   quantization: null, temperature: null, reasoning_effort: null, provider_allow_fallbacks: null,
-  provider_only: null, provider_ignore: null, provider_sort: null,
+  provider_only: null, provider_ignore: null, provider_sort: null, timeout_seconds: null,
 }
 const agents = [
   {
@@ -52,6 +52,7 @@ const agents = [
     provider_only: ["groq", "together"],
     provider_ignore: ["deepinfra"],
     provider_sort: "price",
+    timeout_seconds: 900,
     max_tokens: 1024,
     task_count: 2,
     content_length: 8,
@@ -139,6 +140,7 @@ describe("AdminAgentPrompts", () => {
     const textInput = (label: string) => within(field(label)).getByRole("textbox") as HTMLInputElement
     const tempInput = () => within(field("Temperature")).getByRole("spinbutton") as HTMLInputElement
     const maxTokInput = () => within(field("Max Tokens")).getByRole("spinbutton") as HTMLInputElement
+    const timeoutInput = () => within(field("Call timeout (s)")).getByRole("spinbutton") as HTMLInputElement
     const fallbacks = () => screen.getByRole("checkbox", { name: /allow provider fallbacks/i }) as HTMLInputElement
     const textLabels = ["Quantization", "Effort", "Provider only", "Provider ignore", "Provider sort"]
     const headers = () =>
@@ -179,6 +181,9 @@ describe("AdminAgentPrompts", () => {
       await userEvent.selectOptions(within(field("Model")).getByRole("combobox"), "kimi-k2.6")
       expect(maxTokInput()).toHaveAttribute("placeholder", "default 16000")
       expect(maxTokInput()).toHaveValue(null)
+      // Empty call timeout means the default: the word "default", never a number copied from the backend.
+      expect(timeoutInput()).toHaveValue(null)
+      expect(timeoutInput()).toHaveAttribute("placeholder", "default")
     }, 20000)
 
     it("Add saves every setting under its key (trimmed, lists split) with no brain_setting or mode", async () => {
@@ -201,7 +206,7 @@ describe("AdminAgentPrompts", () => {
         agent_id: "kimi_agent", content: "", model_id: "kimi-k2.6",
         quantization: "bf16", temperature: 0.7, reasoning_effort: "high", provider_allow_fallbacks: false,
         provider_only: ["groq", "together"], provider_ignore: null, provider_sort: "price",
-        requires_structured_output: false,
+        requires_structured_output: false, timeout_seconds: null,
       })
     }, 20000)
 
@@ -220,8 +225,10 @@ describe("AdminAgentPrompts", () => {
       expect(textInput("Provider only")).toHaveValue("groq, together")
       expect(textInput("Provider ignore")).toHaveValue("deepinfra")
       expect(textInput("Provider sort")).toHaveValue("price")
-      // Set temperature, clear two settings, turn fallbacks on.
+      expect(timeoutInput()).toHaveValue(900)
+      // Set temperature and the call timeout, clear two settings, turn fallbacks on.
       fireEvent.change(tempInput(), { target: { value: "0.3" } })
+      fireEvent.change(timeoutInput(), { target: { value: "1800" } })
       fireEvent.change(textInput("Quantization"), { target: { value: "" } })
       fireEvent.change(textInput("Provider ignore"), { target: { value: "" } })
       await userEvent.click(fallbacks())
@@ -232,7 +239,7 @@ describe("AdminAgentPrompts", () => {
         content: "b prompt", max_tokens: 1024, model_id: "kimi-k2.6",
         quantization: null, temperature: 0.3, reasoning_effort: "none", provider_allow_fallbacks: true,
         provider_only: ["groq", "together"], provider_ignore: null, provider_sort: "price",
-        requires_structured_output: false,
+        requires_structured_output: false, timeout_seconds: 1800,
       })
     }, 20000)
 
